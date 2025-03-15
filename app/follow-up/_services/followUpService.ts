@@ -158,6 +158,49 @@ export const followUpService = {
     }
   },
 
+  // NOVA FUNÇÃO: Atualizar um passo específico
+  async updateStep(stepId: string, data: Partial<FunnelStep>): Promise<any> {
+    try {
+      console.log(`Iniciando atualização do passo ${stepId} com dados:`, data);
+      
+      const response = await axios.put('/api/follow-up/funnel-steps', {
+        id: stepId,
+        ...data
+      });
+      
+      console.log('Resposta da API de atualização de passo:', response.data);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to update step');
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error updating step:', error);
+      throw error;
+    }
+  },
+
+  // NOVA FUNÇÃO: Excluir um passo específico
+  async deleteStep(stepId: string): Promise<any> {
+    try {
+      console.log(`Iniciando exclusão do passo ${stepId}`);
+      
+      const response = await axios.delete(`/api/follow-up/funnel-steps?id=${stepId}`);
+      
+      console.log('Resposta da API de exclusão de passo:', response.data);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to delete step');
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting step:', error);
+      throw error;
+    }
+  },
+
   // Função unificada para buscar todos os estágios e passos
   async getCampaignSteps(campaignId?: string): Promise<CampaignStep[]> {
     try {
@@ -193,7 +236,7 @@ export const followUpService = {
       // buscar dados da campanha
       if ((allSteps.length === 0 || campaignId) && campaignId) {
         try {
-          const campaign = await this.getCampaign(campaignId);
+          const campaign : any = await this.getCampaign(campaignId);
           
           if (campaign && (campaign.steps?.length > 0)) {
             // Mapear para o formato esperado
@@ -227,7 +270,7 @@ export const followUpService = {
               if (allSteps.length > 0) {
                 // Verificar quais etapas já existem
                 const existingStageNames = new Set(allSteps.map(step => step.etapa));
-                const newSteps = formattedCampaignSteps.filter(step => !existingStageNames.has(step.etapa));
+                const newSteps = formattedCampaignSteps.filter((step: any) => !existingStageNames.has(step.etapa));
                 allSteps.push(...newSteps);
               } else {
                 allSteps.push(...formattedCampaignSteps);

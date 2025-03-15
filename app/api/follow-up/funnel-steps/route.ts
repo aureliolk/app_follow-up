@@ -133,3 +133,123 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// Para atualizar um passo específico
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, funnel_stage_id, name, template_name, wait_time, message_content, message_category, auto_respond } = body;
+    
+    if (!id) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "ID do passo é obrigatório" 
+        }, 
+        { status: 400 }
+      );
+    }
+    
+    // Verificar se o passo existe
+    const existingStep = await prisma.followUpStep.findUnique({
+      where: { id }
+    });
+    
+    if (!existingStep) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Passo não encontrado" 
+        }, 
+        { status: 404 }
+      );
+    }
+    
+    // Converter tempo de espera em milissegundos
+    const wait_time_ms = parseTimeString(wait_time);
+    
+    // Atualizar o passo
+    const updatedStep = await prisma.followUpStep.update({
+      where: { id },
+      data: {
+        funnel_stage_id,
+        name,
+        template_name,
+        wait_time,
+        wait_time_ms,
+        message_content,
+        message_category,
+        auto_respond: auto_respond !== undefined ? auto_respond : true
+      }
+    });
+    
+    return NextResponse.json({
+      success: true,
+      message: "Passo atualizado com sucesso",
+      data: updatedStep
+    });
+    
+  } catch (error) {
+    console.error("Erro ao atualizar passo:", error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: "Erro interno do servidor" 
+      }, 
+      { status: 500 }
+    );
+  }
+}
+
+// Para excluir um passo específico
+export async function DELETE(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const id = url.searchParams.get('id');
+    
+    if (!id) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "ID do passo é obrigatório" 
+        }, 
+        { status: 400 }
+      );
+    }
+    
+    // Verificar se o passo existe
+    const existingStep = await prisma.followUpStep.findUnique({
+      where: { id }
+    });
+    
+    if (!existingStep) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Passo não encontrado" 
+        }, 
+        { status: 404 }
+      );
+    }
+    
+    // Excluir o passo
+    await prisma.followUpStep.delete({
+      where: { id }
+    });
+    
+    return NextResponse.json({
+      success: true,
+      message: "Passo excluído com sucesso"
+    });
+    
+  } catch (error) {
+    console.error("Erro ao excluir passo:", error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: "Erro interno do servidor" 
+      }, 
+      { status: 500 }
+    );
+  }
+}
