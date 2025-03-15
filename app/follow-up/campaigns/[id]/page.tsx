@@ -3,9 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ErrorMessage, Footer } from '../../_components';
-import MainNavigation from '../../_components/MainNavigation';
-import { CampaignForm } from '../../_components';
+import { ErrorMessage, Footer, MainNavigation, CampaignForm } from '../../campaigns/_components/index';
 import Link from 'next/link';
 import followUpService from '../../_services/followUpService';
 import { Campaign, CampaignStep, FunnelStage } from '../../_types';
@@ -322,7 +320,7 @@ export default function EditCampaignPage() {
           </h1>
         </div>
 
-        {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
+        {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
         {isLoading ? (
           <div className="flex justify-center p-8">
@@ -335,21 +333,7 @@ export default function EditCampaignPage() {
             {/* CampaignForm único para toda a edição */}
             <CampaignForm
               funnelStages={funnelStages}
-              initialData={{
-                ...campaign,
-                // Incluímos todos os passos carregados do servidor para esta campanha
-                steps: campaignSteps.length > 0
-                  ? campaignSteps.map(step => ({
-                    id: step.id || `step-${Math.random().toString(36).substring(2, 11)}`,
-                    stage_id: step.stage_id || '',
-                    stage_name: step.etapa || step.stage_name || '',
-                    template_name: step.template_name || '',
-                    wait_time: step.tempo_de_espera || step.wait_time || '',
-                    message: step.message || step.mensagem || '',
-                    auto_respond: true
-                  }))
-                  : campaign?.steps || []
-              }}
+              initialData={campaign as any}
               onSubmit={handleUpdateCampaign}
               onCancel={() => router.push('/follow-up/campaigns')}
               isLoading={isSubmitting || isLoadingSteps}

@@ -3,7 +3,7 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { FollowUp } from './FollowUpTable';
-import followUpService from '../_services/followUpService';
+import followUpService from '../../_services/followUpService';
 
 interface FollowUpDetailModalProps {
   followUp: FollowUp | null;

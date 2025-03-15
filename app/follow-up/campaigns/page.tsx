@@ -2,9 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { SearchBar, ErrorMessage, Footer } from '../_components';
-import MainNavigation from '../_components/MainNavigation';
-import { CampaignForm } from '../_components';
+import { SearchBar, ErrorMessage, Footer, CampaignForm ,MainNavigation } from '../campaigns/_components/index';
 import Link from 'next/link';
 
 interface Campaign {
@@ -88,9 +86,10 @@ export default function CampaignsPage() {
           
           <div className="flex justify-between items-center mb-4">
             <SearchBar 
-              value={searchTerm} 
-              onChange={setSearchTerm} 
-              placeholder="Buscar campanhas..." 
+              searchTerm={searchTerm}
+              onSearch={setSearchTerm}
+              showNewForm={showForm}
+              onToggleForm={() => setShowForm(!showForm)}
             />
             <button
               onClick={() => setShowForm(true)}
@@ -103,7 +102,7 @@ export default function CampaignsPage() {
             </button>
           </div>
           
-          {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
+          {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
           
           {showForm && (
             <div className="mb-6">

@@ -1,4 +1,4 @@
-// app/follow-up/_components/ErrorMessage.tsx
+// app/follow-up/campaigns/_components/ErrorMessage.tsx
 'use client';
 
 import React from 'react';
@@ -6,9 +6,10 @@ import React from 'react';
 interface ErrorMessageProps {
   message: string | null;
   onDismiss: () => void;
+  onClose?: () => void;
 }
 
-export const ErrorMessage: React.FC<ErrorMessageProps> = ({ message, onDismiss }) => {
+export const ErrorMessage: React.FC<ErrorMessageProps> = ({ message, onDismiss, onClose }) => {
   if (!message) return null;
   
   return (
