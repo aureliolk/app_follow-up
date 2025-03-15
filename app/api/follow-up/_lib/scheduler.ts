@@ -65,7 +65,7 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
   try {
     // Configurações fixas para a API conforme solicitado
     const accountId = 10;
-    const conversationId = 3;
+    const conversationId = 48;
     const apiToken = 'Z41o5FJFVEdZJjQaqDz6pYC7';
     
     // Extrair parâmetros do template do metadata se disponível

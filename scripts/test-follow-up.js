@@ -1,8 +1,7 @@
-// test-follow-up.js
+// test-follow-up-with-ids.js
 import { PrismaClient } from '@prisma/client';
 
-// Importar diretamente as funções que precisamos, sem usar o módulo manager
-// Definir função parseTimeString aqui para evitar problemas de importação
+// Função para converter string de tempo em milissegundos
 function parseTimeString(timeStr) {
   // Se o tempo estiver vazio ou for inválido, usar 30 minutos como padrão
   if (!timeStr || timeStr === undefined || timeStr.trim() === "") {
@@ -75,12 +74,12 @@ const prisma = new PrismaClient();
 
 /**
  * Script para testar o fluxo de follow-up de uma campanha
- * Simula o processamento de todos os estágios de uma campanha
+ * Mostra os IDs de todas as etapas e estágios
  */
 async function testFollowUpCampaign(campaignId, clientId = 'test_user@example.com') {
   try {
     console.log('=== INICIANDO TESTE DE FOLLOW-UP ===');
-    console.log(`Campanha: ${campaignId}`);
+    console.log(`Campanha ID: ${campaignId}`);
     console.log(`Cliente: ${clientId}`);
     
     // Buscar campanha para verificar se existe
@@ -92,35 +91,56 @@ async function testFollowUpCampaign(campaignId, clientId = 'test_user@example.co
       throw new Error(`Campanha não encontrada: ${campaignId}`);
     }
     
-    console.log(`Campanha encontrada: ${campaign.name}`);
+    console.log(`Campanha encontrada: ${campaign.name} (ID: ${campaign.id})`);
     
     // Extrair etapas (steps) da campanha
     const campaignSteps = JSON.parse(campaign.steps);
     console.log(`Total de estágios na campanha: ${campaignSteps.length}`);
     
+    // Buscar todos os estágios do funil para obter seus IDs
+    const funnelStages = await prisma.followUpFunnelStage.findMany({
+      orderBy: { order: 'asc' }
+    });
+    
+    console.log(`Total de etapas do funil no banco de dados: ${funnelStages.length}`);
+    
+    // Mapear nomes de etapas para seus IDs
+    const stageNameToId = {};
+    funnelStages.forEach(stage => {
+      stageNameToId[stage.name] = stage.id;
+    });
+    
     // Agrupar estágios por etapas do funil para análise
     const etapas = new Map();
     
-    campaignSteps.forEach((step) => {
+    // Adicionar IDs das etapas aos estágios
+    campaignSteps.forEach((step, index) => {
+      // Adicionar ID do estágio e posição no array
+      step.index = index;
+      
       const etapaName = step.etapa || step.stage_name || 'Sem Etapa';
+      step.stage_id = stageNameToId[etapaName] || null;
+      
       if (!etapas.has(etapaName)) {
         etapas.set(etapaName, []);
       }
       etapas.get(etapaName).push(step);
     });
     
-    console.log(`Total de etapas do funil: ${etapas.size}`);
+    console.log(`Total de etapas do funil agrupadas: ${etapas.size}`);
     
-    // Exibir resumo das etapas e estágios
+    // Exibir resumo das etapas e estágios com seus IDs
     for (const [etapa, steps] of etapas.entries()) {
-      console.log(`\nEtapa: "${etapa}" - ${steps.length} estágios`);
+      const etapaId = stageNameToId[etapa] || 'N/A';
+      console.log(`\nEtapa: "${etapa}" (ID: ${etapaId}) - ${steps.length} estágios`);
       
       for (const [index, step] of steps.entries()) {
         const tempoEspera = step.tempo_de_espera || step.wait_time || '30m';
         const tempoMs = parseTimeString(tempoEspera);
         const tempoFormatado = formatarTempo(tempoMs);
         
-        console.log(`  Estágio ${index + 1}: Tempo de espera: ${tempoEspera} (${tempoFormatado})`);
+        console.log(`  Estágio ${index + 1} (Posição: ${step.index + 1}): Tempo de espera: ${tempoEspera} (${tempoFormatado})`);
+        console.log(`    ID Etapa: ${step.stage_id || 'N/A'}, Template: ${step.template_name || 'N/A'}`);
         console.log(`    Mensagem: "${(step.mensagem || step.message)?.substring(0, 50)}..."`);
       }
     }
@@ -152,6 +172,10 @@ async function testFollowUpCampaign(campaignId, clientId = 'test_user@example.co
       console.log(`Follow-up anterior cancelado.`);
     }
     
+    // Determinar o primeiro estágio do funil
+    const firstStepEtapa = campaignSteps[0]?.etapa || campaignSteps[0]?.stage_name;
+    const firstStageId = stageNameToId[firstStepEtapa] || null;
+    
     // Criar um novo follow-up
     const followUp = await prisma.followUp.create({
       data: {
@@ -159,14 +183,19 @@ async function testFollowUpCampaign(campaignId, clientId = 'test_user@example.co
         client_id: clientId,
         status: "active",
         current_step: 0,
-        current_stage_id: null, // Assumindo que ainda não temos o ID do estágio
+        current_stage_id: firstStageId, // Usar o ID do primeiro estágio
         started_at: new Date(),
         next_message_at: new Date(),
-        is_responsive: false
+        is_responsive: false,
+        metadata: JSON.stringify({
+          current_stage_name: firstStepEtapa,
+          updated_at: new Date().toISOString()
+        })
       }
     });
     
     console.log(`Novo follow-up criado: ${followUp.id}`);
+    console.log(`Estágio inicial: ${firstStepEtapa} (ID: ${firstStageId || 'N/A'})`);
     
     // Iniciar o processamento
     console.log('\n=== INICIANDO PROCESSAMENTO DE ESTÁGIOS ===');
@@ -175,7 +204,7 @@ async function testFollowUpCampaign(campaignId, clientId = 'test_user@example.co
     console.log('nos tempos definidos para cada estágio.\n');
     
     // Processar todos os estágios
-    await processarTodosEstagios(followUp.id, campaignSteps);
+    await processarTodosEstagios(followUp.id, campaignSteps, stageNameToId);
     
     console.log('\n=== TESTE CONCLUÍDO ===');
   } catch (error) {
@@ -189,7 +218,7 @@ async function testFollowUpCampaign(campaignId, clientId = 'test_user@example.co
  * Processa todos os estágios de um follow-up, registrando informações sobre
  * a lógica de transição e estágios do funil
  */
-async function processarTodosEstagios(followUpId, campaignSteps) {
+async function processarTodosEstagios(followUpId, campaignSteps, stageNameToId) {
   try {
     let currentStep = 0;
     
@@ -206,21 +235,27 @@ async function processarTodosEstagios(followUpId, campaignSteps) {
         break;
       }
       
-      console.log(`\n> Processando estágio ${currentStep + 1}`);
-      console.log(`  Etapa do funil: ${step.etapa || step.stage_name || 'Não definida'}`);
+      // Obter detalhes do estágio atual
+      const currentEtapa = step.etapa || step.stage_name || 'Não definida';
+      const currentStageId = stageNameToId[currentEtapa] || 'N/A';
+      
+      console.log(`\n> Processando estágio ${currentStep + 1}/${campaignSteps.length}`);
+      console.log(`  FollowUp ID: ${followUpId}`);
+      console.log(`  Etapa do funil: ${currentEtapa} (ID: ${currentStageId})`);
       console.log(`  Tempo de espera: ${step.tempo_de_espera || step.wait_time || '30m'}`);
+      console.log(`  Template: ${step.template_name || 'N/A'}`);
       console.log(`  Mensagem: "${(step.mensagem || step.message)?.substring(0, 50)}..."`);
       
       // Simular envio de mensagem
       console.log('  Simulando envio da mensagem...');
       
       // Registrar a mensagem no banco de dados
-      await prisma.followUpMessage.create({
+      const messageRecord = await prisma.followUpMessage.create({
         data: {
           follow_up_id: followUpId,
           step: currentStep,
           content: step.mensagem || step.message || 'Conteúdo da mensagem',
-          funnel_stage: step.etapa || step.stage_name || 'Não definida',
+          funnel_stage: currentEtapa,
           template_name: step.template_name,
           category: step.category,
           sent_at: new Date(),
@@ -229,17 +264,17 @@ async function processarTodosEstagios(followUpId, campaignSteps) {
         }
       });
       
-      console.log('  Mensagem registrada no banco de dados.');
+      console.log(`  Mensagem registrada no banco de dados (ID: ${messageRecord.id}).`);
       
       // Verificar se o próximo estágio muda de etapa
       if (currentStep + 1 < campaignSteps.length) {
         const nextStep = campaignSteps[currentStep + 1];
-        const currentEtapa = step.etapa || step.stage_name;
-        const nextEtapa = nextStep.etapa || nextStep.stage_name;
+        const nextEtapa = nextStep.etapa || nextStep.stage_name || 'Não definida';
+        const nextStageId = stageNameToId[nextEtapa] || 'N/A';
         
         if (currentEtapa !== nextEtapa) {
           console.log(`\n  [TRANSIÇÃO DE ETAPA DETECTADA]`);
-          console.log(`  De: "${currentEtapa}" Para: "${nextEtapa}"`);
+          console.log(`  De: "${currentEtapa}" (ID: ${currentStageId}) Para: "${nextEtapa}" (ID: ${nextStageId})`);
           console.log(`  Na lógica real, esta transição só ocorreria se o cliente respondesse.`);
           
           // Agora vamos simular uma resposta do cliente para testar a transição
@@ -255,7 +290,7 @@ async function processarTodosEstagios(followUpId, campaignSteps) {
           });
           
           // Registrar uma mensagem simulada do cliente
-          await prisma.followUpMessage.create({
+          const clientMessage = await prisma.followUpMessage.create({
             data: {
               follow_up_id: followUpId,
               step: -1, // Mensagem do cliente
@@ -266,7 +301,7 @@ async function processarTodosEstagios(followUpId, campaignSteps) {
             }
           });
           
-          console.log('  Cliente marcado como responsivo, mensagem simulada registrada.');
+          console.log(`  Cliente marcado como responsivo, mensagem simulada registrada (ID: ${clientMessage.id}).`);
           console.log('  Na lógica real, o follow-up seria pausado aqui e aguardaria intervenção humana.');
           
           // Pequena pausa para simular operador vendo a mensagem
@@ -277,6 +312,7 @@ async function processarTodosEstagios(followUpId, campaignSteps) {
             where: { id: followUpId },
             data: {
               current_step: currentStep + 1,
+              current_stage_id: nextStageId, // Atualizar o ID do estágio
               is_responsive: false, // Resetar para simular continuação
               status: 'active',
               metadata: JSON.stringify({
@@ -287,9 +323,10 @@ async function processarTodosEstagios(followUpId, campaignSteps) {
           });
           
           console.log('  Follow-up resumido automaticamente para a próxima etapa (apenas para teste).');
+          console.log(`  Novo estágio: ${nextEtapa} (ID: ${nextStageId})`);
         } else {
           // Apenas avanço normal para o próximo estágio na mesma etapa
-          console.log('  Avançando para o próximo estágio na mesma etapa');
+          console.log(`  Avançando para o próximo estágio na mesma etapa: ${currentEtapa} (ID: ${currentStageId})`);
           
           // Como é um teste, vamos avançar manualmente o follow-up
           await prisma.followUp.update({
@@ -301,7 +338,7 @@ async function processarTodosEstagios(followUpId, campaignSteps) {
         }
       } else {
         console.log('\n  [ÚLTIMO ESTÁGIO ATINGIDO]');
-        console.log('  Não há mais estágios na campanha. Follow-up seria marcado como concluído.');
+        console.log('  Não há mais estágios na campanha. Follow-up será marcado como concluído.');
         
         // Marcar follow-up como concluído
         await prisma.followUp.update({
@@ -359,12 +396,12 @@ const clientId = process.argv[3] || 'cliente_teste@exemplo.com';
 
 if (!campaignId) {
   console.error('Erro: ID da campanha não fornecido!');
-  console.log('Uso: node test-follow-up.js CAMPANHA_ID [EMAIL_CLIENTE]');
+  console.log('Uso: node test-follow-up-with-ids.js CAMPANHA_ID [EMAIL_CLIENTE]');
   process.exit(1);
 }
 
 // Para executar o script:
-// node test-follow-up.js CAMPANHA_ID EMAIL_CLIENTE
+// node test-follow-up-with-ids.js CAMPANHA_ID EMAIL_CLIENTE
 console.log(`Iniciando teste para campanha ${campaignId} com cliente ${clientId}`);
 testFollowUpCampaign(campaignId, clientId)
   .catch(console.error);
