@@ -9,6 +9,7 @@ import { CampaignForm } from '../../_components';
 import Link from 'next/link';
 import followUpService from '../../_services/followUpService';
 import { Campaign, CampaignStep, FunnelStage } from '../../_types';
+import axios from 'axios';
 
 // Componente principal de edição de campanha
 export default function EditCampaignPage() {
@@ -54,6 +55,20 @@ export default function EditCampaignPage() {
     }
   };
 
+  const fetchStepsOnly = async () => {
+    setIsLoadingSteps(true);
+    try {
+      console.log('Atualizando apenas os passos da campanha');
+      const steps = await followUpService.getCampaignSteps(campaignId);
+      console.log(`${steps.length} passos carregados`);
+      setCampaignSteps(steps);
+    } catch (err: any) {
+      console.error('Erro ao carregar passos:', err);
+    } finally {
+      setIsLoadingSteps(false);
+    }
+  };
+
   // Efeito para carregar todos os dados de uma só vez
   useEffect(() => {
     fetchAllData();
@@ -81,32 +96,57 @@ export default function EditCampaignPage() {
   // Função para adicionar um estágio (passo) diretamente
   const handleAddStep = async (newStep: any) => {
     try {
-      // Buscar a campanha atual para obter os passos existentes
-      const currentCampaign = await followUpService.getCampaign(campaignId);
+      setIsLoadingSteps(true);
 
-      // Criar uma nova lista de passos incluindo o novo
-      const updatedSteps = [...(currentCampaign.steps || []), newStep];
+      // Verificar se temos os dados mínimos necessários
+      if (!newStep.stage_id || !newStep.template_name || !newStep.wait_time || !newStep.message) {
+        console.error('Dados incompletos para criar um novo estágio');
+        alert('Por favor, preencha todos os campos obrigatórios');
+        return false;
+      }
 
-      // Atualizar a campanha com a nova lista de passos
-      await followUpService.updateCampaign(campaignId, {
-        ...currentCampaign,
-        steps: updatedSteps
-      });
+      console.log('Tentando adicionar novo estágio:', newStep);
 
-      // Atualizar dados locais
-      fetchAllData();
+      // Mapear dados para o formato esperado pela API
+      const stepData = {
+        funnel_stage_id: newStep.stage_id,
+        name: newStep.template_name,
+        template_name: newStep.template_name,
+        wait_time: newStep.wait_time,
+        message_content: newStep.message,
+        message_category: newStep.category || 'Utility',
+        auto_respond: newStep.auto_respond !== undefined ? newStep.auto_respond : true
+      };
 
-      return true;
-    } catch (error) {
-      console.error('Erro ao adicionar estágio:', error);
+      console.log('Dados formatados para API:', stepData);
+
+      // Usar a API POST para criar um novo passo
+      const response = await axios.post('/api/follow-up/funnel-steps', stepData);
+
+      if (response.data.success) {
+        console.log('Novo estágio criado com sucesso:', response.data);
+
+        // Atualizar apenas os passos
+        await fetchStepsOnly();
+        return true;
+      } else {
+        console.error('Erro ao criar estágio:', response.data);
+        alert(`Erro: ${response.data.error || 'Falha ao criar estágio'}`);
+        return false;
+      }
+    } catch (error: any) {
+      console.error('Erro detalhado ao adicionar estágio:', error);
+      alert(`Erro ao adicionar estágio: ${error.message || 'Erro desconhecido'}`);
       return false;
+    } finally {
+      setIsLoadingSteps(false);
     }
   };
 
   // Função para atualizar um estágio
   const handleUpdateStep = async (index: number, updatedStep: any) => {
     try {
-      setIsLoading(true);
+      setIsLoadingSteps(true);
 
       if (!updatedStep.id) {
         console.error('Estágio sem ID não pode ser atualizado');
@@ -120,7 +160,7 @@ export default function EditCampaignPage() {
       const stepData = {
         id: updatedStep.id,
         funnel_stage_id: updatedStep.stage_id,
-        name: updatedStep.template_name, // Usar template_name como name se não tiver name
+        name: updatedStep.template_name,
         template_name: updatedStep.template_name,
         wait_time: updatedStep.wait_time,
         message_content: updatedStep.message,
@@ -135,7 +175,8 @@ export default function EditCampaignPage() {
       console.log('Resultado da atualização:', result);
 
       if (result.success) {
-        await fetchAllData();
+        // Atualizar apenas os passos em vez de todos os dados
+        await fetchStepsOnly();
         return true;
       } else {
         alert(`Erro: ${result.error || 'Falha ao atualizar'}`);
@@ -146,14 +187,14 @@ export default function EditCampaignPage() {
       alert(`Erro ao atualizar: ${error.message || 'Erro desconhecido'}`);
       return false;
     } finally {
-      setIsLoading(false);
+      setIsLoadingSteps(false);
     }
   };
 
   // Função para remover um estágio
   const handleRemoveStep = async (index: number, step: any) => {
     try {
-      setIsLoading(true);
+      setIsLoadingSteps(true);
 
       if (!step.id) {
         console.error('Estágio sem ID não pode ser removido');
@@ -173,7 +214,8 @@ export default function EditCampaignPage() {
       console.log('Resultado da remoção:', result);
 
       if (result.success) {
-        await fetchAllData();
+        // Atualizar apenas os passos em vez de todos os dados
+        await fetchStepsOnly();
         return true;
       } else {
         alert(`Erro: ${result.error || 'Falha ao remover'}`);
@@ -184,7 +226,7 @@ export default function EditCampaignPage() {
       alert(`Erro ao remover: ${error.message || 'Erro desconhecido'}`);
       return false;
     } finally {
-      setIsLoading(false);
+      setIsLoadingSteps(false);
     }
   };
 

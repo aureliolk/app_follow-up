@@ -9,11 +9,11 @@ export const followUpService = {
       const response = await axios.get('/api/follow-up', {
         params: status ? { status } : undefined
       });
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch follow-ups');
       }
-      
+
       return response.data.data || [];
     } catch (error) {
       console.error('Error fetching follow-ups:', error);
@@ -25,11 +25,11 @@ export const followUpService = {
   async getCampaigns(): Promise<Campaign[]> {
     try {
       const response = await axios.get('/api/follow-up/campaigns');
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch campaigns');
       }
-      
+
       return response.data.data || [];
     } catch (error) {
       console.error('Error fetching campaigns:', error);
@@ -41,13 +41,13 @@ export const followUpService = {
   async getCampaign(campaignId: string): Promise<Campaign> {
     try {
       const response = await axios.get(`/api/follow-up/campaigns/${campaignId}`);
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch campaign');
       }
-      
+
       const campaignData = response.data.data;
-      
+
       // Processar os steps se estiverem em formato string
       let steps = [];
       if (typeof campaignData.steps === 'string') {
@@ -60,7 +60,7 @@ export const followUpService = {
       } else {
         steps = campaignData.steps || [];
       }
-      
+
       return {
         ...campaignData,
         steps
@@ -75,18 +75,18 @@ export const followUpService = {
   async getFunnelStages(): Promise<FunnelStage[]> {
     try {
       const response = await axios.get('/api/follow-up/funnel-stages');
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch funnel stages');
       }
-      
+
       return response.data.data || [];
     } catch (error) {
       console.error('Error fetching funnel stages:', error);
       throw error;
     }
   },
-  
+
   // Função para criar um novo estágio do funil
   async createFunnelStage(name: string, description?: string, order?: number): Promise<FunnelStage> {
     try {
@@ -95,18 +95,18 @@ export const followUpService = {
         description,
         order
       });
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to create funnel stage');
       }
-      
+
       return response.data.data;
     } catch (error) {
       console.error('Error creating funnel stage:', error);
       throw error;
     }
   },
-  
+
   // Função para atualizar um estágio do funil
   async updateFunnelStage(id: string, data: { name: string, description?: string, order?: number }): Promise<FunnelStage> {
     try {
@@ -114,27 +114,27 @@ export const followUpService = {
         id,
         ...data
       });
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update funnel stage');
       }
-      
+
       return response.data.data;
     } catch (error) {
       console.error('Error updating funnel stage:', error);
       throw error;
     }
   },
-  
+
   // Função para excluir um estágio do funil
   async deleteFunnelStage(id: string): Promise<boolean> {
     try {
       const response = await axios.delete(`/api/follow-up/funnel-stages?id=${id}`);
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete funnel stage');
       }
-      
+
       return true;
     } catch (error) {
       console.error('Error deleting funnel stage:', error);
@@ -146,11 +146,11 @@ export const followUpService = {
   async getFunnelSteps(stageId: string): Promise<FunnelStep[]> {
     try {
       const response = await axios.get(`/api/follow-up/funnel-steps?stageId=${stageId}`);
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch funnel steps');
       }
-      
+
       return response.data.data || [];
     } catch (error) {
       console.error(`Error fetching steps for stage ${stageId}:`, error);
@@ -162,18 +162,18 @@ export const followUpService = {
   async updateStep(stepId: string, data: Partial<FunnelStep>): Promise<any> {
     try {
       console.log(`Iniciando atualização do passo ${stepId} com dados:`, data);
-      
+
       const response = await axios.put('/api/follow-up/funnel-steps', {
         id: stepId,
         ...data
       });
-      
+
       console.log('Resposta da API de atualização de passo:', response.data);
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update step');
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('Error updating step:', error);
@@ -185,15 +185,15 @@ export const followUpService = {
   async deleteStep(stepId: string): Promise<any> {
     try {
       console.log(`Iniciando exclusão do passo ${stepId}`);
-      
+
       const response = await axios.delete(`/api/follow-up/funnel-steps?id=${stepId}`);
-      
+
       console.log('Resposta da API de exclusão de passo:', response.data);
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete step');
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('Error deleting step:', error);
@@ -206,14 +206,14 @@ export const followUpService = {
     try {
       // 1. Primeiro, buscar todos os estágios do funil
       const funnelStages = await this.getFunnelStages();
-      
+
       // 2. Para cada estágio, buscar os passos associados
       const allSteps: CampaignStep[] = [];
-      
+
       for (const stage of funnelStages) {
         try {
           const steps = await this.getFunnelSteps(stage.id);
-          
+
           // Mapear passos para o formato esperado
           const formattedSteps = steps.map((step: FunnelStep) => ({
             id: step.id,
@@ -225,19 +225,19 @@ export const followUpService = {
             stage_name: stage.name,
             stage_order: stage.order
           }));
-          
+
           allSteps.push(...formattedSteps);
         } catch (error) {
           console.error(`Error processing steps for stage ${stage.name}:`, error);
         }
       }
-      
+
       // 3. Se não foram encontrados passos ou se um ID de campanha foi fornecido,
       // buscar dados da campanha
       if ((allSteps.length === 0 || campaignId) && campaignId) {
         try {
-          const campaign : any = await this.getCampaign(campaignId);
-          
+          const campaign: any = await this.getCampaign(campaignId);
+
           if (campaign && (campaign.steps?.length > 0)) {
             // Mapear para o formato esperado
             const formattedCampaignSteps = campaign.steps.map((step: any, index: number) => {
@@ -264,7 +264,7 @@ export const followUpService = {
               }
               return null;
             }).filter(Boolean);
-            
+
             if (formattedCampaignSteps.length > 0) {
               // Se já temos alguns passos do banco de dados, apenas adicione os que faltam
               if (allSteps.length > 0) {
@@ -281,7 +281,7 @@ export const followUpService = {
           console.error('Error fetching campaign data:', campaignError);
         }
       }
-      
+
       return allSteps;
     } catch (error) {
       console.error('Error fetching campaign steps:', error);
@@ -292,14 +292,14 @@ export const followUpService = {
   // Função para cancelar um follow-up
   async cancelFollowUp(followUpId: string): Promise<any> {
     try {
-      const response = await axios.post('/api/follow-up/cancel', { 
-        followUpId 
+      const response = await axios.post('/api/follow-up/cancel', {
+        followUpId
       });
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to cancel follow-up');
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('Error canceling follow-up:', error);
@@ -310,39 +310,39 @@ export const followUpService = {
   // Função para remover um cliente
   async removeClient(clientId: string): Promise<any> {
     try {
-      const response = await axios.post('/api/follow-up/remove-client', { 
-        clientId 
+      const response = await axios.post('/api/follow-up/remove-client', {
+        clientId
       });
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to remove client');
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('Error removing client:', error);
       throw error;
     }
   },
-  
+
   // Função para mover um cliente para outra etapa do funil
   async moveClientToStage(followUpId: string, stageId: string): Promise<any> {
     try {
       const response = await axios.put(`/api/follow-up/${followUpId}/move-stage`, {
         stageId
       });
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to move client to stage');
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('Error moving client to stage:', error);
       throw error;
     }
   },
-  
+
   // Função para criar um novo follow-up
   async createFollowUp(clientId: string, campaignId: string): Promise<any> {
     try {
@@ -350,11 +350,11 @@ export const followUpService = {
         clientId,
         campaignId
       });
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to create follow-up');
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('Error creating follow-up:', error);
@@ -366,14 +366,34 @@ export const followUpService = {
   async updateCampaign(campaignId: string, formData: any): Promise<any> {
     try {
       const response = await axios.put(`/api/follow-up/campaigns/${campaignId}`, formData);
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update campaign');
       }
-      
+
       return response.data;
     } catch (error) {
       console.error('Error updating campaign:', error);
+      throw error;
+    }
+  },
+
+  // Função para criar um novo passo
+  async createStep(data: any): Promise<any> {
+    try {
+      console.log('Criando novo passo com dados:', data);
+
+      const response = await axios.post('/api/follow-up/funnel-steps', data);
+
+      console.log('Resposta da API de criação de passo:', response.data);
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to create step');
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Error creating step:', error);
       throw error;
     }
   }
