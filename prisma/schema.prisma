@@ -1,0 +1,137 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["follow_up_schema", "products_schema", "prompts_schema", "public"]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  url         String
+  price       Float
+  description String?
+  brand       String?
+  gender      String?
+  image       String?
+  categories  Json
+  variations  Json
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  @@map("products")
+  @@schema("products_schema")
+}
+
+model Prompt {
+  id            String         @id @default(uuid())
+  account_id    String
+  created_at    DateTime       @default(now())
+  is_current    Boolean?       @default(false)
+  instruction   String
+  promptContent PromptContent?
+
+  @@map("prompts")
+  @@schema("prompts_schema")
+}
+
+model PromptContent {
+  id              String  @id @default(uuid())
+  prompt_id       String  @unique
+  prompt_created  String?
+  prompt_removed  String?
+  prompt_complete String?
+  prompt          Prompt  @relation(fields: [prompt_id], references: [id])
+
+  @@map("prompt_contents")
+  @@schema("prompts_schema")
+}
+
+model FollowUpFunnelStage {
+  id          String            @id @default(uuid())
+  name        String
+  order       Int
+  description String?
+  created_at  DateTime          @default(now())
+  campaigns   FollowUpCampaign[]
+  steps       FollowUpStep[]
+
+  @@map("follow_up_funnel_stages")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpCampaign {
+  id          String              @id @default(uuid())
+  name        String
+  description String?
+  created_at  DateTime            @default(now())
+  active      Boolean             @default(true)
+  steps       Json
+  follow_ups  FollowUp[]
+  stages      FollowUpFunnelStage[]
+
+  @@map("follow_up_campaigns")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpStep {
+  id                 String              @id @default(uuid())
+  funnel_stage_id    String
+  name               String
+  template_name      String
+  wait_time          String              // "10 minutos", "1 hora", etc.
+  wait_time_ms       Int                 // Convertido em milissegundos
+  message_content    String
+  message_category   String?             // "Utility", "Marketing", etc.
+  auto_respond       Boolean             @default(true)
+  status             String              @default("created")
+  created_at         DateTime            @default(now())
+  funnel_stage       FollowUpFunnelStage @relation(fields: [funnel_stage_id], references: [id])
+
+  @@map("follow_up_steps")
+  @@schema("follow_up_schema")
+}
+
+model FollowUp {
+  id                String            @id @default(uuid())
+  campaign_id       String
+  client_id         String
+  current_step      Int               @default(0)
+  current_stage_id  String?           // Referência ao estágio atual do funil
+  status            String
+  started_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+  next_message_at   DateTime?
+  completed_at      DateTime?
+  is_responsive     Boolean           @default(false)
+  metadata          String?           // Campo para armazenar metadados como JSON
+  messages          FollowUpMessage[]
+  campaign          FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
+
+  @@index([client_id])
+  @@index([status])
+  @@map("follow_ups")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpMessage {
+  id              String    @id @default(uuid())
+  follow_up_id    String
+  step            Int
+  funnel_stage    String?   // Nome do estágio do funil
+  content         String
+  template_name   String?   // Nome do template usado
+  category        String?   // Categoria da mensagem
+  sent_at         DateTime  @default(now())
+  delivered       Boolean   @default(false)
+  delivered_at    DateTime?
+  follow_up       FollowUp  @relation(fields: [follow_up_id], references: [id])
+
+  @@index([follow_up_id, step])
+  @@map("follow_up_messages")
+  @@schema("follow_up_schema")
+}

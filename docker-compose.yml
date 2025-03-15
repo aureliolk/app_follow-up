@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  app:
+    image: app_nextlumibot:latest
+    build: .
+    ports:
+      - "5173:3000"
+    networks:
+      - network_public
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:lumibot@127.0.0.1:5432/products?schema=public
+    depends_on:
+      - db
+    command: npm run dev
+     
+    deploy:
+      labels:
+        - traefik.enable=true
+        # HTTP
+        - traefik.http.routers.app-http.rule=Host(`genprompt.lumibot.com.br`)
+        - traefik.http.routers.app-http.entrypoints=web
+        - traefik.http.routers.app-http.service=app-service
+        # HTTPS
+        - traefik.http.routers.app-secure.rule=Host(`genprompt.lumibot.com.br`)
+        - traefik.http.routers.app-secure.entrypoints=websecure
+        - traefik.http.routers.app-secure.tls=true
+        - traefik.http.routers.app-secure.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.app-secure.service=app-service
+        # Service
+        - traefik.http.services.app-service.loadbalancer.server.port=3000  # Corrigido para a porta real da aplicação (3000, não 5173)
+        # Middleware
+        - traefik.http.middlewares.https-redirect.redirectscheme.scheme=https
+        - traefik.http.middlewares.https-redirect.redirectscheme.permanent=true
+        - traefik.http.routers.app-http.middlewares=https-redirect
+        - traefik.http.routers.app-secure.middlewares=https-redirect
+    
+
+networks:
+  network_public:
+    external: true
+    name: network_public
+

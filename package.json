@@ -1,0 +1,47 @@
+{
+  "name": "app_nextlumibot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "migrate:prompts": "node scripts/apply-prompts-migration.js"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^1.2.1",
+    "@ai-sdk/react": "^1.1.21",
+    "@prisma/client": "^6.4.1",
+    "@types/uuid": "^10.0.0",
+    "ai": "^4.1.54",
+    "axios": ">=1.8.2",
+    "csv-parser": "^3.2.0",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "fs": "^0.0.1-security",
+    "iconv-lite": "^0.6.3",
+    "next": "15.2.0",
+    "papaparse": "^5.5.2",
+    "pg": "^8.13.3",
+    "pg-pool": "^3.7.1",
+    "prisma": "^6.4.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8.11.11",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
