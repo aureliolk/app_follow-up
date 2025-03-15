@@ -10,9 +10,9 @@ import {
   NewFollowUpForm,
   FollowUpTable,
   FollowUpDetailModal,
-  Footer
-} from './_components';
-import MainNavigation from './_components/MainNavigation';
+  Footer,
+  MainNavigation
+} from '../follow-up/campaigns/_components';
 
 // Importando os tipos e serviços
 import { FollowUp, Campaign } from './_types';
