@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // Configuração
 const BASE_URL = 'http://168.119.247.230:3000'; // Ajuste para seu ambiente
-const CLIENT_EMAIL = 'cliente.teste@exemplo.com';
+const CLIENT_ID = '48';
 const CAMPAIGN_ID = '852fabf3-e6c1-4c64-8ee3-d7b3f443b350'; // ID da sua campanha
 
 // Cores para saída no console
@@ -39,7 +39,7 @@ async function testCreateFollowUp() {
     
     // Verificar se já existe um follow-up para este cliente
     log('Verificando se já existe follow-up ativo para este cliente...', colors.yellow);
-    const checkResponse = await axios.get(`${BASE_URL}/api/follow-up?clientId=${CLIENT_EMAIL}`);
+    const checkResponse = await axios.get(`${BASE_URL}/api/follow-up?clientId=${CLIENT_ID}`);
     
     if (checkResponse.data.data && checkResponse.data.data.length > 0) {
       const activeFollowUps = checkResponse.data.data.filter(f => 
@@ -62,11 +62,11 @@ async function testCreateFollowUp() {
     log('Criando novo follow-up via API...', colors.cyan);
     
     const createResponse = await axios.post(`${BASE_URL}/api/follow-up`, {
-      clientId: CLIENT_EMAIL,
+      clientId: CLIENT_ID,
       campaignId: CAMPAIGN_ID,
       metadata: {
         name: 'Cliente de Teste',
-        email: CLIENT_EMAIL,
+        email: CLIENT_ID,
         source: 'API Test'
       }
     });
@@ -125,7 +125,7 @@ async function testClientResponse(followUpId, message = "Esta é uma resposta de
     // ajuste conforme necessário
     const response = await axios.post(`${BASE_URL}/api/follow-up/client-response`, {
       followUpId,
-      clientId: CLIENT_EMAIL,
+      clientId: CLIENT_ID,
       message
     });
     
