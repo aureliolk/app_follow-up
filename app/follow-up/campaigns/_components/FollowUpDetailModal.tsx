@@ -1,65 +1,54 @@
-// app/follow-up/_components/FollowUpDetailModal.tsx
+// app/follow-up/campaigns/_components/FollowUpDetailModal.tsx
 'use client';
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FollowUp } from './FollowUpTable';
 import followUpService from '../../_services/followUpService';
 
 interface FollowUpDetailModalProps {
   followUp: FollowUp | null;
-  campaignSteps?: any[];
   campaignId?: string;
   onClose: () => void;
   onCancel?: (id: string) => void;
   onResume?: (id: string) => void;
   onAdvance?: (id: string) => void;
   onRemoveClient?: (id: string) => void;
-  isLoading?: boolean;
-  showCampaignView?: boolean; // Nova propriedade
+  showCampaignView?: boolean;
 }
 
 export const FollowUpDetailModal: React.FC<FollowUpDetailModalProps> = ({
   followUp,
-  campaignSteps: externalCampaignSteps,
   campaignId,
   onClose,
   onCancel,
   onResume,
   onAdvance,
   onRemoveClient,
-  isLoading: externalIsLoading = false,
   showCampaignView = false
 }) => {
-  const [internalCampaignSteps, setInternalCampaignSteps] = useState<any[]>([]);
-  const [internalIsLoading, setInternalIsLoading] = useState(false);
+  const [campaignSteps, setCampaignSteps] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Use either external or internal campaign steps
-  const campaignSteps = externalCampaignSteps || internalCampaignSteps;
-  const isLoading = externalIsLoading || internalIsLoading;
-
-  // Função para buscar etapas utilizando o serviço centralizado
-  const fetchSteps = useCallback(async () => {
-    if (!followUp && !campaignId) return;
-    
-    try {
-      setInternalIsLoading(true);
-      const steps = await followUpService.getCampaignSteps(
-        campaignId || followUp?.campaign_id
-      );
-      setInternalCampaignSteps(steps);
-    } catch (error) {
-      console.error('Error fetching campaign steps:', error);
-    } finally {
-      setInternalIsLoading(false);
-    }
-  }, [followUp, campaignId]);
-
+  // Função unificada para buscar etapas usando o serviço centralizado
   useEffect(() => {
-    // Apenas buscar etapas se não forem fornecidas externamente
-    if (!externalCampaignSteps) {
-      fetchSteps();
-    }
-  }, [externalCampaignSteps, fetchSteps]);
+    const fetchSteps = async () => {
+      if (!followUp && !campaignId) return;
+      
+      try {
+        setIsLoading(true);
+        const steps = await followUpService.getCampaignSteps(
+          campaignId || followUp?.campaign_id
+        );
+        setCampaignSteps(steps);
+      } catch (error) {
+        console.error('Error fetching campaign steps:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSteps();
+  }, [followUp, campaignId]);
 
   // Retornar nulo se não houver followUp e não estiver no modo de visualização de campanha
   if (!followUp && !showCampaignView) return null;

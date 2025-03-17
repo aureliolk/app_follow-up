@@ -2,6 +2,10 @@
 import axios from 'axios';
 import { FollowUp, Campaign, CampaignStep, FunnelStage, FunnelStep } from '../_types';
 
+// Cache simples para campanhas
+const campaignStepsCache: Record<string, {data: any[], timestamp: number}> = {};
+const CACHE_TTL = 60000; // 1 minuto de TTL para o cache
+
 export const followUpService = {
   // Função para buscar follow-ups
   async getFollowUps(status?: string): Promise<FollowUp[]> {
@@ -173,6 +177,9 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update step');
       }
+      
+      // Limpar o cache completo, já que não sabemos qual campanha usa este passo
+      this.clearCampaignCache();
 
       return response.data;
     } catch (error) {
@@ -193,6 +200,9 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete step');
       }
+      
+      // Limpar o cache completo, já que não sabemos qual campanha usa este passo
+      this.clearCampaignCache();
 
       return response.data;
     } catch (error) {
@@ -201,9 +211,25 @@ export const followUpService = {
     }
   },
 
-  // Função unificada para buscar todos os estágios e passos
+  // Função unificada otimizada para buscar passos de campanha
   async getCampaignSteps(campaignId?: string): Promise<CampaignStep[]> {
+    if (!campaignId) {
+      return [];
+    }
+    
+    // Verificar se temos dados em cache válidos
+    const cacheKey = `campaign-steps-${campaignId}`;
+    const cachedData = campaignStepsCache[cacheKey];
+    const now = Date.now();
+    
+    if (cachedData && (now - cachedData.timestamp < CACHE_TTL)) {
+      console.log(`Usando dados em cache para a campanha ${campaignId}`);
+      return cachedData.data;
+    }
+    
     try {
+      console.log(`Buscando dados da campanha ${campaignId} do banco de dados`);
+      
       // 1. Primeiro, buscar todos os estágios do funil
       const funnelStages = await this.getFunnelStages();
 
@@ -234,7 +260,7 @@ export const followUpService = {
 
       // 3. Se não foram encontrados passos ou se um ID de campanha foi fornecido,
       // buscar dados da campanha
-      if ((allSteps.length === 0 || campaignId) && campaignId) {
+      if (allSteps.length === 0 && campaignId) {
         try {
           const campaign: any = await this.getCampaign(campaignId);
 
@@ -281,11 +307,30 @@ export const followUpService = {
           console.error('Error fetching campaign data:', campaignError);
         }
       }
-
+      
+      // Armazenar os dados em cache
+      campaignStepsCache[cacheKey] = {
+        data: allSteps,
+        timestamp: now
+      };
+      
       return allSteps;
     } catch (error) {
       console.error('Error fetching campaign steps:', error);
       throw error;
+    }
+  },
+  
+  // Método para limpar o cache quando necessário (após atualizações)
+  clearCampaignCache(campaignId?: string) {
+    if (campaignId) {
+      // Limpa apenas a campanha específica
+      delete campaignStepsCache[`campaign-steps-${campaignId}`];
+    } else {
+      // Limpa todo o cache
+      Object.keys(campaignStepsCache).forEach(key => {
+        delete campaignStepsCache[key];
+      });
     }
   },
 
@@ -370,6 +415,9 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update campaign');
       }
+      
+      // Limpar o cache para esta campanha após atualização
+      this.clearCampaignCache(campaignId);
 
       return response.data;
     } catch (error) {
@@ -390,6 +438,9 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to create step');
       }
+      
+      // Limpar o cache, já que não sabemos qual campanha pode usar este passo
+      this.clearCampaignCache();
 
       return response.data;
     } catch (error) {

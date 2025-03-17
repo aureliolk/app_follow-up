@@ -215,7 +215,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       console.error("Erro ao analisar metadata:", e);
     }
     
-    // Nota: FollowUp tem current_stage_id mas não current_stage_name
+    
     // Vamos armazenar o nome da etapa no campo metadata como JSON
     if (currentEtapa && currentEtapa !== currentStageName) {
       console.log(`Atualizando estágio do funil de "${currentStageName}" para "${currentEtapa}"`);
@@ -248,8 +248,9 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     console.log(`É a primeira mensagem? ${isFirstMessage ? 'SIM' : 'NÃO'}`);
     
     // Calcular o horário da próxima mensagem - SEMPRE respeitando o tempo de espera definido
-    const nextMessageTime = new Date(Date.now() + waitTime);
-    console.log(`Horário da próxima mensagem: ${nextMessageTime.toISOString()}`);
+    // const nextMessageTime = new Date(Date.now() + waitTime);
+    const nextMessageTime = new Date(Date.now());
+    console.log(`Horário da próxima mensagem: ${nextMessageTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
     
     // Atualizar o follow-up com o horário da próxima mensagem
     await prisma.followUp.update({
@@ -276,11 +277,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
 
     // Extrair o nome do cliente do ID ou usar valores default
     // Na prática, você teria uma busca no banco de dados para obter o nome do cliente
-    // Por enquanto, vamos extrair a parte antes do @ se for um email, ou usar o próprio ID
     let clientName = followUp.client_id;
-    if (clientName.includes('@')) {
-      clientName = clientName.split('@')[0];
-    }
     
     // Formatar o nome do cliente para título caso (primeira letra maiúscula)
     if (clientName && clientName.length > 0) {
@@ -289,8 +286,8 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     
     // Todas as mensagens respeitam o tempo de espera definido
     const messageScheduledTime = nextMessageTime;
-    console.log(`Agendando mensagem para: ${messageScheduledTime.toISOString()}`);
-    
+    console.log(`Agendando mensagem para: ${messageScheduledTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+    console.log(`Dados da mensagem:`, currentStep)
     // Agendar o envio da mensagem atual
     await scheduleMessage({
       followUpId,
@@ -334,7 +331,7 @@ export async function scheduleNextStep(
     console.log(`=== AGENDANDO PRÓXIMA ETAPA ===`);
     console.log(`Follow-up ID: ${followUpId}`);
     console.log(`Próximo índice: ${nextStepIndex}`);
-    console.log(`Horário agendado: ${scheduledTime}`);
+    console.log(`Horário agendado: ${scheduledTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
     
     // Verificar se o follow-up existe e está ativo
     const followUp = await prisma.followUp.findUnique({
@@ -510,7 +507,7 @@ export async function scheduleNextStep(
       }
     }, scheduledTime.getTime() - Date.now());
 
-    console.log(`Próxima etapa do follow-up ${followUpId} agendada para ${scheduledTime.toISOString()}`);
+    console.log(`Próxima etapa do follow-up ${followUpId} agendada para ${scheduledTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
   } catch (error) {
     console.error("Erro ao agendar próxima etapa:", error);
     throw error;

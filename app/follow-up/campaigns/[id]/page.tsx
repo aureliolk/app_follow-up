@@ -78,10 +78,13 @@ export default function EditCampaignPage() {
     try {
       // Usar o serviço centralizado para atualizar a campanha completa
       const response = await followUpService.updateCampaign(campaignId, formData);
-
-      // Atualizar todos os dados de uma vez após o salvamento
+      
+      // Limpar o cache para esta campanha
+      followUpService.clearCampaignCache(campaignId);
+      
+      // Recarregar os dados
       fetchAllData();
-
+      
       alert('Campanha atualizada com sucesso!');
     } catch (err: any) {
       console.error('Erro ao atualizar campanha:', err);
@@ -328,12 +331,24 @@ export default function EditCampaignPage() {
           </div>
         ) : campaign ? (
           <>
-            {/* Removemos as abas de navegação, já que o formulário agora contém as etapas integradas */}
-
             {/* CampaignForm único para toda a edição */}
             <CampaignForm
               funnelStages={funnelStages}
-              initialData={campaign as any}
+              initialData={{
+                ...campaign,
+                // Incluímos todos os passos carregados do servidor para esta campanha
+                steps: campaignSteps.length > 0
+                  ? campaignSteps.map(step => ({
+                    id: step.id || `step-${Math.random().toString(36).substring(2, 11)}`,
+                    stage_id: step.stage_id || '',
+                    stage_name: step.etapa || step.stage_name || '',
+                    template_name: step.template_name || '',
+                    wait_time: step.tempo_de_espera || step.wait_time || '',
+                    message: step.message || step.mensagem || '',
+                    auto_respond: true
+                  }))
+                  : campaign?.steps || []
+              }}
               onSubmit={handleUpdateCampaign}
               onCancel={() => router.push('/follow-up/campaigns')}
               isLoading={isSubmitting || isLoadingSteps}

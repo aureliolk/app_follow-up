@@ -17,7 +17,7 @@ import {
 // Importando os tipos e serviços
 import { FollowUp, Campaign } from './_types';
 import followUpService from './_services/followUpService';
-import axios from 'axios';
+
 
 export default function FollowUpPage() {
   // Estados

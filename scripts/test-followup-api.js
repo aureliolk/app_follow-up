@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // Configuração
 const BASE_URL = 'http://168.119.247.230:3000'; // Ajuste para seu ambiente
-const CLIENT_ID = '48';
+const CLIENT_ID = '50';
 const CAMPAIGN_ID = '852fabf3-e6c1-4c64-8ee3-d7b3f443b350'; // ID da sua campanha
 
 // Cores para saída no console
