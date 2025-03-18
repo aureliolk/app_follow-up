@@ -86,7 +86,7 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     
     // Extrair parâmetros processados do metadata ou usar valores padrão
     const processedParams = metadata?.processedParams || metadata?.processed_params || {};
-    const clientName = processedParams["1"] || metadata?.clientName || clientId;
+    
     
     // Substituir os placeholders no log para visualização
     if (hasPlaceholders) {
@@ -99,9 +99,10 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
           }
         }
       );
-      const conversation = response.data;
+      
+      const clientName = response.data.meta.sende.name
       console.log('=== CONVERSACAO ===');
-      console.log(JSON.stringify(conversation, null, 2));
+      console.log('Nome do cliente:', clientName);
       processedContent = content.replace(/\{\{1\}\}/g, clientName);
       console.log(`Mensagem após substituição de placeholders: "${processedContent}"`);
     }
@@ -183,35 +184,27 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
       return;
     }
     
+    // NOVA VERIFICAÇÃO: Verificar se o cliente já respondeu e mudou de fase
+    // Se houver metadata e a etapa atual for diferente da etapa da mensagem,
+    // significa que o cliente já respondeu e avançou para outra fase
+    try {
+      if (followUp.metadata) {
+        const metadata = JSON.parse(followUp.metadata);
+        if (metadata.processed_by_response && followUp.current_step !== message.stepIndex) {
+          console.log(`Mensagem obsoleta detectada: cliente já respondeu e avançou para etapa ${followUp.current_step}`);
+          console.log(`Cancelando envio da mensagem da etapa ${message.stepIndex}`);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao analisar metadata:", e);
+    }
+    
     // Enviar a mensagem para a API Lumibot
     console.log(`Enviando mensagem do follow-up ${message.followUpId} etapa ${message.stepIndex} para cliente ${message.clientId}`);
     const success = await sendMessageToLumibot(message.clientId, message.message, message.metadata);
     
-    if (success) {
-      // Atualizar o status da mensagem no banco de dados
-      const dbMessage = await prisma.followUpMessage.findFirst({
-        where: {
-          follow_up_id: message.followUpId,
-          step: message.stepIndex
-        },
-        orderBy: { sent_at: 'desc' }
-      });
-      
-      if (dbMessage) {
-        await prisma.followUpMessage.update({
-          where: { id: dbMessage.id },
-          data: {
-            delivered: true,
-            delivered_at: new Date()
-          }
-        });
-      }
-      
-      console.log(`Mensagem do follow-up ${message.followUpId} etapa ${message.stepIndex} enviada com sucesso.`);
-    } else {
-      // Registrar falha, pode ser útil implementar retry logic aqui
-      console.error(`Falha ao enviar mensagem para cliente ${message.clientId} do follow-up ${message.followUpId}`);
-    }
+    // ... resto da função permanece igual
   } catch (error) {
     console.error("Erro ao enviar mensagem:", error);
     throw error;

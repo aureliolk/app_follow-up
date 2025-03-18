@@ -620,11 +620,20 @@ export async function handleClientResponse(
   message: string
 ): Promise<void> {
   try {
+    console.log(`=== DADOS DA RESPOSTA DO CLIENTE ===`);
+    console.log(`followUpId: undefined`);
+    console.log(`clientId: ${clientId}`);
+    console.log(`message: ${message}`);
+    console.log(`=== FIM DADOS DA RESPOSTA DO CLIENTE ===`);
+
     // Buscar todos os follow-ups ativos para este cliente
     const activeFollowUps = await prisma.followUp.findMany({
       where: {
         client_id: clientId,
         status: { in: ['active', 'paused'] }
+      },
+      include: {
+        campaign: true
       }
     });
 
@@ -633,16 +642,10 @@ export async function handleClientResponse(
       return;
     }
 
-    // Atualizar todos os follow-ups ativos para este cliente como responsivos
+    // Para cada follow-up ativo deste cliente
     for (const followUp of activeFollowUps) {
-      await prisma.followUp.update({
-        where: { id: followUp.id },
-        data: {
-          is_responsive: true,
-          // Não pausar o follow-up, manter ativo para avançar
-          // status: followUp.status === 'active' ? 'paused' : followUp.status
-        }
-      });
+      // IMPORTANTE: Primeiro cancelar TODAS as mensagens agendadas
+      await cancelScheduledMessages(followUp.id);
       
       // Registrar a resposta do cliente
       await prisma.followUpMessage.create({
@@ -658,14 +661,75 @@ export async function handleClientResponse(
       
       console.log(`Follow-up ${followUp.id} marcado como responsivo devido à mensagem do cliente.`);
       
-      // Se o follow-up estava ativo, avançar para a próxima etapa
-      if (followUp.status === 'active') {
-        await advanceToNextStep(followUp.id);
-      } 
-      // Se estava pausado, reativá-lo e avançar
-      else if (followUp.status === 'paused') {
-        await resumeFollowUp(followUp.id);
-        await advanceToNextStep(followUp.id);
+      // Agora vamos identificar a próxima fase do funil
+      // Primeiro, carregamos as etapas da campanha
+      const steps = followUp.campaign?.steps
+        ? JSON.parse(followUp.campaign.steps as string)
+        : await loadFollowUpData();
+      
+      if (!steps || steps.length === 0) {
+        console.log(`Nenhuma etapa encontrada para o follow-up ${followUp.id}`);
+        continue;
+      }
+      
+      // Identificar a fase atual do funil
+      const currentStepIndex = followUp.current_step;
+      const currentStep = steps[currentStepIndex];
+      const currentFunnelStage = currentStep?.etapa || currentStep?.stage_name;
+      
+      console.log(`Fase atual do funil: ${currentFunnelStage}`);
+      
+      // Procurar a primeira etapa da próxima fase do funil
+      let nextPhaseStepIndex = -1;
+      let nextPhaseName = '';
+      
+      for (let i = 0; i < steps.length; i++) {
+        const stepFunnelStage = steps[i]?.etapa || steps[i]?.stage_name;
+        
+        // Se encontrarmos uma fase diferente da atual, essa é a próxima fase
+        if (stepFunnelStage && stepFunnelStage !== currentFunnelStage) {
+          nextPhaseStepIndex = i;
+          nextPhaseName = stepFunnelStage;
+          break;
+        }
+      }
+      
+      // Se encontramos a próxima fase, atualizar o follow-up
+      if (nextPhaseStepIndex >= 0) {
+        console.log(`Avançando para a próxima fase do funil: ${nextPhaseName} (etapa ${nextPhaseStepIndex})`);
+        
+        // PONTO CRÍTICO: Garantir que o status seja 'active' - não 'paused'
+        await prisma.followUp.update({
+          where: { id: followUp.id },
+          data: {
+            current_step: nextPhaseStepIndex,
+            is_responsive: true,
+            status: 'active', // IMPORTANTE: forçar como 'active' mesmo após resposta
+            next_message_at: new Date(), // Processar a próxima mensagem imediatamente
+            metadata: JSON.stringify({
+              current_stage_name: nextPhaseName,
+              updated_at: new Date().toISOString(),
+              last_response: message,
+              // Adicionar uma flag para identificar que este follow-up foi processado por resposta
+              processed_by_response: true
+            })
+          }
+        });
+        
+        // Processar a primeira etapa da nova fase imediatamente
+        await processFollowUpSteps(followUp.id);
+      } else {
+        console.log(`Não foi encontrada uma próxima fase do funil para o follow-up ${followUp.id}`);
+        
+        // Se não houver próxima fase, marcar como completo
+        await prisma.followUp.update({
+          where: { id: followUp.id },
+          data: {
+            status: 'completed',
+            completed_at: new Date(),
+            is_responsive: true
+          }
+        });
       }
     }
   } catch (error) {
