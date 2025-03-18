@@ -67,6 +67,17 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     const accountId = 10;
     const conversationId = clientId;
     const apiToken = 'Z41o5FJFVEdZJjQaqDz6pYC7';
+
+    // Pega Dados da Conversa do Cliente
+    const conversation = await axios.get(
+      `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'api_access_token': apiToken
+        }
+      }
+    );
     
     // Extrair parâmetros do template do metadata se disponível
     const templateParams = metadata?.templateParams || {};
@@ -76,6 +87,8 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     console.log('clientId:', clientId);
     console.log('content:', content);
     console.log('metadata completo:', JSON.stringify(metadata, null, 2));
+    console.log('META CHATWOOT ', conversation.data.meta.sender.name)
+    
     
     // Verificar se a mensagem contém placeholders como {{1}}
     const hasPlaceholders = content.includes('{{') && content.includes('}}');
@@ -83,33 +96,18 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     
     // Realizar substituição de placeholders na mensagem para exibição nos logs
     let processedContent = content;
-    
-    // Extrair parâmetros processados do metadata ou usar valores padrão
-    const processedParams = metadata?.processedParams || metadata?.processed_params || {};
-    
+    const clientName = conversation.data.meta.sender.name
+
     
     // Substituir os placeholders no log para visualização
     if (hasPlaceholders) {
-      const response = await axios.get(
-        `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'api_access_token': apiToken
-          }
-        }
-      );
-      
-      const clientName = response.data.meta.sende.name
-      console.log('=== CONVERSACAO ===');
-      console.log('Nome do cliente:', clientName);
       processedContent = content.replace(/\{\{1\}\}/g, clientName);
       console.log(`Mensagem após substituição de placeholders: "${processedContent}"`);
     }
     
     // Preparar body base da requisição
     const requestBody: any = {
-      "content": content,
+      "content": processedContent,
       "message_type": "outgoing",
       "template_params": {
         "name": templateParams.name || metadata?.template_name || "",
