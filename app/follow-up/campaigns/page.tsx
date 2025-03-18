@@ -22,6 +22,7 @@ export default function CampaignsPage() {
   const [showForm, setShowForm] = useState(false);
   const [stages, setStages] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -73,6 +74,58 @@ export default function CampaignsPage() {
       setError('Erro ao criar campanha. Por favor, tente novamente.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Função para ativar/desativar campanha
+  const handleToggleActive = async (campaign: Campaign) => {
+    try {
+      const response = await axios.put(`/api/follow-up/campaigns/${campaign.id}`, {
+        name: campaign.name,
+        description: campaign.description,
+        active: !campaign.active
+      });
+      
+      if (response.data.success) {
+        // Atualizar a lista de campanhas localmente
+        setCampaigns(prevCampaigns => 
+          prevCampaigns.map(c => 
+            c.id === campaign.id ? { ...c, active: !c.active } : c
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Erro ao alternar status da campanha:', err);
+      setError('Erro ao alterar o status da campanha. Por favor, tente novamente.');
+    }
+  };
+
+  // Função para excluir campanha
+  const handleDeleteCampaign = async (campaign: Campaign) => {
+    // Confirmar antes de excluir
+    if (!confirm(`Tem certeza que deseja excluir a campanha "${campaign.name}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    if (campaign.activeFollowUps > 0) {
+      if (!confirm(`Esta campanha tem ${campaign.activeFollowUps} follow-ups ativos. Excluí-la pode afetar esses fluxos. Deseja continuar?`)) {
+        return;
+      }
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await axios.delete(`/api/follow-up/campaigns/${campaign.id}`);
+      
+      if (response.data.success) {
+        // Remover a campanha da lista
+        setCampaigns(prevCampaigns => prevCampaigns.filter(c => c.id !== campaign.id));
+      }
+    } catch (err) {
+      console.error('Erro ao excluir campanha:', err);
+      setError('Erro ao excluir campanha. Por favor, tente novamente.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -177,6 +230,7 @@ export default function CampaignsPage() {
                           </svg>
                         </Link>
                         <button 
+                          onClick={() => handleToggleActive(campaign)}
                           className="flex items-center focus:outline-none"
                           title={campaign.active ? 'Desativar' : 'Ativar'}
                         >
@@ -189,6 +243,15 @@ export default function CampaignsPage() {
                               }`}></span>
                             </span>
                           </div>
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteCampaign(campaign)}
+                          className="text-red-500 hover:text-red-300"
+                          title="Excluir"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
                         </button>
                       </td>
                     </tr>

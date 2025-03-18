@@ -2,11 +2,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
-export async function GET(request: NextRequest) {
-  // Obter o ID da URL diretamente
-  const url = request.url;
+// Função auxiliar para extrair ID do URL
+function extractIdFromUrl(url: string): string {
   const parts = url.split('/');
-  const id = parts[parts.length - 1]; // Pegar o último segmento da URL
+  return parts[parts.length - 1]; // Pegar o último segmento da URL
+}
+
+export async function GET(request: NextRequest) {
+  // Obter o ID da URL usando a função auxiliar
+  const id = extractIdFromUrl(request.url);
   
   try {
     const campaign = await prisma.followUpCampaign.findUnique({
@@ -60,10 +64,8 @@ export async function GET(request: NextRequest) {
 
 // Endpoint para atualizar uma campanha
 export async function PUT(request: NextRequest) {
-  // Obter o ID da URL diretamente
-  const url = request.url;
-  const parts = url.split('/');
-  const id = parts[parts.length - 1]; // Pegar o último segmento da URL
+  // Obter o ID da URL usando a função auxiliar
+  const id = extractIdFromUrl(request.url);
   
   try {
     const body = await request.json();
@@ -133,6 +135,70 @@ export async function PUT(request: NextRequest) {
     
   } catch (error) {
     console.error("Erro ao atualizar campanha:", error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: "Erro interno do servidor" 
+      }, 
+      { status: 500 }
+    );
+  }
+}
+
+// Endpoint para excluir uma campanha
+export async function DELETE(request: NextRequest) {
+  // Obter o ID da URL usando a função auxiliar
+  const id = extractIdFromUrl(request.url);
+  
+  try {
+    // Verificar se a campanha existe
+    const existingCampaign = await prisma.followUpCampaign.findUnique({
+      where: { id },
+      include: {
+        follow_ups: {
+          where: {
+            status: { in: ['active', 'paused'] }
+          }
+        }
+      }
+    });
+    
+    if (!existingCampaign) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Campanha não encontrada" 
+        }, 
+        { status: 404 }
+      );
+    }
+
+    // Opcionalmente, você pode desativar follow-ups ativos antes de excluir
+    if (existingCampaign.follow_ups.length > 0) {
+      await prisma.followUp.updateMany({
+        where: {
+          campaign_id: id,
+          status: { in: ['active', 'paused'] }
+        },
+        data: {
+          status: 'cancelled',
+          completed_at: new Date()
+        }
+      });
+    }
+    
+    // Excluir a campanha
+    await prisma.followUpCampaign.delete({
+      where: { id }
+    });
+    
+    return NextResponse.json({
+      success: true,
+      message: "Campanha excluída com sucesso"
+    });
+    
+  } catch (error) {
+    console.error("Erro ao excluir campanha:", error);
     return NextResponse.json(
       { 
         success: false, 
