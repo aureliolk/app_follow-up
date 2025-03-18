@@ -14,8 +14,12 @@ interface FollowUpStep {
   condicionais?: string;
 }
 
+const TEST_MODE = true; // Defina como false em produção
 // Função para converter string de tempo em milissegundos
 export function parseTimeString(timeStr: string): number {
+  if (TEST_MODE) {
+    return 60 * 1000; // 1 minuto para testes
+  }
   // Se o tempo estiver vazio ou for inválido, usar 30 minutos como padrão
   if (!timeStr || timeStr === undefined || timeStr.trim() === "") {
     console.log("Tempo de espera não definido, usando padrão de 30 minutos");
@@ -248,8 +252,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     console.log(`É a primeira mensagem? ${isFirstMessage ? 'SIM' : 'NÃO'}`);
     
     // Calcular o horário da próxima mensagem - SEMPRE respeitando o tempo de espera definido
-    // const nextMessageTime = new Date(Date.now() + waitTime);
-    const nextMessageTime = new Date(Date.now());
+    const nextMessageTime = new Date(Date.now() + waitTime);
     console.log(`Horário da próxima mensagem: ${nextMessageTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
     
     // Atualizar o follow-up com o horário da próxima mensagem
@@ -636,7 +639,8 @@ export async function handleClientResponse(
         where: { id: followUp.id },
         data: {
           is_responsive: true,
-          status: followUp.status === 'active' ? 'paused' : followUp.status
+          // Não pausar o follow-up, manter ativo para avançar
+          // status: followUp.status === 'active' ? 'paused' : followUp.status
         }
       });
       
@@ -653,6 +657,16 @@ export async function handleClientResponse(
       });
       
       console.log(`Follow-up ${followUp.id} marcado como responsivo devido à mensagem do cliente.`);
+      
+      // Se o follow-up estava ativo, avançar para a próxima etapa
+      if (followUp.status === 'active') {
+        await advanceToNextStep(followUp.id);
+      } 
+      // Se estava pausado, reativá-lo e avançar
+      else if (followUp.status === 'paused') {
+        await resumeFollowUp(followUp.id);
+        await advanceToNextStep(followUp.id);
+      }
     }
   } catch (error) {
     console.error("Erro ao lidar com resposta do cliente:", error);

@@ -6,6 +6,11 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { followUpId, clientId, message } = body;
+    console.log('=== DADOS DA RESPOSTA DO CLIENTE ===');
+    console.log('followUpId:', followUpId);
+    console.log('clientId:', clientId);
+    console.log('message:', message);
+    console.log('=== FIM DADOS DA RESPOSTA DO CLIENTE ===');
 
     if (!clientId) {
       return NextResponse.json({ 

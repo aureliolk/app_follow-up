@@ -90,6 +90,18 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     
     // Substituir os placeholders no log para visualização
     if (hasPlaceholders) {
+      const response = await axios.get(
+        `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'api_access_token': apiToken
+          }
+        }
+      );
+      const conversation = response.data;
+      console.log('=== CONVERSACAO ===');
+      console.log(JSON.stringify(conversation, null, 2));
       processedContent = content.replace(/\{\{1\}\}/g, clientName);
       console.log(`Mensagem após substituição de placeholders: "${processedContent}"`);
     }
