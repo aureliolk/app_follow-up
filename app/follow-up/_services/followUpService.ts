@@ -78,22 +78,14 @@ export const followUpService = {
   // Função para buscar estágios do funil
   async getFunnelStages(campaignId?: string): Promise<FunnelStage[]> {
     try {
-      // Sempre devemos buscar os estágios específicos da campanha se um ID for fornecido
       const url = campaignId 
         ? `/api/follow-up/funnel-stages?campaignId=${campaignId}` 
         : '/api/follow-up/funnel-stages';
-      
-      console.log(`Buscando estágios do funil${campaignId ? ` para campanha ${campaignId}` : ' globais'}`);
       
       const response = await axios.get(url);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch funnel stages');
-      }
-
-      // Se estamos editando uma campanha específica, devemos usar apenas os estágios dessa campanha
-      if (campaignId) {
-        console.log(`Usando apenas estágios específicos da campanha ${campaignId}: ${response.data.data.length} estágios`);
       }
 
       return response.data.data || [];
@@ -106,13 +98,11 @@ export const followUpService = {
   // Função para criar um novo estágio do funil
   async createFunnelStage(name: string, description?: string, order?: number, campaignId?: string): Promise<FunnelStage> {
     try {
-      console.log(`Criando estágio de funil "${name}"${campaignId ? ` para campanha ${campaignId}` : ''}`);
-      
       const response = await axios.post('/api/follow-up/funnel-stages', {
         name,
         description,
         order,
-        campaignId // Passar o ID da campanha para associar o estágio à campanha específica
+        campaignId
       });
 
       if (!response.data.success) {
@@ -148,22 +138,15 @@ export const followUpService = {
   // Função para excluir um estágio do funil
   async deleteFunnelStage(id: string): Promise<boolean> {
     try {
-      console.log(`Solicitando exclusão do estágio de funil ${id}`);
       const response = await axios.delete(`/api/follow-up/funnel-stages?id=${id}`);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete funnel stage');
       }
 
-      console.log(`Estágio ${id} excluído com sucesso`);
       return true;
-    } catch (error: any) {
+    } catch (error) {
       console.error(`Erro ao excluir estágio do funil ${id}:`, error);
-      
-      if (error.response && error.response.data) {
-        console.error('Detalhes do erro do servidor:', error.response.data);
-      }
-      
       throw error;
     }
   },
@@ -171,7 +154,6 @@ export const followUpService = {
   // Função para buscar passos de um estágio específico
   async getFunnelSteps(stageId: string): Promise<FunnelStep[]> {
     try {
-      console.log(`Buscando passos para o estágio com ID ${stageId}`);
       const response = await axios.get(`/api/follow-up/funnel-steps?stageId=${stageId}`);
 
       if (!response.data.success) {
@@ -179,7 +161,6 @@ export const followUpService = {
       }
 
       const steps = response.data.data || [];
-      console.log(`Encontrados ${steps.length} passos para o estágio ${stageId}`);
       return steps;
     } catch (error) {
       console.error(`Error fetching steps for stage ${stageId}:`, error);
@@ -190,20 +171,15 @@ export const followUpService = {
   // NOVA FUNÇÃO: Atualizar um passo específico
   async updateStep(stepId: string, data: Partial<FunnelStep>): Promise<any> {
     try {
-      console.log(`Iniciando atualização do passo ${stepId} com dados:`, data);
-
       const response = await axios.put('/api/follow-up/funnel-steps', {
         id: stepId,
         ...data
       });
 
-      console.log('Resposta da API de atualização de passo:', response.data);
-
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update step');
       }
       
-      // Limpar o cache completo, já que não sabemos qual campanha usa este passo
       this.clearCampaignCache();
 
       return response.data;
@@ -216,17 +192,12 @@ export const followUpService = {
   // NOVA FUNÇÃO: Excluir um passo específico
   async deleteStep(stepId: string): Promise<any> {
     try {
-      console.log(`Iniciando exclusão do passo ${stepId}`);
-
       const response = await axios.delete(`/api/follow-up/funnel-steps?id=${stepId}`);
-
-      console.log('Resposta da API de exclusão de passo:', response.data);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete step');
       }
       
-      // Limpar o cache completo, já que não sabemos qual campanha usa este passo
       this.clearCampaignCache();
 
       return response.data;
@@ -242,52 +213,34 @@ export const followUpService = {
       return [];
     }
     
-    // Verificar se temos dados em cache válidos
     const cacheKey = `campaign-steps-${campaignId}`;
     const cachedData = campaignStepsCache[cacheKey];
     const now = Date.now();
     
     if (cachedData && (now - cachedData.timestamp < CACHE_TTL)) {
-      console.log(`Usando dados em cache para a campanha ${campaignId}`);
       return cachedData.data;
     }
     
     try {
-      console.log(`Buscando dados ESPECÍFICOS da campanha ${campaignId} do banco de dados`);
-      
-      // IMPORTANTE: Agora apenas buscaremos os dados específicos desta campanha,
-      // não todos os estágios do sistema
-      
-      // Buscar detalhes da campanha para obter etapas específicas
       const campaign: any = await this.getCampaign(campaignId);
       const campaignSteps: CampaignStep[] = [];
       
-      // Verificar se a campanha tem etapas
       if (campaign && campaign.steps) {
-        console.log(`Campanha ${campaignId} encontrada, processando ${typeof campaign.steps === 'string' ? 'JSON' : 'object'} de passos`);
-        
-        // Se steps for string (JSON), converter para objeto com tratamento de erro
         let stepsData = [];
         if (typeof campaign.steps === 'string') {
           try {
-            // Verificar se é uma string vazia ou inválida
             const stepsString = campaign.steps;
             if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
               stepsData = JSON.parse(stepsString);
             }
           } catch (err) {
             console.error(`Erro ao analisar steps da campanha ${campaignId}:`, err);
-            // Continuar com array vazio em caso de erro
           }
         } else {
           stepsData = campaign.steps || [];
         }
         
-        // Se tem passos, formatar e retornar apenas estes passos específicos
         if (Array.isArray(stepsData) && stepsData.length > 0) {
-          console.log(`Processando ${stepsData.length} passos específicos da campanha`);
-          
-          // Mapear para o formato esperado
           const formattedCampaignSteps: any = stepsData.map((step: any, index: number) => {
             if (step.stage_name) {
               return {
@@ -316,15 +269,9 @@ export const followUpService = {
           }).filter(Boolean);
           
           campaignSteps.push(...formattedCampaignSteps);
-          console.log(`Retornando ${campaignSteps.length} passos formatados específicos da campanha`);
-        } else {
-          console.log(`Campanha ${campaignId} não tem passos ou formato não reconhecido`);
         }
-      } else {
-        console.log(`Campanha ${campaignId} não tem passos definidos`);
       }
       
-      // Armazenar os dados em cache
       campaignStepsCache[cacheKey] = {
         data: campaignSteps,
         timestamp: now
@@ -340,10 +287,8 @@ export const followUpService = {
   // Método para limpar o cache quando necessário (após atualizações)
   clearCampaignCache(campaignId?: string) {
     if (campaignId) {
-      // Limpa apenas a campanha específica
       delete campaignStepsCache[`campaign-steps-${campaignId}`];
     } else {
-      // Limpa todo o cache
       Object.keys(campaignStepsCache).forEach(key => {
         delete campaignStepsCache[key];
       });
@@ -432,7 +377,6 @@ export const followUpService = {
         throw new Error(response.data.error || 'Failed to update campaign');
       }
       
-      // Limpar o cache para esta campanha após atualização
       this.clearCampaignCache(campaignId);
 
       return response.data;
@@ -445,17 +389,12 @@ export const followUpService = {
   // Função para criar um novo passo
   async createStep(data: any): Promise<any> {
     try {
-      console.log('Criando novo passo com dados:', data);
-
       const response = await axios.post('/api/follow-up/funnel-steps', data);
-
-      console.log('Resposta da API de criação de passo:', response.data);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to create step');
       }
       
-      // Limpar o cache, já que não sabemos qual campanha pode usar este passo
       this.clearCampaignCache();
 
       return response.data;

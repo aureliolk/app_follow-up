@@ -1,4 +1,3 @@
-// app/follow-up/_components/CampaignForm.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -83,8 +82,6 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
   const [showStepForm, setShowStepForm] = useState(false);
   const [loadingStep, setLoadingStep] = useState(false);
   
-  // Este useEffect será substituído por um completo após a definição das funções
-  
   // Estados para gerenciamento de etapas do funil
   const [showFunnelStageForm, setShowFunnelStageForm] = useState(false);
   const [editingFunnelStage, setEditingFunnelStage] = useState<FunnelStage | null>(null);
@@ -109,15 +106,12 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
   useEffect(() => {
     // Para novas campanhas sempre começamos com uma lista vazia
     if (!initialData?.id) {
-      console.log('Nova campanha: inicializando com lista de passos vazia');
       setSteps([]);
       return;
     }
 
     // Para campanhas existentes, usamos os passos fornecidos
     if (initialData?.steps && Array.isArray(initialData.steps) && initialData.steps.length > 0) {
-      console.log('Campanha existente: carregando passos existentes:', initialData.steps.length);
-
       // Mapear os passos para o formato correto e consistente
       const formattedSteps = initialData.steps.map((step: any) => {
         // Garantir que todo step tenha um ID único
@@ -130,7 +124,6 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
 
           // Se a etapa não existir mais, ignore este estágio
           if (!stage && step.stage_name !== 'Sem etapa definida') {
-            console.warn(`Ignorando estágio com etapa inexistente: ${step.stage_name}`);
             return null;
           }
 
@@ -151,7 +144,6 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
 
           // Se a etapa não existir mais, ignore este estágio
           if (!stage && step.etapa !== 'Sem etapa definida') {
-            console.warn(`Ignorando estágio com etapa inexistente: ${step.etapa}`);
             return null;
           }
 
@@ -178,7 +170,6 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
       setSteps(formattedSteps);
     } else {
       // Campanha existente mas sem passos, definir array vazio
-      console.log('Campanha existente sem passos: inicializando lista vazia');
       setSteps([]);
     }
   }, [initialData, funnelStages]);
@@ -215,7 +206,7 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
     }
 
     const stepToEdit = steps[index];
-    console.log(`Editando estágio no índice ${index}:`, stepToEdit);
+    // console.log(`Editando estágio no índice ${index}:`, stepToEdit);
 
     // Garantir que todos os campos necessários estejam presentes
     setNewStep({
@@ -332,19 +323,19 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
     }
 
     const stepToRemove = steps[index];
-    console.log(`Confirmando remoção do estágio:`, stepToRemove);
+    // console.log(`Confirmando remoção do estágio:`, stepToRemove);
 
     if (!confirm(`Tem certeza que deseja remover o estágio "${stepToRemove.template_name}" da etapa "${stepToRemove.stage_name}"?`)) {
       return;
     }
 
-    console.log(`Removendo estágio no índice ${index}:`, stepToRemove);
+    // console.log(`Removendo estágio no índice ${index}:`, stepToRemove);
     setLoadingStep(true);
 
     try {
       // Primeiro, verifica se devemos persistir a remoção no banco de dados
       if (immediateUpdate && onRemoveStep) {
-        console.log(`Enviando comando de remoção para o servidor:`, stepToRemove);
+        // console.log(`Enviando comando de remoção para o servidor:`, stepToRemove);
         const success = await onRemoveStep(index, stepToRemove);
         if (!success) {
           alert('Erro ao remover o estágio no servidor');
@@ -365,7 +356,7 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
         setEditingStepIndex(editingStepIndex - 1);
       }
 
-      console.log('Estágio removido com sucesso, novos estágios:', newSteps.length);
+      // console.log('Estágio removido com sucesso, novos estágios:', newSteps.length);
     } catch (error) {
       console.error('Erro ao remover estágio:', error);
       alert('Ocorreu um erro ao remover o estágio');
@@ -443,7 +434,7 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
       return;
     }
 
-    console.log(`Tentando remover etapa do funil com ID: ${stageId}`);
+    // console.log(`Tentando remover etapa do funil com ID: ${stageId}`);
 
     if (onRemoveFunnelStage) {
       setLoadingFunnelStage(true);
@@ -451,7 +442,7 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
         const success = await onRemoveFunnelStage(stageId);
 
         if (success) {
-          console.log('Etapa do funil removida com sucesso');
+          // console.log('Etapa do funil removida com sucesso');
 
           // Atualizar também a lista de etapas localmente
           // Remover todos os passos da campanha associados a esta etapa
@@ -461,14 +452,14 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
               (funnelStages.find(s => s.id === stageId)?.name === step.stage_name);
 
             if (isRelatedToRemovedStage) {
-              console.log('Removendo passo associado à etapa removida:', step);
+              // console.log('Removendo passo associado à etapa removida:', step);
             }
 
             return !isRelatedToRemovedStage;
           });
 
           if (updatedSteps.length !== steps.length) {
-            console.log(`Atualizando passos: ${steps.length} -> ${updatedSteps.length}`);
+            // console.log(`Atualizando passos: ${steps.length} -> ${updatedSteps.length}`);
             setSteps(updatedSteps);
           }
         } else {
@@ -564,8 +555,12 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
         {/* Mensagem quando não há etapas e estamos criando uma nova campanha */}
         {funnelStages.length === 0 && !initialData?.id && (
           <div className="bg-gray-700 p-4 rounded-lg mb-4 text-center">
-            <p className="text-gray-300 mb-2">Você está criando uma nova campanha.</p>
-            <p className="text-gray-400 text-sm mb-4">Primeiro, crie a campanha com as informações básicas. Depois você poderá adicionar etapas e estágios específicos a ela.</p>
+            <p className="mb-4">
+              Você está criando uma nova campanha.
+            </p>
+            <p className="italic text-sm text-gray-500 mb-4">
+              Primeiro, crie a campanha com as informações básicas. Depois você poderá adicionar etapas e estágios específicos a ela.
+            </p>
           </div>
         )}
 

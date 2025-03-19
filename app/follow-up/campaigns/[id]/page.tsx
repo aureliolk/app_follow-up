@@ -1,4 +1,3 @@
-// app/follow-up/campaigns/[id]/page.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -31,34 +30,34 @@ export default function EditCampaignPage() {
 
     try {
       // Executar carregamentos sequencialmente para garantir consistência
-      console.log('Iniciando carregamento de dados para campanha:', campaignId);
+      // console.log('Iniciando carregamento de dados para campanha:', campaignId);
 
       // Primeiro, carregar a campanha
       const campaignData = await followUpService.getCampaign(campaignId);
-      console.log(`Campanha carregada: ${campaignData.name}`);
+      // console.log(`Campanha carregada: ${campaignData.name}`);
       
       // Depois buscar os estágios específicos desta campanha
       const stages = await followUpService.getFunnelStages(campaignId);
-      console.log(`Estágios do funil carregados: ${stages.length}`);
+      // console.log(`Estágios do funil carregados: ${stages.length}`);
       
       // Verificar se os estágios têm IDs válidos
       if (stages.length > 0) {
-        console.log('Primeiro estágio:', stages[0].name, 'ID:', stages[0].id);
+        // console.log('Primeiro estágio:', stages[0].name, 'ID:', stages[0].id);
       }
       
       // Por fim, buscar os passos específicos desta campanha
       const steps = await followUpService.getCampaignSteps(campaignId);
-      console.log(`Passos da campanha carregados: ${steps.length}`);
+      // console.log(`Passos da campanha carregados: ${steps.length}`);
       
       // Verificar quais estágios tem passos associados
       if (steps.length > 0) {
-        console.log('Passos por estágio:');
+        // console.log('Passos por estágio:');
         const stepsByStage = steps.reduce((acc: Record<string, number>, step: any) => {
           const stageName = step.stage_name || 'Sem estágio';
           acc[stageName] = (acc[stageName] || 0) + 1;
           return acc;
         }, {});
-        console.log(stepsByStage);
+        // console.log(stepsByStage);
       }
 
       // Atualizar os estados com os dados carregados
@@ -66,7 +65,7 @@ export default function EditCampaignPage() {
       setFunnelStages(stages);
       setCampaignSteps(steps);
       
-      console.log('Todos os dados carregados com sucesso');
+      // console.log('Todos os dados carregados com sucesso');
     } catch (err: any) {
       console.error('Erro ao carregar dados:', err);
       setError(err.message || 'Erro ao carregar dados');
@@ -79,9 +78,9 @@ export default function EditCampaignPage() {
   const fetchStepsOnly = async () => {
     setIsLoadingSteps(true);
     try {
-      console.log('Atualizando apenas os passos da campanha');
+      // console.log('Atualizando apenas os passos da campanha');
       const steps = await followUpService.getCampaignSteps(campaignId);
-      console.log(`${steps.length} passos carregados`);
+      // console.log(`${steps.length} passos carregados`);
       setCampaignSteps(steps);
     } catch (err: any) {
       console.error('Erro ao carregar passos:', err);
@@ -92,7 +91,7 @@ export default function EditCampaignPage() {
 
   // Efeito para carregar todos os dados de uma só vez
   useEffect(() => {
-    console.log(`Carregando dados para campanha ${campaignId}`);
+    // console.log(`Carregando dados para campanha ${campaignId}`);
     
     // Limpar dados antigos quando o ID da campanha mudar
     setFunnelStages([]);
@@ -153,7 +152,7 @@ export default function EditCampaignPage() {
         return false;
       }
 
-      console.log('Tentando adicionar novo estágio para etapa:', stageExists.name);
+      // console.log('Tentando adicionar novo estágio para etapa:', stageExists.name);
 
       // Mapear dados para o formato esperado pela API
       const stepData = {
@@ -166,20 +165,20 @@ export default function EditCampaignPage() {
         auto_respond: newStep.auto_respond !== undefined ? newStep.auto_respond : true
       };
 
-      console.log('Dados formatados para API:', stepData);
+      // console.log('Dados formatados para API:', stepData);
 
       // Usar a API POST para criar um novo passo
       try {
-        console.log('Enviando dados para a API:', JSON.stringify(stepData, null, 2));
+        // console.log('Enviando dados para a API:', JSON.stringify(stepData, null, 2));
         const response = await axios.post('/api/follow-up/funnel-steps', stepData);
-        console.log('Resposta da API:', response.data);
+        // console.log('Resposta da API:', response.data);
         
         if (response.data.success) {
-          console.log('Novo estágio criado com sucesso:', response.data);
+          // console.log('Novo estágio criado com sucesso:', response.data);
 
           // Atualizar a campanha com o novo estágio
           const updatedStep = response.data.data;
-          console.log(`Estágio criado com ID: ${updatedStep.id} para o funil: ${updatedStep.funnel_stage_id}`);
+          // console.log(`Estágio criado com ID: ${updatedStep.id} para o funil: ${updatedStep.funnel_stage_id}`);
           
           // Buscar a campanha atual
           const currentCampaign = await followUpService.getCampaign(campaignId);
@@ -213,7 +212,7 @@ export default function EditCampaignPage() {
           campaignSteps.push(newCampaignStep);
           
           // Atualizar a campanha com os novos passos
-          console.log(`Atualizando campanha ${campaignId} com total de ${campaignSteps.length} passos`);
+          // console.log(`Atualizando campanha ${campaignId} com total de ${campaignSteps.length} passos`);
           await followUpService.updateCampaign(campaignId, {
             name: currentCampaign.name, // Incluir nome obrigatório da campanha
             description: currentCampaign.description || '', // Incluir descrição opcional
@@ -259,7 +258,7 @@ export default function EditCampaignPage() {
         return false;
       }
 
-      console.log(`Tentando atualizar estágio com índice: ${index}, ID: ${updatedStep.id}`, updatedStep);
+      // console.log(`Tentando atualizar estágio com índice: ${index}, ID: ${updatedStep.id}`, updatedStep);
 
       // Mapear dados para o formato esperado pela API
       const stepData = {
@@ -273,11 +272,11 @@ export default function EditCampaignPage() {
         auto_respond: updatedStep.auto_respond !== undefined ? updatedStep.auto_respond : true
       };
 
-      console.log('Dados formatados para API:', stepData);
+      // console.log('Dados formatados para API:', stepData);
 
       // Chamar a função específica para atualizar passo
       const result = await followUpService.updateStep(updatedStep.id, stepData);
-      console.log('Resultado da atualização:', result);
+      // console.log('Resultado da atualização:', result);
 
       if (result.success) {
         // Buscar a campanha atual
@@ -314,7 +313,7 @@ export default function EditCampaignPage() {
           };
           
           // Atualizar a campanha com os passos atualizados
-          console.log(`Atualizando estágio ${updatedStep.id} na campanha ${campaignId}`);
+          // console.log(`Atualizando estágio ${updatedStep.id} na campanha ${campaignId}`);
           await followUpService.updateCampaign(campaignId, {
             name: currentCampaign.name, // Incluir nome obrigatório da campanha
             description: currentCampaign.description || '', // Incluir descrição opcional
@@ -351,7 +350,7 @@ export default function EditCampaignPage() {
         return false;
       }
 
-      console.log(`Tentando remover estágio com índice: ${index}, ID: ${step.id}`, step);
+      // console.log(`Tentando remover estágio com índice: ${index}, ID: ${step.id}`, step);
 
       // Confirmar remoção
       if (!confirm(`Tem certeza que deseja remover o estágio "${step.template_name || 'selecionado'}"?`)) {
@@ -360,7 +359,7 @@ export default function EditCampaignPage() {
 
       // Chamar a função específica para excluir passo
       const result = await followUpService.deleteStep(step.id);
-      console.log('Resultado da remoção:', result);
+      // console.log('Resultado da remoção:', result);
 
       if (result.success) {
         // Buscar a campanha atual
@@ -384,7 +383,7 @@ export default function EditCampaignPage() {
         
         if (filteredSteps.length !== campaignSteps.length) {
           // Atualizar a campanha sem o estágio removido
-          console.log(`Removendo estágio ${step.id} da campanha ${campaignId}`);
+          // console.log(`Removendo estágio ${step.id} da campanha ${campaignId}`);
           await followUpService.updateCampaign(campaignId, {
             name: currentCampaign.name, // Incluir nome obrigatório da campanha
             description: currentCampaign.description || '', // Incluir descrição opcional
@@ -422,7 +421,7 @@ export default function EditCampaignPage() {
         campaignId // Passar o ID da campanha atual
       );
 
-      console.log('Nova etapa criada para campanha específica:', createdStage);
+      // console.log('Nova etapa criada para campanha específica:', createdStage);
 
       // Atualizar apenas a lista de estágios - usando o ID da campanha 
       // para garantir que só obtemos os estágios dessa campanha
@@ -442,7 +441,7 @@ export default function EditCampaignPage() {
   const handleUpdateFunnelStage = async (stageId: string, updatedStage: Partial<FunnelStage>) => {
     setIsLoadingFunnelStage(true);
     try {
-      console.log(`Atualizando etapa ${stageId} da campanha ${campaignId}:`, updatedStage);
+      // console.log(`Atualizando etapa ${stageId} da campanha ${campaignId}:`, updatedStage);
 
       await followUpService.updateFunnelStage(stageId, {
         name: updatedStage.name || '',
@@ -467,13 +466,13 @@ export default function EditCampaignPage() {
   const handleRemoveFunnelStage = async (stageId: string) => {
     setIsLoadingFunnelStage(true);
     try {
-      console.log(`Preparando para remover a etapa do funil ${stageId}`);
+      // console.log(`Preparando para remover a etapa do funil ${stageId}`);
       
       // Primeiro verificar se há passos associados a esta etapa na campanha atual
       const currentSteps = campaignSteps.filter((step: any) => step.stage_id === stageId);
       
       if (currentSteps.length > 0) {
-        console.log(`A etapa ${stageId} tem ${currentSteps.length} passos associados na campanha`);
+        // console.log(`A etapa ${stageId} tem ${currentSteps.length} passos associados na campanha`);
         
         // Perguntar ao usuário se deseja remover todos os passos junto com a etapa
         if (!confirm(`Esta etapa contém ${currentSteps.length} estágios. Todos eles serão removidos. Deseja continuar?`)) {
@@ -482,11 +481,11 @@ export default function EditCampaignPage() {
         }
         
         // Remover cada passo associado à etapa
-        console.log("Removendo passos associados à etapa...");
+        // console.log("Removendo passos associados à etapa...");
         for (const step of currentSteps) {
           if (step.id) {
             try {
-              console.log(`Removendo passo ${step.id} da etapa ${stageId}`);
+              // console.log(`Removendo passo ${step.id} da etapa ${stageId}`);
               await followUpService.deleteStep(step.id);
             } catch (stepError) {
               console.error(`Erro ao remover passo ${step.id}:`, stepError);
@@ -509,7 +508,7 @@ export default function EditCampaignPage() {
       setFunnelStages(stages);
       setCampaignSteps(updatedSteps);
 
-      console.log(`Etapa de funil ${stageId} removida com sucesso da campanha ${campaignId}, dados atualizados`);
+      // console.log(`Etapa de funil ${stageId} removida com sucesso da campanha ${campaignId}, dados atualizados`);
       return true;
     } catch (error: any) {
       console.error('Erro ao remover estágio do funil:', error);
@@ -588,4 +587,4 @@ export default function EditCampaignPage() {
       <Footer />
     </div>
   );
-}
+} 
