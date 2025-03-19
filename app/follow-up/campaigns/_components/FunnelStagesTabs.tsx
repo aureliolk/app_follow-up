@@ -1,4 +1,3 @@
-// app/follow-up/_components/FunnelStagesTabs.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -8,8 +7,10 @@ interface Step {
   stage_id: string;
   stage_name: string;
   template_name: string;
-  wait_time: string;
-  message: string;
+  wait_time?: string;
+  tempo_de_espera?: string; // Campo alternativo para compatibilidade
+  message?: string;
+  mensagem?: string; // Campo alternativo para compatibilidade
   category?: string;
   auto_respond?: boolean;
 }
@@ -25,6 +26,8 @@ const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({
   onRemoveStep, 
   onEditStep 
 }) => {
+  console.log('Dados recebidos em FunnelStagesTabs:', steps);
+  
   // Agrupar os estágios por etapa do funil
   const stageGroups = useMemo(() => {
     const groups: Record<string, Step[]> = {};
@@ -84,6 +87,16 @@ const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({
     );
   };
 
+  // Função para obter o tempo de espera, verificando os dois campos possíveis
+  const getWaitTime = (step: Step): string => {
+    return step.wait_time || step.tempo_de_espera || 'Não definido';
+  };
+
+  // Função para obter a mensagem, verificando os dois campos possíveis
+  const getMessage = (step: Step): string => {
+    return step.message || step.mensagem || '';
+  };
+
   // Calcular qual estágio está ativo
   const activeSteps = stageGroups.find(([name]) => name === activeStage)?.[1] || [];
 
@@ -124,6 +137,16 @@ const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({
           <tbody className="divide-y divide-gray-600">
             {activeSteps.map((step, idx) => {
               const stepIndex = getStepIndex(step);
+              const waitTime = getWaitTime(step);
+              const message = getMessage(step);
+              
+              console.log(`Etapa ${idx}:`, {
+                id: step.id,
+                template: step.template_name,
+                waitTime,
+                messagePreview: message?.substring(0, 30)
+              });
+              
               return (
                 <tr key={`${step.id || ''}-${idx}`} className="hover:bg-gray-600/30">
                   <td className="px-4 py-2 text-sm font-medium text-white">
@@ -133,12 +156,12 @@ const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({
                     {step.template_name || 'Não definido'}
                   </td>
                   <td className="px-4 py-2 text-sm text-gray-300">
-                    {step.wait_time}
+                    {waitTime}
                   </td>
                   <td className="px-4 py-2 text-sm text-gray-300">
                     <div className="max-w-md truncate">
-                      {step.message?.substring(0, 60)}
-                      {step.message?.length > 60 ? '...' : ''}
+                      {message?.substring(0, 60)}
+                      {message?.length > 60 ? '...' : ''}
                     </div>
                   </td>
                   <td className="px-4 py-2 text-sm">

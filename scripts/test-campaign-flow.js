@@ -5,7 +5,7 @@ import axios from 'axios';
 
 // Configuração - será sobrescrita pelos argumentos da linha de comando
 let CONFIG = {
-  baseUrl: 'http://localhost:3001',
+  baseUrl: 'http://localhost:3000',
   campaignId: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
   clientId: '58',
   timeout: 40000, // Tempo máximo para aguardar cada mensagem (40s)
