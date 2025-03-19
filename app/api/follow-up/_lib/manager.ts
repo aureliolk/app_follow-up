@@ -15,18 +15,17 @@ interface FollowUpStep {
 }
 
 const TEST_MODE = true; // Defina como false em produção
+console.log("MODO DE TESTE CONFIGURADO COMO:", TEST_MODE ? "ATIVADO" : "DESATIVADO");
 // Função para converter string de tempo em milissegundos
 export function parseTimeString(timeStr: string): number {
   if (TEST_MODE) {
-    return 30 * 1000; // 1 minuto para testes
+    return 30 * 1000; // 30 segundos para testes
   }
+  
   // Se o tempo estiver vazio ou for inválido, usar 30 minutos como padrão
   if (!timeStr || timeStr === undefined || timeStr.trim() === "") {
-    console.log("Tempo de espera não definido, usando padrão de 30 minutos");
     return 30 * 60 * 1000; // 30 minutos
   }
-
-  console.log(`Analisando tempo: "${timeStr}"`);
 
   const units: Record<string, number> = {
     's': 1000,           // segundos
@@ -44,19 +43,16 @@ export function parseTimeString(timeStr: string): number {
   // Verificar formato de texto com minutos
   if (timeStr.toLowerCase().includes("minuto")) {
     const minutos = extractNumbers(timeStr);
-    console.log(`Extraído ${minutos} minutos do texto`);
     return isNaN(minutos) ? 30 * 60 * 1000 : minutos * 60 * 1000;
   }
   // Verificar formato de texto com horas
   else if (timeStr.toLowerCase().includes("hora")) {
     const horas = extractNumbers(timeStr);
-    console.log(`Extraído ${horas} horas do texto`);
     return isNaN(horas) ? 60 * 60 * 1000 : horas * 60 * 60 * 1000;
   }
   // Verificar formato de texto com dias
   else if (timeStr.toLowerCase().includes("dia")) {
     const dias = extractNumbers(timeStr);
-    console.log(`Extraído ${dias} dias do texto`);
     return isNaN(dias) ? 24 * 60 * 60 * 1000 : dias * 24 * 60 * 60 * 1000;
   }
   // Verificar para envio imediato
@@ -78,12 +74,10 @@ export function parseTimeString(timeStr: string): number {
   // Se chegou aqui e tem apenas números, assumir que são minutos
   if (/^\d+$/.test(timeStr.trim())) {
     const minutos = parseInt(timeStr.trim());
-    console.log(`Assumindo ${minutos} minutos baseado apenas nos números`);
     return minutos * 60 * 1000;
   }
 
   // Se nenhum formato for reconhecido, usar padrão de 30 minutos
-  console.warn(`Formato de tempo não reconhecido: "${timeStr}". Usando padrão de 30 minutos`);
   return 30 * 60 * 1000;
 }
 
@@ -165,9 +159,6 @@ export async function loadFollowUpData(campaignId?: string): Promise<FollowUpSte
 // Função principal para processar as etapas de follow-up
 export async function processFollowUpSteps(followUpId: string): Promise<void> {
   try {
-    console.log(`=== PROCESSANDO ETAPA DE FOLLOW-UP ===`);
-    console.log(`Follow-up ID: ${followUpId}`);
-
     // Carregar o follow-up do banco de dados
     const followUp = await prisma.followUp.findUnique({
       where: { id: followUpId },
@@ -182,7 +173,6 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
 
     // Verificar se o follow-up está ativo
     if (followUp.status !== 'active') {
-      console.log(`Follow-up ${followUpId} não está ativo, status atual: ${followUp.status}`);
       return;
     }
 
@@ -194,7 +184,6 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
         if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
           steps = JSON.parse(stepsString) as FollowUpStep[];
         } else {
-          console.log(`Follow-up ${followUpId} tem campanha com steps vazios, carregando do CSV`);
           steps = await loadFollowUpData();
         }
       } catch (err) {
@@ -212,7 +201,6 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
 
     // Verificar qual é a etapa atual
     const currentStepIndex = followUp.current_step;
-    console.log(`Etapa atual (current_step): ${currentStepIndex}`);
 
     // Se já completou todas as etapas, marcar como concluído
     if (currentStepIndex >= steps.length) {
@@ -223,13 +211,11 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
           completed_at: new Date()
         }
       });
-      console.log(`Follow-up ${followUpId} concluído com sucesso.`);
       return;
     }
 
     // Obter a etapa atual
     const currentStep = steps[currentStepIndex];
-    console.log(`Dados da etapa atual:`, JSON.stringify(currentStep, null, 2));
 
     // Verificar se há um nome de estágio do funil
     const currentEtapa = currentStep.etapa || currentStep.stage_name;
@@ -245,11 +231,8 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       console.error("Erro ao analisar metadata:", e);
     }
 
-
     // Vamos armazenar o nome da etapa no campo metadata como JSON
     if (currentEtapa && currentEtapa !== currentStageName) {
-      console.log(`Atualizando estágio do funil de "${currentStageName}" para "${currentEtapa}"`);
-
       // Preparar o metadata como JSON
       const metadata = JSON.stringify({
         current_stage_name: currentEtapa,
@@ -267,19 +250,12 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     // Obter o tempo de espera do estágio atual
     // Verificar os múltiplos campos possíveis (compatibilidade com diferentes formatos)
     const tempoEspera = currentStep.tempo_de_espera || currentStep.wait_time;
-    console.log(`Tempo de espera bruto: "${tempoEspera}"`);
 
     // Calcular o tempo de espera para a próxima mensagem
     const waitTime = parseTimeString(tempoEspera);
-    console.log(`Tempo de espera convertido: ${tempoEspera} (${waitTime}ms)`);
-
-    // Determinar se esta é a primeira mensagem (currentStepIndex === 0)
-    const isFirstMessage = currentStepIndex === 0;
-    console.log(`É a primeira mensagem? ${isFirstMessage ? 'SIM' : 'NÃO'}`);
 
     // Calcular o horário da próxima mensagem - SEMPRE respeitando o tempo de espera definido
     const nextMessageTime = new Date(Date.now() + waitTime);
-    console.log(`Horário da próxima mensagem: ${nextMessageTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
 
     // Atualizar o follow-up com o horário da próxima mensagem
     await prisma.followUp.update({
@@ -302,10 +278,8 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
         delivered: false
       }
     });
-    console.log(`Mensagem registrada com ID: ${message.id}`);
 
     // Extrair o nome do cliente do ID ou usar valores default
-    // Na prática, você teria uma busca no banco de dados para obter o nome do cliente
     let clientName = followUp.client_id;
 
     // Formatar o nome do cliente para título caso (primeira letra maiúscula)
@@ -315,8 +289,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
 
     // Todas as mensagens respeitam o tempo de espera definido
     const messageScheduledTime = nextMessageTime;
-    console.log(`Agendando mensagem para: ${messageScheduledTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
-    console.log(`Dados da mensagem:`, currentStep)
+    
     // Agendar o envio da mensagem atual
     await scheduleMessage({
       followUpId,
@@ -341,15 +314,12 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
 
     // Agendar a próxima etapa se o cliente não responder
     await scheduleNextStep(followUpId, currentStepIndex + 1, nextMessageTime);
-
-    console.log(`Processamento da etapa ${currentStepIndex} do follow-up ${followUpId} agendado com sucesso.`);
   } catch (error) {
     console.error("Erro ao processar etapas de follow-up:", error);
     throw error;
   }
 }
 
-// app/api/follow-up/_lib/manager.ts
 // Função para agendar a próxima etapa
 export async function scheduleNextStep(
   followUpId: string,
@@ -357,12 +327,6 @@ export async function scheduleNextStep(
   scheduledTime: Date
 ): Promise<void> {
   try {
-    // Log para debug de múltiplas chamadas
-    console.log(`=== AGENDANDO PRÓXIMA ETAPA ===`);
-    console.log(`Follow-up ID: ${followUpId}`);
-    console.log(`Próximo índice: ${nextStepIndex}`);
-    console.log(`Horário agendado: ${scheduledTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
-
     // Verificar se o follow-up existe e está ativo
     const followUp = await prisma.followUp.findUnique({
       where: { id: followUpId },
@@ -374,7 +338,6 @@ export async function scheduleNextStep(
     }
 
     if (followUp.status !== 'active') {
-      console.log(`Follow-up ${followUpId} não está ativo, status atual: ${followUp.status}`);
       return;
     }
 
@@ -421,25 +384,16 @@ export async function scheduleNextStep(
     const currentEtapa = steps[followUp.current_step]?.etapa || steps[followUp.current_step]?.stage_name;
     const nextEtapa = steps[nextStepIndex]?.etapa || steps[nextStepIndex]?.stage_name;
 
-    // Log das etapas do funil para debug
-    console.log(`Etapa atual: ${currentEtapa}`);
-    console.log(`Próxima etapa: ${nextEtapa}`);
-
     // Verificar se estamos mudando de etapa no funil
     // Isso é importante para saber se estamos apenas avançando os estágios dentro da mesma etapa
     // ou se estamos mudando para uma etapa completamente diferente (o que só deve acontecer após resposta do cliente)
     const mudandoEtapa = currentEtapa !== nextEtapa;
-    console.log(`Verificando se deve avançar para próxima etapa do funil: ${mudandoEtapa ? 'SIM' : 'NÃO'}`);
 
     // Verificar se a mudança de etapa é permitida
     // Normalmente, só mudamos de etapa se o cliente respondeu, então verificar is_responsive
     if (mudandoEtapa) {
-      console.log('ATENÇÃO: Tentativa de mudar para uma etapa diferente do funil detectada');
-      console.log(`De: "${currentEtapa}" Para: "${nextEtapa}"`);
-
       // Para seguir o fluxo correto, só permitir mudança de etapa após resposta do cliente
       if (!followUp.is_responsive) {
-        console.log('Cliente não respondeu ainda. Continuando na mesma etapa do funil.');
 
         // Procurar o próximo estágio na mesma etapa
         let proximoEstagioMesmaEtapa = -1;
@@ -453,16 +407,12 @@ export async function scheduleNextStep(
 
         // Se não encontrou próximo estágio na mesma etapa, manter o atual
         if (proximoEstagioMesmaEtapa === -1) {
-          console.log('Não há mais estágios nesta etapa do funil. Mantendo o último estágio.');
           // Não avançar, pois estaríamos mudando para uma etapa diferente
           return;
         } else {
-          console.log(`Ajustando para o próximo estágio na mesma etapa: ${proximoEstagioMesmaEtapa}`);
           // Atualizar para o próximo estágio na mesma etapa
           nextStepIndex = proximoEstagioMesmaEtapa;
         }
-      } else {
-        console.log('Cliente respondeu. Permitindo a mudança para próxima etapa do funil.');
       }
     }
 
@@ -475,7 +425,6 @@ export async function scheduleNextStep(
         });
 
         if (!currentFollowUp || currentFollowUp.status !== 'active') {
-          console.log(`Follow-up ${followUpId} não está mais ativo, cancelando próxima etapa.`);
           return;
         }
 
@@ -494,11 +443,9 @@ export async function scheduleNextStep(
 
           // Se já foi processado pela resposta, continuar normalmente
           if (alreadyProcessed) {
-            console.log(`Cliente respondeu, mas follow-up já foi processado e avançado para nova fase.`);
+            // Continuar normalmente
           } else {
             // Caso contrário, pausar como antes
-            console.log(`Cliente respondeu ao follow-up ${followUpId}, pausando sequência.`);
-
             // Atualizar status para "pausado"
             await prisma.followUp.update({
               where: { id: followUpId },
@@ -515,12 +462,9 @@ export async function scheduleNextStep(
         // Isso evita condições de corrida onde múltiplos agendamentos possam incrementar
         // o step várias vezes ou pular estágios
         if (currentFollowUp.current_step !== nextStepIndex - 1) {
-          console.log(`Aviso: current_step atual (${currentFollowUp.current_step}) não é o esperado (${nextStepIndex - 1}). Outro processo pode ter atualizado. Verificando...`);
-
           // Se o current_step atual for maior ou igual ao next_step que estamos tentando agendar
           // significa que esse passo já foi processado por outra instância, então abortamos
           if (currentFollowUp.current_step >= nextStepIndex) {
-            console.log(`Abortando agendamento: estágio ${nextStepIndex} já foi processado ou pulado.`);
             return;
           }
         }
@@ -547,29 +491,12 @@ export async function scheduleNextStep(
           data: updateData
         });
 
-        console.log(`Follow-up ${followUpId} atualizado para estágio ${nextStepIndex}`);
-
-        // Extrair o nome do estágio do metadata
-        let stageName = "Não definido";
-        try {
-          if (updatedFollowUp.metadata) {
-            const meta = JSON.parse(updatedFollowUp.metadata);
-            stageName = meta.current_stage_name || "Não definido";
-          }
-        } catch (e) {
-          console.error("Erro ao analisar metadata:", e);
-        }
-
-        console.log(`Nova etapa do funil: ${stageName}`);
-
         // Processar a próxima etapa
         await processFollowUpSteps(followUpId);
       } catch (error) {
         console.error(`Erro ao processar próxima etapa do follow-up ${followUpId}:`, error);
       }
     }, scheduledTime.getTime() - Date.now());
-
-    console.log(`Próxima etapa do follow-up ${followUpId} agendada para ${scheduledTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
   } catch (error) {
     console.error("Erro ao agendar próxima etapa:", error);
     throw error;
@@ -694,12 +621,6 @@ export async function handleClientResponse(
   message: string
 ): Promise<void> {
   try {
-    console.log(`=== DADOS DA RESPOSTA DO CLIENTE ===`);
-    console.log(`followUpId: undefined`);
-    console.log(`clientId: ${clientId}`);
-    console.log(`message: ${message}`);
-    console.log(`=== FIM DADOS DA RESPOSTA DO CLIENTE ===`);
-
     // Buscar todos os follow-ups ativos para este cliente
     const activeFollowUps = await prisma.followUp.findMany({
       where: {
@@ -712,7 +633,6 @@ export async function handleClientResponse(
     });
 
     if (activeFollowUps.length === 0) {
-      console.log(`Nenhum follow-up ativo encontrado para o cliente ${clientId}.`);
       return;
     }
 
@@ -732,8 +652,6 @@ export async function handleClientResponse(
           delivered_at: new Date()
         }
       });
-
-      console.log(`Follow-up ${followUp.id} marcado como responsivo devido à mensagem do cliente.`);
 
       // Agora vamos identificar a próxima fase do funil
       // Primeiro, carregamos as etapas da campanha com tratamento seguro para strings vazias ou inválidas
@@ -785,8 +703,6 @@ export async function handleClientResponse(
 
       // Se encontramos a próxima fase, atualizar o follow-up
       if (nextPhaseStepIndex >= 0) {
-        console.log(`Avançando para a próxima fase do funil: ${nextPhaseName} (etapa ${nextPhaseStepIndex})`);
-
         // PONTO CRÍTICO: Garantir que o status seja 'active' - não 'paused'
         await prisma.followUp.update({
           where: { id: followUp.id },
@@ -808,8 +724,6 @@ export async function handleClientResponse(
         // Processar a primeira etapa da nova fase imediatamente
         await processFollowUpSteps(followUp.id);
       } else {
-        console.log(`Não foi encontrada uma próxima fase do funil para o follow-up ${followUp.id}`);
-
         // Se não houver próxima fase, marcar como completo
         await prisma.followUp.update({
           where: { id: followUp.id },
