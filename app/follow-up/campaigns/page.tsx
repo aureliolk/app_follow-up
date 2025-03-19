@@ -160,7 +160,9 @@ export default function CampaignsPage() {
           {showForm && (
             <div className="mb-6">
               <CampaignForm 
-                funnelStages={stages}
+                funnelStages={[]} /* Para nova campanha, não carregamos etapas existentes do sistema */
+                /* Importante: não passamos initialData para que seja tratada como nova campanha 
+                   e não carregue etapas de outras campanhas */
                 onSubmit={handleCreateCampaign}
                 onCancel={() => setShowForm(false)}
                 isLoading={isSubmitting}

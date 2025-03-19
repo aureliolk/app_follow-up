@@ -18,7 +18,6 @@ interface Step {
   wait_time: string;
   message: string;
   category?: string;
-  auto_respond: boolean;
 }
 
 interface StepFormProps {
@@ -29,6 +28,7 @@ interface StepFormProps {
   onCancel: () => void;
   onSave: (e: React.MouseEvent) => void;
   isLoading: boolean;
+  selectedStage?: string; // ID da etapa pré-selecionada (opcional)
 }
 
 const StepForm: React.FC<StepFormProps> = ({
@@ -38,8 +38,22 @@ const StepForm: React.FC<StepFormProps> = ({
   isEditing,
   onCancel,
   onSave,
-  isLoading
+  isLoading,
+  selectedStage
 }) => {
+  // Se temos um estágio pré-selecionado e não estamos editando, atualizar newStep
+  React.useEffect(() => {
+    if (selectedStage && !isEditing && !newStep.stage_id) {
+      const stage = funnelStages.find(s => s.id === selectedStage);
+      if (stage) {
+        setNewStep(prev => ({
+          ...prev,
+          stage_id: selectedStage,
+          stage_name: stage.name
+        }));
+      }
+    }
+  }, [selectedStage, isEditing, newStep.stage_id, funnelStages, setNewStep]);
   return (
     <div id="step-form" className="bg-gray-700 p-4 rounded-lg">
       <h4 className="text-sm font-medium text-white mb-3">
@@ -88,14 +102,66 @@ const StepForm: React.FC<StepFormProps> = ({
           <label className="block text-xs font-medium text-gray-400 mb-1">
             Tempo de Espera *
           </label>
-          <input
-            type="text"
-            value={newStep.wait_time}
-            onChange={(e) => setNewStep({ ...newStep, wait_time: e.target.value })}
-            className="w-full px-3 py-2 bg-gray-600 text-white rounded-md border border-gray-500"
-            placeholder="Ex: 30 minutos, 1 hora, 1 dia"
-            required
-          />
+          <div className="flex flex-col space-y-2">
+            <input
+              type="text"
+              value={newStep.wait_time}
+              onChange={(e) => setNewStep({ ...newStep, wait_time: e.target.value })}
+              className="w-full px-3 py-2 bg-gray-600 text-white rounded-md border border-gray-500"
+              placeholder="Ex: 30 minutos, 1 hora, 1 dia"
+              required
+            />
+            <div className="text-xs text-gray-400 flex flex-wrap gap-2">
+              <span 
+                className="bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600"
+                onClick={() => setNewStep({ ...newStep, wait_time: "30 minutos" })}
+              >
+                30 min
+              </span>
+              <span 
+                className="bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600"
+                onClick={() => setNewStep({ ...newStep, wait_time: "1 hora" })}
+              >
+                1h
+              </span>
+              <span 
+                className="bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600"
+                onClick={() => setNewStep({ ...newStep, wait_time: "6 horas" })}
+              >
+                6h
+              </span>
+              <span 
+                className="bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600"
+                onClick={() => setNewStep({ ...newStep, wait_time: "12 horas" })}
+              >
+                12h
+              </span>
+              <span 
+                className="bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600"
+                onClick={() => setNewStep({ ...newStep, wait_time: "24 horas" })}
+              >
+                24h
+              </span>
+              <span 
+                className="bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600"
+                onClick={() => setNewStep({ ...newStep, wait_time: "48 horas" })}
+              >
+                48h
+              </span>
+              <span 
+                className="bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600"
+                onClick={() => setNewStep({ ...newStep, wait_time: "3 dias" })}
+              >
+                3 dias
+              </span>
+              <span 
+                className="bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600"
+                onClick={() => setNewStep({ ...newStep, wait_time: "7 dias" })}
+              >
+                7 dias
+              </span>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -128,20 +194,6 @@ const StepForm: React.FC<StepFormProps> = ({
           />
         </div>
 
-        <div className="md:col-span-2">
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="auto-respond"
-              checked={newStep.auto_respond}
-              onChange={(e) => setNewStep({ ...newStep, auto_respond: e.target.checked })}
-              className="mr-2"
-            />
-            <label htmlFor="auto-respond" className="text-xs text-gray-300">
-              Resposta automática
-            </label>
-          </div>
-        </div>
       </div>
 
       <div className="flex justify-end space-x-3">

@@ -67,15 +67,29 @@ export async function POST(req: NextRequest) {
       template_name, 
       wait_time, 
       message_content, 
-      message_category, 
-      auto_respond 
+      message_category 
     } = body;
     
     if (!funnel_stage_id || !name || !template_name || !wait_time || !message_content) {
+      console.error('Dados inválidos para criação de passo:', {
+        funnel_stage_id,
+        name,
+        template_name,
+        wait_time,
+        message_content
+      });
+      
+      const missingFields = [];
+      if (!funnel_stage_id) missingFields.push('funnel_stage_id');
+      if (!name) missingFields.push('name');
+      if (!template_name) missingFields.push('template_name');
+      if (!wait_time) missingFields.push('wait_time');
+      if (!message_content) missingFields.push('message_content');
+      
       return NextResponse.json(
         { 
           success: false, 
-          error: "Todos os campos obrigatórios devem ser preenchidos" 
+          error: `Campos obrigatórios não preenchidos: ${missingFields.join(', ')}` 
         }, 
         { status: 400 }
       );
@@ -108,8 +122,7 @@ export async function POST(req: NextRequest) {
         wait_time,
         wait_time_ms,
         message_content,
-        message_category,
-        auto_respond: auto_respond !== undefined ? auto_respond : true
+        message_category
       }
     });
     
@@ -138,7 +151,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, funnel_stage_id, name, template_name, wait_time, message_content, message_category, auto_respond } = body;
+    const { id, funnel_stage_id, name, template_name, wait_time, message_content, message_category } = body;
     
     if (!id) {
       return NextResponse.json(
@@ -178,8 +191,7 @@ export async function PUT(req: NextRequest) {
         wait_time,
         wait_time_ms,
         message_content,
-        message_category,
-        auto_respond: auto_respond !== undefined ? auto_respond : true
+        message_category
       }
     });
     

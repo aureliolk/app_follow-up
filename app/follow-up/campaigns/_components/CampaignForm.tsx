@@ -8,6 +8,13 @@ import FunnelStageList from './FunnelStageList';
 import StepForm from './StepForm';
 import FunnelStagesTabs from './FunnelStagesTabs';
 
+// Adiciona handleShowAddForm como propriedade global do window
+declare global {
+  interface Window {
+    addStageStep: (stageId: string) => void;
+  }
+}
+
 interface FunnelStage {
   id: string;
   name: string;
@@ -64,6 +71,7 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
   onRemoveFunnelStage,
   immediateUpdate = false
 }) => {
+  // Usaremos um useEffect após a definição das funções para registrar a função global
   // Estados para informações básicas da campanha
   const [name, setName] = useState(initialData?.name || '');
   const [description, setDescription] = useState(initialData?.description || '');
@@ -74,6 +82,8 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
   const [showStepForm, setShowStepForm] = useState(false);
   const [loadingStep, setLoadingStep] = useState(false);
+  
+  // Este useEffect será substituído por um completo após a definição das funções
   
   // Estados para gerenciamento de etapas do funil
   const [showFunnelStageForm, setShowFunnelStageForm] = useState(false);
@@ -92,15 +102,21 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
     template_name: '',
     wait_time: '30 minutos',
     message: '',
-    category: 'Utility',
-    auto_respond: true
+    category: 'Utility'
   });
 
   // Inicializar os steps quando o componente for montado ou quando props mudarem
   useEffect(() => {
-    // Se já temos passos nos initialData, use-os diretamente
+    // Para novas campanhas sempre começamos com uma lista vazia
+    if (!initialData?.id) {
+      console.log('Nova campanha: inicializando com lista de passos vazia');
+      setSteps([]);
+      return;
+    }
+
+    // Para campanhas existentes, usamos os passos fornecidos
     if (initialData?.steps && Array.isArray(initialData.steps) && initialData.steps.length > 0) {
-      console.log('Usando passos fornecidos pelo componente pai:', initialData.steps.length);
+      console.log('Campanha existente: carregando passos existentes:', initialData.steps.length);
 
       // Mapear os passos para o formato correto e consistente
       const formattedSteps = initialData.steps.map((step: any) => {
@@ -125,8 +141,7 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
             template_name: step.template_name || '',
             wait_time: step.wait_time || '',
             message: step.message || '',
-            category: step.category || 'Utility',
-            auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
+            category: step.category || 'Utility'
           };
         }
         // Se o formato for { etapa, mensagem, tempo_de_espera, nome_template }
@@ -147,8 +162,7 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
             template_name: step.template_name || step.nome_template || '',
             wait_time: step.wait_time || step.tempo_de_espera || '',
             message: step.message || step.mensagem || '',
-            category: step.category || 'Utility',
-            auto_respond: true
+            category: step.category || 'Utility'
           };
         }
 
@@ -162,34 +176,19 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
       }).filter(Boolean) as Step[]; // Remove nulos (estágios com etapas que não existem mais)
 
       setSteps(formattedSteps);
-    } else if (funnelStages.length > 0) {
-      // Fallback: se não temos passos, criar um passo por estágio (apenas para novas campanhas)
-      if (!initialData?.id) {
-        console.log('Criando passos de exemplo para nova campanha');
-        const defaultSteps = funnelStages.map(stage => ({
-          id: `new-step-${Math.random().toString(36).substring(2, 11)}`,
-          stage_id: stage.id,
-          stage_name: stage.name,
-          template_name: `template_${stage.name.toLowerCase().replace(/\s+/g, '_')}`,
-          wait_time: '30 minutos',
-          message: `Mensagem padrão para o estágio ${stage.name}`,
-          category: 'Utility',
-          auto_respond: true
-        }));
-        setSteps(defaultSteps);
-      } else {
-        // Se é uma campanha existente mas sem passos, definir array vazio
-        setSteps([]);
-      }
+    } else {
+      // Campanha existente mas sem passos, definir array vazio
+      console.log('Campanha existente sem passos: inicializando lista vazia');
+      setSteps([]);
     }
   }, [initialData, funnelStages]);
 
   // Função para mostrar o formulário para adicionar um novo estágio
-  const handleShowAddForm = () => {
+  const handleShowAddForm = React.useCallback((stageId?: string) => {
     // Resetar o formulário para um novo estágio
     setNewStep({
-      stage_id: '',
-      stage_name: '',
+      stage_id: stageId || '',
+      stage_name: stageId ? (funnelStages.find(s => s.id === stageId)?.name || '') : '',
       template_name: '',
       wait_time: '30 minutos',
       message: '',
@@ -197,13 +196,14 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
       auto_respond: true
     });
     setEditingStepIndex(null);
+    setSelectedStage(stageId || '');
     setShowStepForm(true);
 
     // Rolar até o formulário
     setTimeout(() => {
       document.getElementById('step-form')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
-  };
+  }, [funnelStages, setNewStep, setEditingStepIndex, setSelectedStage, setShowStepForm]);
 
   // Função para editar um passo existente
   const handleEditStep = (index: number) => {
@@ -492,10 +492,8 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
       return;
     }
 
-    if (steps.length === 0) {
-      alert('A campanha precisa ter pelo menos uma etapa');
-      return;
-    }
+    // Removido a validação obrigatória de etapas
+    // As etapas podem ser adicionadas posteriormente
 
     onSubmit({
       name,
@@ -503,6 +501,20 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
       steps
     });
   };
+  
+  // Registramos a função global depois que handleShowAddForm está definida
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.addStageStep = handleShowAddForm;
+    }
+    
+    return () => {
+      // Limpar ao desmontar
+      if (typeof window !== 'undefined') {
+        delete window.addStageStep;
+      }
+    };
+  }, [handleShowAddForm]);
   
   return (
     <div className="bg-gray-800 rounded-lg p-6">
@@ -540,12 +552,22 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
           />
         )}
 
-        {/* Tabela de etapas do funil */}
-        <FunnelStageList 
-          stages={funnelStages}
-          onEdit={handleEditFunnelStage}
-          onRemove={handleRemoveFunnelStage}
-        />
+        {/* Tabela de etapas do funil - apenas mostrada quando temos etapas ou é um formulário de edição */}
+        {(funnelStages.length > 0 || initialData?.id) && (
+          <FunnelStageList 
+            stages={funnelStages}
+            onEdit={handleEditFunnelStage}
+            onRemove={handleRemoveFunnelStage}
+          />
+        )}
+        
+        {/* Mensagem quando não há etapas e estamos criando uma nova campanha */}
+        {funnelStages.length === 0 && !initialData?.id && (
+          <div className="bg-gray-700 p-4 rounded-lg mb-4 text-center">
+            <p className="text-gray-300 mb-2">Você está criando uma nova campanha.</p>
+            <p className="text-gray-400 text-sm mb-4">Primeiro, crie a campanha com as informações básicas. Depois você poderá adicionar etapas e estágios específicos a ela.</p>
+          </div>
+        )}
 
         <button
           type="button"
@@ -563,28 +585,34 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
         </button> 
       </div>
 
-      {/* Seção para adicionar estágios ao funil */}
-      <div className="mb-6">
-        <h3 className="text-lg font-medium text-white mb-2">Estágios da Campanha</h3>
+      {/* Seção para adicionar estágios ao funil - só exibida se não for nova campanha ou se tiver etapas */}
+      {(initialData?.id || funnelStages.length > 0) && (
+        <div className="mb-6">
+          <h3 className="text-lg font-medium text-white mb-2">Estágios da Campanha</h3>
 
-        {steps.length > 0 ? (
-          <div className="bg-gray-700 rounded-lg overflow-hidden mb-4">
-            <FunnelStagesTabs
-              steps={steps}
-              onRemoveStep={handleRemoveStep}
-              onEditStep={handleEditStep}
-            />
-          </div>
-        ) : (
-          <p className="text-gray-400 text-center my-4">
-            Nenhum estágio adicionado. Use o botão abaixo para adicionar estágios às etapas do funil.
-          </p>
-        )}
+          {steps.length > 0 ? (
+            <div className="bg-gray-700 rounded-lg overflow-hidden mb-4">
+              <FunnelStagesTabs
+                steps={steps}
+                onRemoveStep={handleRemoveStep}
+                onEditStep={handleEditStep}
+              />
+            </div>
+          ) : (
+            <div className="text-gray-400 bg-gray-700 rounded-lg p-6 my-4 text-center">
+              <p className="mb-4">
+                Nenhum estágio adicionado. Use o botão abaixo para adicionar estágios às etapas do funil.
+              </p>
+              <p className="italic text-sm text-gray-500">
+                É necessário adicionar pelo menos um estágio em cada etapa do funil para que a campanha funcione corretamente.
+              </p>
+            </div>
+          )}
 
-        {/* Botão para adicionar novo estágio */}
-        {!showStepForm && (
-          <div className="mb-4">
-            <button
+          {/* Botão para adicionar novo estágio */}
+          {!showStepForm && (
+            <div className="mb-4">
+              <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
@@ -601,19 +629,21 @@ const CampaignForm: React.FC<CampaignFormProps> = ({
           </div>
         )}
 
-        {/* Formulário para adicionar/editar estágio */}
-        {showStepForm && (
-          <StepForm
-            newStep={newStep}
-            setNewStep={setNewStep}
-            funnelStages={funnelStages}
-            isEditing={editingStepIndex !== null}
-            onCancel={handleCancelEdit}
-            onSave={handleAddOrUpdateStep}
-            isLoading={loadingStep}
-          />
-        )}
-      </div>
+          {/* Formulário para adicionar/editar estágio */}
+          {showStepForm && (
+            <StepForm
+              newStep={newStep}
+              setNewStep={setNewStep}
+              funnelStages={funnelStages}
+              isEditing={editingStepIndex !== null}
+              onCancel={handleCancelEdit}
+              onSave={handleAddOrUpdateStep}
+              isLoading={loadingStep}
+              selectedStage={selectedStage}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 };

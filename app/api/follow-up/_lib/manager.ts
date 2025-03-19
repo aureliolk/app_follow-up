@@ -100,8 +100,19 @@ export async function loadFollowUpData(campaignId?: string): Promise<FollowUpSte
         throw new Error(`Campanha de follow-up não encontrada: ${campaignId}`);
       }
 
-      // Retornar os passos da campanha
-      return JSON.parse(campaign.steps as string) as FollowUpStep[];
+      // Retornar os passos da campanha com tratamento seguro para strings vazias ou inválidas
+      try {
+        // Verificar se é uma string vazia ou inválida
+        const stepsString = campaign.steps as string;
+        if (!stepsString || stepsString.trim() === '' || stepsString === '[]') {
+          console.log(`Campanha ${campaignId} tem steps vazios ou inválidos, retornando array vazio`);
+          return [];
+        }
+        return JSON.parse(stepsString) as FollowUpStep[];
+      } catch (err) {
+        console.error(`Erro ao analisar steps da campanha ${campaignId}:`, err);
+        return []; // Retornar array vazio em caso de erro
+      }
     }
 
     // Caso contrário, carregar do arquivo CSV mais recente
@@ -175,10 +186,25 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       return;
     }
 
-    // Carregar as etapas da campanha
-    const steps = followUp.campaign?.steps
-      ? JSON.parse(followUp.campaign.steps as string) as FollowUpStep[]
-      : await loadFollowUpData();
+    // Carregar as etapas da campanha com tratamento seguro para strings vazias ou inválidas
+    let steps: FollowUpStep[] = [];
+    if (followUp.campaign?.steps) {
+      try {
+        const stepsString = followUp.campaign.steps as string;
+        if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
+          steps = JSON.parse(stepsString) as FollowUpStep[];
+        } else {
+          console.log(`Follow-up ${followUpId} tem campanha com steps vazios, carregando do CSV`);
+          steps = await loadFollowUpData();
+        }
+      } catch (err) {
+        console.error(`Erro ao analisar steps da campanha para follow-up ${followUpId}:`, err);
+        // Fallback para o CSV em caso de erro
+        steps = await loadFollowUpData();
+      }
+    } else {
+      steps = await loadFollowUpData();
+    }
 
     if (!steps || steps.length === 0) {
       throw new Error("Nenhuma etapa de follow-up encontrada");
@@ -352,10 +378,25 @@ export async function scheduleNextStep(
       return;
     }
 
-    // Carregar as etapas da campanha
-    const steps = followUp.campaign?.steps
-      ? JSON.parse(followUp.campaign.steps as string) as FollowUpStep[]
-      : await loadFollowUpData();
+    // Carregar as etapas da campanha com tratamento seguro para strings vazias ou inválidas
+    let steps: FollowUpStep[] = [];
+    if (followUp.campaign?.steps) {
+      try {
+        const stepsString = followUp.campaign.steps as string;
+        if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
+          steps = JSON.parse(stepsString) as FollowUpStep[];
+        } else {
+          console.log(`Follow-up ${followUpId} tem campanha com steps vazios, carregando do CSV`);
+          steps = await loadFollowUpData();
+        }
+      } catch (err) {
+        console.error(`Erro ao analisar steps da campanha para follow-up ${followUpId}:`, err);
+        // Fallback para o CSV em caso de erro
+        steps = await loadFollowUpData();
+      }
+    } else {
+      steps = await loadFollowUpData();
+    }
 
     // Verificar se ainda há etapas restantes
     if (nextStepIndex >= steps.length) {
@@ -588,10 +629,25 @@ export async function advanceToNextStep(followUpId: string): Promise<void> {
       return;
     }
 
-    // Carregar as etapas da campanha
-    const steps = followUp.campaign?.steps
-      ? JSON.parse(followUp.campaign.steps as string) as FollowUpStep[]
-      : await loadFollowUpData();
+    // Carregar as etapas da campanha com tratamento seguro para strings vazias ou inválidas
+    let steps: FollowUpStep[] = [];
+    if (followUp.campaign?.steps) {
+      try {
+        const stepsString = followUp.campaign.steps as string;
+        if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
+          steps = JSON.parse(stepsString) as FollowUpStep[];
+        } else {
+          console.log(`Follow-up ${followUpId} tem campanha com steps vazios, carregando do CSV`);
+          steps = await loadFollowUpData();
+        }
+      } catch (err) {
+        console.error(`Erro ao analisar steps da campanha para follow-up ${followUpId}:`, err);
+        // Fallback para o CSV em caso de erro
+        steps = await loadFollowUpData();
+      }
+    } else {
+      steps = await loadFollowUpData();
+    }
 
     const nextStepIndex = followUp.current_step + 1;
 
@@ -680,10 +736,25 @@ export async function handleClientResponse(
       console.log(`Follow-up ${followUp.id} marcado como responsivo devido à mensagem do cliente.`);
 
       // Agora vamos identificar a próxima fase do funil
-      // Primeiro, carregamos as etapas da campanha
-      const steps = followUp.campaign?.steps
-        ? JSON.parse(followUp.campaign.steps as string)
-        : await loadFollowUpData();
+      // Primeiro, carregamos as etapas da campanha com tratamento seguro para strings vazias ou inválidas
+      let steps: FollowUpStep[] = [];
+      if (followUp.campaign?.steps) {
+        try {
+          const stepsString = followUp.campaign.steps as string;
+          if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
+            steps = JSON.parse(stepsString) as FollowUpStep[];
+          } else {
+            console.log(`Follow-up ${followUp.id} tem campanha com steps vazios, carregando do CSV`);
+            steps = await loadFollowUpData();
+          }
+        } catch (err) {
+          console.error(`Erro ao analisar steps da campanha para follow-up ${followUp.id}:`, err);
+          // Fallback para o CSV em caso de erro
+          steps = await loadFollowUpData();
+        }
+      } else {
+        steps = await loadFollowUpData();
+      }
 
       if (!steps || steps.length === 0) {
         console.log(`Nenhuma etapa encontrada para o follow-up ${followUp.id}`);

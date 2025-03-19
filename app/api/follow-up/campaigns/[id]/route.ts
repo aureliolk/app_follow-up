@@ -102,11 +102,32 @@ export async function PUT(request: NextRequest) {
       description
     };
     
-    // Se steps for fornecido, serializá-lo
-    if (steps) {
-      updateData.steps = Array.isArray(steps) || typeof steps === 'object' 
-        ? JSON.stringify(steps) 
-        : steps;
+    // Se steps for fornecido, serializá-lo com validação
+    if (steps !== undefined) {
+      try {
+        if (Array.isArray(steps) || (typeof steps === 'object' && steps !== null)) {
+          // Converter objeto/array para string JSON
+          updateData.steps = JSON.stringify(steps);
+        } else if (typeof steps === 'string') {
+          // Verificar se a string é um JSON válido
+          if (steps.trim() === '' || steps === '[]') {
+            // String vazia ou array vazio em string, usar array vazio
+            updateData.steps = '[]';
+          } else {
+            // Validar se é JSON válido
+            JSON.parse(steps); // Isso vai lançar erro se não for válido
+            updateData.steps = steps;
+          }
+        } else {
+          // Valor inválido, usar array vazio
+          console.warn(`Valor de steps inválido para campanha ${id}, usando array vazio`);
+          updateData.steps = '[]';
+        }
+      } catch (err) {
+        console.error(`Erro ao processar steps para campanha ${id}:`, err);
+        // Em caso de erro, definir como array vazio
+        updateData.steps = '[]';
+      }
     }
     
     // Se active for fornecido, atualizá-lo

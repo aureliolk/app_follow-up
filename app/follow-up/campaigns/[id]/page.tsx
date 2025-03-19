@@ -30,20 +30,43 @@ export default function EditCampaignPage() {
     setIsLoadingSteps(true);
 
     try {
-      // Executar chamadas em paralelo para maior eficiência
-      console.log('Iniciando carregamento de dados');
+      // Executar carregamentos sequencialmente para garantir consistência
+      console.log('Iniciando carregamento de dados para campanha:', campaignId);
 
-      const [campaignData, stages, steps] = await Promise.all([
-        followUpService.getCampaign(campaignId),
-        followUpService.getFunnelStages(),
-        followUpService.getCampaignSteps(campaignId)
-      ]);
+      // Primeiro, carregar a campanha
+      const campaignData = await followUpService.getCampaign(campaignId);
+      console.log(`Campanha carregada: ${campaignData.name}`);
+      
+      // Depois buscar os estágios específicos desta campanha
+      const stages = await followUpService.getFunnelStages(campaignId);
+      console.log(`Estágios do funil carregados: ${stages.length}`);
+      
+      // Verificar se os estágios têm IDs válidos
+      if (stages.length > 0) {
+        console.log('Primeiro estágio:', stages[0].name, 'ID:', stages[0].id);
+      }
+      
+      // Por fim, buscar os passos específicos desta campanha
+      const steps = await followUpService.getCampaignSteps(campaignId);
+      console.log(`Passos da campanha carregados: ${steps.length}`);
+      
+      // Verificar quais estágios tem passos associados
+      if (steps.length > 0) {
+        console.log('Passos por estágio:');
+        const stepsByStage = steps.reduce((acc: Record<string, number>, step: any) => {
+          const stageName = step.stage_name || 'Sem estágio';
+          acc[stageName] = (acc[stageName] || 0) + 1;
+          return acc;
+        }, {});
+        console.log(stepsByStage);
+      }
 
-      console.log(`Dados carregados: campanha, ${stages.length} estágios, ${steps.length} passos`);
-
+      // Atualizar os estados com os dados carregados
       setCampaign(campaignData);
       setFunnelStages(stages);
       setCampaignSteps(steps);
+      
+      console.log('Todos os dados carregados com sucesso');
     } catch (err: any) {
       console.error('Erro ao carregar dados:', err);
       setError(err.message || 'Erro ao carregar dados');
@@ -69,6 +92,15 @@ export default function EditCampaignPage() {
 
   // Efeito para carregar todos os dados de uma só vez
   useEffect(() => {
+    console.log(`Carregando dados para campanha ${campaignId}`);
+    
+    // Limpar dados antigos quando o ID da campanha mudar
+    setFunnelStages([]);
+    setCampaignSteps([]);
+    
+    // Limpar o cache para garantir dados atualizados
+    followUpService.clearCampaignCache(campaignId);
+    
     fetchAllData();
   }, [campaignId]);
 
@@ -101,20 +133,35 @@ export default function EditCampaignPage() {
 
       // Verificar se temos os dados mínimos necessários
       if (!newStep.stage_id || !newStep.template_name || !newStep.wait_time || !newStep.message) {
-        console.error('Dados incompletos para criar um novo estágio');
-        alert('Por favor, preencha todos os campos obrigatórios');
+        console.error('Dados incompletos para criar um novo estágio:', newStep);
+        
+        const missingFields = [];
+        if (!newStep.stage_id) missingFields.push('etapa do funil');
+        if (!newStep.template_name) missingFields.push('nome do template');
+        if (!newStep.wait_time) missingFields.push('tempo de espera');
+        if (!newStep.message) missingFields.push('mensagem');
+        
+        alert(`Por favor, preencha todos os campos obrigatórios: ${missingFields.join(', ')}`);
         return false;
       }
 
-      console.log('Tentando adicionar novo estágio:', newStep);
+      // Verificar se a etapa (funnel_stage) existe
+      const stageExists = funnelStages.find(stage => stage.id === newStep.stage_id);
+      if (!stageExists) {
+        console.error(`Etapa de funil com ID ${newStep.stage_id} não encontrada`);
+        alert('Erro: A etapa do funil selecionada não existe ou foi removida. Por favor, selecione outra etapa.');
+        return false;
+      }
+
+      console.log('Tentando adicionar novo estágio para etapa:', stageExists.name);
 
       // Mapear dados para o formato esperado pela API
       const stepData = {
         funnel_stage_id: newStep.stage_id,
-        name: newStep.template_name,
-        template_name: newStep.template_name,
-        wait_time: newStep.wait_time,
-        message_content: newStep.message,
+        name: newStep.template_name || 'Novo Estágio',
+        template_name: newStep.template_name || 'template_default',
+        wait_time: newStep.wait_time || '30 minutos',
+        message_content: newStep.message || '',
         message_category: newStep.category || 'Utility',
         auto_respond: newStep.auto_respond !== undefined ? newStep.auto_respond : true
       };
@@ -122,17 +169,74 @@ export default function EditCampaignPage() {
       console.log('Dados formatados para API:', stepData);
 
       // Usar a API POST para criar um novo passo
-      const response = await axios.post('/api/follow-up/funnel-steps', stepData);
+      try {
+        console.log('Enviando dados para a API:', JSON.stringify(stepData, null, 2));
+        const response = await axios.post('/api/follow-up/funnel-steps', stepData);
+        console.log('Resposta da API:', response.data);
+        
+        if (response.data.success) {
+          console.log('Novo estágio criado com sucesso:', response.data);
 
-      if (response.data.success) {
-        console.log('Novo estágio criado com sucesso:', response.data);
+          // Atualizar a campanha com o novo estágio
+          const updatedStep = response.data.data;
+          console.log(`Estágio criado com ID: ${updatedStep.id} para o funil: ${updatedStep.funnel_stage_id}`);
+          
+          // Buscar a campanha atual
+          const currentCampaign = await followUpService.getCampaign(campaignId);
+          
+          // Obter os passos atuais da campanha
+          let campaignSteps = [];
+          if (typeof currentCampaign.steps === 'string') {
+            try {
+              campaignSteps = JSON.parse(currentCampaign.steps);
+            } catch (err) {
+              console.error('Erro ao analisar steps da campanha:', err);
+              campaignSteps = [];
+            }
+          } else if (Array.isArray(currentCampaign.steps)) {
+            campaignSteps = currentCampaign.steps;
+          }
+          
+          // Adicionar o novo estágio à lista de passos da campanha
+          const funnelStage = funnelStages.find(s => s.id === updatedStep.funnel_stage_id);
+          const newCampaignStep = {
+            id: updatedStep.id,
+            stage_id: updatedStep.funnel_stage_id,
+            stage_name: funnelStage?.name || 'Estágio desconhecido',
+            template_name: updatedStep.template_name,
+            wait_time: updatedStep.wait_time,
+            message: updatedStep.message_content,
+            category: updatedStep.message_category,
+            auto_respond: updatedStep.auto_respond
+          };
+          
+          campaignSteps.push(newCampaignStep);
+          
+          // Atualizar a campanha com os novos passos
+          console.log(`Atualizando campanha ${campaignId} com total de ${campaignSteps.length} passos`);
+          await followUpService.updateCampaign(campaignId, {
+            name: currentCampaign.name, // Incluir nome obrigatório da campanha
+            description: currentCampaign.description || '', // Incluir descrição opcional
+            steps: campaignSteps
+          });
 
-        // Atualizar apenas os passos
-        await fetchStepsOnly();
-        return true;
-      } else {
-        console.error('Erro ao criar estágio:', response.data);
-        alert(`Erro: ${response.data.error || 'Falha ao criar estágio'}`);
+          // Atualizar os dados na tela
+          await fetchAllData();
+          return true;
+        } else {
+          console.error('Erro ao criar estágio:', response.data);
+          alert(`Erro: ${response.data.error || 'Falha ao criar estágio'}`);
+          return false;
+        }
+      } catch (err: any) {
+        console.error('Erro detalhado na requisição:', err);
+        console.error('Dados da requisição que falharam:', stepData);
+        if (err.response) {
+          console.error('Resposta do servidor:', err.response.data);
+          alert(`Erro do servidor: ${err.response.data.error || 'Erro não especificado'}`);
+        } else {
+          alert(`Erro ao adicionar estágio: ${err.message}`);
+        }
         return false;
       }
     } catch (error: any) {
@@ -176,8 +280,52 @@ export default function EditCampaignPage() {
       console.log('Resultado da atualização:', result);
 
       if (result.success) {
-        // Atualizar apenas os passos em vez de todos os dados
-        await fetchStepsOnly();
+        // Buscar a campanha atual
+        const currentCampaign = await followUpService.getCampaign(campaignId);
+        
+        // Obter os passos atuais da campanha
+        let campaignSteps = [];
+        if (typeof currentCampaign.steps === 'string') {
+          try {
+            campaignSteps = JSON.parse(currentCampaign.steps);
+          } catch (err) {
+            console.error('Erro ao analisar steps da campanha:', err);
+            campaignSteps = [];
+          }
+        } else if (Array.isArray(currentCampaign.steps)) {
+          campaignSteps = currentCampaign.steps;
+        }
+        
+        // Encontrar e atualizar o estágio específico na lista de passos da campanha
+        const stepIndex = campaignSteps.findIndex((s: any) => s.id === updatedStep.id);
+        
+        if (stepIndex >= 0) {
+          // Atualizar o estágio existente
+          const funnelStage = funnelStages.find(s => s.id === stepData.funnel_stage_id);
+          campaignSteps[stepIndex] = {
+            id: updatedStep.id,
+            stage_id: stepData.funnel_stage_id,
+            stage_name: funnelStage?.name || 'Estágio desconhecido',
+            template_name: stepData.template_name,
+            wait_time: stepData.wait_time,
+            message: stepData.message_content,
+            category: stepData.message_category,
+            auto_respond: stepData.auto_respond
+          };
+          
+          // Atualizar a campanha com os passos atualizados
+          console.log(`Atualizando estágio ${updatedStep.id} na campanha ${campaignId}`);
+          await followUpService.updateCampaign(campaignId, {
+            name: currentCampaign.name, // Incluir nome obrigatório da campanha
+            description: currentCampaign.description || '', // Incluir descrição opcional
+            steps: campaignSteps
+          });
+        } else {
+          console.warn(`Estágio ${updatedStep.id} não encontrado nos passos da campanha`);
+        }
+
+        // Atualizar os dados para refletir as mudanças
+        await fetchAllData();
         return true;
       } else {
         alert(`Erro: ${result.error || 'Falha ao atualizar'}`);
@@ -215,8 +363,39 @@ export default function EditCampaignPage() {
       console.log('Resultado da remoção:', result);
 
       if (result.success) {
-        // Atualizar apenas os passos em vez de todos os dados
-        await fetchStepsOnly();
+        // Buscar a campanha atual
+        const currentCampaign = await followUpService.getCampaign(campaignId);
+        
+        // Obter os passos atuais da campanha
+        let campaignSteps = [];
+        if (typeof currentCampaign.steps === 'string') {
+          try {
+            campaignSteps = JSON.parse(currentCampaign.steps);
+          } catch (err) {
+            console.error('Erro ao analisar steps da campanha:', err);
+            campaignSteps = [];
+          }
+        } else if (Array.isArray(currentCampaign.steps)) {
+          campaignSteps = currentCampaign.steps;
+        }
+        
+        // Filtrar o estágio removido da lista de passos da campanha
+        const filteredSteps = campaignSteps.filter((s: any) => s.id !== step.id);
+        
+        if (filteredSteps.length !== campaignSteps.length) {
+          // Atualizar a campanha sem o estágio removido
+          console.log(`Removendo estágio ${step.id} da campanha ${campaignId}`);
+          await followUpService.updateCampaign(campaignId, {
+            name: currentCampaign.name, // Incluir nome obrigatório da campanha
+            description: currentCampaign.description || '', // Incluir descrição opcional
+            steps: filteredSteps
+          });
+        } else {
+          console.warn(`Estágio ${step.id} não encontrado nos passos da campanha`);
+        }
+
+        // Atualizar os dados para refletir as mudanças
+        await fetchAllData();
         return true;
       } else {
         alert(`Erro: ${result.error || 'Falha ao remover'}`);
@@ -235,16 +414,19 @@ export default function EditCampaignPage() {
   const handleAddFunnelStage = async (newStage: Omit<FunnelStage, 'id'>) => {
     setIsLoadingFunnelStage(true);
     try {
+      // Adicionar o ID da campanha ao criar um novo estágio
       const createdStage = await followUpService.createFunnelStage(
         newStage.name,
         newStage.description,
-        newStage.order
+        newStage.order,
+        campaignId // Passar o ID da campanha atual
       );
 
-      console.log('Nova etapa criada:', createdStage);
+      console.log('Nova etapa criada para campanha específica:', createdStage);
 
-      // Atualizar apenas a lista de estágios
-      const stages = await followUpService.getFunnelStages();
+      // Atualizar apenas a lista de estágios - usando o ID da campanha 
+      // para garantir que só obtemos os estágios dessa campanha
+      const stages = await followUpService.getFunnelStages(campaignId);
       setFunnelStages(stages);
 
       return true;
@@ -260,7 +442,7 @@ export default function EditCampaignPage() {
   const handleUpdateFunnelStage = async (stageId: string, updatedStage: Partial<FunnelStage>) => {
     setIsLoadingFunnelStage(true);
     try {
-      console.log(`Atualizando etapa ${stageId}:`, updatedStage);
+      console.log(`Atualizando etapa ${stageId} da campanha ${campaignId}:`, updatedStage);
 
       await followUpService.updateFunnelStage(stageId, {
         name: updatedStage.name || '',
@@ -268,8 +450,8 @@ export default function EditCampaignPage() {
         order: updatedStage.order
       });
 
-      // Atualizar apenas a lista de estágios
-      const stages = await followUpService.getFunnelStages();
+      // Atualizar apenas a lista de estágios específicos desta campanha
+      const stages = await followUpService.getFunnelStages(campaignId);
       setFunnelStages(stages);
 
       return true;
@@ -285,21 +467,53 @@ export default function EditCampaignPage() {
   const handleRemoveFunnelStage = async (stageId: string) => {
     setIsLoadingFunnelStage(true);
     try {
+      console.log(`Preparando para remover a etapa do funil ${stageId}`);
+      
+      // Primeiro verificar se há passos associados a esta etapa na campanha atual
+      const currentSteps = campaignSteps.filter((step: any) => step.stage_id === stageId);
+      
+      if (currentSteps.length > 0) {
+        console.log(`A etapa ${stageId} tem ${currentSteps.length} passos associados na campanha`);
+        
+        // Perguntar ao usuário se deseja remover todos os passos junto com a etapa
+        if (!confirm(`Esta etapa contém ${currentSteps.length} estágios. Todos eles serão removidos. Deseja continuar?`)) {
+          setIsLoadingFunnelStage(false);
+          return false;
+        }
+        
+        // Remover cada passo associado à etapa
+        console.log("Removendo passos associados à etapa...");
+        for (const step of currentSteps) {
+          if (step.id) {
+            try {
+              console.log(`Removendo passo ${step.id} da etapa ${stageId}`);
+              await followUpService.deleteStep(step.id);
+            } catch (stepError) {
+              console.error(`Erro ao remover passo ${step.id}:`, stepError);
+              // Continuar removendo os outros passos
+            }
+          }
+        }
+      }
+      
+      // Agora remover a etapa do funil
       await followUpService.deleteFunnelStage(stageId);
 
-      // Atualizar dados diretamente
-      const [stages, steps] = await Promise.all([
-        followUpService.getFunnelStages(),
+      // Atualizar dados diretamente - usando o ID da campanha para garantir 
+      // que obtemos apenas os estágios e passos desta campanha específica
+      const [stages, updatedSteps] = await Promise.all([
+        followUpService.getFunnelStages(campaignId),
         followUpService.getCampaignSteps(campaignId)
       ]);
 
       setFunnelStages(stages);
-      setCampaignSteps(steps);
+      setCampaignSteps(updatedSteps);
 
-      console.log('Etapa de funil removida com sucesso, dados atualizados');
+      console.log(`Etapa de funil ${stageId} removida com sucesso da campanha ${campaignId}, dados atualizados`);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao remover estágio do funil:', error);
+      alert(`Erro ao remover etapa: ${error.message || 'Erro desconhecido'}`);
       return false;
     } finally {
       setIsLoadingFunnelStage(false);

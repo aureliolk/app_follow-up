@@ -76,12 +76,24 @@ export const followUpService = {
   },
 
   // Função para buscar estágios do funil
-  async getFunnelStages(): Promise<FunnelStage[]> {
+  async getFunnelStages(campaignId?: string): Promise<FunnelStage[]> {
     try {
-      const response = await axios.get('/api/follow-up/funnel-stages');
+      // Sempre devemos buscar os estágios específicos da campanha se um ID for fornecido
+      const url = campaignId 
+        ? `/api/follow-up/funnel-stages?campaignId=${campaignId}` 
+        : '/api/follow-up/funnel-stages';
+      
+      console.log(`Buscando estágios do funil${campaignId ? ` para campanha ${campaignId}` : ' globais'}`);
+      
+      const response = await axios.get(url);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch funnel stages');
+      }
+
+      // Se estamos editando uma campanha específica, devemos usar apenas os estágios dessa campanha
+      if (campaignId) {
+        console.log(`Usando apenas estágios específicos da campanha ${campaignId}: ${response.data.data.length} estágios`);
       }
 
       return response.data.data || [];
@@ -92,12 +104,15 @@ export const followUpService = {
   },
 
   // Função para criar um novo estágio do funil
-  async createFunnelStage(name: string, description?: string, order?: number): Promise<FunnelStage> {
+  async createFunnelStage(name: string, description?: string, order?: number, campaignId?: string): Promise<FunnelStage> {
     try {
+      console.log(`Criando estágio de funil "${name}"${campaignId ? ` para campanha ${campaignId}` : ''}`);
+      
       const response = await axios.post('/api/follow-up/funnel-stages', {
         name,
         description,
-        order
+        order,
+        campaignId // Passar o ID da campanha para associar o estágio à campanha específica
       });
 
       if (!response.data.success) {
@@ -133,15 +148,22 @@ export const followUpService = {
   // Função para excluir um estágio do funil
   async deleteFunnelStage(id: string): Promise<boolean> {
     try {
+      console.log(`Solicitando exclusão do estágio de funil ${id}`);
       const response = await axios.delete(`/api/follow-up/funnel-stages?id=${id}`);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete funnel stage');
       }
 
+      console.log(`Estágio ${id} excluído com sucesso`);
       return true;
-    } catch (error) {
-      console.error('Error deleting funnel stage:', error);
+    } catch (error: any) {
+      console.error(`Erro ao excluir estágio do funil ${id}:`, error);
+      
+      if (error.response && error.response.data) {
+        console.error('Detalhes do erro do servidor:', error.response.data);
+      }
+      
       throw error;
     }
   },
@@ -149,13 +171,16 @@ export const followUpService = {
   // Função para buscar passos de um estágio específico
   async getFunnelSteps(stageId: string): Promise<FunnelStep[]> {
     try {
+      console.log(`Buscando passos para o estágio com ID ${stageId}`);
       const response = await axios.get(`/api/follow-up/funnel-steps?stageId=${stageId}`);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch funnel steps');
       }
 
-      return response.data.data || [];
+      const steps = response.data.data || [];
+      console.log(`Encontrados ${steps.length} passos para o estágio ${stageId}`);
+      return steps;
     } catch (error) {
       console.error(`Error fetching steps for stage ${stageId}:`, error);
       throw error;
@@ -228,93 +253,84 @@ export const followUpService = {
     }
     
     try {
-      console.log(`Buscando dados da campanha ${campaignId} do banco de dados`);
+      console.log(`Buscando dados ESPECÍFICOS da campanha ${campaignId} do banco de dados`);
       
-      // 1. Primeiro, buscar todos os estágios do funil
-      const funnelStages = await this.getFunnelStages();
-
-      // 2. Para cada estágio, buscar os passos associados
-      const allSteps: CampaignStep[] = [];
-
-      for (const stage of funnelStages) {
-        try {
-          const steps = await this.getFunnelSteps(stage.id);
-
-          // Mapear passos para o formato esperado
-          const formattedSteps = steps.map((step: FunnelStep) => ({
-            id: step.id,
-            etapa: stage.name,
-            tempo_de_espera: step.wait_time,
-            template_name: step.template_name,
-            message: step.message_content,
-            stage_id: stage.id,
-            stage_name: stage.name,
-            stage_order: stage.order
-          }));
-
-          allSteps.push(...formattedSteps);
-        } catch (error) {
-          console.error(`Error processing steps for stage ${stage.name}:`, error);
-        }
-      }
-
-      // 3. Se não foram encontrados passos ou se um ID de campanha foi fornecido,
-      // buscar dados da campanha
-      if (allSteps.length === 0 && campaignId) {
-        try {
-          const campaign: any = await this.getCampaign(campaignId);
-
-          if (campaign && (campaign.steps?.length > 0)) {
-            // Mapear para o formato esperado
-            const formattedCampaignSteps = campaign.steps.map((step: any, index: number) => {
-              if (step.stage_name) {
-                return {
-                  id: `campaign-step-${index}`,
-                  etapa: step.stage_name,
-                  tempo_de_espera: step.wait_time || '',
-                  template_name: step.template_name || '',
-                  message: step.message || '',
-                  stage_name: step.stage_name,
-                  stage_order: step.stage_order
-                };
-              } else if (step.etapa) {
-                return {
-                  id: `campaign-step-${index}`,
-                  etapa: step.etapa,
-                  tempo_de_espera: step.tempo_de_espera || '',
-                  template_name: step.nome_template || '',
-                  message: step.mensagem || '',
-                  stage_name: step.etapa,
-                  stage_order: index
-                };
-              }
-              return null;
-            }).filter(Boolean);
-
-            if (formattedCampaignSteps.length > 0) {
-              // Se já temos alguns passos do banco de dados, apenas adicione os que faltam
-              if (allSteps.length > 0) {
-                // Verificar quais etapas já existem
-                const existingStageNames = new Set(allSteps.map(step => step.etapa));
-                const newSteps = formattedCampaignSteps.filter((step: any) => !existingStageNames.has(step.etapa));
-                allSteps.push(...newSteps);
-              } else {
-                allSteps.push(...formattedCampaignSteps);
-              }
+      // IMPORTANTE: Agora apenas buscaremos os dados específicos desta campanha,
+      // não todos os estágios do sistema
+      
+      // Buscar detalhes da campanha para obter etapas específicas
+      const campaign: any = await this.getCampaign(campaignId);
+      const campaignSteps: CampaignStep[] = [];
+      
+      // Verificar se a campanha tem etapas
+      if (campaign && campaign.steps) {
+        console.log(`Campanha ${campaignId} encontrada, processando ${typeof campaign.steps === 'string' ? 'JSON' : 'object'} de passos`);
+        
+        // Se steps for string (JSON), converter para objeto com tratamento de erro
+        let stepsData = [];
+        if (typeof campaign.steps === 'string') {
+          try {
+            // Verificar se é uma string vazia ou inválida
+            const stepsString = campaign.steps;
+            if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
+              stepsData = JSON.parse(stepsString);
             }
+          } catch (err) {
+            console.error(`Erro ao analisar steps da campanha ${campaignId}:`, err);
+            // Continuar com array vazio em caso de erro
           }
-        } catch (campaignError) {
-          console.error('Error fetching campaign data:', campaignError);
+        } else {
+          stepsData = campaign.steps || [];
         }
+        
+        // Se tem passos, formatar e retornar apenas estes passos específicos
+        if (Array.isArray(stepsData) && stepsData.length > 0) {
+          console.log(`Processando ${stepsData.length} passos específicos da campanha`);
+          
+          // Mapear para o formato esperado
+          const formattedCampaignSteps: any = stepsData.map((step: any, index: number) => {
+            if (step.stage_name) {
+              return {
+                id: step.id || `campaign-step-${index}`,
+                etapa: step.stage_name,
+                tempo_de_espera: step.wait_time || '',
+                template_name: step.template_name || '',
+                message: step.message || '',
+                stage_id: step.stage_id || '',
+                stage_name: step.stage_name,
+                stage_order: step.stage_order || index
+              };
+            } else if (step.etapa) {
+              return {
+                id: step.id || `campaign-step-${index}`,
+                etapa: step.etapa,
+                tempo_de_espera: step.tempo_de_espera || '',
+                template_name: step.template_name || step.nome_template || '',
+                message: step.message || step.mensagem || '',
+                stage_id: step.stage_id || '',
+                stage_name: step.etapa,
+                stage_order: step.stage_order || index
+              };
+            }
+            return null;
+          }).filter(Boolean);
+          
+          campaignSteps.push(...formattedCampaignSteps);
+          console.log(`Retornando ${campaignSteps.length} passos formatados específicos da campanha`);
+        } else {
+          console.log(`Campanha ${campaignId} não tem passos ou formato não reconhecido`);
+        }
+      } else {
+        console.log(`Campanha ${campaignId} não tem passos definidos`);
       }
       
       // Armazenar os dados em cache
       campaignStepsCache[cacheKey] = {
-        data: allSteps,
+        data: campaignSteps,
         timestamp: now
       };
       
-      return allSteps;
+      return campaignSteps;
     } catch (error) {
       console.error('Error fetching campaign steps:', error);
       throw error;
