@@ -37,6 +37,8 @@ interface CampaignFormHookProps {
   campaignSteps: Step[];
   onSubmit: () => void;
   onCancel: () => void;
+  onRefreshCampaign?: () => Promise<void>;
+  campaignId?: string;
   isLoading: boolean;
   onAddStep?: (newStep: Step) => Promise<boolean>;
   onUpdateStep?: (index: number, updatedStep: Step) => Promise<boolean>;
@@ -57,7 +59,9 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
   onRemoveStep,
   onAddFunnelStage,
   onUpdateFunnelStage,
-  onRemoveFunnelStage
+  onRemoveFunnelStage,
+  onRefreshCampaign,
+  campaignId
 }) => {
   // Acesso ao contexto do formulário
   const { register, control, formState: { errors } } = useFormContext();
@@ -161,7 +165,7 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     try {
       if (editingStepIndex !== null && onUpdateStep) {
         // Estamos editando um passo existente
-        const success = await onUpdateStep(editingStepIndex, { ...newStep });
+        const success = await onUpdateStep(editingStepIndex, newStep);
         if (!success) {
           alert('Erro ao atualizar o estágio no servidor');
           return;
@@ -403,8 +407,15 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
                 render={({ field }) => (
                   <FunnelStagesTabs
                     steps={field.value}
-                    onRemoveStep={handleRemoveStepInternal}
-                    onEditStep={handleEditStep}
+                    funnelStages={funnelStages}
+                    campaignId={campaignId || ''}
+                    onRefreshSteps={() => {
+                      // Recarregar os passos após alterações
+                      if (onRefreshCampaign) {
+                        return onRefreshCampaign();
+                      }
+                      return Promise.resolve();
+                    }}
                   />
                 )}
               />

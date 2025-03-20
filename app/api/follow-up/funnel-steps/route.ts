@@ -61,16 +61,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    console.log("Recebendo requisição POST para criar passo:", body);
+    
     const { 
       funnel_stage_id, 
       name, 
       template_name, 
       wait_time, 
       message_content, 
-      message_category 
+      message_category,
+      auto_respond
     } = body;
     
-    if (!funnel_stage_id || !name || !template_name || !wait_time || !message_content) {
+    if (!funnel_stage_id || !template_name || !wait_time || !message_content) {
       console.error('Dados inválidos para criação de passo:', {
         funnel_stage_id,
         name,
@@ -81,7 +84,6 @@ export async function POST(req: NextRequest) {
       
       const missingFields = [];
       if (!funnel_stage_id) missingFields.push('funnel_stage_id');
-      if (!name) missingFields.push('name');
       if (!template_name) missingFields.push('template_name');
       if (!wait_time) missingFields.push('wait_time');
       if (!message_content) missingFields.push('message_content');
@@ -114,16 +116,23 @@ export async function POST(req: NextRequest) {
     const wait_time_ms = parseTimeString(wait_time);
     
     // Criar o passo
+    const stepData = {
+      funnel_stage_id,
+      name: name || template_name,
+      template_name,
+      wait_time,
+      wait_time_ms,
+      message_content,
+      message_category: message_category || 'Utility'
+    };
+    
+    // Adicionar auto_respond se estiver presente
+    if (auto_respond !== undefined) {
+      stepData.auto_respond = auto_respond;
+    }
+    
     const step = await prisma.followUpStep.create({
-      data: {
-        funnel_stage_id,
-        name,
-        template_name,
-        wait_time,
-        wait_time_ms,
-        message_content,
-        message_category
-      }
+      data: stepData
     });
     
     return NextResponse.json(
@@ -151,7 +160,19 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, funnel_stage_id, name, template_name, wait_time, message_content, message_category } = body;
+    console.log("Recebendo requisição PUT para atualizar passo:", body);
+    
+    // Obter os campos necessários para atualização
+    const { 
+      id, 
+      funnel_stage_id, 
+      name, 
+      template_name, 
+      wait_time, 
+      message_content, 
+      message_category,
+      auto_respond
+    } = body;
     
     if (!id) {
       return NextResponse.json(
@@ -178,21 +199,36 @@ export async function PUT(req: NextRequest) {
       );
     }
     
-    // Converter tempo de espera em milissegundos
-    const wait_time_ms = parseTimeString(wait_time);
+    // Preparar dados para atualização com fallback para valores existentes
+    const updateData = {
+      funnel_stage_id: funnel_stage_id || existingStep.funnel_stage_id,
+      name: name || existingStep.name,
+      template_name: template_name || existingStep.template_name,
+      message_content: message_content || existingStep.message_content,
+      message_category: message_category || existingStep.message_category
+    };
+    
+    // Atualizar wait_time se fornecido, e recalcular wait_time_ms
+    if (wait_time) {
+      updateData.wait_time = wait_time;
+      updateData.wait_time_ms = parseTimeString(wait_time);
+    }
+    
+    // Adicionar auto_respond se definido
+    if (auto_respond !== undefined) {
+      updateData.auto_respond = auto_respond;
+    }
+    
+    // Log para ajudar na depuração
+    console.log('Dados para atualização do passo:', {
+      id,
+      ...updateData
+    });
     
     // Atualizar o passo
     const updatedStep = await prisma.followUpStep.update({
       where: { id },
-      data: {
-        funnel_stage_id,
-        name,
-        template_name,
-        wait_time,
-        wait_time_ms,
-        message_content,
-        message_category
-      }
+      data: updateData
     });
     
     return NextResponse.json({

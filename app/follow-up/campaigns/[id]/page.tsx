@@ -278,11 +278,23 @@ export default function EditCampaignPage() {
   // Função para atualizar uma etapa do funil
   const handleUpdateFunnelStage = async (stageId: string, updatedStage: Partial<FunnelStage>): Promise<boolean> => {
     try {
-      await followUpService.updateFunnelStage(stageId, {
-        name: updatedStage.name || '',
+      console.log('Atualizando estágio do funil:', stageId, updatedStage);
+      
+      if (!updatedStage.name) {
+        console.error('Nome do estágio é obrigatório');
+        alert('Nome do estágio é obrigatório');
+        return false;
+      }
+      
+      const result = await followUpService.updateFunnelStage(stageId, {
+        name: updatedStage.name,
         description: updatedStage.description,
         order: updatedStage.order
       });
+      
+      if (!result) {
+        throw new Error('Resposta da API não contém dados');
+      }
 
       // Atualizar apenas a lista de estágios
       const stages = await followUpService.getFunnelStages(campaignId);
@@ -291,6 +303,7 @@ export default function EditCampaignPage() {
       return true;
     } catch (error) {
       console.error('Erro ao atualizar estágio do funil:', error);
+      alert('Erro ao atualizar estágio do funil');
       return false;
     }
   };
@@ -416,6 +429,8 @@ export default function EditCampaignPage() {
               onAddFunnelStage={handleAddFunnelStage}
               onUpdateFunnelStage={handleUpdateFunnelStage}
               onRemoveFunnelStage={handleRemoveFunnelStage}
+              onRefreshCampaign={fetchAllData}
+              campaignId={campaignId}
             />
           </FormProvider>
         )}

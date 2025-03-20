@@ -168,20 +168,37 @@ export const followUpService = {
     }
   },
 
-  // NOVA FUNÇÃO: Atualizar um passo específico
+  // Função para atualizar um passo específico
   async updateStep(stepId: string, data: Partial<FunnelStep>): Promise<any> {
     try {
-      const response = await axios.put('/api/follow-up/funnel-steps', {
+      console.log('Atualizando passo:', stepId, JSON.stringify(data, null, 2));
+      
+      // No frontend, temos os dados no formato:
+      // id, stage_id, stage_name, template_name, wait_time, message, category, auto_respond
+      
+      // Manter o formato original do frontend para a nova API
+      const requestData = {
         id: stepId,
-        ...data
-      });
-
+        stage_id: data.stage_id,
+        stage_name: data.stage_name,
+        template_name: data.template_name,
+        wait_time: data.wait_time,
+        message: data.message,
+        category: data.category,
+        auto_respond: data.auto_respond
+      };
+      
+      console.log('Enviando dados para atualização:', JSON.stringify(requestData, null, 2));
+      
+      // Usar a rota alternativa que aceita o formato do frontend
+      const response = await axios.put('/api/follow-up/steps', requestData);
+      
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update step');
       }
       
       this.clearCampaignCache();
-
+      
       return response.data;
     } catch (error) {
       console.error('Error updating step:', error);
@@ -371,7 +388,30 @@ export const followUpService = {
   // Função para atualizar uma campanha
   async updateCampaign(campaignId: string, formData: any): Promise<any> {
     try {
-      const response = await axios.put(`/api/follow-up/campaigns/${campaignId}`, formData);
+      // Preparar os dados - garantir que steps tem o formato correto
+      const preparedData = { ...formData };
+      
+      // Se os steps forem fornecidos como array, serializá-los
+      if (preparedData.steps && Array.isArray(preparedData.steps)) {
+        // Garantir que cada step tenha todos os campos necessários
+        const formattedSteps = preparedData.steps.map(step => ({
+          id: step.id || undefined,
+          stage_id: step.stage_id || '',
+          stage_name: step.stage_name || '',
+          template_name: step.template_name || '',
+          wait_time: step.wait_time || '',
+          message: step.message || '',
+          category: step.category || 'Utility',
+          auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
+        }));
+        
+        // Atribuir os steps formatados
+        preparedData.steps = formattedSteps;
+      }
+      
+      console.log('Enviando dados formatados para atualização:', JSON.stringify(preparedData, null, 2));
+      
+      const response = await axios.put(`/api/follow-up/campaigns/${campaignId}`, preparedData);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update campaign');
