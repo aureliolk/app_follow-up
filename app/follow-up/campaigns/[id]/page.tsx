@@ -41,43 +41,27 @@ export default function EditCampaignPage() {
     setIsLoadingSteps(true);
 
     try {
-<<<<<<< HEAD
       // Carregar a campanha
-=======
-
-      // Primeiro, carregar a campanha
->>>>>>> a63b4a7 (Point For Fix Edit Campanigs)
       const campaignData = await followUpService.getCampaign(campaignId);
+      console.log(campaignData)
       
       // Buscar os estágios específicos desta campanha
       const stages = await followUpService.getFunnelStages(campaignId);
       
-<<<<<<< HEAD
       // Buscar os passos específicos desta campanha
-=======
-      // Por fim, buscar os passos específicos desta campanha
->>>>>>> a63b4a7 (Point For Fix Edit Campanigs)
       const steps = await followUpService.getCampaignSteps(campaignId);
       
-<<<<<<< HEAD
-=======
-
->>>>>>> a63b4a7 (Point For Fix Edit Campanigs)
       // Atualizar os estados com os dados carregados
       setCampaign(campaignData);
       setFunnelStages(stages);
       setCampaignSteps(steps);
       
-<<<<<<< HEAD
       // Atualizar o formulário com os dados carregados
       methods.reset({
         name: campaignData.name,
         description: campaignData.description || '',
         steps: steps
       });
-=======
-      console.log(campaignData)
->>>>>>> a63b4a7 (Point For Fix Edit Campanigs)
     } catch (err: any) {
       console.error('Erro ao carregar dados:', err);
       setError(err.message || 'Erro ao carregar dados');
