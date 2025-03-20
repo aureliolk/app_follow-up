@@ -32,6 +32,7 @@ export default function CampaignsPage() {
         const campaignsResponse = await axios.get('/api/follow-up/campaigns');
         if (campaignsResponse.data.success) {
           setCampaigns(campaignsResponse.data.data);
+          console.log(campaignsResponse.data.data)
         }
 
         // Carregar estágios do funil

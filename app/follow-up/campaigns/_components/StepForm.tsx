@@ -41,6 +41,7 @@ const StepForm: React.FC<StepFormProps> = ({
   isLoading,
   selectedStage
 }) => {
+  console.log('New Step', newStep)
   // Se temos um estágio pré-selecionado e não estamos editando, atualizar newStep
   React.useEffect(() => {
     if (selectedStage && !isEditing && !newStep.stage_id) {

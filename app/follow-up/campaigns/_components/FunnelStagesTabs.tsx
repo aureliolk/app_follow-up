@@ -258,6 +258,7 @@ const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({
 
       {/* Conteúdo da guia ativa */}
       <div className="p-4">
+<<<<<<< HEAD
         {activeSteps.length > 0 ? (
           <table className="min-w-full divide-y divide-gray-600">
             <thead className="bg-gray-800/50">
@@ -272,6 +273,24 @@ const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({
             <tbody className="divide-y divide-gray-600">
               {activeSteps.map((step, idx) => (
                 <tr key={step.id || `step-${idx}-${step.template_name}`} className="hover:bg-gray-600/30">
+=======
+        <table className="min-w-full divide-y divide-gray-600">
+          <thead className="bg-gray-800/50">
+            <tr>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Ordem</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Template</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Tempo de Espera</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Categoria</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Mensagem</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-400">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-600">
+            {activeSteps.map((step, idx) => {
+              const stepIndex = getStepIndex(step);
+              return (
+                <tr key={`${step.id || ''}-${idx}`} className="hover:bg-gray-600/30">
+>>>>>>> a63b4a7 (Point For Fix Edit Campanigs)
                   <td className="px-4 py-2 text-sm font-medium text-white">
                     {idx + 1}
                   </td>
@@ -280,6 +299,9 @@ const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({
                   </td>
                   <td className="px-4 py-2 text-sm text-gray-300">
                     {step.wait_time}
+                  </td>
+                  <td className="px-4 py-2 text-sm text-gray-300">
+                    {step.category}
                   </td>
                   <td className="px-4 py-2 text-sm text-gray-300">
                     <div className="max-w-md truncate">
