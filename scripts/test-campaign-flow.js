@@ -10,7 +10,8 @@ let CONFIG = {
   clientId: '58',
   timeout: 40000, // Tempo máximo para aguardar cada mensagem (40s)
   responseMessage: 'Esta é uma resposta de teste automático',
-  verbose: true
+  verbose: true,
+  apiKey: 'test-api-key-123456' // Chave de API para testes
 };
 
 // Cores para saída no console
@@ -50,7 +51,11 @@ async function createFollowUp(campaignId, clientId) {
     log('Verificando e cancelando follow-ups existentes...', colors.yellow);
     
     try {
-      const existingResponse = await axios.get(`${CONFIG.baseUrl}/api/follow-up?clientId=${clientId}`);
+      const existingResponse = await axios.get(`${CONFIG.baseUrl}/api/follow-up?clientId=${clientId}`, {
+        headers: {
+          'x-api-key': CONFIG.apiKey
+        }
+      });
       
       if (existingResponse.data.success && existingResponse.data.data?.length > 0) {
         for (const followUp of existingResponse.data.data) {
@@ -59,6 +64,10 @@ async function createFollowUp(campaignId, clientId) {
             
             await axios.post(`${CONFIG.baseUrl}/api/follow-up/cancel`, {
               followUpId: followUp.id
+            }, {
+              headers: {
+                'x-api-key': CONFIG.apiKey
+              }
             });
           }
         }
@@ -75,6 +84,10 @@ async function createFollowUp(campaignId, clientId) {
         source: 'Teste Automatizado',
         test_run: true,
         timestamp: new Date().toISOString()
+      }
+    }, {
+      headers: {
+        'x-api-key': CONFIG.apiKey
       }
     });
     
@@ -101,8 +114,15 @@ async function createFollowUp(campaignId, clientId) {
 async function getCampaignStages(campaignId) {
   try {
     log(`Buscando estágios da campanha ${campaignId}...`, colors.cyan);
+    log(`URL: ${CONFIG.baseUrl}/api/follow-up/funnel-stages?campaignId=${campaignId}`, colors.yellow);
     
-    const response = await axios.get(`${CONFIG.baseUrl}/api/follow-up/funnel-stages?campaignId=${campaignId}`);
+    const response = await axios.get(`${CONFIG.baseUrl}/api/follow-up/funnel-stages?campaignId=${campaignId}`, {
+      headers: {
+        'x-api-key': CONFIG.apiKey
+      }
+    });
+    
+    log(`Resposta da API: ${JSON.stringify(response.data)}`, colors.yellow);
     
     if (!response.data.success) {
       throw new Error(`API retornou erro: ${response.data.error}`);
@@ -118,9 +138,17 @@ async function getCampaignStages(campaignId) {
     return stages;
   } catch (error) {
     log(`Erro ao buscar estágios: ${error.message}`, colors.red);
-    if (error.response?.data) {
-      log(`Detalhes: ${JSON.stringify(error.response.data)}`, colors.red);
+    if (error.response) {
+      log(`Status: ${error.response.status}`, colors.red);
+      if (error.response.data) {
+        log(`Detalhes: ${JSON.stringify(error.response.data)}`, colors.red);
+      }
+    } else if (error.request) {
+      log(`Erro de conexão: ${error.message}`, colors.red);
+    } else {
+      log(`Erro inesperado: ${error.message}`, colors.red);
     }
+    console.error('Erro completo:', error);
     throw error;
   }
 }
@@ -130,7 +158,11 @@ async function getCampaignStages(campaignId) {
  */
 async function getFollowUpStatus(followUpId) {
   try {
-    const response = await axios.get(`${CONFIG.baseUrl}/api/follow-up/status?id=${followUpId}`);
+    const response = await axios.get(`${CONFIG.baseUrl}/api/follow-up/status?id=${followUpId}`, {
+      headers: {
+        'x-api-key': CONFIG.apiKey
+      }
+    });
     
     if (!response.data.success) {
       throw new Error(`API retornou erro: ${response.data.error}`);
@@ -148,7 +180,11 @@ async function getFollowUpStatus(followUpId) {
  */
 async function getFollowUpMessages(followUpId) {
   try {
-    const response = await axios.get(`${CONFIG.baseUrl}/api/follow-up/messages?followUpId=${followUpId}`);
+    const response = await axios.get(`${CONFIG.baseUrl}/api/follow-up/messages?followUpId=${followUpId}`, {
+      headers: {
+        'x-api-key': CONFIG.apiKey
+      }
+    });
     
     if (!response.data.success) {
       throw new Error(`API retornou erro: ${response.data.error}`);
@@ -255,6 +291,10 @@ async function simulateClientResponse(clientId, message = CONFIG.responseMessage
     const response = await axios.post(`${CONFIG.baseUrl}/api/follow-up/client-response`, {
       clientId,
       message
+    }, {
+      headers: {
+        'x-api-key': CONFIG.apiKey
+      }
     });
     
     if (!response.data.success) {
@@ -278,6 +318,10 @@ async function resumeFollowUp(followUpId) {
     
     const response = await axios.post(`${CONFIG.baseUrl}/api/follow-up/resume`, {
       followUpId
+    }, {
+      headers: {
+        'x-api-key': CONFIG.apiKey
+      }
     });
     
     if (!response.data.success) {
