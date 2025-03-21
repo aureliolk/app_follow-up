@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { SearchBar, ErrorMessage, Footer, MainNavigation } from '../campaigns/_components/index';
+import { SearchBar, ErrorMessage } from '../campaigns/_components/index';
 import CampaignFormHook from '../campaigns/_components/CampaignFormHook';
 import { useForm, FormProvider } from 'react-hook-form';
 import Link from 'next/link';
@@ -134,8 +134,6 @@ export default function CampaignsPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
-      <MainNavigation />
-      
       <main className="flex-1 container mx-auto px-4 py-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold mb-4">Campanhas de Follow-up</h1>
@@ -275,8 +273,6 @@ export default function CampaignsPage() {
           )}
         </div>
       </main>
-      
-      <Footer />
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from 'react-hot-toast';
 import "./globals.css";
 import SessionProvider from "@/components/session-provider";
+import Header from "@/components/header";
+import Footer from "@/components/footer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FollowUpAI - Intelligent Follow-up System",
-  description: "Automate your follow-ups with AI-powered messaging that adapts to client responses.",
+  title: "FollowUpAI - Sistema Inteligente de Follow-up",
+  description: "Automatize seus follow-ups com mensagens potencializadas por IA que se adaptam às respostas dos clientes.",
 };
 
 export default function RootLayout({
@@ -29,7 +31,11 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} >
         <Toaster position="top-right" />
         <SessionProvider>
-          {children}
+          <div className="flex flex-col min-h-screen">
+            <Header />
+            <main className="flex-grow pt-16">{children}</main>
+            <Footer />
+          </div>
         </SessionProvider>
       </body>
     </html>

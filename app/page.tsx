@@ -32,48 +32,6 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
-      {/* Navbar */}
-      <nav 
-        className={`fixed w-full z-10 transition-all duration-300 ${
-          isScrolled ? 'bg-[#0a0a0a] shadow-lg py-2' : 'bg-transparent py-4'
-        }`}
-      >
-        <div className="container mx-auto px-4 flex justify-between items-center">
-          <div className="flex items-center">
-            <div className="h-10 w-10 bg-[#F54900] rounded-md flex items-center justify-center mr-2">
-              <MessageSquare className="h-6 w-6 text-white" />
-            </div>
-            <span className="text-xl font-bold">FollowUpAI</span>
-          </div>
-          
-          <div className="flex items-center gap-6">
-            <Link 
-              href="#features" 
-              className="hidden md:block text-gray-300 hover:text-white transition-colors"
-            >
-              Recursos
-            </Link>
-            <Link 
-              href="#how-it-works" 
-              className="hidden md:block text-gray-300 hover:text-white transition-colors"
-            >
-              Como funciona
-            </Link>
-            <Link 
-              href="/auth/login" 
-              className="px-4 py-2 bg-[#F54900] hover:bg-[#D93C00] rounded-md transition-colors"
-            >
-              Entrar
-            </Link>
-            <Link 
-              href="/auth/register" 
-              className="hidden md:block px-4 py-2 border border-[#F54900] text-[#F54900] hover:bg-[#F54900] hover:text-white rounded-md transition-colors"
-            >
-              Cadastre-se
-            </Link>
-          </div>
-        </div>
-      </nav>
 
       {/* Hero Section */}
       <section className="pt-32 pb-20 px-4">
@@ -260,27 +218,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-10 px-4 border-t border-gray-800">
-        <div className="container mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="flex items-center mb-4 md:mb-0">
-              <div className="h-8 w-8 bg-[#F54900] rounded-md flex items-center justify-center mr-2">
-                <MessageSquare className="h-5 w-5 text-white" />
-              </div>
-              <span className="text-lg font-bold">FollowUpAI</span>
-            </div>
-            <div className="flex gap-6">
-              <Link href="#" className="text-gray-400 hover:text-white">Privacidade</Link>
-              <Link href="#" className="text-gray-400 hover:text-white">Termos</Link>
-              <Link href="#" className="text-gray-400 hover:text-white">Contato</Link>
-            </div>
-          </div>
-          <div className="mt-8 text-center text-gray-500 text-sm">
-            © 2025 FollowUpAI. Todos os direitos reservados.
-          </div>
-        </div>
-      </footer>
 
       {/* Add some global styles for animations */}
       <style jsx global>{`

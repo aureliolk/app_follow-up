@@ -11,9 +11,7 @@ import {
   ActionBar,
   NewFollowUpForm,
   FollowUpTable,
-  FollowUpDetailModal,
-  Footer,
-  MainNavigation
+  FollowUpDetailModal
 } from '../follow-up/campaigns/_components';
 
 // Importando os tipos e serviços
@@ -158,8 +156,6 @@ export default function FollowUpPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
-      <MainNavigation />
-      
       <div className="flex-1 container mx-auto px-4 py-6">
         {/* Super Admin Badge */}
         {isSuperAdmin && (
@@ -230,8 +226,6 @@ export default function FollowUpPage() {
 
         </div>
       </div>
-      
-      <Footer />
     </div>
   );
 }
