@@ -4,163 +4,140 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm, FormProvider } from 'react-hook-form';
 import { ErrorMessage, Footer, MainNavigation } from '../../campaigns/_components/index';
-import CampaignForm from '../../campaigns/_components/CampaignFormHook'; // Vamos criar este componente
+import CampaignFormHook from '../../campaigns/_components/CampaignFormHook';
 import Link from 'next/link';
 import followUpService from '../../_services/followUpService';
-import { Campaign, CampaignStep, FunnelStage } from '../../_types';
-import CampaignFormHook from '../../campaigns/_components/CampaignFormHook';
+import { toast } from 'react-hot-toast';
 
-// Definir os tipos para os formulários
-type CampaignFormData = {
+// Tipo simplificado para os dados da campanha
+interface CampaignFormData {
   name: string;
   description: string;
-  steps: CampaignStep[];
-};
+  steps: any[];
+}
 
-// Componente principal de edição de campanha
 export default function EditCampaignPage() {
   const params = useParams();
   const router = useRouter();
   const campaignId = Array.isArray(params.id) ? params.id[0] : params.id as string;
 
-  // Estados
-  const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [campaignSteps, setCampaignSteps] = useState<CampaignStep[]>([]);
+  // Estados simplificados
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingSteps, setIsLoadingSteps] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [funnelStages, setFunnelStages] = useState<FunnelStage[]>([]);
+  
+  // Dados da campanha
+  const [campaignData, setCampaignData] = useState<any>(null);
   
   // Inicializar react-hook-form
-  const methods = useForm<CampaignFormData>();
-  
-  // Buscar todos os dados necessários
-  const fetchAllData = async () => {
+  const methods = useForm<CampaignFormData>({
+    defaultValues: {
+      name: '',
+      description: '',
+      steps: []
+    }
+  });
+
+  // Função para carregar os dados da campanha
+  const fetchCampaignData = async () => {
     setIsLoading(true);
-    setIsLoadingSteps(true);
+    setError(null);
 
     try {
-      // Carregar a campanha
-      const campaignData = await followUpService.getCampaign(campaignId);
-      console.log(campaignData)
+      // Limpar o cache para garantir dados atualizados
+      followUpService.clearCampaignCache(campaignId);
       
-      // Buscar os estágios específicos desta campanha
-      const stages = await followUpService.getFunnelStages(campaignId);
+      // Carregar a campanha - esta é a única chamada de API necessária
+      const data = await followUpService.getCampaign(campaignId);
       
-      // Buscar os passos específicos desta campanha
-      const steps = await followUpService.getCampaignSteps(campaignId);
-      
-      // Atualizar os estados com os dados carregados
-      setCampaign(campaignData);
-      setFunnelStages(stages);
-      setCampaignSteps(steps);
+      // Armazenar os dados da campanha
+      setCampaignData(data);
       
       // Atualizar o formulário com os dados carregados
       methods.reset({
-        name: campaignData.name,
-        description: campaignData.description || '',
-        steps: steps
+        name: data.name,
+        description: data.description || '',
+        steps: Array.isArray(data.steps) ? data.steps : []
       });
     } catch (err: any) {
-      console.error('Erro ao carregar dados:', err);
-      setError(err.message || 'Erro ao carregar dados');
+      console.error('Erro ao carregar dados da campanha:', err);
+      setError(err.message || 'Erro ao carregar dados da campanha');
+      toast.error('Falha ao carregar campanha. Tente novamente.');
     } finally {
       setIsLoading(false);
-      setIsLoadingSteps(false);
     }
   };
 
-  // Efeito para carregar todos os dados de uma só vez
+  // Carregar dados quando a página é montada
   useEffect(() => {
-    // Limpar dados antigos quando o ID da campanha mudar
-    setFunnelStages([]);
-    setCampaignSteps([]);
-    
-    // Limpar o cache para garantir dados atualizados
-    followUpService.clearCampaignCache(campaignId);
-    
-    fetchAllData();
+    fetchCampaignData();
   }, [campaignId]);
 
-  // Função unificada para remover um estágio
-  const handleRemoveStep = async (index: number, step?: CampaignStep): Promise<boolean> => {
-    // Se step não foi fornecido, obtê-lo a partir do índice
-    const stepToRemove = step || campaignSteps[index];
+  // Função para remover um estágio
+  const handleRemoveStep = async (index: number, step?: any): Promise<boolean> => {
+    if (!campaignData || !campaignData.steps) return false;
     
-    // Validar o índice
-    if (index < 0 || index >= campaignSteps.length) {
-      console.error(`Erro ao remover estágio: índice inválido ${index}`);
-      alert('Índice de estágio inválido');
+    // Obter o estágio a ser removido
+    const stepToRemove = step || campaignData.steps[index];
+    
+    // Validar o estágio
+    if (!stepToRemove || !stepToRemove.id) {
+      toast.error('Erro: Estágio inválido ou sem identificação');
       return false;
     }
 
-    if (!stepToRemove.id) {
-      console.error('Estágio sem ID não pode ser removido');
-      alert('Erro: Estágio sem identificação não pode ser removido');
-      return false;
-    }
-
-    // Pedir confirmação
+    // Confirmar remoção
     if (!confirm(`Tem certeza que deseja remover o estágio "${stepToRemove.template_name}" da etapa "${stepToRemove.stage_name}"?`)) {
       return false;
     }
 
-    setIsLoadingSteps(true);
+    setIsSubmitting(true);
 
     try {
       // Excluir o estágio no servidor
       const success = await followUpService.deleteStep(stepToRemove.id);
       
       if (success) {
-        // Atualizar o estado local removendo o estágio
-        const newSteps = [...campaignSteps];
-        newSteps.splice(index, 1);
-        setCampaignSteps(newSteps);
-        
-        // Atualizar também o formulário
-        methods.setValue('steps', newSteps);
-        
+        // Não precisamos atualizar o estado local, vamos recarregar os dados
+        await fetchCampaignData();
+        toast.success('Estágio removido com sucesso');
         return true;
       } else {
-        alert('Erro ao remover o estágio no servidor');
+        toast.error('Falha ao remover estágio');
         return false;
       }
     } catch (error) {
       console.error('Erro ao remover estágio:', error);
-      alert('Ocorreu um erro ao remover o estágio');
+      toast.error('Ocorreu um erro ao remover o estágio');
       return false;
     } finally {
-      setIsLoadingSteps(false);
+      setIsSubmitting(false);
     }
   };
 
   // Função para adicionar um estágio
-  const handleAddStep = async (newStep: CampaignStep): Promise<boolean> => {
-    setIsLoadingSteps(true);
-    
-    try {
-      // Verificar se temos os dados mínimos necessários
-      if (!newStep.stage_id || !newStep.template_name || !newStep.wait_time || !newStep.message) {
-        console.error('Dados incompletos para criar um novo estágio:', newStep);
-        
-        const missingFields = [];
-        if (!newStep.stage_id) missingFields.push('etapa do funil');
-        if (!newStep.template_name) missingFields.push('nome do template');
-        if (!newStep.wait_time) missingFields.push('tempo de espera');
-        if (!newStep.message) missingFields.push('mensagem');
-        
-        alert(`Por favor, preencha todos os campos obrigatórios: ${missingFields.join(', ')}`);
-        return false;
-      }
+  const handleAddStep = async (newStep: any): Promise<boolean> => {
+    if (!newStep.stage_id || !newStep.template_name || !newStep.wait_time || !newStep.message) {
+      const missingFields = [];
+      if (!newStep.stage_id) missingFields.push('etapa do funil');
+      if (!newStep.template_name) missingFields.push('nome do template');
+      if (!newStep.wait_time) missingFields.push('tempo de espera');
+      if (!newStep.message) missingFields.push('mensagem');
+      
+      toast.error(`Por favor, preencha todos os campos obrigatórios: ${missingFields.join(', ')}`);
+      return false;
+    }
 
+    setIsSubmitting(true);
+
+    try {
       // Mapear dados para o formato esperado pela API
       const stepData = {
         funnel_stage_id: newStep.stage_id,
-        name: newStep.template_name || 'Novo Estágio',
-        template_name: newStep.template_name || 'template_default',
-        wait_time: newStep.wait_time || '30 minutos',
-        message_content: newStep.message || '',
+        name: newStep.template_name,
+        template_name: newStep.template_name,
+        wait_time: newStep.wait_time,
+        message_content: newStep.message,
         message_category: newStep.category || 'Utility',
         auto_respond: newStep.auto_respond !== undefined ? newStep.auto_respond : true
       };
@@ -169,53 +146,33 @@ export default function EditCampaignPage() {
       const response = await followUpService.createStep(stepData);
       
       if (response.success) {
-        // Obter o estágio criado
-        const createdStep = response.data;
-        
-        // Criar um novo objeto CampaignStep com os dados retornados
-        const newCampaignStep: CampaignStep = {
-          id: createdStep.id,
-          stage_id: createdStep.funnel_stage_id,
-          stage_name: funnelStages.find(s => s.id === createdStep.funnel_stage_id)?.name || 'Estágio desconhecido',
-          template_name: createdStep.template_name,
-          wait_time: createdStep.wait_time,
-          message: createdStep.message_content,
-          category: createdStep.message_category,
-          auto_respond: createdStep.auto_respond
-        };
-        
-        // Atualizar o estado local
-        const updatedSteps = [...campaignSteps, newCampaignStep];
-        setCampaignSteps(updatedSteps);
-        
-        // Atualizar também o formulário
-        methods.setValue('steps', updatedSteps);
-        
+        // Recarregar a campanha para obter os dados atualizados
+        await fetchCampaignData();
+        toast.success('Estágio adicionado com sucesso');
         return true;
       } else {
-        alert('Erro ao adicionar estágio');
+        toast.error('Falha ao adicionar estágio');
         return false;
       }
     } catch (error) {
       console.error('Erro ao adicionar estágio:', error);
-      alert('Ocorreu um erro ao adicionar o estágio');
+      toast.error('Ocorreu um erro ao adicionar o estágio');
       return false;
     } finally {
-      setIsLoadingSteps(false);
+      setIsSubmitting(false);
     }
   };
 
   // Função para atualizar um estágio
-  const handleUpdateStep = async (index: number, updatedStep: CampaignStep): Promise<boolean> => {
-    setIsLoadingSteps(true);
-    
-    try {
-      if (!updatedStep.id) {
-        console.error('Estágio sem ID não pode ser atualizado');
-        alert('Erro: Estágio sem identificação não pode ser atualizado');
-        return false;
-      }
+  const handleUpdateStep = async (index: number, updatedStep: any): Promise<boolean> => {
+    if (!updatedStep.id) {
+      toast.error('Erro: Estágio sem identificação não pode ser atualizado');
+      return false;
+    }
 
+    setIsSubmitting(true);
+
+    try {
       // Mapear dados para o formato esperado pela API
       const stepData = {
         id: updatedStep.id,
@@ -232,126 +189,108 @@ export default function EditCampaignPage() {
       const response = await followUpService.updateStep(updatedStep.id, stepData);
       
       if (response.success) {
-        // Atualizar o estado local
-        const newSteps = [...campaignSteps];
-        newSteps[index] = updatedStep;
-        setCampaignSteps(newSteps);
-        
-        // Atualizar também o formulário
-        methods.setValue('steps', newSteps);
-        
+        // Recarregar a campanha para obter os dados atualizados
+        await fetchCampaignData();
+        toast.success('Estágio atualizado com sucesso');
         return true;
       } else {
-        alert('Erro ao atualizar estágio');
+        toast.error('Falha ao atualizar estágio');
         return false;
       }
     } catch (error) {
       console.error('Erro ao atualizar estágio:', error);
-      alert('Ocorreu um erro ao atualizar o estágio');
+      toast.error('Ocorreu um erro ao atualizar o estágio');
       return false;
     } finally {
-      setIsLoadingSteps(false);
+      setIsSubmitting(false);
     }
   };
 
   // Função para adicionar uma etapa do funil
-  const handleAddFunnelStage = async (newStage: Omit<FunnelStage, 'id'>): Promise<boolean> => {
+  const handleAddFunnelStage = async (newStage: any): Promise<boolean> => {
+    setIsSubmitting(true);
+    
     try {
-      // Adicionar o ID da campanha ao criar um novo estágio
-      const createdStage = await followUpService.createFunnelStage(
+      // Adicionar etapa vinculada à campanha
+      await followUpService.createFunnelStage(
         newStage.name,
         newStage.description,
         newStage.order,
         campaignId
       );
 
-      // Atualizar apenas a lista de estágios
-      const stages = await followUpService.getFunnelStages(campaignId);
-      setFunnelStages(stages);
-
+      // Recarregar os dados da campanha
+      await fetchCampaignData();
+      toast.success('Etapa do funil adicionada com sucesso');
       return true;
     } catch (error) {
-      console.error('Erro ao adicionar estágio do funil:', error);
+      console.error('Erro ao adicionar etapa do funil:', error);
+      toast.error('Falha ao adicionar etapa do funil');
       return false;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Função para atualizar uma etapa do funil
-  const handleUpdateFunnelStage = async (stageId: string, updatedStage: Partial<FunnelStage>): Promise<boolean> => {
+  const handleUpdateFunnelStage = async (stageId: string, updatedStage: any): Promise<boolean> => {
+    if (!updatedStage.name) {
+      toast.error('Nome da etapa é obrigatório');
+      return false;
+    }
+    
+    setIsSubmitting(true);
+    
     try {
-      console.log('Atualizando estágio do funil:', stageId, updatedStage);
-      
-      if (!updatedStage.name) {
-        console.error('Nome do estágio é obrigatório');
-        alert('Nome do estágio é obrigatório');
-        return false;
-      }
-      
-      const result = await followUpService.updateFunnelStage(stageId, {
+      await followUpService.updateFunnelStage(stageId, {
         name: updatedStage.name,
         description: updatedStage.description,
         order: updatedStage.order
       });
       
-      if (!result) {
-        throw new Error('Resposta da API não contém dados');
-      }
-
-      // Atualizar apenas a lista de estágios
-      const stages = await followUpService.getFunnelStages(campaignId);
-      setFunnelStages(stages);
-
+      // Recarregar os dados da campanha
+      await fetchCampaignData();
+      toast.success('Etapa do funil atualizada com sucesso');
       return true;
     } catch (error) {
-      console.error('Erro ao atualizar estágio do funil:', error);
-      alert('Erro ao atualizar estágio do funil');
+      console.error('Erro ao atualizar etapa do funil:', error);
+      toast.error('Falha ao atualizar etapa do funil');
       return false;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Função para remover uma etapa do funil
   const handleRemoveFunnelStage = async (stageId: string): Promise<boolean> => {
-    try {
-      // Primeiro verificar se há passos associados a esta etapa na campanha atual
-      const currentSteps = campaignSteps.filter((step: any) => step.stage_id === stageId);
-      
-      if (currentSteps.length > 0) {
-        // Perguntar ao usuário se deseja remover todos os passos junto com a etapa
-        if (!confirm(`Esta etapa contém ${currentSteps.length} estágios. Todos eles serão removidos. Deseja continuar?`)) {
-          return false;
-        }
-        
-        // Remover cada passo associado à etapa
-        for (const step of currentSteps) {
-          if (step.id) {
-            try {
-              await followUpService.deleteStep(step.id);
-            } catch (stepError) {
-              console.error(`Erro ao remover passo ${step.id}:`, stepError);
-              // Continuar removendo os outros passos
-            }
-          }
-        }
+    if (!campaignData || !campaignData.steps) return false;
+    
+    // Verificar se há passos associados a esta etapa
+    const stepsInStage = campaignData.steps.filter((step: any) => step.stage_id === stageId);
+    
+    if (stepsInStage.length > 0) {
+      // Confirmar com o usuário
+      if (!confirm(`Esta etapa contém ${stepsInStage.length} estágios. Todos eles serão removidos. Deseja continuar?`)) {
+        return false;
       }
-      
-      // Agora remover a etapa do funil
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Remover a etapa do funil
       await followUpService.deleteFunnelStage(stageId);
-
-      // Atualizar dados 
-      const [stages, updatedSteps] = await Promise.all([
-        followUpService.getFunnelStages(campaignId),
-        followUpService.getCampaignSteps(campaignId)
-      ]);
-
-      setFunnelStages(stages);
-      setCampaignSteps(updatedSteps);
-      methods.setValue('steps', updatedSteps);
-
+      
+      // Recarregar dados da campanha
+      await fetchCampaignData();
+      toast.success('Etapa do funil removida com sucesso');
       return true;
     } catch (error: any) {
-      console.error('Erro ao remover estágio do funil:', error);
-      alert(`Erro ao remover etapa: ${error.message || 'Erro desconhecido'}`);
+      console.error('Erro ao remover etapa do funil:', error);
+      toast.error(`Falha ao remover etapa: ${error.message || 'Erro desconhecido'}`);
       return false;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -368,15 +307,16 @@ export default function EditCampaignPage() {
       });
       
       if (response.success) {
-        alert('Campanha atualizada com sucesso!');
+        toast.success('Campanha atualizada com sucesso!');
         // Recarregar os dados para garantir consistência
-        fetchAllData();
+        await fetchCampaignData();
       } else {
-        alert('Erro ao atualizar campanha');
+        toast.error('Falha ao atualizar campanha');
       }
     } catch (error) {
       console.error('Erro ao atualizar campanha:', error);
       setError('Erro ao atualizar campanha');
+      toast.error('Falha ao salvar alterações');
     } finally {
       setIsSubmitting(false);
     }
@@ -397,6 +337,30 @@ export default function EditCampaignPage() {
     );
   }
 
+  // Se não houver dados da campanha
+  if (!campaignData) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex flex-col">
+        <MainNavigation />
+        <main className="flex-1 container mx-auto px-4 py-6">
+          <div className="flex items-center mb-6">
+            <Link
+              href="/follow-up/campaigns"
+              className="text-gray-400 hover:text-white mr-2"
+            >
+              ← Voltar para Campanhas
+            </Link>
+            <h1 className="text-2xl font-bold">Campanha não encontrada</h1>
+          </div>
+          <div className="bg-red-900/50 border border-red-500 text-white p-4 rounded">
+            Não foi possível carregar os dados da campanha. Verifique se o ID é válido.
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
       <MainNavigation />
@@ -410,31 +374,29 @@ export default function EditCampaignPage() {
             ← Voltar para Campanhas
           </Link>
           <h1 className="text-2xl font-bold">
-            {campaign ? `Editar Campanha: ${campaign.name}` : 'Campanha não encontrada'}
+            Editar Campanha: {campaignData.name}
           </h1>
         </div>
 
         {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
 
-        {campaign && (
-          <FormProvider {...methods}>
-            <CampaignFormHook
-              funnelStages={funnelStages}
-              campaignSteps={campaignSteps}
-              onSubmit={onSubmit}
-              onCancel={() => router.push('/follow-up/campaigns')}
-              isLoading={isSubmitting || isLoadingSteps}
-              onAddStep={handleAddStep}
-              onUpdateStep={handleUpdateStep}
-              onRemoveStep={handleRemoveStep}
-              onAddFunnelStage={handleAddFunnelStage}
-              onUpdateFunnelStage={handleUpdateFunnelStage}
-              onRemoveFunnelStage={handleRemoveFunnelStage}
-              onRefreshCampaign={fetchAllData}
-              campaignId={campaignId}
-            />
-          </FormProvider>
-        )}
+        <FormProvider {...methods}>
+          <CampaignFormHook
+            funnelStages={campaignData.stages || []}
+            campaignSteps={campaignData.steps || []}
+            onSubmit={onSubmit}
+            onCancel={() => router.push('/follow-up/campaigns')}
+            isLoading={isSubmitting}
+            onAddStep={handleAddStep}
+            onUpdateStep={handleUpdateStep}
+            onRemoveStep={handleRemoveStep}
+            onAddFunnelStage={handleAddFunnelStage}
+            onUpdateFunnelStage={handleUpdateFunnelStage}
+            onRemoveFunnelStage={handleRemoveFunnelStage}
+            onRefreshCampaign={fetchCampaignData}
+            campaignId={campaignId}
+          />
+        </FormProvider>
       </main>
 
       <Footer />
