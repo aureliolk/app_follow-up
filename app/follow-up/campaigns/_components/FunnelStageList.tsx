@@ -3,7 +3,6 @@
 
 import React, { useState } from 'react';
 import { FunnelStage } from '@/app/follow-up/_types/schema';
-import { FunnelStageFormComponent } from './index';
 
 interface FunnelStageListProps {
   stages: FunnelStage[];
@@ -17,18 +16,14 @@ const FunnelStageList: React.FC<FunnelStageListProps> = ({
   stages,
   onEdit,
   onRemove,
-  campaignId,
   refreshStages
 }) => {
-  const [editingStage, setEditingStage] = useState<FunnelStage | null>(null);
-  const [showEditForm, setShowEditForm] = useState(false);
 
   const handleEdit = (stage: FunnelStage) => {
     if (onEdit) {
       onEdit(stage);
     } else {
-      setEditingStage(stage);
-      setShowEditForm(true);
+      console.warn("Função onEdit não fornecida para FunnelStageList");
     }
   };
 
@@ -59,21 +54,7 @@ const FunnelStageList: React.FC<FunnelStageListProps> = ({
 
   return (
     <div className="bg-gray-700 rounded-lg mb-4">
-      {showEditForm && (
-        <FunnelStageFormComponent
-          campaignId={campaignId}
-          editingStage={editingStage}
-          onStageAdded={() => {
-            setShowEditForm(false);
-            setEditingStage(null);
-            if (refreshStages) refreshStages();
-          }}
-          onCancel={() => {
-            setShowEditForm(false);
-            setEditingStage(null);
-          }}
-        />
-      )}
+      {/* Formulário de edição removido - usar as funções de callback onEdit/onRemove fornecidas pelo componente pai */}
 
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-600">

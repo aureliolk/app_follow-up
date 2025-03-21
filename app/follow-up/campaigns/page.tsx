@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { SearchBar, ErrorMessage, Footer, CampaignForm ,MainNavigation } from '../campaigns/_components/index';
+import { SearchBar, ErrorMessage, Footer, MainNavigation } from '../campaigns/_components/index';
+import CampaignFormHook from '../campaigns/_components/CampaignFormHook';
+import { useForm, FormProvider } from 'react-hook-form';
 import Link from 'next/link';
 
 interface Campaign {
@@ -160,14 +162,15 @@ export default function CampaignsPage() {
           
           {showForm && (
             <div className="mb-6">
-              <CampaignForm 
-                funnelStages={[]} /* Para nova campanha, não carregamos etapas existentes do sistema */
-                /* Importante: não passamos initialData para que seja tratada como nova campanha 
-                   e não carregue etapas de outras campanhas */
-                onSubmit={handleCreateCampaign}
-                onCancel={() => setShowForm(false)}
-                isLoading={isSubmitting}
-              />
+              <FormProvider {...useForm({ defaultValues: { name: '', description: '', steps: [] } })}>
+                <CampaignFormHook 
+                  funnelStages={[]} 
+                  campaignSteps={[]}
+                  onSubmit={handleCreateCampaign}
+                  onCancel={() => setShowForm(false)}
+                  isLoading={isSubmitting}
+                />
+              </FormProvider>
             </div>
           )}
           
