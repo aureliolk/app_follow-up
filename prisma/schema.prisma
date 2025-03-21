@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["follow_up_schema", "products_schema", "prompts_schema", "public"]
+  schemas  = ["follow_up_schema", "products_schema", "prompts_schema", "public", "workspace_schema"]
 }
 
 model Product {
@@ -134,4 +134,126 @@ model FollowUpMessage {
   @@index([follow_up_id, step])
   @@map("follow_up_messages")
   @@schema("follow_up_schema")
+}
+
+// Workspace Models
+model User {
+  id                 String               @id @default(uuid())
+  name               String?
+  email              String               @unique
+  email_verified     DateTime?
+  image              String?
+  password           String?
+  created_at         DateTime             @default(now())
+  updated_at         DateTime             @updatedAt
+  accounts           Account[]
+  sessions           Session[]
+  owned_workspaces   Workspace[]          @relation("WorkspaceOwner")
+  workspace_members  WorkspaceMember[]
+  invitations        WorkspaceInvitation[]
+
+  @@map("users")
+  @@schema("workspace_schema")
+}
+
+model Account {
+  id                  String   @id @default(uuid())
+  user_id             String
+  type                String
+  provider            String
+  provider_account_id String
+  refresh_token       String?  @db.Text
+  access_token        String?  @db.Text
+  expires_at          Int?
+  token_type          String?
+  scope               String?
+  id_token            String?  @db.Text
+  session_state       String?
+  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([provider, provider_account_id])
+  @@map("accounts")
+  @@schema("workspace_schema")
+}
+
+model Session {
+  id            String   @id @default(uuid())
+  session_token String   @unique
+  user_id       String
+  expires       DateTime
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+  @@schema("workspace_schema")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+  @@schema("workspace_schema")
+}
+
+model Workspace {
+  id                String               @id @default(uuid())
+  name              String
+  slug              String               @unique
+  owner_id          String
+  created_at        DateTime             @default(now())
+  updated_at        DateTime             @updatedAt
+  owner             User                 @relation("WorkspaceOwner", fields: [owner_id], references: [id])
+  members           WorkspaceMember[]
+  invitations       WorkspaceInvitation[]
+  follow_up_campaigns WorkspaceFollowUpCampaign[]
+
+  @@map("workspaces")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceMember {
+  id           String     @id @default(uuid())
+  workspace_id String
+  user_id      String
+  role         String     // ADMIN, MEMBER, VIEWER
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
+  workspace    Workspace  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, user_id])
+  @@map("workspace_members")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceInvitation {
+  id           String     @id @default(uuid())
+  workspace_id String
+  email        String
+  role         String     // ADMIN, MEMBER, VIEWER
+  token        String     @unique
+  expires_at   DateTime
+  created_at   DateTime   @default(now())
+  invited_by   String
+  workspace    Workspace  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  inviter      User       @relation(fields: [invited_by], references: [id])
+
+  @@unique([workspace_id, email])
+  @@map("workspace_invitations")
+  @@schema("workspace_schema")
+}
+
+// Junction table to connect workspaces with follow-up campaigns
+model WorkspaceFollowUpCampaign {
+  id           String          @id @default(uuid())
+  workspace_id String
+  campaign_id  String
+  created_at   DateTime        @default(now())
+  workspace    Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, campaign_id])
+  @@map("workspace_follow_up_campaigns")
+  @@schema("workspace_schema")
 }
