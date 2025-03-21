@@ -1,6 +1,6 @@
 // app/api/follow-up/_lib/manager.ts
 import { prisma } from '@/lib/db';
-import { scheduleMessage, cancelScheduledMessages } from './scheduler';
+import { scheduleMessage, cancelScheduledMessages } from './scheduler.ts';
 import path from 'path';
 import fs from 'fs/promises';
 import csv from 'csv-parser';

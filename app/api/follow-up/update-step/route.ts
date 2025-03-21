@@ -1,5 +1,6 @@
+// app/api/follow-up/update-step/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { prisma } from '@/lib/db';
 
 /**
  * API Route for updating a funnel step
@@ -39,7 +40,7 @@ export async function PUT(request: NextRequest) {
     });
 
     // First check if the step exists
-    const existingStep = await db.funnelStep.findUnique({
+    const existingStep = await prisma.funnelStep.findUnique({
       where: { id },
     });
 
@@ -51,7 +52,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Update the step with new data
-    const updatedStep = await db.funnelStep.update({
+    const updatedStep = await prisma.funnelStep.update({
       where: { id },
       data: {
         funnel_stage_id: funnel_stage_id || existingStep.funnel_stage_id,

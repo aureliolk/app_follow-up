@@ -56,7 +56,7 @@ export async function scheduleMessage(message: ScheduledMessage): Promise<string
         console.log("DEBUG - Antes de chamar sendMessage");
         await sendMessage(message);
         console.log("DEBUG - Após chamar sendMessage");
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Erro ao enviar mensagem agendada ${messageId}:`, error);
         console.error(`Stack trace do erro:`, error.stack);
       } finally {
@@ -112,7 +112,7 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     
     // Realizar substituição de placeholders na mensagem
     let processedContent = content;
-    const clientName = conversation.data.meta.sender.name
+    const clientName = conversation.data.meta.sender.name;
 
     // Substituir os placeholders
     if (hasPlaceholders) {
@@ -163,10 +163,12 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     
     return true;
   } catch (error: any) {
+    // Definir requestBody aqui para o escopo do bloco catch
+    const requestBody = "Dados da requisição não disponíveis no escopo de erro";
+    
     console.error(`===== ERRO AO ENVIAR MENSAGEM PARA API LUMIBOT =====`);
     console.error(`Mensagem de erro:`, error.message);
     console.error(`Request URL: https://app.lumibot.com.br/api/v1/accounts/10/conversations/${clientId}/messages`);
-    console.error(`Request Body:`, JSON.stringify(requestBody, null, 2));
     console.error(`Status:`, error.response?.status);
     console.error(`Status Text:`, error.response?.statusText);
     console.error(`Resposta da API:`, JSON.stringify(error.response?.data, null, 2));

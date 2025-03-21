@@ -1,6 +1,7 @@
+// app/api/follow-up/remove-client/route.ts
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { cancelScheduledMessages } from '../_lib/scheduler';
+import { prisma } from '@/lib/db'; 
+import { cancelScheduledMessages } from '../_lib/scheduler.ts';
 
 export async function POST(request: Request) {
   try {

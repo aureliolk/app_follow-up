@@ -1,7 +1,7 @@
 // app/api/follow-up/cancel/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { cancelScheduledMessages } from '../_lib/scheduler';
+import { cancelScheduledMessages } from '../_lib/scheduler.ts';
 import { any, z } from 'zod';
 
 // Schema para validação do corpo da requisição
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { 
             success: false, 
-            error: "Follow-up não encontrado
+            error: "Follow-up não encontrado"
           }, 
           { status: 404 }
         );
@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(
           { 
             success: false, 
-            error: "Follow-up não encontrado
+            error: "Follow-up não encontrado "
           }, 
           { status: 404 }
         );
@@ -256,7 +256,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );

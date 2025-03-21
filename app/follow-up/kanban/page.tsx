@@ -5,12 +5,12 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   SearchBar,
-  KanbanBoard,
+  // KanbanBoard,
   FollowUpDetailModal,
   Footer,
   ErrorMessage
-} from '../_components';
-import MainNavigation from '../_components/MainNavigation';
+} from '../campaigns/_components';
+import MainNavigation from '../campaigns/_components/MainNavigation';
 import { FollowUp } from '../_types';
 import followUpService from '../_services/followUpService';
 
@@ -142,13 +142,13 @@ export default function KanbanPage() {
           
           {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
           
-          <KanbanBoard 
+          {/* <KanbanBoard 
             stages={stages} 
             followUps={filteredFollowUps} 
             isLoading={isLoading} 
             onMoveClient={handleMoveClient} 
             onClientSelect={setSelectedFollowUp} 
-          />
+          /> */}
         </div>
       </main>
       
