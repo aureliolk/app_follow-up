@@ -618,25 +618,46 @@ export async function advanceToNextStep(followUpId: string): Promise<void> {
 // Função para lidar com uma resposta do cliente
 export async function handleClientResponse(
   clientId: string,
-  message: string
+  message: string,
+  followUpId?: string // Novo parâmetro opcional para especificar um follow-up
 ): Promise<void> {
   try {
-    // Buscar todos os follow-ups ativos para este cliente
-    const activeFollowUps = await prisma.followUp.findMany({
-      where: {
-        client_id: clientId,
-        status: { in: ['active', 'paused'] }
-      },
-      include: {
-        campaign: true
+    let activeFollowUps = [];
+
+    // Se um ID específico de follow-up foi fornecido, buscar apenas esse follow-up
+    if (followUpId) {
+      const specificFollowUp = await prisma.followUp.findFirst({
+        where: {
+          id: followUpId,
+          client_id: clientId, // Garantir que pertence ao cliente correto
+          status: { in: ['active', 'paused'] }
+        },
+        include: {
+          campaign: true
+        }
+      });
+
+      if (specificFollowUp) {
+        activeFollowUps = [specificFollowUp];
       }
-    });
+    } else {
+      // Comportamento original: buscar todos os follow-ups ativos para este cliente
+      activeFollowUps = await prisma.followUp.findMany({
+        where: {
+          client_id: clientId,
+          status: { in: ['active', 'paused'] }
+        },
+        include: {
+          campaign: true
+        }
+      });
+    }
 
     if (activeFollowUps.length === 0) {
       return;
     }
 
-    // Para cada follow-up ativo deste cliente
+    // Para cada follow-up ativo deste cliente (ou apenas o específico)
     for (const followUp of activeFollowUps) {
       // IMPORTANTE: Primeiro cancelar TODAS as mensagens agendadas
       await cancelScheduledMessages(followUp.id);

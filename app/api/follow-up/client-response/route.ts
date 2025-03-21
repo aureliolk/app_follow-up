@@ -26,13 +26,14 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Processar a resposta do cliente
-    await handleClientResponse(clientId, message);
+    // Processar a resposta do cliente - agora passando o followUpId opcional
+    await handleClientResponse(clientId, message, followUpId);
 
     return NextResponse.json({
       success: true,
       message: 'Resposta processada com sucesso',
-      clientId
+      clientId,
+      followUpId: followUpId || null
     });
   } catch (error) {
     console.error('Erro ao processar resposta do cliente:', error);

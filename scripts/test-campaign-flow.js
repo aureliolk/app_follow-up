@@ -284,14 +284,21 @@ async function waitForStageChange(followUpId, expectedStageName, timeout = CONFI
 /**
  * Função para simular resposta do cliente
  */
-async function simulateClientResponse(clientId, message = CONFIG.responseMessage) {
+async function simulateClientResponse(clientId, message = CONFIG.responseMessage, followUpId = null) {
   try {
-    log(`Enviando resposta do cliente: "${message}"`, colors.cyan);
+    log(`Enviando resposta do cliente para follow-up ${followUpId || 'todos'}: "${message}"`, colors.cyan);
     
-    const response = await axios.post(`${CONFIG.baseUrl}/api/follow-up/client-response`, {
+    const payload = {
       clientId,
       message
-    }, {
+    };
+    
+    // Adicionar followUpId ao payload apenas se foi fornecido
+    if (followUpId) {
+      payload.followUpId = followUpId;
+    }
+    
+    const response = await axios.post(`${CONFIG.baseUrl}/api/follow-up/client-response`, payload, {
       headers: {
         'x-api-key': CONFIG.apiKey
       }
@@ -301,7 +308,7 @@ async function simulateClientResponse(clientId, message = CONFIG.responseMessage
       throw new Error(`API retornou erro: ${response.data.error}`);
     }
     
-    log(`✓ Resposta do cliente enviada com sucesso`, colors.green);
+    log(`✓ Resposta do cliente enviada com sucesso para follow-up ${response.data.followUpId || 'todos'}`, colors.green);
     return response.data;
   } catch (error) {
     log(`Erro ao enviar resposta do cliente: ${error.message}`, colors.red);
@@ -377,6 +384,21 @@ async function testCampaignFlow(campaignId, clientId) {
       const currentStageName = stageNames[currentStageIndex];
       log(`\n===> PROCESSANDO ETAPA: ${currentStageName} (${currentStageIndex + 1}/${stageNames.length})`, colors.bright + colors.blue);
       
+      // Verificar se esta etapa precisa de resposta manual do cliente antes de iniciar
+      // Isso é determinado pelo comportamento do fluxo da campanha
+      const isSpecialStage = currentStageName === "Qualificado IA" || 
+                            currentStageName === "Fechamento (IA)" ||
+                            currentStageName === "Carrinho Abandonado";
+                            
+      if (isSpecialStage && currentStageIndex > 0) {
+        log(`\n===> ETAPA ESPECIAL DETECTADA: "${currentStageName}" - PODE PRECISAR DE RESPOSTA INICIAL`, colors.bright + colors.blue);
+        log(`Enviando resposta do cliente para iniciar a etapa...`, colors.yellow);
+        await simulateClientResponse(clientId, `Quero saber mais sobre a etapa ${currentStageName}`, followUpId);
+        clientResponses++;
+        // Aguardar um tempo para processar
+        await sleep(2000);
+      }
+      
       // Esperar pela primeira mensagem desta etapa
       const status = await getFollowUpStatus(followUpId);
       let latestMessageIndex = status.current_step;
@@ -444,7 +466,8 @@ async function testCampaignFlow(campaignId, clientId) {
       // Se não é a última etapa, enviar resposta do cliente para avançar
       if (currentStageIndex < stageNames.length - 1) {
         log(`\n===> ENVIANDO RESPOSTA PARA AVANÇAR PARA PRÓXIMA ETAPA`, colors.bright + colors.yellow);
-        await simulateClientResponse(clientId);
+        // Agora passamos o ID específico do follow-up para garantir que apenas este follow-up seja afetado
+        await simulateClientResponse(clientId, CONFIG.responseMessage, followUpId);
         clientResponses++;
         
         // Aguardar mudança para a próxima etapa
@@ -454,6 +477,15 @@ async function testCampaignFlow(campaignId, clientId) {
         try {
           await waitForStageChange(followUpId, nextStageName);
           currentStageIndex++;
+          
+          // Se a próxima etapa for "Qualificado IA", enviar uma resposta adicional
+          // Esta etapa específica requer uma resposta do cliente antes de enviar a próxima mensagem
+          if (nextStageName === "Qualificado IA") {
+            log(`\n===> DETECTADO ETAPA ESPECIAL "${nextStageName}" - ENVIANDO RESPOSTA ADICIONAL`, colors.bright + colors.yellow);
+            await simulateClientResponse(clientId, "Sim, estou interessado. Por favor, continue.", followUpId);
+            clientResponses++;
+            log('Resposta adicional enviada para etapa especial', colors.green);
+          }
         } catch (error) {
           // Se não conseguiu detectar mudança de etapa pelo nome, verificar status
           log(`Não foi possível detectar mudança para etapa ${nextStageName}`, colors.yellow);
@@ -488,7 +520,7 @@ async function testCampaignFlow(campaignId, clientId) {
           
           if (finalStatus.status === 'paused') {
             log('Follow-up está pausado. Enviando resposta final...', colors.yellow);
-            await simulateClientResponse(clientId, "Obrigado pela atenção. Teste concluído.");
+            await simulateClientResponse(clientId, "Obrigado pela atenção. Teste concluído.", followUpId);
             clientResponses++;
             
             // Verificar status após resposta final
