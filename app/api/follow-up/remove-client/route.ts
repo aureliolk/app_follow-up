@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { cancelScheduledMessages } from '../_lib/scheduler';
 
 export async function POST(request: Request) {

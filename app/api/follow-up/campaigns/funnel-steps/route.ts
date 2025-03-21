@@ -1,6 +1,6 @@
 // app/api/follow-up/campaigns/funnel-steps/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 
 // Endpoint para obter todos os passos de todos os estágios do funil
 export async function GET(request: NextRequest) {

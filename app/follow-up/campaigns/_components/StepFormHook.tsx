@@ -215,9 +215,7 @@ const StepFormHook: React.FC<StepFormHookProps> = ({
           type="button"
           onClick={onSave}
           disabled={isLoading}
-          className={`px-4 py-2 ${isEditing ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'
-            } text-white rounded-md transition-colors ${isLoading ? 'opacity-70 cursor-not-allowed' : ''
-            }`}
+          className={`px-4 py-2 ${isEditing ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-600 hover:bg-orange-700'} text-white rounded-md transition-colors ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
         >
           {isLoading ? (
             <span className="flex items-center">

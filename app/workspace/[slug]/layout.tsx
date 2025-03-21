@@ -42,7 +42,7 @@ export default function WorkspaceLayout({
             <li>
               <Link 
                 href={`/workspace/${workspace.slug}`}
-                className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-gray-100"
+                className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-gray-100
               >
                 <Home className="h-5 w-5" />
                 <span>Dashboard</span>
@@ -51,7 +51,7 @@ export default function WorkspaceLayout({
             <li>
               <Link 
                 href={`/workspace/${workspace.slug}/members`}
-                className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-gray-100"
+                className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-gray-100
               >
                 <Users className="h-5 w-5" />
                 <span>Members</span>
@@ -60,7 +60,7 @@ export default function WorkspaceLayout({
             <li>
               <Link 
                 href={`/workspace/${workspace.slug}/campaigns`}
-                className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-gray-100"
+                className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-gray-100
               >
                 <CheckSquare className="h-5 w-5" />
                 <span>Campaigns</span>
@@ -69,7 +69,7 @@ export default function WorkspaceLayout({
             <li>
               <Link 
                 href={`/workspace/${workspace.slug}/settings`}
-                className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-gray-100"
+                className="flex items-center gap-2 px-4 py-2 rounded-md hover:bg-gray-100
               >
                 <Settings className="h-5 w-5" />
                 <span>Settings</span>
@@ -85,4 +85,4 @@ export default function WorkspaceLayout({
       </main>
     </div>
   );
-}'
+}

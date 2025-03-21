@@ -1,6 +1,6 @@
 // app/api/follow-up/status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   try {
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(
           { 
             success: false, 
-            error: "Follow-up não encontrado" 
+            error: "Follow-up não encontrado"
           }, 
           { status: 404 }
         );
@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
       { 
         success: false, 
         error: "Erro interno do servidor", 
-        details: error instanceof Error ? error.message : "Erro desconhecido" 
+        details: error instanceof Error ? error.message : "Erro desconhecido"
       }, 
       { status: 500 }
     );
@@ -123,7 +123,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "É necessário fornecer followUpId ou clientId" 
+          error: "É necessário fornecer followUpId ou clientId"
         }, 
         { status: 400 }
       );
@@ -158,7 +158,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Follow-up não encontrado" 
+          error: "Follow-up não encontrado"
         }, 
         { status: 404 }
       );
@@ -174,7 +174,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );

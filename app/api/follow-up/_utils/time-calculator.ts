@@ -12,7 +12,7 @@ const DAY = 24 * HOUR;
 
 /**
  * Converte string de tempo no formato "Xd", "Xh", "Xm", "Xs" para milissegundos
- * @param timeStr String no formato como "30m", "2h", "1d", "45s"
+ * @param timeStr String no formato como "30m", "2h", "1d", "45s
  * @returns Tempo em milissegundos
  */
 export function parseTimeToMs(timeStr: string): number {
@@ -82,7 +82,7 @@ export function formatMsToHuman(ms: number): string {
 /**
  * Calcula a data/hora de quando uma mensagem será enviada
  * @param startDate Data de início
- * @param waitTimes Lista de tempos de espera no formato "Xd", "Xh", "Xm", "Xs"
+ * @param waitTimes Lista de tempos de espera no formato "Xd", "Xh", "Xm", "Xs
  * @param stepIndex Índice da etapa (0-based)
  * @returns Data/hora de envio
  */
@@ -141,7 +141,7 @@ export function formatDate(date: Date): string {
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit
   }).replace(',', ' às');
 }
 

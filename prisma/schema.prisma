@@ -144,6 +144,7 @@ model User {
   email_verified     DateTime?
   image              String?
   password           String?
+  is_super_admin     Boolean              @default(false)
   created_at         DateTime             @default(now())
   updated_at         DateTime             @updatedAt
   accounts           Account[]

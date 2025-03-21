@@ -29,14 +29,24 @@ export async function POST(req: Request) {
     // Hash password
     const hashedPassword = await hash(password, 10);
 
+    // Check if this is the first user (who will be super admin)
+    const usersCount = await prisma.user.count();
+    const isSuperAdmin = usersCount === 0;
+    
     // Create user
     const user = await prisma.user.create({
       data: {
         name,
         email,
         password: hashedPassword,
+        is_super_admin: isSuperAdmin,
       },
     });
+    
+    // Log super admin creation if applicable
+    if (isSuperAdmin) {
+      console.log(`Super admin created: ${email}`);
+    }
 
     // Create a default workspace for the user
     const workspaceName = `${name}'s Workspace`;
@@ -74,4 +84,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}'
+}

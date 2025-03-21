@@ -1,6 +1,6 @@
 // app/api/follow-up/resume/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { processFollowUpSteps } from '../_lib/manager';
 
 export async function POST(req: NextRequest) {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "ID do follow-up é obrigatório" 
+          error: "ID do follow-up é obrigatório"
         }, 
         { status: 400 }
       );
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Follow-up não encontrado" 
+          error: "Follow-up não encontrado"
         }, 
         { status: 404 }
       );
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       { 
         success: false, 
         error: "Erro interno do servidor", 
-        details: error instanceof Error ? error.message : "Erro desconhecido" 
+        details: error instanceof Error ? error.message : "Erro desconhecido"
       }, 
       { status: 500 }
     );

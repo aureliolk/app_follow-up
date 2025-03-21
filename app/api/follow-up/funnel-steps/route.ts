@@ -1,6 +1,6 @@
 // app/api/follow-up/funnel-steps/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { parseTimeString } from '../_lib/manager';
 
 // Endpoint para listar os passos de um estágio do funil
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "ID do estágio é obrigatório" 
+          error: "ID do estágio é obrigatório
         }, 
         { status: 400 }
       );
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Estágio não encontrado" 
+          error: "Estágio não encontrado
         }, 
         { status: 404 }
       );
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor
       }, 
       { status: 500 }
     );
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Estágio não encontrado" 
+          error: "Estágio não encontrado
         }, 
         { status: 404 }
       );
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       wait_time,
       wait_time_ms,
       message_content,
-      message_category: message_category || 'Utility'
+      message_category: message_category || 'Utility
     };
     
     // Adicionar auto_respond se estiver presente
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor
       }, 
       { status: 500 }
     );
@@ -178,7 +178,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "ID do passo é obrigatório" 
+          error: "ID do passo é obrigatório
         }, 
         { status: 400 }
       );
@@ -193,7 +193,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Passo não encontrado" 
+          error: "Passo não encontrado
         }, 
         { status: 404 }
       );
@@ -242,7 +242,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor
       }, 
       { status: 500 }
     );
@@ -259,7 +259,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "ID do passo é obrigatório" 
+          error: "ID do passo é obrigatório
         }, 
         { status: 400 }
       );
@@ -274,7 +274,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Passo não encontrado" 
+          error: "Passo não encontrado
         }, 
         { status: 404 }
       );
@@ -287,7 +287,7 @@ export async function DELETE(req: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: "Passo excluído com sucesso"
+      message: "Passo excluído com sucesso
     });
     
   } catch (error) {
@@ -295,7 +295,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor
       }, 
       { status: 500 }
     );

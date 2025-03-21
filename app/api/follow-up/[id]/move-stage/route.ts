@@ -1,6 +1,6 @@
 // app/api/follow-up/[id]/move-stage/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 
 export async function PUT(
   request: NextRequest,

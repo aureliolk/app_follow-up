@@ -50,6 +50,18 @@ export async function middleware(request: NextRequest) {
     return response;
   }
   
+  // Special handling for follow-up routes outside workspace context
+  if (pathname.startsWith('/follow-up') && !pathname.includes('/workspace/')) {
+    // Check if user is super admin - super admins can access follow-up directly
+    const isSuperAdmin = token?.isSuperAdmin;
+    
+    if (!isSuperAdmin) {
+      // Regular users should only access follow-ups through a workspace
+      const url = new URL('/workspaces', request.url);
+      return NextResponse.redirect(url);
+    }
+  }
+  
   // User is authenticated - allow access to other protected routes
   return response;
 }
@@ -57,15 +69,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Protect routes requiring authentication
-    '/workspaces/:path*',
-    '/workspace/:path*',
-    '/api/workspaces/:path*',
-    
-    // Protect follow-up routes
-    '/follow-up/:path*',
-    '/api/follow-up/:path*',
-    
-    // CORS for all API routes
-    '/api/:path*',
+    '/((?!auth|_next|images|fonts|api/auth).*)',
+    '/api/((?!auth).*)',
   ],
 };

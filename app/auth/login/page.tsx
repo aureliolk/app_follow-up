@@ -29,14 +29,14 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError('Invalid email or password');
+        setError('Email ou senha inválidos');
         setIsLoading(false);
         return;
       }
 
       router.push(callbackUrl);
     } catch (error) {
-      setError('An error occurred. Please try again.');
+      setError('Ocorreu um erro. Por favor, tente novamente.');
       setIsLoading(false);
     }
   };
@@ -46,7 +46,7 @@ export default function LoginPage() {
     try {
       await signIn('google', { callbackUrl });
     } catch (error) {
-      setError('An error occurred with Google sign in.');
+      setError('Ocorreu um erro ao fazer login com o Google.');
       setIsLoading(false);
     }
   };
@@ -55,9 +55,9 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
       <div className="w-full max-w-md p-8 space-y-8 bg-[#1e1e1e] rounded-lg shadow-xl border border-[#333333]">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-white">Sign in</h1>
+          <h1 className="text-3xl font-bold text-white">Entrar</h1>
           <p className="mt-2 text-gray-400">
-            Sign in to your account to continue
+            Entre na sua conta para continuar
           </p>
         </div>
 
@@ -73,7 +73,7 @@ export default function LoginPage() {
               htmlFor="email"
               className="block text-sm font-medium text-gray-300"
             >
-              Email address
+              Endereço de email
             </label>
             <input
               id="email"
@@ -83,7 +83,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="mt-1 block w-full px-3 py-2 bg-[#111111] border border-[#333333] text-white rounded-md shadow-sm focus:outline-none focus:ring-[#F54900] focus:border-[#F54900]"
-              placeholder="Enter your email"
+              placeholder="Digite seu email"
             />
           </div>
 
@@ -92,7 +92,7 @@ export default function LoginPage() {
               htmlFor="password"
               className="block text-sm font-medium text-gray-300"
             >
-              Password
+              Senha
             </label>
             <input
               id="password"
@@ -102,7 +102,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 block w-full px-3 py-2 bg-[#111111] border border-[#333333] text-white rounded-md shadow-sm focus:outline-none focus:ring-[#F54900] focus:border-[#F54900]"
-              placeholder="Enter your password"
+              placeholder="Digite sua senha"
             />
           </div>
 
@@ -115,7 +115,7 @@ export default function LoginPage() {
               {isLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
-                'Sign in'
+                'Entrar'
               )}
             </button>
           </div>
@@ -128,7 +128,7 @@ export default function LoginPage() {
             </div>
             <div className="relative flex justify-center text-sm">
               <span className="px-2 bg-[#1e1e1e] text-gray-400">
-                Or continue with
+                Ou continue com
               </span>
             </div>
           </div>
@@ -172,12 +172,12 @@ export default function LoginPage() {
 
         <div className="text-center mt-4">
           <p className="text-sm text-gray-400">
-            Don't have an account?{' '}
+            Não possui uma conta?{' '}
             <Link
               href="/auth/register"
               className="font-medium text-[#F54900] hover:text-[#FF6922]"
             >
-              Sign up
+              Cadastre-se
             </Link>
           </p>
         </div>

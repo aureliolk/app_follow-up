@@ -23,13 +23,13 @@ export default function RegisterPage() {
 
     // Basic validation
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('As senhas não coincidem');
       setIsLoading(false);
       return;
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
+      setError('A senha deve ter pelo menos 8 caracteres');
       setIsLoading(false);
       return;
     }
@@ -50,7 +50,7 @@ export default function RegisterPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Something went wrong');
+        throw new Error(data.message || 'Algo deu errado');
       }
 
       // Sign in the user after successful registration
@@ -66,7 +66,7 @@ export default function RegisterPage() {
         router.push('/workspaces');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to register');
+      setError(err.message || 'Falha ao registrar');
     } finally {
       setIsLoading(false);
     }
@@ -77,7 +77,7 @@ export default function RegisterPage() {
     try {
       await signIn('google', { callbackUrl: '/workspaces' });
     } catch (error) {
-      setError('An error occurred with Google sign in.');
+      setError('Ocorreu um erro ao fazer login com o Google.');
       setIsLoading(false);
     }
   };
@@ -86,9 +86,9 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
       <div className="w-full max-w-md p-8 space-y-8 bg-[#1e1e1e] rounded-lg shadow-xl border border-[#333333]">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-white">Create an account</h1>
+          <h1 className="text-3xl font-bold text-white">Criar uma conta</h1>
           <p className="mt-2 text-gray-400">
-            Sign up to get started with our platform
+            Cadastre-se para começar a usar nossa plataforma
           </p>
         </div>
 
@@ -104,7 +104,7 @@ export default function RegisterPage() {
               htmlFor="name"
               className="block text-sm font-medium text-gray-300"
             >
-              Full Name
+              Nome Completo
             </label>
             <input
               id="name"
@@ -114,7 +114,7 @@ export default function RegisterPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="mt-1 block w-full px-3 py-2 bg-[#111111] border border-[#333333] text-white rounded-md shadow-sm focus:outline-none focus:ring-[#F54900] focus:border-[#F54900]"
-              placeholder="Enter your full name"
+              placeholder="Digite seu nome completo"
             />
           </div>
 
@@ -123,7 +123,7 @@ export default function RegisterPage() {
               htmlFor="email"
               className="block text-sm font-medium text-gray-300"
             >
-              Email address
+              Endereço de email
             </label>
             <input
               id="email"
@@ -133,7 +133,7 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="mt-1 block w-full px-3 py-2 bg-[#111111] border border-[#333333] text-white rounded-md shadow-sm focus:outline-none focus:ring-[#F54900] focus:border-[#F54900]"
-              placeholder="Enter your email"
+              placeholder="Digite seu email"
             />
           </div>
 
@@ -142,7 +142,7 @@ export default function RegisterPage() {
               htmlFor="password"
               className="block text-sm font-medium text-gray-300"
             >
-              Password
+              Senha
             </label>
             <input
               id="password"
@@ -152,7 +152,7 @@ export default function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 block w-full px-3 py-2 bg-[#111111] border border-[#333333] text-white rounded-md shadow-sm focus:outline-none focus:ring-[#F54900] focus:border-[#F54900]"
-              placeholder="Create a password (min. 8 characters)"
+              placeholder="Crie uma senha (mín. 8 caracteres)"
             />
           </div>
 
@@ -161,7 +161,7 @@ export default function RegisterPage() {
               htmlFor="confirmPassword"
               className="block text-sm font-medium text-gray-300"
             >
-              Confirm Password
+              Confirmar Senha
             </label>
             <input
               id="confirmPassword"
@@ -171,7 +171,7 @@ export default function RegisterPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="mt-1 block w-full px-3 py-2 bg-[#111111] border border-[#333333] text-white rounded-md shadow-sm focus:outline-none focus:ring-[#F54900] focus:border-[#F54900]"
-              placeholder="Confirm your password"
+              placeholder="Confirme sua senha"
             />
           </div>
 
@@ -184,7 +184,7 @@ export default function RegisterPage() {
               {isLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
-                'Sign up'
+                'Cadastrar'
               )}
             </button>
           </div>
@@ -197,7 +197,7 @@ export default function RegisterPage() {
             </div>
             <div className="relative flex justify-center text-sm">
               <span className="px-2 bg-[#1e1e1e] text-gray-400">
-                Or continue with
+                Ou continue com
               </span>
             </div>
           </div>
@@ -241,12 +241,12 @@ export default function RegisterPage() {
 
         <div className="text-center mt-4">
           <p className="text-sm text-gray-400">
-            Already have an account?{' '}
+            Já possui uma conta?{' '}
             <Link
               href="/auth/login"
               className="font-medium text-[#F54900] hover:text-[#FF6922]"
             >
-              Sign in
+              Entrar
             </Link>
           </p>
         </div>

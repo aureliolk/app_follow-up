@@ -1,6 +1,6 @@
 // app/api/follow-up/campaigns/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 
 // Função auxiliar para extrair ID do URL
 function extractIdFromUrl(url: string): string {
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Campanha não encontrada" 
+          error: "Campanha não encontrada"
         }, 
         { status: 404 }
       );
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );
@@ -80,7 +80,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Nome da campanha é obrigatório" 
+          error: "Nome da campanha é obrigatório"
         }, 
         { status: 400 }
       );
@@ -95,7 +95,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Campanha não encontrada" 
+          error: "Campanha não encontrada"
         }, 
         { status: 404 }
       );
@@ -171,7 +171,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );
@@ -200,7 +200,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Campanha não encontrada" 
+          error: "Campanha não encontrada"
         }, 
         { status: 404 }
       );
@@ -235,7 +235,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );

@@ -1,6 +1,6 @@
 // app/api/follow-up/funnel-stages/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 
 // Endpoint para listar os estágios do funil
 export async function GET(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(
           { 
             success: false, 
-            error: "Campanha não encontrada" 
+            error: "Campanha não encontrada"
           }, 
           { status: 404 }
         );
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Nome do estágio é obrigatório" 
+          error: "Nome do estágio é obrigatório"
         }, 
         { status: 400 }
       );
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { 
             success: false, 
-            error: "Campanha não encontrada" 
+            error: "Campanha não encontrada"
           }, 
           { status: 404 }
         );
@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );
@@ -199,7 +199,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "ID e nome do estágio são obrigatórios" 
+          error: "ID e nome do estágio são obrigatórios"
         }, 
         { status: 400 }
       );
@@ -214,7 +214,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Estágio não encontrado" 
+          error: "Estágio não encontrado"
         }, 
         { status: 404 }
       );
@@ -249,7 +249,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );
@@ -266,7 +266,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "ID do estágio é obrigatório" 
+          error: "ID do estágio é obrigatório"
         }, 
         { status: 400 }
       );
@@ -281,7 +281,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Estágio não encontrado" 
+          error: "Estágio não encontrado"
         }, 
         { status: 404 }
       );
@@ -320,7 +320,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );

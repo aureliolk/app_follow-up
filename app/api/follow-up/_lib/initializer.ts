@@ -21,7 +21,7 @@ export function initializeFollowUpSystem() {
           `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`,
           {
             'content': message.message,
-            'message_type': 'outgoing'
+            'message_type': 'outgoing
           },
           {
             headers: {

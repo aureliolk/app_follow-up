@@ -67,11 +67,14 @@ export async function GET() {
     const session = await getServerSession(authOptions);
     
     if (!session?.user) {
+      console.log('Unauthorized access attempt to workspaces API');
       return NextResponse.json(
         { message: 'Unauthorized' },
         { status: 401 }
       );
     }
+
+    console.log('Fetching workspaces for user ID:', session.user.id);
 
     // Find all workspaces where the user is a member
     const workspaces = await prisma.workspace.findMany({
@@ -92,12 +95,21 @@ export async function GET() {
       },
     });
 
+    console.log(`Found ${workspaces.length} workspaces for user ${session.user.id}`);
     return NextResponse.json(workspaces);
   } catch (error) {
     console.error('Error fetching workspaces:', error);
+    
+    // Add more detailed error information
+    let errorMessage = 'Failed to fetch workspaces';
+    if (error instanceof Error) {
+      errorMessage += `: ${error.message}`;
+      console.error('Error stack:', error.stack);
+    }
+    
     return NextResponse.json(
-      { message: 'Failed to fetch workspaces' },
+      { message: errorMessage },
       { status: 500 }
     );
   }
-}'
+}

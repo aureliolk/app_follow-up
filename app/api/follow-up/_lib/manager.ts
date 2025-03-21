@@ -1,5 +1,5 @@
 // app/api/follow-up/_lib/manager.ts
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { scheduleMessage, cancelScheduledMessages } from './scheduler';
 import path from 'path';
 import fs from 'fs/promises';
@@ -60,7 +60,7 @@ export function parseTimeString(timeStr: string): number {
     return 1000; // 1 segundo, praticamente imediato
   }
 
-  // Formato abreviado: "30m", "2h", "1d"
+  // Formato abreviado: "30m", "2h", "1d
   const match = timeStr.match(/^(\d+)([smhd])$/i);
   if (match) {
     const value = parseInt(match[1]);
@@ -446,7 +446,7 @@ export async function scheduleNextStep(
             // Continuar normalmente
           } else {
             // Caso contrário, pausar como antes
-            // Atualizar status para "pausado"
+            // Atualizar status para "pausado
             await prisma.followUp.update({
               where: { id: followUpId },
               data: {
@@ -703,7 +703,7 @@ export async function handleClientResponse(
 
       // Se encontramos a próxima fase, atualizar o follow-up
       if (nextPhaseStepIndex >= 0) {
-        // PONTO CRÍTICO: Garantir que o status seja 'active' - não 'paused'
+        // PONTO CRÍTICO: Garantir que o status seja 'active' - não 'paused
         await prisma.followUp.update({
           where: { id: followUp.id },
           data: {

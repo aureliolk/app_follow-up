@@ -188,11 +188,11 @@ export default function WorkspaceMembers() {
         <form onSubmit={handleInvite} className="flex flex-col md:flex-row gap-4">
           <div className="flex-grow">
             <input
-              type="email"
+              type="email
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email address"
-              className="w-full border border-gray-300 rounded-md px-4 py-2"
+              placeholder="Email address
+              className="w-full border border-gray-300 rounded-md px-4 py-2
               required
             />
           </div>
@@ -200,7 +200,7 @@ export default function WorkspaceMembers() {
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
-              className="w-full border border-gray-300 rounded-md px-4 py-2"
+              className="w-full border border-gray-300 rounded-md px-4 py-2
             >
               <option value="ADMIN">Admin</option>
               <option value="MEMBER">Member</option>
@@ -208,9 +208,9 @@ export default function WorkspaceMembers() {
             </select>
           </div>
           <button
-            type="submit"
+            type="submit
             disabled={isSubmitting}
-            className="bg-blue-600 text-white rounded-md px-6 py-2 flex items-center justify-center hover:bg-blue-700 disabled:opacity-50"
+            className="bg-blue-600 text-white rounded-md px-6 py-2 flex items-center justify-center hover:bg-blue-700 disabled:opacity-50
           >
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -246,7 +246,7 @@ export default function WorkspaceMembers() {
                       <select
                         value={member.role}
                         onChange={(e) => handleRoleChange(member.id, e.target.value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
-                        className="border border-gray-300 rounded-md px-2 py-1"
+                        className="border border-gray-300 rounded-md px-2 py-1
                         disabled={workspace?.ownerId === member.id}
                       >
                         <option value="ADMIN">Admin</option>
@@ -258,8 +258,8 @@ export default function WorkspaceMembers() {
                       {workspace?.ownerId !== member.id && (
                         <button
                           onClick={() => handleRemoveMember(member.id)}
-                          className="text-red-600 hover:text-red-800"
-                          title="Remove member"
+                          className="text-red-600 hover:text-red-800
+                          title="Remove member
                         >
                           <Trash2 className="h-5 w-5" />
                         </button>
@@ -297,15 +297,15 @@ export default function WorkspaceMembers() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 flex gap-2">
                       <button
                         onClick={() => handleResendInvitation(invitation.id)}
-                        className="text-blue-600 hover:text-blue-800"
-                        title="Resend invitation"
+                        className="text-blue-600 hover:text-blue-800
+                        title="Resend invitation
                       >
                         <Mail className="h-5 w-5" />
                       </button>
                       <button
                         onClick={() => handleCancelInvitation(invitation.id)}
-                        className="text-red-600 hover:text-red-800"
-                        title="Cancel invitation"
+                        className="text-red-600 hover:text-red-800
+                        title="Cancel invitation
                       >
                         <Trash2 className="h-5 w-5" />
                       </button>
@@ -319,4 +319,4 @@ export default function WorkspaceMembers() {
       )}
     </div>
   );
-}'
+}

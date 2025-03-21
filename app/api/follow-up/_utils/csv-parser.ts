@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { parse } from 'csv-parser';
 import { Readable } from 'stream';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 
 // Interface para os dados do CSV de follow-up
 export interface FollowUpStepData {
@@ -29,7 +29,7 @@ export interface ParseResult {
 export async function parseFollowUpCsv(filePath: string = 'default'): Promise<ParseResult> {
   try {
     // Se filePath é "default", usar o arquivo CSV padrão
-    const csvPath = filePath === 'default' 
+    const csvPath = filePath === 'default'
       ? path.join(process.cwd(), 'public', 'follow up sabrina nunes - Página1.csv')
       : filePath;
     
@@ -142,7 +142,7 @@ export async function importCsvToCampaign(
 
 /**
  * Validar o formato de tempo de espera
- * @param timeStr String no formato "Xd", "Xh", "Xm" ou "Xs"
+ * @param timeStr String no formato "Xd", "Xh", "Xm" ou "Xs
  * @returns Booleano indicando se o formato é válido
  */
 export function isValidWaitTimeFormat(timeStr: string): boolean {
@@ -151,7 +151,7 @@ export function isValidWaitTimeFormat(timeStr: string): boolean {
 
 /**
  * Converte string de tempo para milissegundos
- * @param timeStr String no formato "Xd", "Xh", "Xm" ou "Xs"
+ * @param timeStr String no formato "Xd", "Xh", "Xm" ou "Xs
  * @returns Tempo em milissegundos
  */
 export function waitTimeToMs(timeStr: string): number {
@@ -267,7 +267,7 @@ export async function listCampaigns(activeOnly: boolean = false) {
         activeFollowUps: await prisma.followUp.count({
           where: {
             campaign_id: campaign.id,
-            status: 'active'
+            status: 'active
           }
         })
       };

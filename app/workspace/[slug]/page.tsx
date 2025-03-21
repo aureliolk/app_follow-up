@@ -42,4 +42,4 @@ export default function WorkspaceDashboard() {
       </div>
     </div>
   );
-}'
+}

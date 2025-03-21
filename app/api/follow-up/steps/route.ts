@@ -2,7 +2,7 @@
 // Arquivo criado como rota alternativa para solucionar o problema de 404 na rota funnel-steps
 
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { parseTimeString } from '../_lib/manager';
 
 // Redireciona para a implementação principal

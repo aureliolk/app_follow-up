@@ -129,25 +129,25 @@ CREATE UNIQUE INDEX "workspace_invitations_workspace_id_email_key" ON "workspace
 CREATE UNIQUE INDEX "workspace_follow_up_campaigns_workspace_id_campaign_id_key" ON "workspace_schema"."workspace_follow_up_campaigns"("workspace_id", "campaign_id");
 
 -- AddForeignKey
-CREATE FOREIGN KEY ("user_id") REFERENCES "workspace_schema"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "workspace_schema"."accounts" ADD CONSTRAINT "accounts_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "workspace_schema"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-CREATE FOREIGN KEY ("user_id") REFERENCES "workspace_schema"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "workspace_schema"."sessions" ADD CONSTRAINT "sessions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "workspace_schema"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-CREATE FOREIGN KEY ("owner_id") REFERENCES "workspace_schema"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "workspace_schema"."workspaces" ADD CONSTRAINT "workspaces_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES "workspace_schema"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-CREATE FOREIGN KEY ("workspace_id") REFERENCES "workspace_schema"."workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "workspace_schema"."workspace_members" ADD CONSTRAINT "workspace_members_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspace_schema"."workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-CREATE FOREIGN KEY ("user_id") REFERENCES "workspace_schema"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "workspace_schema"."workspace_members" ADD CONSTRAINT "workspace_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "workspace_schema"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-CREATE FOREIGN KEY ("workspace_id") REFERENCES "workspace_schema"."workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "workspace_schema"."workspace_invitations" ADD CONSTRAINT "workspace_invitations_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspace_schema"."workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-CREATE FOREIGN KEY ("invited_by") REFERENCES "workspace_schema"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "workspace_schema"."workspace_invitations" ADD CONSTRAINT "workspace_invitations_invited_by_fkey" FOREIGN KEY ("invited_by") REFERENCES "workspace_schema"."users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-CREATE FOREIGN KEY ("workspace_id") REFERENCES "workspace_schema"."workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "workspace_schema"."workspace_follow_up_campaigns" ADD CONSTRAINT "workspace_follow_up_campaigns_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspace_schema"."workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE;

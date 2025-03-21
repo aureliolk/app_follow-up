@@ -1,8 +1,9 @@
 // app/api/follow-up/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { processFollowUpSteps } from './_lib/manager';
 import { z } from 'zod';
+import { withAuth } from '@/lib/auth/auth-utils';
 
 // Schema de validação para o corpo da requisição
 const followUpRequestSchema = z.object({
@@ -16,8 +17,9 @@ const followUpRequestSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
+  return withAuth(req, async (req) => {
+    try {
+      const body = await req.json();
     
     // Validar o corpo da requisição
     const validationResult = followUpRequestSchema.safeParse(body);
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
           active: true 
         },
         orderBy: { 
-          created_at: 'desc' 
+          created_at: 'desc'
         }
       });
       
@@ -51,7 +53,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { 
             success: false, 
-            error: "Nenhuma campanha de follow-up ativa encontrada" 
+            error: "Nenhuma campanha de follow-up ativa encontrada"
           }, 
           { status: 404 }
         );
@@ -98,7 +100,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: "Campanha não encontrada" 
+          error: "Campanha não encontrada"
         }, 
         { status: 404 }
       );
@@ -141,17 +143,19 @@ export async function POST(req: NextRequest) {
       { 
         success: false, 
         error: "Erro interno do servidor", 
-        details: error instanceof Error ? error.message : "Erro desconhecido" 
+        details: error instanceof Error ? error.message : "Erro desconhecido"
       }, 
       { status: 500 }
     );
   }
+  });
 }
 
 // Endpoint GET para listar follow-ups existentes (com paginação)
 export async function GET(req: NextRequest) {
-  try {
-    const searchParams = req.nextUrl.searchParams;
+  return withAuth(req, async (req) => {
+    try {
+      const searchParams = req.nextUrl.searchParams;
     const clientId = searchParams.get('clientId');
     const status = searchParams.get('status');
     const campaignId = searchParams.get('campaignId');
@@ -233,9 +237,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor" 
+        error: "Erro interno do servidor"
       }, 
       { status: 500 }
     );
   }
+  });
 }

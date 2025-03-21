@@ -9,8 +9,19 @@ type Workspace = {
   name: string;
   slug: string;
   ownerId: string;
+  owner_id: string;
   createdAt: Date;
   updatedAt: Date;
+  created_at: Date;
+  updated_at: Date;
+  owner?: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
+  _count?: {
+    members: number;
+  };
 };
 
 type WorkspaceContextType = {
@@ -50,20 +61,44 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch all workspaces for current user
+  // Fetch workspaces based on user role
   const fetchWorkspaces = async () => {
     if (status !== 'authenticated' || !session?.user) {
+      console.log('User not authenticated or no session', { status, sessionUser: session?.user });
       setWorkspaces([]);
       setWorkspace(null);
       setIsLoading(false);
-      return;
+      return [];
     }
+    
+    // Check if user is super admin
+    const isSuperAdmin = session.user.isSuperAdmin;
+    console.log('Fetching workspaces for user:', session.user.id, 'Super Admin:', isSuperAdmin);
 
     try {
-      const response = await fetch('/api/workspaces');
-      if (!response.ok) throw new Error('Failed to fetch workspaces');
+      // Use the appropriate endpoint based on user role
+      const endpoint = isSuperAdmin 
+        ? '/api/workspaces/all' // Super admin endpoint to get all workspaces
+        : '/api/workspaces';    // Regular user endpoint to get their workspaces
+      
+      console.log(`Fetching from endpoint: ${endpoint} (isSuperAdmin: ${isSuperAdmin})`);
+      
+      const response = await fetch(endpoint, {
+        // Include credentials and prevent caching
+        credentials: 'include',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to fetch workspaces, status:', response.status);
+        throw new Error('Failed to fetch workspaces');
+      }
       
       const data = await response.json();
+      console.log('Workspaces fetched:', data);
       setWorkspaces(data);
       return data;
     } catch (err) {
@@ -188,6 +223,7 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       setWorkspaces(workspaces.filter(w => w.id !== id));
       
       if (workspace?.id === id) {
+        setWorkspace(null);
         // If current workspace was deleted, redirect to workspaces list
         router.push('/workspaces');
       }
@@ -221,4 +257,4 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       {children}
     </WorkspaceContext.Provider>
   );
-};'
+};

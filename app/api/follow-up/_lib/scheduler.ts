@@ -1,7 +1,7 @@
 // app/api/follow-up/_lib/scheduler.ts
 
 // Importações necessárias
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/db';
 import axios from 'axios'; // Usando axios que já deve estar instalado
 
 // Mapa para armazenar timeouts ativos
