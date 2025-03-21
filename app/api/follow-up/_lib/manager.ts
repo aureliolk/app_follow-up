@@ -1,12 +1,8 @@
 // app/api/follow-up/_lib/manager.ts
 import { prisma } from '@/lib/db';
-import { scheduleMessage, cancelScheduledMessages } from './scheduler.ts';
-import path from 'path';
-import fs from 'fs/promises';
-import csv from 'csv-parser';
-import { Readable } from 'stream';
+import { scheduleMessage, cancelScheduledMessages, activeTimeouts } from './scheduler';
 
-// Interface para os dados do CSV de follow-up
+// Interface para os dados de follow-up
 interface FollowUpStep {
   etapa: string;
   mensagem: string;
@@ -16,6 +12,43 @@ interface FollowUpStep {
 
 const TEST_MODE = true; // Defina como false em produção
 console.log("MODO DE TESTE CONFIGURADO COMO:", TEST_MODE ? "ATIVADO" : "DESATIVADO");
+
+// Nova função loadFollowUpData que carrega apenas do banco de dados
+export async function loadFollowUpData(campaignId?: string): Promise<FollowUpStep[]> {
+  try {
+    // Verificar se temos um ID de campanha
+    if (!campaignId) {
+      console.error("ID da campanha é obrigatório para carregar etapas");
+      return [];
+    }
+
+    const campaign = await prisma.followUpCampaign.findUnique({
+      where: { id: campaignId }
+    });
+
+    if (!campaign) {
+      console.error(`Campanha de follow-up não encontrada: ${campaignId}`);
+      return [];
+    }
+
+    // Processar os passos da campanha
+    try {
+      const stepsString = campaign.steps as string;
+      if (!stepsString || stepsString.trim() === '' || stepsString === '[]') {
+        console.log(`Campanha ${campaignId} tem steps vazios ou inválidos, retornando array vazio`);
+        return [];
+      }
+      return JSON.parse(stepsString) as FollowUpStep[];
+    } catch (err) {
+      console.error(`Erro ao analisar steps da campanha ${campaignId}:`, err);
+      return []; // Retornar array vazio em caso de erro
+    }
+  } catch (error) {
+    console.error("Erro ao carregar dados de follow-up:", error);
+    return [];
+  }
+}
+
 // Função para converter string de tempo em milissegundos
 export function parseTimeString(timeStr: string): number {
   if (TEST_MODE) {
@@ -81,80 +114,6 @@ export function parseTimeString(timeStr: string): number {
   return 30 * 60 * 1000;
 }
 
-// Função para processar o CSV e carregar os dados do funil
-export async function loadFollowUpData(campaignId?: string): Promise<FollowUpStep[]> {
-  try {
-    // Se temos um ID de campanha, carregar do banco de dados
-    if (campaignId) {
-      const campaign = await prisma.followUpCampaign.findUnique({
-        where: { id: campaignId }
-      });
-
-      if (!campaign) {
-        throw new Error(`Campanha de follow-up não encontrada: ${campaignId}`);
-      }
-
-      // Retornar os passos da campanha com tratamento seguro para strings vazias ou inválidas
-      try {
-        // Verificar se é uma string vazia ou inválida
-        const stepsString = campaign.steps as string;
-        if (!stepsString || stepsString.trim() === '' || stepsString === '[]') {
-          console.log(`Campanha ${campaignId} tem steps vazios ou inválidos, retornando array vazio`);
-          return [];
-        }
-        return JSON.parse(stepsString) as FollowUpStep[];
-      } catch (err) {
-        console.error(`Erro ao analisar steps da campanha ${campaignId}:`, err);
-        return []; // Retornar array vazio em caso de erro
-      }
-    }
-
-    // Caso contrário, carregar do arquivo CSV mais recente
-    const csvFilePath = path.join(process.cwd(), 'public', 'follow-up-sabrina-nunes-atualizado.csv');
-
-    // Verificar se o arquivo existe
-    try {
-      await fs.access(csvFilePath);
-    } catch (error) {
-      throw new Error(`Arquivo CSV não encontrado em ${csvFilePath}`);
-    }
-
-    // Ler o arquivo CSV
-    const fileContent = await fs.readFile(csvFilePath, 'utf-8');
-
-    return new Promise((resolve, reject) => {
-      const results: FollowUpStep[] = [];
-
-      // Criar um stream a partir do conteúdo do arquivo
-      const stream = Readable.from([fileContent]);
-
-      stream
-        .pipe(csv({
-          separator: ',',
-          headers: [
-            'etapa',
-            'tempo_de_espera',
-            'template_name',
-            'category',
-            'mensagem',
-            'auto_respond',
-            'status'
-          ]
-        }))
-        .on('data', (data) => {
-          // Filtrar cabeçalhos ou linhas vazias
-          if (data.etapa && data.etapa !== 'Etapa do Funil') {
-            results.push(data);
-          }
-        })
-        .on('end', () => resolve(results))
-        .on('error', (error) => reject(error));
-    });
-  } catch (error) {
-    console.error("Erro ao carregar dados de follow-up:", error);
-    throw error;
-  }
-}
 
 // Função principal para processar as etapas de follow-up
 export async function processFollowUpSteps(followUpId: string): Promise<void> {
@@ -184,16 +143,13 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
         if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
           steps = JSON.parse(stepsString) as FollowUpStep[];
         } else {
-          steps = await loadFollowUpData();
+          console.error(`Campanha ${followUp.campaign_id} sem steps válidos`);
+          steps = [];
         }
       } catch (err) {
         console.error(`Erro ao analisar steps da campanha para follow-up ${followUpId}:`, err);
-        // Fallback para o CSV em caso de erro
-        steps = await loadFollowUpData();
       }
-    } else {
-      steps = await loadFollowUpData();
-    }
+    } 
 
     if (!steps || steps.length === 0) {
       throw new Error("Nenhuma etapa de follow-up encontrada");
@@ -349,16 +305,16 @@ export async function scheduleNextStep(
         if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
           steps = JSON.parse(stepsString) as FollowUpStep[];
         } else {
-          console.log(`Follow-up ${followUpId} tem campanha com steps vazios, carregando do CSV`);
-          steps = await loadFollowUpData();
+          console.log(`Follow-up ${followUpId} tem campanha com steps vazios`);
+          steps = [];
         }
       } catch (err) {
         console.error(`Erro ao analisar steps da campanha para follow-up ${followUpId}:`, err);
-        // Fallback para o CSV em caso de erro
-        steps = await loadFollowUpData();
+        // Fallback para uma campanha vazia
+        steps = [];
       }
     } else {
-      steps = await loadFollowUpData();
+      steps = []; // Sem campanha, sem steps
     }
 
     // Verificar se ainda há etapas restantes
@@ -564,16 +520,17 @@ export async function advanceToNextStep(followUpId: string): Promise<void> {
         if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
           steps = JSON.parse(stepsString) as FollowUpStep[];
         } else {
-          console.log(`Follow-up ${followUpId} tem campanha com steps vazios, carregando do CSV`);
-          steps = await loadFollowUpData();
+          console.log(`Follow-up ${followUpId} tem campanha com steps vazios`);
+          steps = [];
         }
       } catch (err) {
         console.error(`Erro ao analisar steps da campanha para follow-up ${followUpId}:`, err);
-        // Fallback para o CSV em caso de erro
-        steps = await loadFollowUpData();
+        // Sem fallback para CSV
+        steps = [];
       }
     } else {
-      steps = await loadFollowUpData();
+      // Sem fallback para CSV
+      steps = [];
     }
 
     const nextStepIndex = followUp.current_step + 1;
@@ -615,67 +572,48 @@ export async function advanceToNextStep(followUpId: string): Promise<void> {
   }
 }
 
+// Função para cancelar apenas a mensagem de uma etapa específica
+export async function cancelScheduledMessageForStep(followUpId: string, stepIndex: number): Promise<void> {
+  try {
+    // Encontrar a chave específica para esta etapa
+    const keyToRemove = `${followUpId}-${stepIndex}`;
+    
+    // Verificar se existe um timeout ativo para esta etapa
+    if (activeTimeouts.has(keyToRemove)) {
+      clearTimeout(activeTimeouts.get(keyToRemove)!);
+      activeTimeouts.delete(keyToRemove);
+      console.log(`Timeout para mensagem ${keyToRemove} cancelado com sucesso`);
+    }
+  } catch (error) {
+    console.error(`Erro ao cancelar mensagem agendada para etapa ${stepIndex}:`, error);
+    throw error;
+  }
+}
+
 // Função para lidar com uma resposta do cliente
 export async function handleClientResponse(
   clientId: string,
-  message: string,
-  followUpId?: string // Novo parâmetro opcional para especificar um follow-up
+  message: string
 ): Promise<void> {
   try {
-    let activeFollowUps = [];
-
-    // Se um ID específico de follow-up foi fornecido, buscar apenas esse follow-up
-    if (followUpId) {
-      const specificFollowUp = await prisma.followUp.findFirst({
-        where: {
-          id: followUpId,
-          client_id: clientId, // Garantir que pertence ao cliente correto
-          status: { in: ['active', 'paused'] }
-        },
-        include: {
-          campaign: true
-        }
-      });
-
-      if (specificFollowUp) {
-        activeFollowUps = [specificFollowUp];
+    // Buscar todos os follow-ups ativos para este cliente
+    const activeFollowUps = await prisma.followUp.findMany({
+      where: {
+        client_id: clientId,
+        status: { in: ['active', 'paused'] }
+      },
+      include: {
+        campaign: true
       }
-    } else {
-      // Comportamento original: buscar todos os follow-ups ativos para este cliente
-      activeFollowUps = await prisma.followUp.findMany({
-        where: {
-          client_id: clientId,
-          status: { in: ['active', 'paused'] }
-        },
-        include: {
-          campaign: true
-        }
-      });
-    }
+    });
 
     if (activeFollowUps.length === 0) {
       return;
     }
 
-    // Para cada follow-up ativo deste cliente (ou apenas o específico)
+    // Para cada follow-up ativo deste cliente
     for (const followUp of activeFollowUps) {
-      // IMPORTANTE: Primeiro cancelar TODAS as mensagens agendadas
-      await cancelScheduledMessages(followUp.id);
-
-      // Registrar a resposta do cliente
-      await prisma.followUpMessage.create({
-        data: {
-          follow_up_id: followUp.id,
-          step: -1, // Valor especial para indicar mensagem do cliente
-          content: message,
-          sent_at: new Date(),
-          delivered: true,
-          delivered_at: new Date()
-        }
-      });
-
-      // Agora vamos identificar a próxima fase do funil
-      // Primeiro, carregamos as etapas da campanha com tratamento seguro para strings vazias ou inválidas
+      // Carregar etapas da campanha
       let steps: FollowUpStep[] = [];
       if (followUp.campaign?.steps) {
         try {
@@ -683,16 +621,19 @@ export async function handleClientResponse(
           if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
             steps = JSON.parse(stepsString) as FollowUpStep[];
           } else {
-            console.log(`Follow-up ${followUp.id} tem campanha com steps vazios, carregando do CSV`);
-            steps = await loadFollowUpData();
+            // Sem dados de etapas, não podemos continuar
+            console.log(`Follow-up ${followUp.id} tem campanha sem steps válidos`);
+            continue;
           }
         } catch (err) {
           console.error(`Erro ao analisar steps da campanha para follow-up ${followUp.id}:`, err);
-          // Fallback para o CSV em caso de erro
-          steps = await loadFollowUpData();
+          // Não usar fallback para CSV, simplesmente continuar para o próximo follow-up
+          continue;
         }
       } else {
-        steps = await loadFollowUpData();
+        // Não há campanha ou steps, não podemos continuar
+        console.log(`Follow-up ${followUp.id} não tem campanha ou steps`);
+        continue;
       }
 
       if (!steps || steps.length === 0) {
@@ -705,55 +646,106 @@ export async function handleClientResponse(
       const currentStep = steps[currentStepIndex];
       const currentFunnelStage = currentStep?.etapa || currentStep?.stage_name;
 
-      console.log(`Fase atual do funil: ${currentFunnelStage}`);
+      console.log(`Follow-up ${followUp.id} - Fase atual: ${currentFunnelStage}, Etapa atual: ${currentStepIndex}`);
 
-      // Procurar a primeira etapa da próxima fase do funil
-      let nextPhaseStepIndex = -1;
+      // Registrar a resposta do cliente
+      await prisma.followUpMessage.create({
+        data: {
+          follow_up_id: followUp.id,
+          step: -1, // Valor especial para indicar mensagem do cliente
+          content: message,
+          sent_at: new Date(),
+          delivered: true,
+          delivered_at: new Date(),
+          funnel_stage: currentFunnelStage
+        }
+      });
+
+      // Marcar o follow-up como responsivo
+      await prisma.followUp.update({
+        where: { id: followUp.id },
+        data: {
+          is_responsive: true
+        }
+      });
+
+      // Determinar a próxima etapa (dentro da mesma fase ou início da próxima fase)
+      
+      // 1. Procurar a próxima etapa na mesma fase
+      let nextStepInSamePhase = -1;
+      for (let i = currentStepIndex + 1; i < steps.length; i++) {
+        const stepFunnelStage = steps[i]?.etapa || steps[i]?.stage_name;
+        if (stepFunnelStage === currentFunnelStage) {
+          nextStepInSamePhase = i;
+          break;
+        }
+      }
+
+      // 2. Procurar a primeira etapa da próxima fase
+      let firstStepOfNextPhase = -1;
       let nextPhaseName = '';
-
       for (let i = 0; i < steps.length; i++) {
         const stepFunnelStage = steps[i]?.etapa || steps[i]?.stage_name;
-
-        // Se encontrarmos uma fase diferente da atual, essa é a próxima fase
         if (stepFunnelStage && stepFunnelStage !== currentFunnelStage) {
-          nextPhaseStepIndex = i;
+          firstStepOfNextPhase = i;
           nextPhaseName = stepFunnelStage;
           break;
         }
       }
 
-      // Se encontramos a próxima fase, atualizar o follow-up
-      if (nextPhaseStepIndex >= 0) {
-        // PONTO CRÍTICO: Garantir que o status seja 'active' - não 'paused
+      // IMPORTANTE: Cancelar apenas as mensagens agendadas para a etapa atual
+      // NÃO cancelamos todas as mensagens do follow-up
+      await cancelScheduledMessageForStep(followUp.id, currentStepIndex);
+
+      // Lógica de decisão: para onde vamos mover o cliente?
+      let nextStepIndex: number;
+      let nextStageName: string;
+      let completeCampaign = false;
+
+      if (nextStepInSamePhase >= 0) {
+        // Avançar para a próxima etapa na mesma fase
+        nextStepIndex = nextStepInSamePhase;
+        nextStageName = currentFunnelStage;
+        console.log(`Avançando para próxima etapa na mesma fase: ${nextStepIndex}`);
+      } else if (firstStepOfNextPhase >= 0) {
+        // Avançar para a primeira etapa da próxima fase
+        nextStepIndex = firstStepOfNextPhase;
+        nextStageName = nextPhaseName;
+        console.log(`Avançando para primeira etapa da próxima fase: ${nextStepIndex} (${nextPhaseName})`);
+      } else {
+        // Não há mais etapas, completar o follow-up
+        completeCampaign = true;
+        console.log(`Não há mais etapas, completando follow-up ${followUp.id}`);
+      }
+
+      if (completeCampaign) {
+        // Completar o follow-up
         await prisma.followUp.update({
           where: { id: followUp.id },
           data: {
-            current_step: nextPhaseStepIndex,
-            is_responsive: true,
-            status: 'active', // IMPORTANTE: forçar como 'active' mesmo após resposta
-            next_message_at: new Date(), // Processar a próxima mensagem imediatamente
+            status: 'completed',
+            completed_at: new Date()
+          }
+        });
+      } else {
+        // Atualizar o follow-up para a próxima etapa
+        await prisma.followUp.update({
+          where: { id: followUp.id },
+          data: {
+            current_step: nextStepIndex,
+            status: 'active',
+            next_message_at: new Date(), // Processar próxima etapa imediatamente
             metadata: JSON.stringify({
-              current_stage_name: nextPhaseName,
+              current_stage_name: nextStageName,
               updated_at: new Date().toISOString(),
               last_response: message,
-              // Adicionar uma flag para identificar que este follow-up foi processado por resposta
               processed_by_response: true
             })
           }
         });
 
-        // Processar a primeira etapa da nova fase imediatamente
+        // Processar a próxima etapa imediatamente
         await processFollowUpSteps(followUp.id);
-      } else {
-        // Se não houver próxima fase, marcar como completo
-        await prisma.followUp.update({
-          where: { id: followUp.id },
-          data: {
-            status: 'completed',
-            completed_at: new Date(),
-            is_responsive: true
-          }
-        });
       }
     }
   } catch (error) {
@@ -762,33 +754,26 @@ export async function handleClientResponse(
   }
 }
 
-// Função para gerenciar importação inicial do CSV de follow-up para o banco de dados
-export async function importFollowUpCampaign(
+// Função para criar uma nova campanha vazia
+export async function createEmptyCampaign(
   name: string,
   description?: string
 ): Promise<string> {
   try {
-    // Carregar dados do CSV
-    const steps = await loadFollowUpData();
-
-    if (!steps || steps.length === 0) {
-      throw new Error("Nenhuma etapa encontrada no CSV");
-    }
-
-    // Criar uma nova campanha no banco de dados
+    // Criar uma nova campanha no banco de dados com array vazio de steps
     const campaign = await prisma.followUpCampaign.create({
       data: {
         name,
         description,
         active: true,
-        steps: JSON.stringify(steps)
+        steps: "[]"
       }
     });
 
-    console.log(`Campanha de follow-up "${name}" importada com sucesso, ID: ${campaign.id}`);
+    console.log(`Campanha de follow-up "${name}" criada com sucesso, ID: ${campaign.id}`);
     return campaign.id;
   } catch (error) {
-    console.error("Erro ao importar campanha de follow-up:", error);
+    console.error("Erro ao criar campanha de follow-up:", error);
     throw error;
   }
 }

@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import axios from 'axios'; // Usando axios que já deve estar instalado
 
 // Mapa para armazenar timeouts ativos
-const activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
+export const activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
 // Interface para as mensagens agendadas
 interface ScheduledMessage {
@@ -102,7 +102,6 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     
     console.log(`===== RESPOSTA GET CONVERSA DO CLIENTE =====`);
     console.log('Status:', conversation.status);
-    console.log('Data:', JSON.stringify(conversation.data, null, 2));
     
     // Extrair parâmetros do template do metadata se disponível
     const templateParams = metadata?.templateParams || {};
@@ -158,8 +157,6 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     // Log detalhado da resposta da API
     console.log('===== RESPOSTA DA API LUMIBOT =====');
     console.log('Status:', response.status);
-    console.log('Headers:', JSON.stringify(response.headers, null, 2));
-    console.log('Data:', JSON.stringify(response.data, null, 2));
     
     return true;
   } catch (error: any) {
@@ -304,3 +301,4 @@ if (typeof window === 'undefined') { // Verificar se estamos no lado do servidor
     });
   }, 5000); // Aguardar 5 segundos após a inicialização
 }
+
