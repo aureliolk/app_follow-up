@@ -291,30 +291,23 @@ export const followUpService = {
         
         if (Array.isArray(stepsData) && stepsData.length > 0) {
           const formattedCampaignSteps: any = stepsData.map((step: any, index: number) => {
-            if (step.stage_name) {
-              return {
-                id: step.id || `campaign-step-${index}`,
-                etapa: step.stage_name,
-                tempo_de_espera: step.wait_time || '',
-                template_name: step.template_name || '',
-                message: step.message || '',
-                stage_id: step.stage_id || '',
-                stage_name: step.stage_name,
-                stage_order: step.stage_order || index
-              };
-            } else if (step.etapa) {
-              return {
-                id: step.id || `campaign-step-${index}`,
-                etapa: step.etapa,
-                tempo_de_espera: step.tempo_de_espera || '',
-                template_name: step.template_name || step.nome_template || '',
-                message: step.message || step.mensagem || '',
-                stage_id: step.stage_id || '',
-                stage_name: step.etapa,
-                stage_order: step.stage_order || index
-              };
-            }
-            return null;
+            // Normalizar todos os passos para o formato moderno, independente de origem
+            return {
+              id: step.id || `campaign-step-${index}`,
+              // Campo principal - stage_name
+              stage_name: step.stage_name || step.etapa || 'Sem nome',
+              // Campo de tempo - wait_time
+              wait_time: step.wait_time || step.tempo_de_espera || '30m',
+              // Campo de template - template_name
+              template_name: step.template_name || step.nome_template || '',
+              // Campo de mensagem - message
+              message: step.message || step.mensagem || '',
+              // Outros campos
+              stage_id: step.stage_id || '',
+              stage_order: step.stage_order || index,
+              category: step.category || step.message_category || 'Utility',
+              auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
+            };
           }).filter(Boolean);
           
           campaignSteps.push(...formattedCampaignSteps);
@@ -438,13 +431,14 @@ export const followUpService = {
       if (preparedData.steps && Array.isArray(preparedData.steps)) {
         // Garantir que cada step tenha todos os campos necessários
         const formattedSteps = preparedData.steps.map(step => ({
+          // Garantir campos consistentes com a interface FollowUpStep e com o schema.prisma
           id: step.id || undefined,
           stage_id: step.stage_id || '',
-          stage_name: step.stage_name || '',
-          template_name: step.template_name || '',
-          wait_time: step.wait_time || '',
-          message: step.message || '',
-          category: step.category || 'Utility',
+          stage_name: step.stage_name || step.etapa || '',
+          template_name: step.template_name || step.nome_template || '',
+          wait_time: step.wait_time || step.tempo_de_espera || '30m',
+          message: step.message || step.mensagem || '',
+          category: step.category || step.message_category || 'Utility',
           auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
         }));
         

@@ -2,12 +2,16 @@
 import { prisma } from '@/lib/db';
 import { scheduleMessage, cancelScheduledMessages, activeTimeouts } from './scheduler';
 
-// Interface para os dados de follow-up
+// Interface para os dados de follow-up - alinhada com schema.prisma
 interface FollowUpStep {
-  etapa: string;
-  mensagem: string;
-  tempo_de_espera: string; // Formato esperado: "1d", "2h", "30m", etc.
-  condicionais?: string;
+  stage_name: string;    // Novo padrão (antigo: etapa)
+  message: string;       // Novo padrão (antigo: mensagem)
+  wait_time: string;     // Novo padrão (antigo: tempo_de_espera) - Formato: "1d", "2h", "30m"
+  template_name: string;
+  stage_id?: string;
+  category?: string;
+  auto_respond?: boolean;
+  id?: string;
 }
 
 const TEST_MODE = true; // Defina como false em produção
@@ -173,25 +177,25 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     // Obter a etapa atual
     const currentStep = steps[currentStepIndex];
 
-    // Verificar se há um nome de estágio do funil
-    const currentEtapa = currentStep.etapa || currentStep.stage_name;
+    // Obter o nome do estágio atual (usando sempre stage_name - convertido na interface)
+    const currentStageName = currentStep.stage_name;
 
     // Obter o nome do estágio atual do metadata
-    let currentStageName = "Não definido";
+    let metadataStageName = "Não definido";
     try {
       if (followUp.metadata) {
         const meta = JSON.parse(followUp.metadata);
-        currentStageName = meta.current_stage_name || "Não definido";
+        metadataStageName = meta.current_stage_name || "Não definido";
       }
     } catch (e) {
       console.error("Erro ao analisar metadata:", e);
     }
 
     // Vamos armazenar o nome da etapa no campo metadata como JSON
-    if (currentEtapa && currentEtapa !== currentStageName) {
+    if (currentStageName && currentStageName !== metadataStageName) {
       // Preparar o metadata como JSON
       const metadata = JSON.stringify({
-        current_stage_name: currentEtapa,
+        current_stage_name: currentStageName,
         updated_at: new Date().toISOString()
       });
 
@@ -203,12 +207,8 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       });
     }
 
-    // Obter o tempo de espera do estágio atual
-    // Verificar os múltiplos campos possíveis (compatibilidade com diferentes formatos)
-    const tempoEspera = currentStep.tempo_de_espera || currentStep.wait_time;
-
-    // Calcular o tempo de espera para a próxima mensagem
-    const waitTime = parseTimeString(tempoEspera);
+    // Obter o tempo de espera do estágio atual (usando sempre wait_time do novo formato)
+    const waitTime = parseTimeString(currentStep.wait_time);
 
     // Calcular o horário da próxima mensagem - SEMPRE respeitando o tempo de espera definido
     const nextMessageTime = new Date(Date.now() + waitTime);
@@ -226,8 +226,8 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       data: {
         follow_up_id: followUpId,
         step: currentStepIndex,
-        content: currentStep.mensagem || currentStep.message,
-        funnel_stage: currentEtapa,
+        content: currentStep.message,
+        funnel_stage: currentStageName,
         template_name: currentStep.template_name,
         category: currentStep.category,
         sent_at: new Date(),
@@ -250,7 +250,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     await scheduleMessage({
       followUpId,
       stepIndex: currentStepIndex,
-      message: currentStep.mensagem || currentStep.message,
+      message: currentStep.message,
       scheduledTime: messageScheduledTime,
       clientId: followUp.client_id,
       metadata: {
@@ -644,7 +644,7 @@ export async function handleClientResponse(
       // Identificar a fase atual do funil
       const currentStepIndex = followUp.current_step;
       const currentStep = steps[currentStepIndex];
-      const currentFunnelStage = currentStep?.etapa || currentStep?.stage_name;
+      const currentFunnelStage = currentStep?.stage_name;
 
       console.log(`Follow-up ${followUp.id} - Fase atual: ${currentFunnelStage}, Etapa atual: ${currentStepIndex}`);
 
@@ -674,7 +674,7 @@ export async function handleClientResponse(
       // 1. Procurar a próxima etapa na mesma fase
       let nextStepInSamePhase = -1;
       for (let i = currentStepIndex + 1; i < steps.length; i++) {
-        const stepFunnelStage = steps[i]?.etapa || steps[i]?.stage_name;
+        const stepFunnelStage = steps[i]?.stage_name;
         if (stepFunnelStage === currentFunnelStage) {
           nextStepInSamePhase = i;
           break;
@@ -685,7 +685,7 @@ export async function handleClientResponse(
       let firstStepOfNextPhase = -1;
       let nextPhaseName = '';
       for (let i = 0; i < steps.length; i++) {
-        const stepFunnelStage = steps[i]?.etapa || steps[i]?.stage_name;
+        const stepFunnelStage = steps[i]?.stage_name;
         if (stepFunnelStage && stepFunnelStage !== currentFunnelStage) {
           firstStepOfNextPhase = i;
           nextPhaseName = stepFunnelStage;
