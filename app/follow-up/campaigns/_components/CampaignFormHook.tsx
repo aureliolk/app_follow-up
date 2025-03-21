@@ -7,13 +7,18 @@ import FunnelStageList from './FunnelStageList';
 import StepFormHook from './StepFormHook';
 import FunnelStagesTabs from './FunnelStagesTabs';
 
-// Adiciona handleShowAddForm como propriedade global do window
+/**
+ * Adiciona addStageStep como propriedade global do window
+ */
 declare global {
   interface Window {
     addStageStep: (stageId: string) => void;
   }
 }
 
+/**
+ * Interface para etapa do funil
+ */
 interface FunnelStage {
   id: string;
   name: string;
@@ -21,6 +26,9 @@ interface FunnelStage {
   description?: string;
 }
 
+/**
+ * Interface para um estágio de campanha
+ */
 interface Step {
   id?: string;
   stage_id: string;
@@ -32,22 +40,37 @@ interface Step {
   auto_respond?: boolean;
 }
 
+/**
+ * Props do componente CampaignFormHook
+ */
 interface CampaignFormHookProps {
+  // Dados
   funnelStages: FunnelStage[];
   campaignSteps: Step[];
+  campaignId?: string;
+  
+  // Estados
+  isLoading: boolean;
+  
+  // Funções de callback
   onSubmit: () => void;
   onCancel: () => void;
   onRefreshCampaign?: () => Promise<void>;
-  campaignId?: string;
-  isLoading: boolean;
+  
+  // Manipulação de estágios
   onAddStep?: (newStep: Step) => Promise<boolean>;
   onUpdateStep?: (index: number, updatedStep: Step) => Promise<boolean>;
-  onRemoveStep?: (index: number, step: Step) => Promise<boolean>;
+  onRemoveStep?: (index: number, step?: Step) => Promise<boolean>;
+  
+  // Manipulação de etapas do funil
   onAddFunnelStage?: (newStage: Omit<FunnelStage, 'id'>) => Promise<boolean>;
   onUpdateFunnelStage?: (stageId: string, updatedStage: Partial<FunnelStage>) => Promise<boolean>;
   onRemoveFunnelStage?: (stageId: string) => Promise<boolean>;
 }
 
+/**
+ * Componente principal do formulário de campanha
+ */
 const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
   funnelStages,
   campaignSteps,
@@ -59,30 +82,29 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
   onRemoveStep,
   onAddFunnelStage,
   onUpdateFunnelStage,
-  onRemoveFunnelStage,
-  onRefreshCampaign,
-  campaignId
+  onRemoveFunnelStage
 }) => {
   // Acesso ao contexto do formulário
   const { register, control, formState: { errors } } = useFormContext();
   
-  // Estados para gerenciar estágios (steps)
+  // Estados para interface de estágios
   const [selectedStage, setSelectedStage] = useState<string>('');
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
   const [showStepForm, setShowStepForm] = useState(false);
   const [loadingStep, setLoadingStep] = useState(false);
   
-  // Estados para gerenciamento de etapas do funil
+  // Estados para interface de etapas do funil
   const [showFunnelStageForm, setShowFunnelStageForm] = useState(false);
   const [editingFunnelStage, setEditingFunnelStage] = useState<FunnelStage | null>(null);
   const [loadingFunnelStage, setLoadingFunnelStage] = useState(false);
+  
+  // Dados do formulário
   const [newFunnelStage, setNewFunnelStage] = useState<Omit<FunnelStage, 'id'>>({
     name: '',
     description: '',
     order: 0
   });
 
-  // Estado para o formulário de estágio
   const [newStep, setNewStep] = useState<Step>({
     stage_id: '',
     stage_name: '',
@@ -93,9 +115,10 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     auto_respond: true
   });
 
-  // Função para mostrar o formulário para adicionar um novo estágio
+  /**
+   * Abre o formulário para adicionar um novo estágio
+   */
   const handleShowAddForm = useCallback((stageId?: string) => {
-    // Resetar o formulário para um novo estágio
     setNewStep({
       stage_id: stageId || '',
       stage_name: stageId ? (funnelStages.find(s => s.id === stageId)?.name || '') : '',
@@ -115,9 +138,10 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     }, 100);
   }, [funnelStages]);
 
-  // Função para editar um passo existente
+  /**
+   * Configura o formulário para editar um passo existente
+   */
   const handleEditStep = (index: number) => {
-    // Validar o índice antes de prosseguir
     if (index < 0 || index >= campaignSteps.length) {
       console.error(`Erro ao editar estágio: índice inválido ${index}`);
       alert('Índice de estágio inválido');
@@ -126,7 +150,6 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
 
     const stepToEdit = campaignSteps[index];
 
-    // Garantir que todos os campos necessários estejam presentes
     setNewStep({
       id: stepToEdit.id,
       stage_id: stepToEdit.stage_id,
@@ -141,17 +164,18 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     setEditingStepIndex(index);
     setShowStepForm(true);
 
-    // Se o estágio está definido, selecionar o estágio correto no dropdown
     if (stepToEdit.stage_id) {
       setSelectedStage(stepToEdit.stage_id);
     }
 
-    // Rolar até o formulário de edição
     setTimeout(() => {
       document.getElementById('step-form')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   };
 
+  /**
+   * Manipula o salvamento de um estágio (novo ou editado)
+   */
   const handleAddOrUpdateStep = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -163,48 +187,44 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
 
     setLoadingStep(true);
     try {
+      let success = false;
+      
       if (editingStepIndex !== null && onUpdateStep) {
         // Estamos editando um passo existente
-        const success = await onUpdateStep(editingStepIndex, newStep);
-        if (!success) {
-          alert('Erro ao atualizar o estágio no servidor');
-          return;
-        }
-        setEditingStepIndex(null); // Sair do modo de edição
+        success = await onUpdateStep(editingStepIndex, newStep);
       } else if (onAddStep) {
         // Estamos adicionando um novo passo
-        const success = await onAddStep({ ...newStep });
-        if (!success) {
-          alert('Erro ao adicionar o estágio no servidor');
-          return;
-        }
+        success = await onAddStep({ ...newStep });
       }
-
-      // Se chegou até aqui, deu tudo certo
-      setShowStepForm(false); // Esconder o formulário
-
-      // Resetar o formulário mas manter o estágio selecionado
-      setNewStep({
-        stage_id: newStep.stage_id,
-        stage_name: newStep.stage_name,
-        template_name: '',
-        wait_time: '30 minutos',
-        message: '',
-        category: 'Utility',
-        auto_respond: true
-      });
+      
+      if (success) {
+        setShowStepForm(false);
+        setEditingStepIndex(null);
+        
+        // Resetar o formulário mantendo o estágio selecionado
+        setNewStep({
+          stage_id: newStep.stage_id,
+          stage_name: newStep.stage_name,
+          template_name: '',
+          wait_time: '30 minutos',
+          message: '',
+          category: 'Utility',
+          auto_respond: true
+        });
+      }
     } catch (error) {
       console.error('Erro ao salvar estágio:', error);
-      alert('Ocorreu um erro ao salvar o estágio');
     } finally {
       setLoadingStep(false);
     }
   };
 
+  /**
+   * Cancela a edição de um estágio
+   */
   const handleCancelEdit = () => {
     setEditingStepIndex(null);
     setShowStepForm(false);
-    // Resetar o formulário
     setNewStep({
       stage_id: '',
       stage_name: '',
@@ -216,24 +236,22 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     });
   };
 
-  // Função chamada para remover um estágio
-  const handleRemoveStepInternal = async (index: number) => {
-    if (onRemoveStep) {
-      await onRemoveStep(index, campaignSteps[index]);
-    }
-  };
-
-  // Funções para gerenciar etapas do funil
+  /**
+   * Abre o formulário para adicionar uma nova etapa de funil
+   */
   const handleShowAddFunnelStageForm = () => {
     setEditingFunnelStage(null);
     setNewFunnelStage({
       name: '',
       description: '',
-      order: funnelStages.length // Próxima ordem disponível
+      order: funnelStages.length
     });
     setShowFunnelStageForm(true);
   };
 
+  /**
+   * Configura o formulário para editar uma etapa de funil existente
+   */
   const handleEditFunnelStage = (stage: FunnelStage) => {
     setEditingFunnelStage(stage);
     setNewFunnelStage({
@@ -244,11 +262,17 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     setShowFunnelStageForm(true);
   };
 
+  /**
+   * Cancela a edição de uma etapa de funil
+   */
   const handleCancelFunnelStageEdit = () => {
     setEditingFunnelStage(null);
     setShowFunnelStageForm(false);
   };
 
+  /**
+   * Manipula o salvamento de uma etapa de funil (nova ou editada)
+   */
   const handleAddOrUpdateFunnelStage = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -261,46 +285,32 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     setLoadingFunnelStage(true);
 
     try {
+      let success = false;
+      
       if (editingFunnelStage && onUpdateFunnelStage) {
-        // Atualizar etapa existente
-        const success = await onUpdateFunnelStage(editingFunnelStage.id, newFunnelStage);
-        if (success) {
-          setShowFunnelStageForm(false);
-          setEditingFunnelStage(null);
-        } else {
-          alert('Erro ao atualizar a etapa do funil');
-        }
+        success = await onUpdateFunnelStage(editingFunnelStage.id, newFunnelStage);
       } else if (onAddFunnelStage) {
-        // Adicionar nova etapa
-        const success = await onAddFunnelStage(newFunnelStage);
-        if (success) {
-          setShowFunnelStageForm(false);
-        } else {
-          alert('Erro ao adicionar a etapa do funil');
-        }
+        success = await onAddFunnelStage(newFunnelStage);
+      }
+      
+      if (success) {
+        setShowFunnelStageForm(false);
+        setEditingFunnelStage(null);
       }
     } catch (error) {
       console.error('Erro ao salvar etapa do funil:', error);
-      alert('Ocorreu um erro ao salvar a etapa do funil');
     } finally {
       setLoadingFunnelStage(false);
     }
   };
-
-  const handleRemoveFunnelStageInternal = async (stageId: string) => {
-    if (onRemoveFunnelStage) {
-      await onRemoveFunnelStage(stageId);
-    }
-  };
   
-  // Registramos a função global depois que handleShowAddForm está definida
+  // Registra a função global para adicionar estágios
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.addStageStep = handleShowAddForm;
     }
     
     return () => {
-      // Limpar ao desmontar
       if (typeof window !== 'undefined') {
         delete window.addStageStep;
       }
@@ -362,7 +372,7 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
           <FunnelStageList 
             stages={funnelStages}
             onEdit={handleEditFunnelStage}
-            onRemove={handleRemoveFunnelStageInternal}
+            onRemove={onRemoveFunnelStage || (() => Promise.resolve(false))}
           />
         )}
         
@@ -407,15 +417,8 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
                 render={({ field }) => (
                   <FunnelStagesTabs
                     steps={field.value}
-                    funnelStages={funnelStages}
-                    campaignId={campaignId || ''}
-                    onRefreshSteps={() => {
-                      // Recarregar os passos após alterações
-                      if (onRefreshCampaign) {
-                        return onRefreshCampaign();
-                      }
-                      return Promise.resolve();
-                    }}
+                    onRemoveStep={onRemoveStep || (() => Promise.resolve(false))}
+                    onEditStep={handleEditStep}
                   />
                 )}
               />

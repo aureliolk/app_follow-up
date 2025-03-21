@@ -3,6 +3,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 
+/**
+ * Interface para um estágio no funil
+ */
 interface Step {
   id?: string;
   stage_id: string;
@@ -14,17 +17,24 @@ interface Step {
   auto_respond?: boolean;
 }
 
+/**
+ * Props do componente FunnelStagesTabs
+ */
 interface FunnelStagesTabsProps {
   steps: Step[];
   onRemoveStep: (index: number) => void;
   onEditStep: (index: number) => void;
 }
 
+/**
+ * Componente que exibe as etapas do funil em forma de abas
+ */
 const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({ 
   steps, 
   onRemoveStep, 
   onEditStep 
 }) => {
+  console.log(steps)
   // Agrupar os estágios por etapa do funil
   const stageGroups = useMemo(() => {
     const groups: Record<string, Step[]> = {};
@@ -61,7 +71,9 @@ const FunnelStagesTabs: React.FC<FunnelStagesTabsProps> = ({
     );
   }
 
-  // Encontrar os índices originais dos passos no array de steps
+  /**
+   * Encontra o índice original do passo no array de steps
+   */
   const getStepIndex = (step: Step) => {
     // Se não tiver dados básicos, não faz sentido procurar
     if (!step || (!step.id && !step.template_name)) {

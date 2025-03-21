@@ -4,7 +4,12 @@ import prisma from '@/lib/db';
 
 // Função auxiliar para extrair ID do URL
 function extractIdFromUrl(url: string): string {
-  const parts = url.split('/');
+  // Criar um objeto URL para facilitar a manipulação
+  const urlObj = new URL(url);
+  // Obter o caminho sem query parameters
+  const pathname = urlObj.pathname;
+  // Dividir o caminho e pegar o último segmento
+  const parts = pathname.split('/');
   return parts[parts.length - 1]; // Pegar o último segmento da URL
 }
 

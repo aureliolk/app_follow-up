@@ -44,12 +44,32 @@ export const followUpService = {
   // Função para buscar uma campanha específica
   async getCampaign(campaignId: string): Promise<Campaign> {
     try {
-      const response = await axios.get(`/api/follow-up/campaigns/${campaignId}`);
+      // Adicionar timestamp e cache buster para forçar atualização
+      const timestamp = new Date().getTime();
+      const cacheBuster = typeof window !== 'undefined' ? window.sessionStorage.getItem('cache_bust') || timestamp : timestamp;
+      
+      console.log(`🔍 Buscando campanha ${campaignId} (t=${timestamp}, cb=${cacheBuster})`);
+      
+      // Configuração para forçar a não utilização de cache
+      const config = {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      };
+      
+      const response = await axios.get(
+        `/api/follow-up/campaigns/${campaignId}?t=${timestamp}&cb=${cacheBuster}`, 
+        config
+      );
 
       if (!response.data.success) {
+        console.error(`❌ Erro ao buscar campanha: ${response.data.error}`);
         throw new Error(response.data.error || 'Failed to fetch campaign');
       }
 
+      console.log(`✅ Campanha ${campaignId} carregada com sucesso`);
       const campaignData = response.data.data;
 
       // Processar os steps se estiverem em formato string
@@ -78,9 +98,11 @@ export const followUpService = {
   // Função para buscar estágios do funil
   async getFunnelStages(campaignId?: string): Promise<FunnelStage[]> {
     try {
+      // Adicionar timestamp para evitar cache
+      const timestamp = new Date().getTime();
       const url = campaignId 
-        ? `/api/follow-up/funnel-stages?campaignId=${campaignId}` 
-        : '/api/follow-up/funnel-stages';
+        ? `/api/follow-up/funnel-stages?campaignId=${campaignId}&t=${timestamp}` 
+        : `/api/follow-up/funnel-stages?t=${timestamp}`;
       
       const response = await axios.get(url);
 
@@ -108,6 +130,9 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to create funnel stage');
       }
+      
+      // Limpar cache após modificar dados
+      this.clearCampaignCache();
 
       return response.data.data;
     } catch (error) {
@@ -127,6 +152,9 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update funnel stage');
       }
+      
+      // Limpar cache após modificar dados
+      this.clearCampaignCache();
 
       return response.data.data;
     } catch (error) {
@@ -143,6 +171,9 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete funnel stage');
       }
+      
+      // Limpar cache após modificar dados
+      this.clearCampaignCache();
 
       return true;
     } catch (error) {
@@ -239,6 +270,7 @@ export const followUpService = {
     }
     
     try {
+      // Forçar busca direto do servidor sem usar cache
       const campaign: any = await this.getCampaign(campaignId);
       const campaignSteps: CampaignStep[] = [];
       
@@ -303,12 +335,23 @@ export const followUpService = {
   
   // Método para limpar o cache quando necessário (após atualizações)
   clearCampaignCache(campaignId?: string) {
+    console.log("⚡ LIMPANDO CACHE", campaignId || "todos");
+    
+    // Limpar cache local
     if (campaignId) {
       delete campaignStepsCache[`campaign-steps-${campaignId}`];
     } else {
       Object.keys(campaignStepsCache).forEach(key => {
         delete campaignStepsCache[key];
       });
+    }
+    
+    // Forçar recarregamento de recursos
+    if (typeof window !== 'undefined') {
+      console.log("🔄 Forçando atualização do cache do navegador");
+      // Adicionar timestamp para forçar recarregamento de recursos em cache
+      const timestamp = new Date().getTime();
+      window.sessionStorage.setItem('cache_bust', timestamp.toString());
     }
   },
 

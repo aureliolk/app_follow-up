@@ -1,3 +1,4 @@
+//app/follow-up/campaigns/[id]/page.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -40,19 +41,26 @@ export default function EditCampaignPage() {
 
   // Função para carregar os dados da campanha
   const fetchCampaignData = async () => {
+    console.log('🔄 Recarregando dados da campanha...');
     setIsLoading(true);
     setError(null);
 
     try {
-      // Limpar o cache para garantir dados atualizados
-      followUpService.clearCampaignCache(campaignId);
+      // Forçar a limpeza completa do cache
+      followUpService.clearCampaignCache();
+      
+      // Esperar um pequeno tempo para garantir que as alterações estão no banco de dados
+      // Isso é importante quando há transações recentes
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // Carregar a campanha - esta é a única chamada de API necessária
+      // O parâmetro timestamp está sendo adicionado na função getCampaign para evitar cache do navegador
       const data = await followUpService.getCampaign(campaignId);
+      
+      console.log('✅ Dados da campanha carregados:', data.name, 'com', data.steps?.length || 0, 'estágios');
       
       // Armazenar os dados da campanha
       setCampaignData(data);
-      
       // Atualizar o formulário com os dados carregados
       methods.reset({
         name: data.name,
@@ -94,13 +102,25 @@ export default function EditCampaignPage() {
     setIsSubmitting(true);
 
     try {
+      // Limpar o cache antes da operação
+      followUpService.clearCampaignCache();
+      
+      console.log(`🗑️ Removendo estágio ID: ${stepToRemove.id}`);
+      
       // Excluir o estágio no servidor
       const success = await followUpService.deleteStep(stepToRemove.id);
       
       if (success) {
-        // Não precisamos atualizar o estado local, vamos recarregar os dados
-        await fetchCampaignData();
-        toast.success('Estágio removido com sucesso');
+        console.log('✅ Estágio removido com sucesso, recarregando dados...');
+        // Limpar cache novamente
+        followUpService.clearCampaignCache();
+        
+        // Recarregar a campanha para obter os dados atualizados com um delay
+        setTimeout(async () => {
+          await fetchCampaignData();
+          toast.success('Estágio removido com sucesso');
+        }, 500);
+        
         return true;
       } else {
         toast.error('Falha ao remover estágio');
@@ -131,6 +151,9 @@ export default function EditCampaignPage() {
     setIsSubmitting(true);
 
     try {
+      // Limpar o cache antes da operação
+      followUpService.clearCampaignCache();
+      
       // Mapear dados para o formato esperado pela API
       const stepData = {
         funnel_stage_id: newStep.stage_id,
@@ -146,9 +169,17 @@ export default function EditCampaignPage() {
       const response = await followUpService.createStep(stepData);
       
       if (response.success) {
-        // Recarregar a campanha para obter os dados atualizados
-        await fetchCampaignData();
-        toast.success('Estágio adicionado com sucesso');
+        console.log('✅ Estágio adicionado com sucesso, recarregando dados...');
+        // Limpar cache novamente
+        followUpService.clearCampaignCache();
+        
+        // Recarregar a campanha para obter os dados atualizados com um delay
+        // O delay ajuda a garantir que o banco de dados terminou de processar a mudança
+        setTimeout(async () => {
+          await fetchCampaignData();
+          toast.success('Estágio adicionado com sucesso');
+        }, 500);
+        
         return true;
       } else {
         toast.error('Falha ao adicionar estágio');
@@ -173,6 +204,9 @@ export default function EditCampaignPage() {
     setIsSubmitting(true);
 
     try {
+      // Limpar o cache antes da operação
+      followUpService.clearCampaignCache();
+      
       // Mapear dados para o formato esperado pela API
       const stepData = {
         id: updatedStep.id,
@@ -185,13 +219,24 @@ export default function EditCampaignPage() {
         auto_respond: updatedStep.auto_respond !== undefined ? updatedStep.auto_respond : true
       };
 
+      console.log('⚡ Iniciando processo de edição do estágio');
+
       // Atualizar o estágio no servidor
       const response = await followUpService.updateStep(updatedStep.id, stepData);
+
+      console.log('📋 Resposta da API:', response);
       
       if (response.success) {
-        // Recarregar a campanha para obter os dados atualizados
-        await fetchCampaignData();
-        toast.success('Estágio atualizado com sucesso');
+        console.log('✅ Estágio atualizado com sucesso, recarregando dados...');
+        // Limpar cache novamente
+        followUpService.clearCampaignCache();
+        
+        // Recarregar a campanha para obter os dados atualizados com um delay
+        setTimeout(async () => {
+          await fetchCampaignData();
+          toast.success('Estágio atualizado com sucesso');
+        }, 500);
+        
         return true;
       } else {
         toast.error('Falha ao atualizar estágio');
