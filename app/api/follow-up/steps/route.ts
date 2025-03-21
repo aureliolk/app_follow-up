@@ -1,5 +1,5 @@
 // app/api/follow-up/steps/route.ts
-// Arquivo criado como rota alternativa para solucionar o problema de 404 na rota funnel-steps
+// Rota de compatibilidade temporária - todas as outras operações usam funnel-steps
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
@@ -15,24 +15,32 @@ export async function POST(req: NextRequest) {
   return NextResponse.redirect('/api/follow-up/funnel-steps');
 }
 
-// Implementação específica para atualização de passos
+// Implementação de compatibilidade para atualização de passos
+// Converte os campos do frontend para o padrão do schema.prisma
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
     console.log("[API STEPS] Recebendo requisição PUT para atualizar passo:", body);
     
+    // Padronizar os nomes dos campos para seguir o schema.prisma
     const { 
-      id, 
-      stage_id,         // Campo do frontend
-      funnel_stage_id,  // Campo alternativo para o backend
+      id,
+      // Aceitar ambos os formatos mas padronizar para funnel_stage_id
+      stage_id,
+      funnel_stage_id,
+      // Nome do passo
       name,
-      stage_name,       // Campo do frontend
-      template_name, 
-      wait_time, 
-      message,          // Campo do frontend
-      message_content,  // Campo do backend
-      category,         // Campo do frontend
-      message_category, // Campo do backend
+      // Template
+      template_name,
+      // Tempo de espera
+      wait_time,
+      // Conteúdo da mensagem
+      message,
+      message_content,
+      // Categoria
+      category,
+      message_category,
+      // Resposta automática
       auto_respond
     } = body;
     
@@ -61,10 +69,11 @@ export async function PUT(req: NextRequest) {
       );
     }
     
-    // Mapear campos do frontend para campos do backend
+    // Padronizar os dados de acordo com o schema.prisma
     const updateData = {
+      // Manter campos do schema.prisma
       funnel_stage_id: funnel_stage_id || stage_id || existingStep.funnel_stage_id,
-      name: name || stage_name || existingStep.name,
+      name: name || existingStep.name,
       template_name: template_name || existingStep.template_name,
       message_content: message_content || message || existingStep.message_content,
       message_category: message_category || category || existingStep.message_category
@@ -82,7 +91,7 @@ export async function PUT(req: NextRequest) {
     }
     
     // Log para ajudar na depuração
-    console.log('[API STEPS] Dados para atualização do passo:', {
+    console.log('[API STEPS] Dados padronizados para atualização:', {
       id,
       ...updateData
     });

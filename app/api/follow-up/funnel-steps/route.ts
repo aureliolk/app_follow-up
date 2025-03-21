@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     // Converter tempo de espera em milissegundos
     const wait_time_ms = parseTimeString(wait_time);
     
-    // Criar o passo
+    // Criar o passo com campos padronizados conforme schema.prisma
     const stepData = {
       funnel_stage_id,
       name: name || template_name,
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       wait_time,
       wait_time_ms,
       message_content,
-      message_category: message_category || " Utility"
+      message_category: message_category || "Utility" // Remover espaço extra no início
     };
     
     // Adicionar auto_respond se estiver presente

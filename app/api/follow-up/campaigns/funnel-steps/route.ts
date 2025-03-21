@@ -7,28 +7,24 @@ export async function GET(request: NextRequest) {
   try {
     console.log('Obtendo todos os passos dos estágios do funil');
     
-    // Buscar todas as etapas do funil
-    const stages = await prisma.followUpFunnelStage.findMany({
-      orderBy: { order: 'asc' }
+    // Otimização: buscar todos os passos em uma única consulta com include para os estágios
+    const steps = await prisma.followUpStep.findMany({
+      include: {
+        funnel_stage: true, // Incluir o estágio relacionado
+      },
+      orderBy: {
+        funnel_stage: {
+          order: 'asc' // Ordenar pelo order do estágio
+        }
+      }
     });
     
-    // Para cada etapa, buscar os passos
-    const result = [];
-    
-    for (const stage of stages) {
-      const steps = await prisma.followUpStep.findMany({
-        where: { funnel_stage_id: stage.id }
-      });
-      
-      // Adicionar os passos ao resultado com metadados da etapa
-      steps.forEach(step => {
-        result.push({
-          ...step,
-          stage_name: stage.name,
-          stage_order: stage.order
-        });
-      });
-    }
+    // Mapear os resultados para incluir os dados do estágio diretamente
+    const result = steps.map(step => ({
+      ...step,
+      stage_name: step.funnel_stage.name,
+      stage_order: step.funnel_stage.order
+    }));
     
     return NextResponse.json({
       success: true,
