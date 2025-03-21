@@ -62,14 +62,12 @@ export interface FunnelStep {
 
 export interface CampaignStep {
   id: string;
-  etapa: string;
-  stage_name?: string;
-  tempo_de_espera: string;
-  wait_time?: string;
-  template_name: string;
-  message: string;
-  mensagem?: string;
-  stage_id?: string;
-  stage_order?: number;
-  condicionais?: string;
+  stage_name: string;        // Nome do estágio
+  wait_time: string;         // Tempo de espera (formato "1d", "2h", "30m")
+  template_name: string;     // Nome do template
+  message: string;           // Conteúdo da mensagem
+  stage_id?: string;         // ID do estágio de funil relacionado
+  stage_order?: number;      // Ordem no estágio
+  category?: string;         // Categoria da mensagem
+  auto_respond?: boolean;    // Se responde automaticamente
 }
