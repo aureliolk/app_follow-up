@@ -65,9 +65,7 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
   // Fetch workspaces based on user role
   const fetchWorkspaces = async () => {
     if (status !== 'authenticated' || !session?.user) {
-      console.log('User not authenticated or no session', { status, sessionUser: session?.user });
-      setWorkspaces([]);
-      setWorkspace(null);
+      setError('Usuário não autenticado');
       setIsLoading(false);
       return [];
     }
@@ -86,7 +84,6 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       const response = await fetch(endpoint, {
         // Include credentials and prevent caching
         credentials: 'include',
-        cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache'
         }
@@ -100,13 +97,12 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       const data = await response.json();
       console.log('Workspaces fetched:', data);
       setWorkspaces(data);
-      return data;
-    } catch (err) {
-      console.error('Error fetching workspaces:', err);
-      setError('Failed to load workspaces');
-      return [];
-    } finally {
       setIsLoading(false);
+      return data;
+    } catch (err: any) {
+      setError(err.message || 'Failed to load workspaces');
+      setIsLoading(false);
+      return [];
     }
   };
 
@@ -129,6 +125,10 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
     const found = workspaceList.find(w => w.slug === slug);
     if (found) {
       setWorkspace(found);
+      // Armazenar o ID do workspace ativo no sessionStorage
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('activeWorkspaceId', found.id);
+      }
     } else if (pathname?.includes('/workspace/')) {
       console.log('Workspace not found in list:', slug);
       console.log('Available workspaces:', workspaceList.map(w => w.slug));
@@ -147,19 +147,30 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
     };
 
     initializeWorkspaces();
-  }, [status, params?.slug]);
+  }, [status, params?.slug, pathname]);
 
-  // Switch to a different workspace
+  // Function to switch workspace
   const switchWorkspace = (workspaceSlug: string) => {
-    const found = workspaces.find(w => w.slug === workspaceSlug);
-    if (found) {
-      router.push(`/workspace/${workspaceSlug}`);
+    const targetWorkspace = workspaces.find(w => w.slug === workspaceSlug);
+    if (!targetWorkspace) {
+      setError('Workspace not found');
+      return;
     }
+
+    // Store workspace ID in session storage
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('activeWorkspaceId', targetWorkspace.id);
+    }
+    
+    // Navigate to workspace
+    router.push(`/workspace/${workspaceSlug}`);
   };
 
-  // Create a new workspace
+  // Function to create a new workspace
   const createWorkspace = async (name: string): Promise<Workspace> => {
     try {
+      setIsLoading(true);
+
       const response = await fetch('/api/workspaces', {
         method: 'POST',
         headers: {
@@ -169,24 +180,28 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to create workspace');
+        throw new Error('Failed to create workspace');
       }
 
       const newWorkspace = await response.json();
-      setWorkspaces([...workspaces, newWorkspace]);
+
+      // Update workspaces list
+      setWorkspaces(prev => [...prev, newWorkspace]);
+      setIsLoading(false);
+
       return newWorkspace;
     } catch (err: any) {
       setError(err.message || 'Failed to create workspace');
+      setIsLoading(false);
       throw err;
     }
   };
 
-  // Update a workspace
+  // Function to update a workspace
   const updateWorkspace = async (id: string, data: { name?: string; slug?: string }): Promise<Workspace> => {
     try {
       const response = await fetch(`/api/workspaces/${id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -194,8 +209,7 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to update workspace');
+        throw new Error('Failed to update workspace');
       }
 
       const updatedWorkspace = await response.json();
@@ -218,7 +232,7 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
     }
   };
 
-  // Delete a workspace
+  // Function to delete a workspace
   const deleteWorkspace = async (id: string): Promise<void> => {
     try {
       const response = await fetch(`/api/workspaces/${id}`, {
@@ -226,14 +240,17 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to delete workspace');
+        throw new Error('Failed to delete workspace');
       }
 
       setWorkspaces(workspaces.filter(w => w.id !== id));
 
       if (workspace?.id === id) {
         setWorkspace(null);
+        // Remove workspace ID from session storage
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('activeWorkspaceId');
+        }
         // If current workspace was deleted, redirect to workspaces list
         router.push('/workspaces');
       }
@@ -243,27 +260,31 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
     }
   };
 
-  // Refresh workspaces list
+  // Function to refresh workspaces list
   const refreshWorkspaces = async (): Promise<void> => {
-    setIsLoading(true);
-    const workspaceList = await fetchWorkspaces();
-    await loadCurrentWorkspace(workspaceList || []);
+    try {
+      setIsLoading(true);
+      await fetchWorkspaces();
+    } catch (err: any) {
+      setError(err.message || 'Failed to refresh workspaces');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <WorkspaceContext.Provider
-      value={{
-        workspace,
-        workspaces,
-        isLoading,
-        error,
-        switchWorkspace,
-        createWorkspace,
-        updateWorkspace,
-        deleteWorkspace,
-        refreshWorkspaces,
-      }}
-    >
+    <WorkspaceContext.Provider value={{
+      workspace,
+      workspaces,
+      isLoading,
+      error,
+      switchWorkspace,
+      createWorkspace,
+      updateWorkspace,
+      deleteWorkspace,
+      refreshWorkspaces
+    }}>
       {children}
     </WorkspaceContext.Provider>
   );

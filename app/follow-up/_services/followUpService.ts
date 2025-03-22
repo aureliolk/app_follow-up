@@ -6,13 +6,29 @@ import { FollowUp, Campaign, CampaignStep, FunnelStage, FunnelStep } from '../_t
 const campaignStepsCache: Record<string, { data: any[], timestamp: number }> = {};
 const CACHE_TTL = 60000; // 1 minuto de TTL para o cache
 
+// Obter workspaceId ativo da sessionStorage
+function getActiveWorkspaceId(): string | null {
+  if (typeof window === 'undefined') return null;
+  
+  return sessionStorage.getItem('activeWorkspaceId') || 
+         localStorage.getItem('activeWorkspaceId');
+}
+
 export const followUpService = {
   // Função para buscar follow-ups
-  async getFollowUps(status?: string): Promise<FollowUp[]> {
+  async getFollowUps(status?: string, workspaceId?: string): Promise<FollowUp[]> {
     try {
-      const response = await axios.get('/api/follow-up', {
-        params: status ? { status } : undefined
-      });
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
+      const params: Record<string, string | undefined> = { 
+        status 
+      };
+      
+      if (wsId) {
+        params.workspaceId = wsId;
+      }
+      
+      const response = await axios.get('/api/follow-up', { params });
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch follow-ups');
@@ -26,9 +42,16 @@ export const followUpService = {
   },
 
   // Função para buscar campanhas
-  async getCampaigns(): Promise<Campaign[]> {
+  async getCampaigns(workspaceId?: string): Promise<Campaign[]> {
     try {
-      const response = await axios.get('/api/follow-up/campaigns');
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
+      const params: Record<string, string | undefined> = {};
+      if (wsId) {
+        params.workspaceId = wsId;
+      }
+      
+      const response = await axios.get('/api/follow-up/campaigns', { params });
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch campaigns');
@@ -42,8 +65,10 @@ export const followUpService = {
   },
 
   // Função para buscar uma campanha específica
-  async getCampaign(campaignId: string): Promise<Campaign> {
+  async getCampaign(campaignId: string, workspaceId?: string): Promise<Campaign> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       // Adicionar timestamp e cache buster para forçar atualização
       const timestamp = new Date().getTime();
       const cacheBuster = typeof window !== 'undefined' ? window.sessionStorage.getItem('cache_bust') || timestamp : timestamp;
@@ -56,11 +81,16 @@ export const followUpService = {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
           'Expires': '0'
+        },
+        params: {
+          t: timestamp,
+          cb: cacheBuster,
+          workspaceId: wsId
         }
       };
 
       const response = await axios.get(
-        `/api/follow-up/campaigns/${campaignId}?t=${timestamp}&cb=${cacheBuster}`,
+        `/api/follow-up/campaigns/${campaignId}`,
         config
       );
 
@@ -89,15 +119,21 @@ export const followUpService = {
   },
 
   // Função para buscar estágios do funil
-  async getFunnelStages(campaignId?: string): Promise<FunnelStage[]> {
+  async getFunnelStages(campaignId?: string, workspaceId?: string): Promise<FunnelStage[]> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       // Adicionar timestamp para evitar cache
       const timestamp = new Date().getTime();
-      const url = campaignId
-        ? `/api/follow-up/funnel-stages?campaignId=${campaignId}&t=${timestamp}`
-        : `/api/follow-up/funnel-stages?t=${timestamp}`;
-
-      const response = await axios.get(url);
+      
+      // Parâmetros da requisição
+      const params: Record<string, string> = { t: timestamp.toString() };
+      
+      if (campaignId) params.campaignId = campaignId;
+      if (wsId) params.workspaceId = wsId;
+      
+      // Construir URL com parâmetros
+      const response = await axios.get('/api/follow-up/funnel-stages', { params });
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch funnel stages');
@@ -111,13 +147,16 @@ export const followUpService = {
   },
 
   // Função para criar um novo estágio do funil
-  async createFunnelStage(name: string, description?: string, order?: number, campaignId?: string): Promise<FunnelStage> {
+  async createFunnelStage(name: string, description?: string, order?: number, campaignId?: string, workspaceId?: string): Promise<FunnelStage> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       const response = await axios.post('/api/follow-up/funnel-stages', {
         name,
         description,
         order,
-        campaignId
+        campaignId,
+        workspaceId: wsId
       });
 
       if (!response.data.success) {
@@ -134,12 +173,17 @@ export const followUpService = {
     }
   },
 
-  // Função para atualizar um estágio do funil - TOTALMENTE REESCRITA
-  async updateFunnelStage(id: string, data: { name: string, description?: string | null, order?: number, campaignId?: string }): Promise<FunnelStage> {
+  // Função para atualizar um estágio do funil
+  async updateFunnelStage(id: string, data: { name: string, description?: string | null, order?: number, campaignId?: string, workspaceId?: string }): Promise<FunnelStage> {
     try {
       // Validação de dados básica
       if (!id || !data.name) {
         throw new Error('ID e nome são campos obrigatórios');
+      }
+      
+      // Obter workspace do contexto se não fornecido
+      if (!data.workspaceId) {
+        data.workspaceId = getActiveWorkspaceId() || undefined;
       }
 
       console.log('🔄 Atualizando estágio do funil:', { id, ...data });
@@ -153,7 +197,8 @@ export const followUpService = {
         name: data.name,
         description: data.description || null,
         order: data.order !== undefined ? data.order : 1,
-        campaignId: data.campaignId, // FUNDAMENTAL passar o ID da campanha
+        campaignId: data.campaignId,
+        workspaceId: data.workspaceId,
         t: timestamp // Para evitar problemas de cache
       };
 
@@ -213,7 +258,8 @@ export const followUpService = {
           const minimalPayload = {
             id,
             name: data.name,
-            description: data.description || null
+            description: data.description || null,
+            workspaceId: data.workspaceId
           };
 
           try {
@@ -254,9 +300,16 @@ export const followUpService = {
   },
 
   // Função para excluir um estágio do funil
-  async deleteFunnelStage(id: string): Promise<boolean> {
+  async deleteFunnelStage(id: string, workspaceId?: string): Promise<boolean> {
     try {
-      const response = await axios.delete(`/api/follow-up/funnel-stages?id=${id}`);
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
+      const params: Record<string, string> = { id };
+      if (wsId) params.workspaceId = wsId;
+      
+      const response = await axios.delete('/api/follow-up/funnel-stages', { 
+        params
+      });
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete funnel stage');
@@ -273,9 +326,14 @@ export const followUpService = {
   },
 
   // Função para buscar passos de um estágio específico
-  async getFunnelSteps(stageId: string): Promise<FunnelStep[]> {
+  async getFunnelSteps(stageId: string, workspaceId?: string): Promise<FunnelStep[]> {
     try {
-      const response = await axios.get(`/api/follow-up/funnel-steps?stageId=${stageId}`);
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
+      const params: Record<string, string> = { stageId };
+      if (wsId) params.workspaceId = wsId;
+      
+      const response = await axios.get('/api/follow-up/funnel-steps', { params });
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch funnel steps');
@@ -290,8 +348,10 @@ export const followUpService = {
   },
 
   // Função para atualizar um passo específico
-  async updateStep(stepId: string, data: Partial<FunnelStep>): Promise<any> {
+  async updateStep(stepId: string, data: Partial<FunnelStep>, workspaceId?: string): Promise<any> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       console.log('Atualizando passo:', stepId, JSON.stringify(data, null, 2));
 
       // No frontend, temos os dados no formato:
@@ -306,7 +366,8 @@ export const followUpService = {
         wait_time: data.wait_time,
         message: data.message,
         category: data.category,
-        auto_respond: data.auto_respond
+        auto_respond: data.auto_respond,
+        workspaceId: wsId
       };
 
       console.log('Enviando dados para atualização:', JSON.stringify(requestData, null, 2));
@@ -328,9 +389,14 @@ export const followUpService = {
   },
 
   // NOVA FUNÇÃO: Excluir um passo específico
-  async deleteStep(stepId: string): Promise<any> {
+  async deleteStep(stepId: string, workspaceId?: string): Promise<any> {
     try {
-      const response = await axios.delete(`/api/follow-up/funnel-steps?id=${stepId}`);
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
+      const params: Record<string, string> = { id: stepId };
+      if (wsId) params.workspaceId = wsId;
+      
+      const response = await axios.delete('/api/follow-up/funnel-steps', { params });
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete step');
@@ -346,8 +412,7 @@ export const followUpService = {
   },
 
   // Função unificada otimizada para buscar passos de campanha usando o relacionamento campaign_steps
-  // app/follow-up/_services/followUpService.ts - Método getCampaignSteps modificado
-  async getCampaignSteps(campaignId?: string): Promise<CampaignStep[]> {
+  async getCampaignSteps(campaignId?: string, workspaceId?: string): Promise<CampaignStep[]> {
     if (!campaignId) {
       return [];
     }
@@ -361,6 +426,8 @@ export const followUpService = {
     }
 
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       // Adicionar timestamp e cache buster para forçar atualização
       const timestamp = new Date().getTime();
       const cacheBuster = typeof window !== 'undefined' ?
@@ -374,11 +441,16 @@ export const followUpService = {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
           'Expires': '0'
+        },
+        params: {
+          t: timestamp,
+          cb: cacheBuster,
+          workspaceId: wsId
         }
       };
 
       const response = await axios.get(
-        `/api/follow-up/campaigns/${campaignId}?t=${timestamp}&cb=${cacheBuster}`,
+        `/api/follow-up/campaigns/${campaignId}`,
         config
       );
 
@@ -401,7 +473,7 @@ export const followUpService = {
     }
   },
 
-  // Método para limpar o cache quando necessário (após atualizações) - REESCRITO
+  // Método para limpar o cache quando necessário (após atualizações)
   clearCampaignCache(campaignId?: string) {
     console.log(`⚡ LIMPEZA DE CACHE INICIADA - ${campaignId ? `campanha: ${campaignId}` : "todas as campanhas"}`);
 
@@ -477,10 +549,13 @@ export const followUpService = {
   },
 
   // Função para cancelar um follow-up
-  async cancelFollowUp(followUpId: string): Promise<any> {
+  async cancelFollowUp(followUpId: string, workspaceId?: string): Promise<any> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       const response = await axios.post('/api/follow-up/cancel', {
-        followUpId
+        followUpId,
+        workspaceId: wsId
       });
 
       if (!response.data.success) {
@@ -495,10 +570,13 @@ export const followUpService = {
   },
 
   // Função para remover um cliente
-  async removeClient(clientId: string): Promise<any> {
+  async removeClient(clientId: string, workspaceId?: string): Promise<any> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       const response = await axios.post('/api/follow-up/remove-client', {
-        clientId
+        clientId,
+        workspaceId: wsId
       });
 
       if (!response.data.success) {
@@ -513,10 +591,13 @@ export const followUpService = {
   },
 
   // Função para mover um cliente para outra etapa do funil
-  async moveClientToStage(followUpId: string, stageId: string): Promise<any> {
+  async moveClientToStage(followUpId: string, stageId: string, workspaceId?: string): Promise<any> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       const response = await axios.put(`/api/follow-up/${followUpId}/move-stage`, {
-        stageId
+        stageId,
+        workspaceId: wsId
       });
 
       if (!response.data.success) {
@@ -537,11 +618,14 @@ export const followUpService = {
   },
 
   // Função para criar um novo follow-up
-  async createFollowUp(clientId: string, campaignId: string): Promise<any> {
+  async createFollowUp(clientId: string, campaignId: string, workspaceId?: string): Promise<any> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       const response = await axios.post('/api/follow-up', {
         clientId,
-        campaignId
+        campaignId,
+        workspaceId: wsId
       });
 
       if (!response.data.success) {
@@ -556,10 +640,12 @@ export const followUpService = {
   },
 
   // Função para atualizar uma campanha
-  async updateCampaign(campaignId: string, formData: any): Promise<any> {
+  async updateCampaign(campaignId: string, formData: any, workspaceId?: string): Promise<any> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       // Preparar os dados - garantir que steps tem o formato correto
-      const preparedData = { ...formData };
+      const preparedData = { ...formData, workspaceId: wsId };
 
       // Se os steps forem fornecidos como array, serializá-los
       if (preparedData.steps && Array.isArray(preparedData.steps)) {
@@ -598,20 +684,25 @@ export const followUpService = {
   },
 
   // Função para criar um novo passo
-  async createStep(data: any): Promise<any> {
+  async createStep(data: any, workspaceId?: string): Promise<any> {
     try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
       console.log('Criando novo passo com dados:', data);
       // Verificar se o passo contém campaign_id
       if (!data.campaign_id && data.funnel_stage_id) {
         console.log('Adicionando campaign_id ao passo...');
         // Buscar o estágio para determinar a campanha
-        const stages = await this.getFunnelStages();
+        const stages = await this.getFunnelStages(undefined, wsId);
         const stage = stages.find(s => s.id === data.funnel_stage_id);
         if (stage && stage.campaignId) {
           data.campaign_id = stage.campaignId;
           console.log(`Adicionado campaign_id: ${data.campaign_id} ao passo`);
         }
       }
+      
+      // Adicionar o workspace_id
+      data.workspaceId = wsId;
 
       const response = await axios.post('/api/follow-up/funnel-steps', data);
 
@@ -624,6 +715,34 @@ export const followUpService = {
       return response.data;
     } catch (error) {
       console.error('Error creating step:', error);
+      throw error;
+    }
+  },
+  
+  // Função para criar nova campanha
+  async createCampaign(data: any, workspaceId?: string): Promise<any> {
+    try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      
+      if (!wsId) {
+        throw new Error('Workspace ID é necessário para criar uma campanha');
+      }
+      
+      // Adicionar workspaceId aos dados
+      const campaignData = {
+        ...data,
+        workspaceId: wsId
+      };
+      
+      const response = await axios.post('/api/follow-up/campaigns', campaignData);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to create campaign');
+      }
+      
+      return response.data.data;
+    } catch (error) {
+      console.error('Error creating campaign:', error);
       throw error;
     }
   }
