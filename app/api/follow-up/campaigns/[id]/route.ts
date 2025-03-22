@@ -63,7 +63,8 @@ export async function GET(request: NextRequest) {
       wait_time: step.wait_time,
       message: step.message_content,
       category: step.message_category || 'Utility',
-      auto_respond: step.auto_respond
+      auto_respond: step.auto_respond,
+      stage_order: step.funnel_stage.order // Incluir a ordem da etapa do funil
     }));
 
     // Estruturar a resposta no formato esperado pelo frontend
@@ -216,7 +217,8 @@ export async function PUT(request: NextRequest) {
       wait_time: step.wait_time,
       message: step.message_content,
       category: step.message_category || 'Utility',
-      auto_respond: step.auto_respond
+      auto_respond: step.auto_respond,
+      stage_order: step.funnel_stage.order // Incluir a ordem da etapa do funil
     }));
     
     // Estruturar resposta

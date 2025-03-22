@@ -290,7 +290,8 @@ export default function EditCampaignPage() {
     try {
       console.log('Atualizando estágio do funil:', { 
         id: stageId, 
-        ...updatedStage 
+        ...updatedStage,
+        campaignId
       });
       
       // Limpar o cache antes da operação
@@ -300,7 +301,8 @@ export default function EditCampaignPage() {
       await followUpService.updateFunnelStage(stageId, {
         name: updatedStage.name,
         description: updatedStage.description || null,
-        order: updatedStage.order || 1 // Garantir que a ordem seja um número válido
+        order: updatedStage.order || 1, // Garantir que a ordem seja um número válido
+        campaignId: campaignId // Adicionar o ID da campanha para garantir a relação
       });
       
       // Limpar o cache novamente depois da operação

@@ -254,10 +254,22 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     try {
       let success = false;
       
+      console.log('Salvando etapa do funil:', updatedStage);
+      
       if (updatedStage.id && onUpdateFunnelStage) {
-        success = await onUpdateFunnelStage(updatedStage.id, updatedStage);
+        console.log('Enviando para atualização - ID:', updatedStage.id);
+        success = await onUpdateFunnelStage(updatedStage.id, {
+          name: updatedStage.name,
+          description: updatedStage.description,
+          order: updatedStage.order
+        });
       } else if (onAddFunnelStage) {
-        success = await onAddFunnelStage(updatedStage);
+        console.log('Enviando para criação');
+        success = await onAddFunnelStage({
+          name: updatedStage.name,
+          description: updatedStage.description,
+          order: updatedStage.order
+        });
       }
       
       return success;

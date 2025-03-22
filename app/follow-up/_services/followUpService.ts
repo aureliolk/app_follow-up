@@ -135,27 +135,33 @@ export const followUpService = {
   },
 
   // Função para atualizar um estágio do funil
-  async updateFunnelStage(id: string, data: { name: string, description?: string | null, order?: number }): Promise<FunnelStage> {
+  async updateFunnelStage(id: string, data: { name: string, description?: string | null, order?: number, campaignId?: string }): Promise<FunnelStage> {
     try {
       // Adicionar timestamp para evitar cache
       const timestamp = new Date().getTime();
       
-      console.log('Enviando dados para API:', { id, ...data, t: timestamp });
+      console.log('🔄 Enviando dados para API:', { id, ...data, t: timestamp });
 
-      const response = await axios.put('/api/follow-up/funnel-stages', {
+      // Criar payload com parâmetros necessários
+      const payload = {
         id,
         name: data.name,
         description: data.description,
         order: data.order,
+        campaignId: data.campaignId,
         _t: timestamp // Adicionar timestamp para evitar cache
-      }, {
+      };
+      
+      console.log('📤 Enviando payload completo:', JSON.stringify(payload));
+
+      const response = await axios.put('/api/follow-up/funnel-stages', payload, {
         headers: {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         }
       });
 
-      console.log('Resposta da API:', response.data);
+      console.log('📥 Resposta da API:', response.data);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update funnel stage');

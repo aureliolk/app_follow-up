@@ -193,9 +193,12 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, name, description, order } = body;
+    console.log('🔎 Recebendo requisição PUT para atualizar estágio:', JSON.stringify(body, null, 2));
+    
+    const { id, name, description, order, campaignId } = body;
     
     if (!id || !name) {
+      console.error('❌ Campos obrigatórios ausentes:', { id, name });
       return NextResponse.json(
         { 
           success: false, 
@@ -207,10 +210,14 @@ export async function PUT(req: NextRequest) {
     
     // Verificar se o estágio existe
     const existingStage = await prisma.followUpFunnelStage.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        campaigns: true
+      }
     });
     
     if (!existingStage) {
+      console.error(`❌ Estágio não encontrado com ID: ${id}`);
       return NextResponse.json(
         { 
           success: false, 
@@ -220,14 +227,38 @@ export async function PUT(req: NextRequest) {
       );
     }
     
+    console.log(`✅ Estágio encontrado: ${existingStage.name}, campanhas associadas: ${existingStage.campaigns.length}`);
+    
+    // Preparar dados para atualização
+    const updateData: any = {
+      name,
+      description,
+      order: order !== undefined ? order : existingStage.order
+    };
+    
+    // Se tiver campaignId, adicionar à relação (se ainda não existir)
+    if (campaignId) {
+      console.log(`🔄 Verificando se o estágio já está associado à campanha: ${campaignId}`);
+      const alreadyConnected = existingStage.campaigns.some(campaign => campaign.id === campaignId);
+      
+      if (!alreadyConnected) {
+        console.log(`➕ Adicionando estágio à campanha: ${campaignId}`);
+        updateData.campaigns = {
+          connect: {
+            id: campaignId
+          }
+        };
+      } else {
+        console.log(`ℹ️ Estágio já associado à campanha: ${campaignId}`);
+      }
+    }
+    
+    console.log(`📝 Atualizando estágio ${id} com dados:`, JSON.stringify(updateData, null, 2));
+    
     // Atualizar o estágio
     const updatedStage = await prisma.followUpFunnelStage.update({
       where: { id },
-      data: {
-        name,
-        description,
-        order: order !== undefined ? order : existingStage.order
-      },
+      data: updateData,
       include: {
         // Incluir o número de campanhas associadas para informação
         _count: {

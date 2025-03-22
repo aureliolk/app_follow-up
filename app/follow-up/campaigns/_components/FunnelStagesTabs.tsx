@@ -15,6 +15,7 @@ interface Step {
   message: string;
   category?: string;
   auto_respond?: boolean;
+  stage_order?: number;
 }
 
 /**
@@ -45,11 +46,15 @@ const FunnelStagesColumn: React.FC<FunnelStagesColumnProps> = ({
       const stageName = step.stage_name || 'Sem etapa definida';
       
       if (!groups[stageName]) {
-        // Obter a ordem da etapa (se disponível)
-        const orderIndex = steps.findIndex(s => s.stage_name === stageName);
+        // Tentar obter a ordem da etapa do Funil (se disponível)
+        const stageStep = steps.find(s => s.stage_name === stageName);
+        const orderValue = stageStep && stageStep.stage_order !== undefined 
+          ? stageStep.stage_order 
+          : steps.findIndex(s => s.stage_name === stageName);
+        
         groups[stageName] = {
           steps: [],
-          order: orderIndex >= 0 ? orderIndex : 999
+          order: orderValue >= 0 ? orderValue : 999
         };
       }
       groups[stageName].steps.push(step);
