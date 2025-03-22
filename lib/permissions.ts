@@ -18,6 +18,16 @@ export async function checkPermission(
   requiredRole: Role
 ): Promise<boolean> {
   try {
+    // Check if user is a superadmin first
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { is_super_admin: true }
+    });
+
+    if (user?.is_super_admin) {
+      return true; // Superadmins have access to everything
+    }
+    
     // Check if user is the workspace owner (always has admin rights)
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -29,12 +39,10 @@ export async function checkPermission(
     }
     
     // Check user's role in the workspace
-    const member = await prisma.workspaceMember.findUnique({
+    const member = await prisma.workspaceMember.findFirst({
       where: {
-        workspace_id_user_id: {
-          workspace_id: workspaceId,
-          user_id: userId,
-        },
+        workspace_id: workspaceId,
+        user_id: userId,
       },
     });
     
@@ -60,6 +68,16 @@ export async function getUserRole(
   userId: string
 ): Promise<Role | null> {
   try {
+    // Check if user is a superadmin
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { is_super_admin: true }
+    });
+
+    if (user?.is_super_admin) {
+      return 'ADMIN'; // Superadmins have admin access
+    }
+    
     // Check if user is the workspace owner
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -71,12 +89,10 @@ export async function getUserRole(
     }
     
     // Get user's role from workspace members
-    const member = await prisma.workspaceMember.findUnique({
+    const member = await prisma.workspaceMember.findFirst({
       where: {
-        workspace_id_user_id: {
-          workspace_id: workspaceId,
-          user_id: userId,
-        },
+        workspace_id: workspaceId,
+        user_id: userId,
       },
     });
     
@@ -116,4 +132,12 @@ export async function withPermission(
   }
   
   return handler();
+}
+
+// Check if user has any access to workspace
+export async function hasWorkspaceAccess(
+  workspaceId: string,
+  userId: string
+): Promise<boolean> {
+  return checkPermission(workspaceId, userId, 'VIEWER');
 }
