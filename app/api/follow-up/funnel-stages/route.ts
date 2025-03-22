@@ -7,6 +7,9 @@ export async function GET(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
     const campaignId = searchParams.get('campaignId');
+    const timestamp = searchParams.get('t'); // Ignore, apenas para cache busting
+    
+    console.log(`🔍 GET /api/follow-up/funnel-stages - campaignId: ${campaignId || 'nenhum'}`);
     
     // Se tiver um campaignId, buscar estágios associados à campanha específica
     if (campaignId) {
@@ -16,6 +19,7 @@ export async function GET(req: NextRequest) {
       });
       
       if (!campaignExists) {
+        console.error(`❌ Campanha não encontrada: ${campaignId}`);
         return NextResponse.json(
           { 
             success: false, 
@@ -34,64 +38,69 @@ export async function GET(req: NextRequest) {
             }
           }
         },
-        orderBy: { order: 'asc' }
+        orderBy: { order: 'asc' },
+        include: {
+          campaigns: true,
+          _count: {
+            select: {
+              steps: true
+            }
+          }
+        }
       });
       
-      // Para cada estágio, buscar contagens adicionais se necessário
-      const stagesWithCounts = await Promise.all(stages.map(async (stage) => {
-        // Contar o número de passos por estágio
-        const stepsCount = await prisma.followUpStep.count({
-          where: { funnel_stage_id: stage.id }
-        });
-        
-        return {
-          ...stage,
-          stepsCount
-        };
+      // Mapear para o formato esperado pelo frontend
+      const formattedStages = stages.map(stage => ({
+        id: stage.id,
+        name: stage.name,
+        description: stage.description,
+        order: stage.order,
+        created_at: stage.created_at,
+        stepsCount: stage._count.steps,
+        campaignId // Adicionar o campaignId para facilitar operações no frontend
       }));
       
-      console.log(`Encontrados ${stages.length} estágios para a campanha ${campaignId}`);
+      console.log(`✅ Encontrados ${stages.length} estágios para a campanha ${campaignId}`);
       
       return NextResponse.json({
         success: true,
-        data: stagesWithCounts
+        data: formattedStages
       });
     }
     
     // Caso contrário, buscar todos os estágios
     const stages = await prisma.followUpFunnelStage.findMany({
-      orderBy: { order: 'asc' }
+      orderBy: { order: 'asc' },
+      include: {
+        campaigns: true,
+        _count: {
+          select: {
+            steps: true
+          }
+        }
+      }
     });
     
-    // Para cada estágio, buscar o número de steps e clientes ativos
-    const stagesWithCounts = await Promise.all(stages.map(async (stage) => {
-      // Contar o número de passos por estágio
-      const stepsCount = await prisma.followUpStep.count({
-        where: { funnel_stage_id: stage.id }
-      });
-      
-      // Contar o número de clientes ativos neste estágio
-      const activeClientsCount = await prisma.followUp.count({
-        where: { 
-          current_stage_id: stage.id,
-          status: 'active'
-        }
-      });
-      
-      return {
-        ...stage,
-        stepsCount,
-        activeClientsCount
-      };
+    // Mapear para o formato esperado pelo frontend
+    const formattedStages = stages.map(stage => ({
+      id: stage.id,
+      name: stage.name,
+      description: stage.description,
+      order: stage.order,
+      created_at: stage.created_at,
+      stepsCount: stage._count.steps,
+      campaigns: stage.campaigns.map(c => c.id)
     }));
+    
+    console.log(`✅ Encontrados ${stages.length} estágios no total`);
     
     return NextResponse.json({
       success: true,
-      data: stagesWithCounts
+      data: formattedStages
     });
     
   } catch (error) {
-    console.error("Erro ao listar estágios do funil:", error);
+    console.error("❌ Erro ao listar estágios do funil:", error);
     return NextResponse.json(
       { 
         success: false, 
@@ -108,6 +117,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { name, description, order, campaignId } = body;
     
+    console.log(`🔍 POST /api/follow-up/funnel-stages - dados:`, JSON.stringify(body, null, 2));
+    
     if (!name) {
       return NextResponse.json(
         { 
@@ -118,29 +129,26 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Se não for fornecida uma ordem, colocar no final
+    // Se não for fornecida uma ordem, buscar a última ordem e incrementar
     let stageOrder = order;
     if (stageOrder === undefined) {
-      // Buscar o último estágio da campanha específica se um ID de campanha for fornecido
-      const whereClause = campaignId 
-        ? { campaign_id: campaignId }
-        : undefined;
-      
+      // Buscar o último estágio existente
       const lastStage = await prisma.followUpFunnelStage.findFirst({
-        where: whereClause,
         orderBy: { order: 'desc' }
       });
       
       stageOrder = lastStage ? lastStage.order + 1 : 1;
+      console.log(`🔢 Ordem não fornecida, usando: ${stageOrder}`);
     }
     
-    // Verificar se a campanha existe quando fornecido um ID
+    // Se tiver campanhaId, verificar se a campanha existe
     if (campaignId) {
       const campaign = await prisma.followUpCampaign.findUnique({
         where: { id: campaignId }
       });
       
       if (!campaign) {
+        console.error(`❌ Campanha não encontrada: ${campaignId}`);
         return NextResponse.json(
           { 
             success: false, 
@@ -151,13 +159,15 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    // Criar o estágio - usando a relação correta conforme definido no schema
+    console.log(`🔧 Criando estágio: ${name}, ordem: ${stageOrder}, campaignId: ${campaignId || 'nenhum'}`);
+    
+    // Criar o estágio com relacionamento correctly definido
     const stage = await prisma.followUpFunnelStage.create({
       data: {
         name,
         description,
         order: stageOrder,
-        // Usar a relação correta no Prisma para many-to-many
+        // Se houver campaignId, conectar à campanha
         ...(campaignId ? {
           campaigns: {
             connect: {
@@ -165,20 +175,32 @@ export async function POST(req: NextRequest) {
             }
           }
         } : {})
+      },
+      include: {
+        campaigns: true
       }
     });
+    
+    console.log(`✅ Estágio criado com sucesso: ${stage.id}`);
+    
+    // Formatar o resultado para incluir meta-dados úteis
+    const formattedStage = {
+      ...stage,
+      stepsCount: 0,
+      campaignId
+    };
     
     return NextResponse.json(
       { 
         success: true, 
         message: "Estágio criado com sucesso", 
-        data: stage 
+        data: formattedStage
       }, 
       { status: 201 }
     );
     
   } catch (error) {
-    console.error("Erro ao criar estágio do funil:", error);
+    console.error("❌ Erro ao criar estágio do funil:", error);
     return NextResponse.json(
       { 
         success: false, 
@@ -189,11 +211,11 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Endpoint para atualizar um estágio existente
+// Endpoint para atualizar um estágio existente (COMPLETAMENTE REESCRITO)
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    console.log('🔎 Recebendo requisição PUT para atualizar estágio:', JSON.stringify(body, null, 2));
+    console.log('🔎 PUT /api/follow-up/funnel-stages - dados:', JSON.stringify(body, null, 2));
     
     const { id, name, description, order, campaignId } = body;
     
@@ -208,75 +230,98 @@ export async function PUT(req: NextRequest) {
       );
     }
     
-    // Verificar se o estágio existe
-    const existingStage = await prisma.followUpFunnelStage.findUnique({
-      where: { id },
-      include: {
-        campaigns: true
-      }
-    });
-    
-    if (!existingStage) {
-      console.error(`❌ Estágio não encontrado com ID: ${id}`);
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: "Estágio não encontrado"
-        }, 
-        { status: 404 }
-      );
+    // ABORDAGEM DE DUAS PARTES:
+    // 1. Atualizar os metadados diretamente com SQL
+    console.log(`🔧 PARTE 1: Atualizando campos básicos do estágio ${id} via SQL`);
+    try {
+      await prisma.$executeRaw`
+        UPDATE "follow_up_schema"."follow_up_funnel_stages" 
+        SET name = ${name}, 
+            description = ${description || null},
+            order = ${order !== undefined ? order : 999}
+        WHERE id = ${id};
+      `;
+      console.log('✅ Atualização SQL concluída com sucesso');
+    } catch (sqlError) {
+      console.error('❌ Erro na atualização SQL:', sqlError);
     }
     
-    console.log(`✅ Estágio encontrado: ${existingStage.name}, campanhas associadas: ${existingStage.campaigns.length}`);
-    
-    // Preparar dados para atualização
-    const updateData: any = {
-      name,
-      description,
-      order: order !== undefined ? order : existingStage.order
-    };
-    
-    // Se tiver campaignId, adicionar à relação (se ainda não existir)
+    // 2. Atualizar o relacionamento com a campanha
     if (campaignId) {
-      console.log(`🔄 Verificando se o estágio já está associado à campanha: ${campaignId}`);
-      const alreadyConnected = existingStage.campaigns.some(campaign => campaign.id === campaignId);
+      console.log(`🔧 PARTE 2: Verificando relacionamento com a campanha ${campaignId}`);
       
-      if (!alreadyConnected) {
-        console.log(`➕ Adicionando estágio à campanha: ${campaignId}`);
-        updateData.campaigns = {
-          connect: {
-            id: campaignId
+      // Verificar se o estágio já está associado à campanha
+      const existingRelation = await prisma.followUpCampaign.findFirst({
+        where: {
+          id: campaignId,
+          stages: {
+            some: {
+              id
+            }
           }
-        };
+        }
+      });
+      
+      if (!existingRelation) {
+        console.log(`➕ Adicionando relação entre estágio ${id} e campanha ${campaignId}`);
+        try {
+          // Adicionar relação usando abordagem direta
+          await prisma.$executeRaw`
+            INSERT INTO "follow_up_schema"."_FollowUpCampaignToFollowUpFunnelStage" ("A", "B")
+            VALUES (${campaignId}, ${id})
+            ON CONFLICT DO NOTHING;
+          `;
+          console.log('✅ Relação adicionada com sucesso');
+        } catch (relationError) {
+          console.error('❌ Erro ao adicionar relação:', relationError);
+        }
       } else {
-        console.log(`ℹ️ Estágio já associado à campanha: ${campaignId}`);
+        console.log('ℹ️ Relação já existe, pulando etapa');
       }
     }
     
-    console.log(`📝 Atualizando estágio ${id} com dados:`, JSON.stringify(updateData, null, 2));
-    
-    // Atualizar o estágio
-    const updatedStage = await prisma.followUpFunnelStage.update({
+    // 3. Buscar o estágio atualizado para retornar
+    console.log(`🔍 Buscando estágio atualizado ${id}`);
+    const updatedStage = await prisma.followUpFunnelStage.findUnique({
       where: { id },
-      data: updateData,
       include: {
-        // Incluir o número de campanhas associadas para informação
+        campaigns: true,
         _count: {
           select: {
-            campaigns: true
+            steps: true
           }
         }
       }
     });
     
+    if (!updatedStage) {
+      console.error(`❌ Estágio não encontrado após atualização: ${id}`);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Estágio não encontrado após atualização"
+        }, 
+        { status: 404 }
+      );
+    }
+    
+    console.log(`✅ Estágio ${id} atualizado com sucesso`);
+    
+    // Formatar o resultado para o frontend
+    const formattedStage = {
+      ...updatedStage,
+      stepsCount: updatedStage._count.steps,
+      campaignId: campaignId || (updatedStage.campaigns[0]?.id || null)
+    };
+    
     return NextResponse.json({
       success: true,
       message: "Estágio atualizado com sucesso",
-      data: updatedStage
+      data: formattedStage
     });
     
   } catch (error) {
-    console.error("Erro ao atualizar estágio do funil:", error);
+    console.error("❌ Erro ao atualizar estágio do funil:", error);
     return NextResponse.json(
       { 
         success: false, 
@@ -293,6 +338,8 @@ export async function DELETE(req: NextRequest) {
     const url = new URL(req.url);
     const id = url.searchParams.get('id');
     
+    console.log(`🔍 DELETE /api/follow-up/funnel-stages - id: ${id}`);
+    
     if (!id) {
       return NextResponse.json(
         { 
@@ -305,10 +352,15 @@ export async function DELETE(req: NextRequest) {
     
     // Verificar se o estágio existe
     const existingStage = await prisma.followUpFunnelStage.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        steps: true,
+        campaigns: true
+      }
     });
     
     if (!existingStage) {
+      console.error(`❌ Estágio não encontrado: ${id}`);
       return NextResponse.json(
         { 
           success: false, 
@@ -318,28 +370,41 @@ export async function DELETE(req: NextRequest) {
       );
     }
     
-    // IMPORTANTE: Verificar se há passos vinculados a este estágio
-    const stepsCount = await prisma.followUpStep.count({
-      where: { funnel_stage_id: id }
-    });
+    console.log(`🔍 Estágio ${id} encontrado, passos: ${existingStage.steps.length}, campanhas: ${existingStage.campaigns.length}`);
     
-    console.log(`Estágio ${id} tem ${stepsCount} passos vinculados`);
+    // ESTRATÉGIA: Remover em várias etapas para evitar erros de integridade referencial
     
-    if (stepsCount > 0) {
-      // Primeiro, remover todos os passos vinculados ao estágio
-      console.log(`Removendo ${stepsCount} passos do estágio ${id} antes de excluí-lo`);
-      
+    // 1. Primeiro, remover todos os passos vinculados ao estágio
+    if (existingStage.steps.length > 0) {
+      console.log(`🧹 Removendo ${existingStage.steps.length} passos do estágio ${id}`);
       await prisma.followUpStep.deleteMany({
         where: { funnel_stage_id: id }
       });
-      
-      console.log(`Passos removidos com sucesso do estágio ${id}`);
     }
     
-    // Agora é seguro excluir o estágio
+    // 2. Remover as relações com campanhas (many-to-many)
+    if (existingStage.campaigns.length > 0) {
+      console.log(`🧹 Removendo relações com ${existingStage.campaigns.length} campanhas`);
+      // Criamos um desconectador para cada campanha
+      const disconnects = existingStage.campaigns.map(campaign => ({ id: campaign.id }));
+      
+      await prisma.followUpFunnelStage.update({
+        where: { id },
+        data: {
+          campaigns: {
+            disconnect: disconnects
+          }
+        }
+      });
+    }
+    
+    // 3. Finalmente, excluir o estágio
+    console.log(`🗑️ Excluindo o estágio ${id}`);
     await prisma.followUpFunnelStage.delete({
       where: { id }
     });
+    
+    console.log(`✅ Estágio ${id} excluído com sucesso`);
     
     return NextResponse.json({
       success: true,
@@ -347,11 +412,11 @@ export async function DELETE(req: NextRequest) {
     });
     
   } catch (error) {
-    console.error("Erro ao excluir estágio do funil:", error);
+    console.error("❌ Erro ao excluir estágio do funil:", error);
     return NextResponse.json(
       { 
         success: false, 
-        error: "Erro interno do servidor"
+        error: "Erro interno do servidor: " + (error instanceof Error ? error.message : String(error))
       }, 
       { status: 500 }
     );

@@ -1,4 +1,4 @@
-// app/follow-up/_components/FunnelStagesColumn.tsx
+// app/follow-up/campaigns/_components/FunnelStagesColumn.tsx
 'use client';
 
 import React, { useMemo } from 'react';

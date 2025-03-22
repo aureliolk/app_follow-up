@@ -130,6 +130,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       }
     });
 
+
     if (!followUp) {
       throw new Error(`Follow-up não encontrado: ${followUpId}`);
     }
@@ -142,6 +143,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     // Carregar as etapas da campanha com tratamento seguro para strings vazias ou inválidas
     let steps: FollowUpStep[] = [];
     if (followUp.campaign?.steps) {
+      console.log("FollowUp Camping Id", followUp.campaign?.steps)
       try {
         const stepsString = followUp.campaign.steps as string;
         if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
@@ -176,6 +178,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
 
     // Obter a etapa atual
     const currentStep = steps[currentStepIndex];
+    console.log('Current Setp', currentStep)
 
     // Obter o nome do estágio atual (usando sempre stage_name - convertido na interface)
     const currentStageName = currentStep.stage_name;

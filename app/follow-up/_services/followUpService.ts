@@ -134,46 +134,121 @@ export const followUpService = {
     }
   },
 
-  // Função para atualizar um estágio do funil
+  // Função para atualizar um estágio do funil - TOTALMENTE REESCRITA
   async updateFunnelStage(id: string, data: { name: string, description?: string | null, order?: number, campaignId?: string }): Promise<FunnelStage> {
     try {
+      // Validação de dados básica
+      if (!id || !data.name) {
+        throw new Error('ID e nome são campos obrigatórios');
+      }
+      
+      console.log('🔄 Atualizando estágio do funil:', { id, ...data });
+      
       // Adicionar timestamp para evitar cache
       const timestamp = new Date().getTime();
       
-      console.log('🔄 Enviando dados para API:', { id, ...data, t: timestamp });
-
-      // Criar payload com parâmetros necessários
+      // Construir payload com todos os dados necessários
       const payload = {
         id,
         name: data.name,
-        description: data.description,
-        order: data.order,
-        campaignId: data.campaignId,
-        _t: timestamp // Adicionar timestamp para evitar cache
+        description: data.description || null,
+        order: data.order !== undefined ? data.order : 1,
+        campaignId: data.campaignId, // FUNDAMENTAL passar o ID da campanha
+        t: timestamp // Para evitar problemas de cache
       };
       
-      console.log('📤 Enviando payload completo:', JSON.stringify(payload));
-
-      const response = await axios.put('/api/follow-up/funnel-stages', payload, {
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      });
-
-      console.log('📥 Resposta da API:', response.data);
-
-      if (!response.data.success) {
-        throw new Error(response.data.error || 'Failed to update funnel stage');
-      }
+      console.log('📤 Payload completo:', JSON.stringify(payload, null, 2));
       
-      // Limpar cache após modificar dados
-      this.clearCampaignCache();
-
-      return response.data.data;
+      // Adicionar headers específicos para garantir que não haverá problemas de cache
+      const config = {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000 // 15 segundos para completar a operação
+      };
+      
+      // ESTRATÉGIA 1: Tentar com método padrão
+      try {
+        console.log('🔄 ESTRATÉGIA 1: Enviando requisição padrão');
+        const response = await axios.put('/api/follow-up/funnel-stages', payload, config);
+        
+        console.log('📥 Resposta da API:', JSON.stringify(response.data, null, 2));
+        
+        if (response.data.success) {
+          // Limpar qualquer cache que possa afetar a visualização dos dados
+          this.clearCampaignCache();
+          return response.data.data;
+        } else {
+          throw new Error(response.data.error || 'Falha ao atualizar estágio do funil');
+        }
+      } catch (error) {
+        console.error('❌ ESTRATÉGIA 1 falhou:', error);
+        
+        // ESTRATÉGIA 2: Tentar com um delay e nova tentativa
+        console.log('🔄 ESTRATÉGIA 2: Tentando com delay...');
+        
+        // Esperar 2 segundos antes de tentar novamente
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        try {
+          const retryResponse = await axios.put('/api/follow-up/funnel-stages', payload, config);
+          
+          if (retryResponse.data.success) {
+            console.log('✅ ESTRATÉGIA 2 bem-sucedida!');
+            this.clearCampaignCache();
+            return retryResponse.data.data;
+          } else {
+            throw new Error(retryResponse.data.error || 'Falha ao atualizar estágio do funil (retry)');
+          }
+        } catch (retryError) {
+          console.error('❌ ESTRATÉGIA 2 falhou:', retryError);
+          
+          // ESTRATÉGIA 3: Última chance, utilizar força bruta com request direto
+          console.log('🔄 ESTRATÉGIA 3: Abordagem direta, última chance...');
+          
+          // Simplificar o payload para conter apenas os dados essenciais
+          const minimalPayload = {
+            id, 
+            name: data.name,
+            description: data.description || null
+          };
+          
+          try {
+            const lastChanceResponse = await fetch('/api/follow-up/funnel-stages', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache'
+              },
+              body: JSON.stringify({...minimalPayload, campaignId: data.campaignId})
+            });
+            
+            if (lastChanceResponse.ok) {
+              const jsonResponse = await lastChanceResponse.json();
+              console.log('✅ ESTRATÉGIA 3 bem-sucedida!');
+              this.clearCampaignCache();
+              return jsonResponse.data;
+            } else {
+              throw new Error(`Código de status: ${lastChanceResponse.status}`);
+            }
+          } catch (lastError) {
+            console.error('❌ TODAS AS ESTRATÉGIAS FALHARAM:', lastError);
+            throw new Error('Falha completa ao atualizar estágio do funil após múltiplas tentativas');
+          }
+        }
+      }
     } catch (error: any) {
-      console.error('Error updating funnel stage:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Failed to update funnel stage';
+      console.error('❌ ERRO FATAL AO ATUALIZAR ESTÁGIO DO FUNIL:', error);
+      
+      // Formatar mensagem de erro
+      const errorMessage = error.response?.data?.error || error.message || 'Erro desconhecido ao atualizar estágio do funil';
+      
+      // Limpar cache de qualquer forma, para evitar dados inconsistentes
+      this.clearCampaignCache();
+      
       throw new Error(errorMessage);
     }
   },
@@ -318,26 +393,79 @@ export const followUpService = {
     }
   },
   
-  // Método para limpar o cache quando necessário (após atualizações)
+  // Método para limpar o cache quando necessário (após atualizações) - REESCRITO
   clearCampaignCache(campaignId?: string) {
-    console.log("⚡ LIMPANDO CACHE", campaignId || "todos");
+    console.log(`⚡ LIMPEZA DE CACHE INICIADA - ${campaignId ? `campanha: ${campaignId}` : "todas as campanhas"}`);
     
-    // Limpar cache local
+    // Contador para tracking da operação
+    let cacheEntriesCleared = 0;
+    
+    // 1. Limpar cache local de steps da campanha
     if (campaignId) {
-      delete campaignStepsCache[`campaign-steps-${campaignId}`];
+      // Limpar apenas a campanha específica
+      const cacheKey = `campaign-steps-${campaignId}`;
+      if (campaignStepsCache[cacheKey]) {
+        delete campaignStepsCache[cacheKey];
+        cacheEntriesCleared++;
+      }
     } else {
+      // Limpar todas as entradas do cache
+      cacheEntriesCleared = Object.keys(campaignStepsCache).length;
+      
+      // Resetar objeto completamente
       Object.keys(campaignStepsCache).forEach(key => {
         delete campaignStepsCache[key];
       });
     }
     
-    // Forçar recarregamento de recursos
+    // 2. Forçar recarregamento de recursos do browser
     if (typeof window !== 'undefined') {
-      console.log("🔄 Forçando atualização do cache do navegador");
-      // Adicionar timestamp para forçar recarregamento de recursos em cache
-      const timestamp = new Date().getTime();
-      window.sessionStorage.setItem('cache_bust', timestamp.toString());
+      try {
+        console.log("🔄 Limpando cache do navegador e forçando recarregamento");
+        
+        // Atualizar timestamp na sessionStorage para evitar cache
+        const timestamp = new Date().getTime();
+        window.sessionStorage.setItem('cache_bust', timestamp.toString());
+        
+        // Limpar localStorage específico também (se existir)
+        if (campaignId) {
+          const campaignCacheKey = `campaign-data-${campaignId}`;
+          if (localStorage.getItem(campaignCacheKey)) {
+            localStorage.removeItem(campaignCacheKey);
+            cacheEntriesCleared++;
+          }
+        }
+        
+        // Estratégia adicional para forçar recargas
+        if (typeof window.fetch === 'function') {
+          // Fazer uma chamada simples às APIs para limpar qualquer cache do lado do cliente
+          const purgeUrls = [
+            `/api/follow-up/funnel-stages?t=${timestamp}`,
+            `/api/follow-up/campaigns?t=${timestamp}`
+          ];
+          
+          if (campaignId) {
+            purgeUrls.push(`/api/follow-up/campaigns/${campaignId}?t=${timestamp}`);
+          }
+          
+          // Executar fetches silenciosos para limpar cache
+          purgeUrls.forEach(url => {
+            fetch(url, { 
+              method: 'HEAD',
+              headers: { 
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
+            }).catch(e => {}); // Ignorar erros
+          });
+        }
+      } catch (cacheError) {
+        console.warn("⚠️ Erro ao limpar cache do navegador:", cacheError);
+        // Continuar mesmo se houver erro
+      }
     }
+    
+    console.log(`✅ LIMPEZA DE CACHE CONCLUÍDA - ${cacheEntriesCleared} entradas removidas`);
   },
 
   // Função para cancelar um follow-up

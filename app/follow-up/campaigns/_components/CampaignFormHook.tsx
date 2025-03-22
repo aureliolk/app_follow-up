@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import FunnelStageList from './FunnelStageList';
-import FunnelStagesColumn from './FunnelStagesTabs';
+import FunnelStagesColumn from './FunnelStagesColumn';
 import StepEditModal from './StepEditModal';
 import FunnelStageEditModal from './FunnelStageEditModal';
 
@@ -24,6 +24,7 @@ interface FunnelStage {
   name: string;
   order: number;
   description?: string;
+  campaignId?: string;
 }
 
 /**
@@ -74,6 +75,7 @@ interface CampaignFormHookProps {
 const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
   funnelStages,
   campaignSteps,
+  campaignId,
   onSubmit,
   onCancel,
   isLoading,
@@ -219,7 +221,8 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     setEditingFunnelStage({
       name: '',
       description: '',
-      order: funnelStages.length
+      order: funnelStages.length,
+      campaignId: campaignId // Adicionar o ID da campanha
     });
     setFunnelStageModalOpen(true);
   };
@@ -228,7 +231,11 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
    * Configura o modal para editar uma etapa de funil existente
    */
   const handleEditFunnelStage = (stage: FunnelStage) => {
-    setEditingFunnelStage(stage);
+    // Garantir que o campaignId esteja sempre presente
+    setEditingFunnelStage({
+      ...stage,
+      campaignId: stage.campaignId || campaignId
+    });
     setFunnelStageModalOpen(true);
   };
 
@@ -256,19 +263,24 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
       
       console.log('Salvando etapa do funil:', updatedStage);
       
+      // Usar o ID da campanha vindo dos props
+      console.log('⭐ usando campanha ID das props:', campaignId);
+      
       if (updatedStage.id && onUpdateFunnelStage) {
-        console.log('Enviando para atualização - ID:', updatedStage.id);
+        console.log('Enviando para atualização - ID:', updatedStage.id, 'Campaign ID:', campaignId);
         success = await onUpdateFunnelStage(updatedStage.id, {
           name: updatedStage.name,
           description: updatedStage.description,
-          order: updatedStage.order
+          order: updatedStage.order,
+          campaignId // Adicionar explicitamente o ID da campanha
         });
       } else if (onAddFunnelStage) {
-        console.log('Enviando para criação');
+        console.log('Enviando para criação - Campaign ID:', campaignId);
         success = await onAddFunnelStage({
           name: updatedStage.name,
           description: updatedStage.description,
-          order: updatedStage.order
+          order: updatedStage.order,
+          campaignId // Adicionar explicitamente o ID da campanha  
         });
       }
       

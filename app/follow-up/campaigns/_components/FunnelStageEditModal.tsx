@@ -8,6 +8,7 @@ interface FunnelStage {
   name: string;
   order: number;
   description?: string;
+  campaignId?: string;
 }
 
 interface FunnelStageEditModalProps {
@@ -54,7 +55,7 @@ const FunnelStageEditModal: React.FC<FunnelStageEditModalProps> = ({
     });
   };
 
-  // Handler para salvar
+  // Handler para salvar - MELHORADO
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -63,9 +64,27 @@ const FunnelStageEditModal: React.FC<FunnelStageEditModalProps> = ({
       return;
     }
     
-    const success = await onSave(editedStage);
-    if (success) {
-      onClose();
+    console.log('🔍 Salvando estágio:', editedStage);
+    
+    // Verificar se há campaignId
+    if (!editedStage.campaignId) {
+      console.warn('⚠️ Aviso: campaignId não está definido no estágio. Isso pode causar problemas de relacionamento.');
+    }
+    
+    try {
+      // Passar todos os dados para a função de salvamento
+      const success = await onSave(editedStage);
+      
+      if (success) {
+        console.log('✅ Estágio salvo com sucesso');
+        onClose();
+      } else {
+        console.error('❌ Falha ao salvar estágio');
+        alert('Ocorreu um erro ao salvar o estágio. Por favor, tente novamente.');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao salvar estágio:', error);
+      alert('Erro ao salvar: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     }
   };
 

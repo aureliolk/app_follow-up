@@ -13,7 +13,7 @@ export { default as CampaignBasicInfoForm } from './CampaignBasicInfoForm';
 export { default as FunnelStageForm } from './FunnelStageForm';
 export { default as FunnelStageList } from './FunnelStageList';
 export { default as StepForm } from './StepForm';
-export { default as FunnelStagesColumn } from './FunnelStagesTabs';
+export { default as FunnelStagesColumn } from './FunnelStagesColumn';
 export { default as CampaignFormHook } from './CampaignFormHook';
 export { default as StepFormHook } from './StepFormHook';
 export { default as StepEditModal } from './StepEditModal';
