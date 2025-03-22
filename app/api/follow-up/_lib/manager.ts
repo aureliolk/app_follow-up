@@ -4,6 +4,8 @@ import { scheduleMessage, cancelScheduledMessages, activeTimeouts } from './sche
 
 // Interface para os dados de follow-up - alinhada com schema.prisma
 interface FollowUpStep {
+  wait_time_ms: any;
+  stage_order: any;
   stage_name: string;    // Novo padrão (antigo: etapa)
   message: string;       // Novo padrão (antigo: mensagem)
   wait_time: string;     // Novo padrão (antigo: tempo_de_espera) - Formato: "1d", "2h", "30m"
@@ -122,14 +124,22 @@ export function parseTimeString(timeStr: string): number {
 // Função principal para processar as etapas de follow-up
 export async function processFollowUpSteps(followUpId: string): Promise<void> {
   try {
-    // Carregar o follow-up do banco de dados
+    // Carregar o follow-up do banco de dados com os relacionamentos necessários
     const followUp = await prisma.followUp.findUnique({
       where: { id: followUpId },
       include: {
-        campaign: true
+        campaign: {
+          include: {
+            campaign_steps: {
+              include: {
+                funnel_stage: true
+              }
+              // Removemos a ordenação aqui para ordenar manualmente depois
+            }
+          }
+        }
       }
     });
-
 
     if (!followUp) {
       throw new Error(`Follow-up não encontrado: ${followUpId}`);
@@ -140,22 +150,54 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       return;
     }
 
-    // Carregar as etapas da campanha com tratamento seguro para strings vazias ou inválidas
+    // Converter campaign_steps para o formato esperado
     let steps: FollowUpStep[] = [];
-    if (followUp.campaign?.steps) {
-      console.log("FollowUp Camping Id", followUp.campaign?.steps)
+    
+    if (followUp.campaign?.campaign_steps && followUp.campaign.campaign_steps.length > 0) {
+      // Mapear para o formato esperado por FollowUpStep
+      steps = followUp.campaign.campaign_steps.map(step => ({
+        id: step.id,
+        stage_id: step.funnel_stage_id,
+        stage_name: step.funnel_stage.name,
+        template_name: step.template_name,
+        wait_time: step.wait_time,
+        message: step.message_content,
+        category: step.message_category || 'Utility',
+        auto_respond: step.auto_respond !== undefined ? step.auto_respond : true,
+        stage_order: step.funnel_stage.order, // Adicionar a ordem da etapa
+        wait_time_ms: step.wait_time_ms // Adicionar o tempo em milissegundos
+      }));
+
+      // Ordenar os steps primeiro por stage_order (ordem da etapa) e depois por wait_time_ms (tempo de espera)
+      steps.sort((a, b) => {
+        // Primeiro, ordenar por stage_order
+        if (a.stage_order !== b.stage_order) {
+          return a.stage_order - b.stage_order;
+        }
+        
+        // Se estiverem na mesma etapa, ordenar pelo tempo de espera
+        return a.wait_time_ms - b.wait_time_ms;
+      });
+
+      console.log(`Steps ordenados: ${steps.map(s => `${s.stage_name} - ${s.template_name} (${s.wait_time})`).join(', ')}`);
+    } else {
+      // Fallback para o antigo modelo (se necessário durante a transição)
+      console.warn(`Campanha ${followUp.campaign_id} não tem campaign_steps, verificando campo steps`);
       try {
-        const stepsString = followUp.campaign.steps as string;
-        if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
-          steps = JSON.parse(stepsString) as FollowUpStep[];
-        } else {
-          console.error(`Campanha ${followUp.campaign_id} sem steps válidos`);
-          steps = [];
+        if (followUp.campaign?.steps) {
+          const stepsString = followUp.campaign.steps as string;
+          if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
+            const parsedSteps = JSON.parse(stepsString);
+            if (Array.isArray(parsedSteps) && parsedSteps.length > 0) {
+              steps = parsedSteps;
+              console.log(`Usando ${steps.length} steps do campo JSON para compatibilidade`);
+            }
+          }
         }
       } catch (err) {
-        console.error(`Erro ao analisar steps da campanha para follow-up ${followUpId}:`, err);
+        console.error(`Erro ao analisar campo steps da campanha:`, err);
       }
-    } 
+    }
 
     if (!steps || steps.length === 0) {
       throw new Error("Nenhuma etapa de follow-up encontrada");
@@ -178,7 +220,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
 
     // Obter a etapa atual
     const currentStep = steps[currentStepIndex];
-    console.log('Current Setp', currentStep)
+    console.log(`Etapa atual (${currentStepIndex}): ${currentStep.stage_name} - ${currentStep.template_name}`);
 
     // Obter o nome do estágio atual (usando sempre stage_name - convertido na interface)
     const currentStageName = currentStep.stage_name;
@@ -205,7 +247,8 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       await prisma.followUp.update({
         where: { id: followUpId },
         data: {
-          metadata: metadata
+          metadata: metadata,
+          current_stage_id: currentStep.stage_id // Também atualizar o ID da etapa atual
         }
       });
     }
@@ -402,18 +445,40 @@ export async function scheduleNextStep(
 
           // Se já foi processado pela resposta, continuar normalmente
           if (alreadyProcessed) {
+            console.log(`Follow-up ${followUpId} já processado pela resposta, continuando fluxo normal`);
             // Continuar normalmente
           } else {
-            // Caso contrário, pausar como antes
-            // Atualizar status para "pausado
-            await prisma.followUp.update({
-              where: { id: followUpId },
-              data: {
-                status: 'paused'
+            console.log(`Follow-up ${followUpId} marcado como responsivo mas não processado - configurando metadata`);
+            
+            // Configurar metadata em vez de pausar
+            try {
+              // Obter metadata atual ou criar novo objeto
+              let metadata = {};
+              if (currentFollowUp.metadata) {
+                try {
+                  metadata = JSON.parse(currentFollowUp.metadata);
+                } catch (e) {
+                  // Se não conseguir analisar, usar objeto vazio
+                }
               }
-            });
-
-            return;
+              
+              // Marcar como processado para não pausar nas próximas vezes
+              metadata.processed_by_response = true;
+              metadata.updated_at = new Date().toISOString();
+              
+              await prisma.followUp.update({
+                where: { id: followUpId },
+                data: {
+                  metadata: JSON.stringify(metadata)
+                }
+              });
+              
+              console.log(`Metadata atualizado para o follow-up ${followUpId}`);
+            } catch (e) {
+              console.error(`Erro ao atualizar metadata do follow-up ${followUpId}:`, e);
+            }
+            
+            // Continuar o fluxo normalmente em vez de pausar
           }
         }
 
@@ -596,15 +661,23 @@ export async function cancelScheduledMessageForStep(followUpId: string, stepInde
 // Função para lidar com uma resposta do cliente
 export async function handleClientResponse(
   clientId: string,
-  message: string
+  message: string,
+  followUpId?: string
 ): Promise<void> {
   try {
-    // Buscar todos os follow-ups ativos para este cliente
+    // Buscar follow-ups ativos para este cliente (específico ou todos)
+    const whereClause = {
+      client_id: clientId,
+      status: { in: ['active', 'paused'] }
+    };
+    
+    // Se temos um ID específico, adicionar à consulta
+    if (followUpId) {
+      Object.assign(whereClause, { id: followUpId });
+    }
+    
     const activeFollowUps = await prisma.followUp.findMany({
-      where: {
-        client_id: clientId,
-        status: { in: ['active', 'paused'] }
-      },
+      where: whereClause,
       include: {
         campaign: true
       }
