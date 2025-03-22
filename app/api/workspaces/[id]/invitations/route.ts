@@ -21,7 +21,8 @@ export async function GET(
       );
     }
 
-    const workspaceId = params.id;
+    // Properly accessing dynamic route params in Next.js 13+
+    const { id: workspaceId } = params;
     
     // Check if user has access to this workspace
     const hasAccess = await checkPermission(workspaceId, session.user.id, 'VIEWER');
@@ -65,7 +66,8 @@ export async function POST(
       );
     }
 
-    const workspaceId = params.id;
+    // Properly accessing dynamic route params in Next.js 13+
+    const { id: workspaceId } = params;
     
     // Check if user has admin permission for this workspace
     const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');

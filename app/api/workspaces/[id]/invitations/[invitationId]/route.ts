@@ -19,8 +19,8 @@ export async function DELETE(
       );
     }
 
-    const workspaceId = params.id;
-    const invitationId = params.invitationId;
+    // Properly accessing dynamic route params in Next.js 13+
+    const { id: workspaceId, invitationId } = params;
     
     // Check if user has admin permission for this workspace
     const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');
@@ -80,8 +80,8 @@ export async function POST(
       );
     }
 
-    const workspaceId = params.id;
-    const invitationId = params.invitationId;
+    // Properly accessing dynamic route params in Next.js 13+
+    const { id: workspaceId, invitationId } = params;
     
     // Check if user has admin permission for this workspace
     const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');
