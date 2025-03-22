@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
-import FunnelStageForm from './FunnelStageForm';
 import FunnelStageList from './FunnelStageList';
-import StepFormHook from './StepFormHook';
-import FunnelStagesTabs from './FunnelStagesTabs';
+import FunnelStagesColumn from './FunnelStagesTabs';
+import StepEditModal from './StepEditModal';
+import FunnelStageEditModal from './FunnelStageEditModal';
 
 /**
  * Adiciona addStageStep como propriedade global do window
@@ -90,11 +90,12 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
   // Estados para interface de estágios
   const [selectedStage, setSelectedStage] = useState<string>('');
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
-  const [showStepForm, setShowStepForm] = useState(false);
+  const [editingStep, setEditingStep] = useState<Step | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [loadingStep, setLoadingStep] = useState(false);
   
   // Estados para interface de etapas do funil
-  const [showFunnelStageForm, setShowFunnelStageForm] = useState(false);
+  const [funnelStageModalOpen, setFunnelStageModalOpen] = useState(false);
   const [editingFunnelStage, setEditingFunnelStage] = useState<FunnelStage | null>(null);
   const [loadingFunnelStage, setLoadingFunnelStage] = useState(false);
   
@@ -116,10 +117,10 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
   });
 
   /**
-   * Abre o formulário para adicionar um novo estágio
+   * Abre o modal para adicionar um novo estágio
    */
   const handleShowAddForm = useCallback((stageId?: string) => {
-    setNewStep({
+    const newStepData = {
       stage_id: stageId || '',
       stage_name: stageId ? (funnelStages.find(s => s.id === stageId)?.name || '') : '',
       template_name: '',
@@ -127,19 +128,16 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
       message: '',
       category: 'Utility',
       auto_respond: true
-    });
+    };
+    
+    setEditingStep(newStepData);
     setEditingStepIndex(null);
     setSelectedStage(stageId || '');
-    setShowStepForm(true);
-
-    // Rolar até o formulário
-    setTimeout(() => {
-      document.getElementById('step-form')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    setIsModalOpen(true);
   }, [funnelStages]);
 
   /**
-   * Configura o formulário para editar um passo existente
+   * Configura o modal para editar um passo existente
    */
   const handleEditStep = (index: number) => {
     if (index < 0 || index >= campaignSteps.length) {
@@ -150,7 +148,7 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
 
     const stepToEdit = campaignSteps[index];
 
-    setNewStep({
+    const stepData = {
       id: stepToEdit.id,
       stage_id: stepToEdit.stage_id,
       stage_name: stepToEdit.stage_name,
@@ -159,30 +157,24 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
       message: stepToEdit.message || '',
       category: stepToEdit.category || 'Utility',
       auto_respond: stepToEdit.auto_respond !== undefined ? stepToEdit.auto_respond : true
-    });
+    };
 
+    setEditingStep(stepData);
     setEditingStepIndex(index);
-    setShowStepForm(true);
+    setIsModalOpen(true);
 
     if (stepToEdit.stage_id) {
       setSelectedStage(stepToEdit.stage_id);
     }
-
-    setTimeout(() => {
-      document.getElementById('step-form')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
   };
 
   /**
-   * Manipula o salvamento de um estágio (novo ou editado)
+   * Manipula o salvamento de um estágio (novo ou editado) via modal
    */
-  const handleAddOrUpdateStep = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!newStep.stage_id || !newStep.template_name || !newStep.wait_time || !newStep.message) {
+  const handleSaveStep = async (updatedStep: Step): Promise<boolean> => {
+    if (!updatedStep.stage_id || !updatedStep.template_name || !updatedStep.wait_time || !updatedStep.message) {
       alert('Preencha todos os campos obrigatórios');
-      return;
+      return false;
     }
 
     setLoadingStep(true);
@@ -191,95 +183,70 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
       
       if (editingStepIndex !== null && onUpdateStep) {
         // Estamos editando um passo existente
-        success = await onUpdateStep(editingStepIndex, newStep);
+        success = await onUpdateStep(editingStepIndex, updatedStep);
       } else if (onAddStep) {
         // Estamos adicionando um novo passo
-        success = await onAddStep({ ...newStep });
+        success = await onAddStep(updatedStep);
       }
       
       if (success) {
-        setShowStepForm(false);
         setEditingStepIndex(null);
-        
-        // Resetar o formulário mantendo o estágio selecionado
-        setNewStep({
-          stage_id: newStep.stage_id,
-          stage_name: newStep.stage_name,
-          template_name: '',
-          wait_time: '30 minutos',
-          message: '',
-          category: 'Utility',
-          auto_respond: true
-        });
+        setEditingStep(null);
       }
+      
+      return success;
     } catch (error) {
       console.error('Erro ao salvar estágio:', error);
+      return false;
     } finally {
       setLoadingStep(false);
     }
   };
 
   /**
-   * Cancela a edição de um estágio
+   * Fecha o modal de edição
    */
-  const handleCancelEdit = () => {
+  const handleCloseModal = () => {
     setEditingStepIndex(null);
-    setShowStepForm(false);
-    setNewStep({
-      stage_id: '',
-      stage_name: '',
-      template_name: '',
-      wait_time: '30 minutos',
-      message: '',
-      category: 'Utility',
-      auto_respond: true
-    });
+    setEditingStep(null);
+    setIsModalOpen(false);
   };
 
   /**
-   * Abre o formulário para adicionar uma nova etapa de funil
+   * Abre o modal para adicionar uma nova etapa de funil
    */
   const handleShowAddFunnelStageForm = () => {
-    setEditingFunnelStage(null);
-    setNewFunnelStage({
+    setEditingFunnelStage({
       name: '',
       description: '',
       order: funnelStages.length
     });
-    setShowFunnelStageForm(true);
+    setFunnelStageModalOpen(true);
   };
 
   /**
-   * Configura o formulário para editar uma etapa de funil existente
+   * Configura o modal para editar uma etapa de funil existente
    */
   const handleEditFunnelStage = (stage: FunnelStage) => {
     setEditingFunnelStage(stage);
-    setNewFunnelStage({
-      name: stage.name,
-      description: stage.description || '',
-      order: stage.order
-    });
-    setShowFunnelStageForm(true);
+    setFunnelStageModalOpen(true);
   };
 
   /**
-   * Cancela a edição de uma etapa de funil
+   * Fecha o modal de edição de etapa de funil
    */
-  const handleCancelFunnelStageEdit = () => {
+  const handleCloseFunnelStageModal = () => {
     setEditingFunnelStage(null);
-    setShowFunnelStageForm(false);
+    setFunnelStageModalOpen(false);
   };
 
   /**
    * Manipula o salvamento de uma etapa de funil (nova ou editada)
    */
-  const handleAddOrUpdateFunnelStage = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!newFunnelStage.name) {
+  const handleSaveFunnelStage = async (updatedStage: FunnelStage): Promise<boolean> => {
+    if (!updatedStage.name) {
       alert('O nome da etapa é obrigatório');
-      return;
+      return false;
     }
 
     setLoadingFunnelStage(true);
@@ -287,18 +254,16 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
     try {
       let success = false;
       
-      if (editingFunnelStage && onUpdateFunnelStage) {
-        success = await onUpdateFunnelStage(editingFunnelStage.id, newFunnelStage);
+      if (updatedStage.id && onUpdateFunnelStage) {
+        success = await onUpdateFunnelStage(updatedStage.id, updatedStage);
       } else if (onAddFunnelStage) {
-        success = await onAddFunnelStage(newFunnelStage);
+        success = await onAddFunnelStage(updatedStage);
       }
       
-      if (success) {
-        setShowFunnelStageForm(false);
-        setEditingFunnelStage(null);
-      }
+      return success;
     } catch (error) {
       console.error('Erro ao salvar etapa do funil:', error);
+      return false;
     } finally {
       setLoadingFunnelStage(false);
     }
@@ -355,17 +320,15 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
           <h3 className="text-lg font-medium text-white">Gerenciar Etapas do Funil</h3>
         </div>
 
-        {/* Formulário para adicionar/editar etapas do funil */}
-        {showFunnelStageForm && (
-          <FunnelStageForm 
-            editingStage={editingFunnelStage}
-            newStage={newFunnelStage}
-            setNewStage={setNewFunnelStage}
-            onCancel={handleCancelFunnelStageEdit}
-            onSave={handleAddOrUpdateFunnelStage}
-            isLoading={loadingFunnelStage}
-          />
-        )}
+        {/* Modal para adicionar/editar etapas do funil */}
+        <FunnelStageEditModal
+          isOpen={funnelStageModalOpen}
+          onClose={handleCloseFunnelStageModal}
+          stage={editingFunnelStage}
+          onSave={handleSaveFunnelStage}
+          isLoading={loadingFunnelStage}
+          isEditing={!!editingFunnelStage?.id}
+        />
 
         {/* Tabela de etapas do funil */}
         {funnelStages.length > 0 && (
@@ -415,7 +378,7 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
                 name="steps"
                 control={control}
                 render={({ field }) => (
-                  <FunnelStagesTabs
+                  <FunnelStagesColumn
                     steps={field.value}
                     onRemoveStep={onRemoveStep || (() => Promise.resolve(false))}
                     onEditStep={handleEditStep}
@@ -435,38 +398,32 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
           )}
 
           {/* Botão para adicionar novo estágio */}
-          {!showStepForm && (
-            <div className="mb-4">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleShowAddForm();
-                }}
-                className="px-3 py-1 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors flex items-center"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                </svg>
-                Adicionar Novo Estágio
-              </button>
-            </div>
-          )}
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleShowAddForm();
+              }}
+              className="px-3 py-1 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
+              Adicionar Novo Estágio
+            </button>
+          </div>
 
-          {/* Formulário para adicionar/editar estágio */}
-          {showStepForm && (
-            <StepFormHook
-              newStep={newStep}
-              setNewStep={setNewStep}
-              funnelStages={funnelStages}
-              isEditing={editingStepIndex !== null}
-              onCancel={handleCancelEdit}
-              onSave={handleAddOrUpdateStep}
-              isLoading={loadingStep}
-              selectedStage={selectedStage}
-            />
-          )}
+          {/* Modal para adicionar/editar estágio */}
+          <StepEditModal
+            isOpen={isModalOpen}
+            onClose={handleCloseModal}
+            step={editingStep}
+            funnelStages={funnelStages}
+            onSave={handleSaveStep}
+            isLoading={loadingStep}
+          />
         </div>
       )}
 

@@ -157,6 +157,7 @@ export default function EditCampaignPage() {
       // Mapear dados para o formato esperado pela API
       const stepData = {
         funnel_stage_id: newStep.stage_id,
+        campaign_id: campaignId, // Adicionar o ID da campanha explicitamente
         name: newStep.template_name,
         template_name: newStep.template_name,
         wait_time: newStep.wait_time,
@@ -287,11 +288,26 @@ export default function EditCampaignPage() {
     setIsSubmitting(true);
     
     try {
+      console.log('Atualizando estágio do funil:', { 
+        id: stageId, 
+        ...updatedStage 
+      });
+      
+      // Limpar o cache antes da operação
+      followUpService.clearCampaignCache();
+      
+      // Chamar a API com todos os dados necessários
       await followUpService.updateFunnelStage(stageId, {
         name: updatedStage.name,
-        description: updatedStage.description,
-        order: updatedStage.order
+        description: updatedStage.description || null,
+        order: updatedStage.order || 1 // Garantir que a ordem seja um número válido
       });
+      
+      // Limpar o cache novamente depois da operação
+      followUpService.clearCampaignCache();
+      
+      // Esperar um pouco para garantir que as alterações foram processadas
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Recarregar os dados da campanha
       await fetchCampaignData();

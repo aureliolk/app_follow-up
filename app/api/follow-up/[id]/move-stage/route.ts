@@ -21,12 +21,74 @@ export async function PUT(
       );
     }
     
-    // Verificar se o follow-up existe
-    const followUp = await prisma.followUp.findUnique({
-      where: { id }
+    // Usar transação para garantir integridade dos dados
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Verificar se o follow-up existe
+      const followUp = await tx.followUp.findUnique({
+        where: { id },
+        include: {
+          campaign: true
+        }
+      });
+      
+      if (!followUp) {
+        throw new Error("Follow-up não encontrado");
+      }
+      
+      // 2. Verificar se o estágio existe (a menos que seja 'unassigned')
+      let stageName = "Não atribuído";
+      
+      if (stageId !== 'unassigned') {
+        const stage = await tx.followUpFunnelStage.findUnique({
+          where: { id: stageId }
+        });
+        
+        if (!stage) {
+          throw new Error("Estágio do funil não encontrado");
+        }
+        
+        stageName = stage.name;
+      }
+      
+      // 3. Atualizar o follow-up com o novo estágio
+      const updatedFollowUp = await tx.followUp.update({
+        where: { id },
+        data: {
+          current_stage_id: stageId === 'unassigned' ? null : stageId,
+          updated_at: new Date()
+        }
+      });
+      
+      // 4. Registrar mudança de estágio no histórico de mensagens
+      await tx.followUpMessage.create({
+        data: {
+          follow_up_id: id,
+          step: -1, // Indicar que é uma mudança de estágio, não um passo normal
+          content: `Cliente movido para estágio: ${stageName}`,
+          category: 'System',
+          funnel_stage: stageId === 'unassigned' ? null : stageId,
+          template_name: 'stage_change'
+        }
+      });
+      
+      return {
+        followUp: updatedFollowUp,
+        campaignId: followUp.campaign_id,
+        stageName
+      };
     });
     
-    if (!followUp) {
+    return NextResponse.json({
+      success: true,
+      message: `Cliente movido para ${result.stageName} com sucesso`,
+      data: result.followUp
+    });
+    
+  } catch (error: any) {
+    console.error("Erro ao mover cliente para novo estágio:", error);
+    
+    // Verificar se é um erro conhecido
+    if (error.message === "Follow-up não encontrado") {
       return NextResponse.json(
         { 
           success: false, 
@@ -34,49 +96,16 @@ export async function PUT(
         }, 
         { status: 404 }
       );
+    } else if (error.message === "Estágio do funil não encontrado") {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Estágio do funil não encontrado" 
+        }, 
+        { status: 404 }
+      );
     }
     
-    // Verificar se o estágio existe (a menos que seja 'unassigned')
-    if (stageId !== 'unassigned') {
-      const stage = await prisma.followUpFunnelStage.findUnique({
-        where: { id: stageId }
-      });
-      
-      if (!stage) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: "Estágio do funil não encontrado" 
-          }, 
-          { status: 404 }
-        );
-      }
-    }
-    
-    // Atualizar o follow-up com o novo estágio
-    const updatedFollowUp = await prisma.followUp.update({
-      where: { id },
-      data: {
-        current_stage_id: stageId === 'unassigned' ? null : stageId,
-        updated_at: new Date()
-      },
-      include: {
-        campaign: {
-          select: {
-            name: true
-          }
-        }
-      }
-    });
-    
-    return NextResponse.json({
-      success: true,
-      message: "Cliente movido para novo estágio com sucesso",
-      data: updatedFollowUp
-    });
-    
-  } catch (error) {
-    console.error("Erro ao mover cliente para novo estágio:", error);
     return NextResponse.json(
       { 
         success: false, 

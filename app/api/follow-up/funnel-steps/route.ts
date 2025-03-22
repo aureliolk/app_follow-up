@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
     
     const { 
       funnel_stage_id, 
+      campaign_id,
       name, 
       template_name, 
       wait_time, 
@@ -73,9 +74,10 @@ export async function POST(req: NextRequest) {
       auto_respond
     } = body;
     
-    if (!funnel_stage_id || !template_name || !wait_time || !message_content) {
+    if (!funnel_stage_id || !template_name || !wait_time || !message_content || !campaign_id) {
       console.error('Dados inválidos para criação de passo:', {
         funnel_stage_id,
+        campaign_id,
         name,
         template_name,
         wait_time,
@@ -84,6 +86,7 @@ export async function POST(req: NextRequest) {
       
       const missingFields = [];
       if (!funnel_stage_id) missingFields.push('funnel_stage_id');
+      if (!campaign_id) missingFields.push('campaign_id');
       if (!template_name) missingFields.push('template_name');
       if (!wait_time) missingFields.push('wait_time');
       if (!message_content) missingFields.push('message_content');
@@ -118,12 +121,13 @@ export async function POST(req: NextRequest) {
     // Criar o passo com campos padronizados conforme schema.prisma
     const stepData = {
       funnel_stage_id,
+      campaign_id, // Campo obrigatório para o relacionamento
       name: name || template_name,
       template_name,
       wait_time,
       wait_time_ms,
       message_content,
-      message_category: message_category || "Utility" // Remover espaço extra no início
+      message_category: message_category || "Utility"
     };
     
     // Adicionar auto_respond se estiver presente

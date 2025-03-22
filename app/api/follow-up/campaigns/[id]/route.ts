@@ -18,14 +18,10 @@ export async function GET(request: NextRequest) {
   const id = extractIdFromUrl(request.url);
   
   try {
+    // Buscar a campanha incluindo os estágios e os passos relacionados
     const campaign = await prisma.followUpCampaign.findUnique({
       where: { id },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        active: true,
-        steps: true,
+      include: {
         stages: {
           select: {
             id: true,
@@ -35,6 +31,14 @@ export async function GET(request: NextRequest) {
           },
           orderBy: {
             order: 'asc'
+          }
+        },
+        campaign_steps: {
+          include: {
+            funnel_stage: true
+          },
+          orderBy: {
+            wait_time_ms: 'asc'
           }
         }
       }
@@ -49,10 +53,32 @@ export async function GET(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Formatar os passos para manter compatibilidade com o formato anterior
+    const formattedSteps = campaign.campaign_steps.map(step => ({
+      id: step.id,
+      stage_id: step.funnel_stage_id,
+      stage_name: step.funnel_stage.name,
+      template_name: step.template_name,
+      wait_time: step.wait_time,
+      message: step.message_content,
+      category: step.message_category || 'Utility',
+      auto_respond: step.auto_respond
+    }));
+
+    // Estruturar a resposta no formato esperado pelo frontend
+    const responseData = {
+      id: campaign.id,
+      name: campaign.name,
+      description: campaign.description,
+      active: campaign.active,
+      steps: formattedSteps,
+      stages: campaign.stages
+    };
     
     return NextResponse.json({
       success: true,
-      data: campaign
+      data: responseData
     });
     
   } catch (error) {
@@ -100,70 +126,113 @@ export async function PUT(request: NextRequest) {
         { status: 404 }
       );
     }
-    
-    // Preparar os dados para atualização
-    const updateData: any = {
-      name,
-      description
-    };
-    
-    // Se steps for fornecido, serializá-lo com validação
-    if (steps !== undefined) {
-      try {
-        if (Array.isArray(steps) || (typeof steps === 'object' && steps !== null)) {
-          // Registrar o que estamos processando para debug
-          console.log(`Processando steps da campanha ${id}, tipo:`, typeof steps);
-          
-          // Converter objeto/array para string JSON
-          updateData.steps = JSON.stringify(steps);
-          
-          // Log após a serialização
-          console.log(`Steps serializados para campanha ${id}:`, updateData.steps.substring(0, 100) + (updateData.steps.length > 100 ? '...' : ''));
-        } else if (typeof steps === 'string') {
-          // Verificar se a string é um JSON válido
-          if (steps.trim() === '' || steps === '[]') {
-            // String vazia ou array vazio em string, usar array vazio
-            updateData.steps = '[]';
-          } else {
-            // Validar se é JSON válido
-            JSON.parse(steps); // Isso vai lançar erro se não for válido
-            updateData.steps = steps;
-          }
-        } else {
-          // Valor inválido, usar array vazio
-          console.warn(`Valor de steps inválido para campanha ${id}, tipo: ${typeof steps}, usando array vazio`);
-          updateData.steps = '[]';
+
+    // Usar transação para garantir integridade dos dados
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Atualizar dados básicos da campanha
+      const updatedCampaign = await tx.followUpCampaign.update({
+        where: { id },
+        data: {
+          name,
+          description,
+          active: active !== undefined ? active : existingCampaign.active
         }
-      } catch (err) {
-        console.error(`Erro ao processar steps para campanha ${id}:`, err);
-        console.error(`Conteúdo de steps: ${typeof steps === 'string' ? steps.substring(0, 100) : JSON.stringify(steps).substring(0, 100)}`);
-        // Em caso de erro, definir como array vazio
-        updateData.steps = '[]';
+      });
+      
+      // 2. Se passos forem fornecidos, atualizar os passos
+      if (steps && Array.isArray(steps)) {
+        // Identificar IDs dos passos existentes 
+        const existingStepIds = steps.filter(step => step.id).map(step => step.id);
+        
+        // Remover passos que não estão mais na lista
+        await tx.followUpStep.deleteMany({
+          where: {
+            campaign_id: id,
+            id: {
+              notIn: existingStepIds
+            }
+          }
+        });
+        
+        // Atualizar ou criar passos
+        for (const step of steps) {
+          const stepData = {
+            funnel_stage_id: step.stage_id,
+            campaign_id: id,
+            name: step.template_name,
+            template_name: step.template_name,
+            wait_time: step.wait_time,
+            wait_time_ms: calculateWaitTimeMs(step.wait_time),
+            message_content: step.message,
+            message_category: step.category || 'Utility',
+            auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
+          };
+          
+          if (step.id) {
+            // Atualizar passo existente
+            await tx.followUpStep.update({
+              where: { id: step.id },
+              data: stepData
+            });
+          } else {
+            // Criar novo passo
+            await tx.followUpStep.create({
+              data: stepData
+            });
+          }
+        }
       }
-    }
-    
-    // Se active for fornecido, atualizá-lo
-    if (active !== undefined) {
-      updateData.active = active;
-    }
-    
-    // Atualizar a campanha
-    const updatedCampaign = await prisma.followUpCampaign.update({
-      where: { id },
-      data: updateData,
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        active: true,
-        steps: true
-      }
+      
+      // Buscar a campanha atualizada com todos os relacionamentos
+      return await tx.followUpCampaign.findUnique({
+        where: { id },
+        include: {
+          stages: {
+            select: {
+              id: true,
+              name: true,
+              order: true,
+              description: true
+            },
+            orderBy: {
+              order: 'asc'
+            }
+          },
+          campaign_steps: {
+            include: {
+              funnel_stage: true
+            }
+          }
+        }
+      });
     });
+    
+    // Formatar passos para o formato esperado pelo frontend
+    const formattedSteps = result.campaign_steps.map(step => ({
+      id: step.id,
+      stage_id: step.funnel_stage_id,
+      stage_name: step.funnel_stage.name,
+      template_name: step.template_name,
+      wait_time: step.wait_time,
+      message: step.message_content,
+      category: step.message_category || 'Utility',
+      auto_respond: step.auto_respond
+    }));
+    
+    // Estruturar resposta
+    const responseData = {
+      id: result.id,
+      name: result.name,
+      description: result.description,
+      active: result.active,
+      steps: formattedSteps,
+      stages: result.stages
+    };
     
     return NextResponse.json({
       success: true,
       message: "Campanha atualizada com sucesso",
-      data: updatedCampaign
+      data: responseData
     });
     
   } catch (error) {
@@ -176,6 +245,30 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Função auxiliar para calcular tempo de espera em ms
+function calculateWaitTimeMs(waitTime: string): number {
+  if (!waitTime) return 30 * 60 * 1000; // Padrão: 30 minutos
+  
+  // Regex para extrair números e unidades
+  const regex = /(\d+)\s*(min|minutos?|h|horas?|dias?)/i;
+  const match = waitTime.match(regex);
+  
+  if (!match) return 30 * 60 * 1000;
+  
+  const value = parseInt(match[1]);
+  const unit = match[2].toLowerCase();
+  
+  if (unit.startsWith('min')) {
+    return value * 60 * 1000;
+  } else if (unit.startsWith('h')) {
+    return value * 60 * 60 * 1000;
+  } else if (unit.startsWith('d')) {
+    return value * 24 * 60 * 60 * 1000;
+  }
+  
+  return 30 * 60 * 1000;
 }
 
 // Endpoint para excluir uma campanha

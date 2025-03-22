@@ -33,7 +33,7 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to fetch campaigns');
       }
-
+      console.log('Get Campaings', response.data.data)
       return response.data.data || [];
     } catch (error) {
       console.error('Error fetching campaigns:', error);
@@ -48,7 +48,7 @@ export const followUpService = {
       const timestamp = new Date().getTime();
       const cacheBuster = typeof window !== 'undefined' ? window.sessionStorage.getItem('cache_bust') || timestamp : timestamp;
       
-      console.log(`🔍 Buscando campanha ${campaignId} (t=${timestamp}, cb=${cacheBuster})`);
+      console.log(`🔍 Buscando campanha ${campaignId} com dados relacionais (t=${timestamp})`);
       
       // Configuração para forçar a não utilização de cache
       const config = {
@@ -70,21 +70,14 @@ export const followUpService = {
       }
 
       console.log(`✅ Campanha ${campaignId} carregada com sucesso`);
+      
+      // Os dados já vêm formatados da API
       const campaignData = response.data.data;
-
-      // Processar os steps se estiverem em formato string
-      let steps = [];
-      if (typeof campaignData.steps === 'string') {
-        try {
-          steps = JSON.parse(campaignData.steps);
-        } catch (e) {
-          console.error('Error parsing steps:', e);
-          steps = [];
-        }
-      } else {
-        steps = campaignData.steps || [];
-      }
-
+      
+      // Verificar apenas se steps é um array
+      const steps = Array.isArray(campaignData.steps) ? campaignData.steps : [];
+      
+      // Retornar com os dados normalizados
       return {
         ...campaignData,
         steps
@@ -142,12 +135,27 @@ export const followUpService = {
   },
 
   // Função para atualizar um estágio do funil
-  async updateFunnelStage(id: string, data: { name: string, description?: string, order?: number }): Promise<FunnelStage> {
+  async updateFunnelStage(id: string, data: { name: string, description?: string | null, order?: number }): Promise<FunnelStage> {
     try {
+      // Adicionar timestamp para evitar cache
+      const timestamp = new Date().getTime();
+      
+      console.log('Enviando dados para API:', { id, ...data, t: timestamp });
+
       const response = await axios.put('/api/follow-up/funnel-stages', {
         id,
-        ...data
+        name: data.name,
+        description: data.description,
+        order: data.order,
+        _t: timestamp // Adicionar timestamp para evitar cache
+      }, {
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
       });
+
+      console.log('Resposta da API:', response.data);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update funnel stage');
@@ -157,9 +165,10 @@ export const followUpService = {
       this.clearCampaignCache();
 
       return response.data.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating funnel stage:', error);
-      throw error;
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to update funnel stage';
+      throw new Error(errorMessage);
     }
   },
 
@@ -255,7 +264,7 @@ export const followUpService = {
     }
   },
 
-  // Função unificada otimizada para buscar passos de campanha
+  // Função unificada otimizada para buscar passos de campanha usando o relacionamento campaign_steps
   async getCampaignSteps(campaignId?: string): Promise<CampaignStep[]> {
     if (!campaignId) {
       return [];
@@ -274,40 +283,21 @@ export const followUpService = {
       const campaign: any = await this.getCampaign(campaignId);
       const campaignSteps: CampaignStep[] = [];
       
-      if (campaign && campaign.steps) {
-        let stepsData = [];
-        if (typeof campaign.steps === 'string') {
-          try {
-            const stepsString = campaign.steps;
-            if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
-              stepsData = JSON.parse(stepsString);
-            }
-          } catch (err) {
-            console.error(`Erro ao analisar steps da campanha ${campaignId}:`, err);
-          }
-        } else {
-          stepsData = campaign.steps || [];
-        }
+      // Usar diretamente os steps da resposta da API (já formatados)
+      if (campaign && Array.isArray(campaign.steps)) {
+        const formattedCampaignSteps = campaign.steps.map((step: any) => ({
+          id: step.id,
+          stage_name: step.stage_name || 'Sem nome',
+          wait_time: step.wait_time || '30m',
+          template_name: step.template_name || '',
+          message: step.message || '',
+          stage_id: step.stage_id || '',
+          stage_order: step.order || 0,
+          category: step.category || 'Utility',
+          auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
+        }));
         
-        if (Array.isArray(stepsData) && stepsData.length > 0) {
-          const formattedCampaignSteps: any = stepsData.map((step: any, index: number) => {
-            // Normalizar todos os passos para o formato padrão do schema.prisma
-            return {
-              id: step.id || `campaign-step-${index}`,
-              // Campos padronizados conforme schema.prisma
-              stage_name: step.stage_name || 'Sem nome',
-              wait_time: step.wait_time || '30m',
-              template_name: step.template_name || '',
-              message: step.message || '',
-              stage_id: step.stage_id || '',
-              stage_order: step.stage_order || index,
-              category: step.category || 'Utility',
-              auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
-            };
-          }).filter(Boolean);
-          
-          campaignSteps.push(...formattedCampaignSteps);
-        }
+        campaignSteps.push(...formattedCampaignSteps);
       }
       
       campaignStepsCache[cacheKey] = {
@@ -390,6 +380,12 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to move client to stage');
       }
+      
+      // Limpar o cache para garantir que as alterações sejam refletidas
+      this.clearCampaignCache();
+      
+      // Aguardar um pequeno intervalo para permitir que o banco de dados seja atualizado
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       return response.data;
     } catch (error) {
@@ -462,6 +458,19 @@ export const followUpService = {
   // Função para criar um novo passo
   async createStep(data: any): Promise<any> {
     try {
+      console.log('Criando novo passo com dados:', data);
+      // Verificar se o passo contém campaign_id
+      if (!data.campaign_id && data.funnel_stage_id) {
+        console.log('Adicionando campaign_id ao passo...');
+        // Buscar o estágio para determinar a campanha
+        const stages = await this.getFunnelStages();
+        const stage = stages.find(s => s.id === data.funnel_stage_id);
+        if (stage && stage.campaignId) {
+          data.campaign_id = stage.campaignId;
+          console.log(`Adicionado campaign_id: ${data.campaign_id} ao passo`);
+        }
+      }
+      
       const response = await axios.post('/api/follow-up/funnel-steps', data);
 
       if (!response.data.success) {

@@ -52,65 +52,68 @@ model PromptContent {
 }
 
 model FollowUpFunnelStage {
-  id          String            @id @default(uuid())
+  id          String             @id @default(uuid())
   name        String
   order       Int
   description String?
-  created_at  DateTime          @default(now())
-  campaigns   FollowUpCampaign[]
+  created_at  DateTime           @default(now())
   steps       FollowUpStep[]
+  campaigns   FollowUpCampaign[] @relation("FollowUpCampaignToFollowUpFunnelStage")
 
   @@map("follow_up_funnel_stages")
   @@schema("follow_up_schema")
 }
 
 model FollowUpCampaign {
-  id          String              @id @default(uuid())
+  id          String                @id @default(uuid())
   name        String
   description String?
-  created_at  DateTime            @default(now())
-  active      Boolean             @default(true)
-  steps       Json
+  created_at  DateTime              @default(now())
+  active      Boolean               @default(true)
+  steps       Json?                 // Mantemos para compatibilidade, mas será depreciado
   follow_ups  FollowUp[]
-  stages      FollowUpFunnelStage[]
+  campaign_steps FollowUpStep[]     // Adicionamos o relacionamento
+  stages      FollowUpFunnelStage[] @relation("FollowUpCampaignToFollowUpFunnelStage")
 
   @@map("follow_up_campaigns")
   @@schema("follow_up_schema")
 }
 
 model FollowUpStep {
-  id                 String              @id @default(uuid())
-  funnel_stage_id    String
-  name               String
-  template_name      String
-  wait_time          String              // "10 minutos", "1 hora", etc.
-  wait_time_ms       Int                 // Convertido em milissegundos
-  message_content    String
-  message_category   String?             // "Utility", "Marketing", etc.
-  auto_respond       Boolean             @default(true)
-  status             String              @default("created")
-  created_at         DateTime            @default(now())
-  funnel_stage       FollowUpFunnelStage @relation(fields: [funnel_stage_id], references: [id])
+  id               String              @id @default(uuid())
+  funnel_stage_id  String
+  campaign_id      String
+  name             String
+  template_name    String
+  wait_time        String
+  wait_time_ms     Int
+  message_content  String
+  message_category String?
+  auto_respond     Boolean             @default(true)
+  status           String              @default("created")
+  created_at       DateTime            @default(now())
+  funnel_stage     FollowUpFunnelStage @relation(fields: [funnel_stage_id], references: [id])
+  campaign         FollowUpCampaign    @relation(fields: [campaign_id], references: [id])
 
   @@map("follow_up_steps")
   @@schema("follow_up_schema")
 }
 
 model FollowUp {
-  id                String            @id @default(uuid())
-  campaign_id       String
-  client_id         String
-  current_step      Int               @default(0)
-  current_stage_id  String?           // Referência ao estágio atual do funil
-  status            String
-  started_at        DateTime          @default(now())
-  updated_at        DateTime          @updatedAt
-  next_message_at   DateTime?
-  completed_at      DateTime?
-  is_responsive     Boolean           @default(false)
-  metadata          String?           // Campo para armazenar metadados como JSON
-  messages          FollowUpMessage[]
-  campaign          FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
+  id               String            @id @default(uuid())
+  campaign_id      String
+  client_id        String
+  current_step     Int               @default(0)
+  status           String
+  started_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
+  next_message_at  DateTime?
+  completed_at     DateTime?
+  is_responsive    Boolean           @default(false)
+  metadata         String?
+  current_stage_id String?
+  messages         FollowUpMessage[]
+  campaign         FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
 
   @@index([client_id])
   @@index([status])
@@ -119,58 +122,57 @@ model FollowUp {
 }
 
 model FollowUpMessage {
-  id              String    @id @default(uuid())
-  follow_up_id    String
-  step            Int
-  funnel_stage    String?   // Nome do estágio do funil
-  content         String
-  template_name   String?   // Nome do template usado
-  category        String?   // Categoria da mensagem
-  sent_at         DateTime  @default(now())
-  delivered       Boolean   @default(false)
-  delivered_at    DateTime?
-  follow_up       FollowUp  @relation(fields: [follow_up_id], references: [id])
+  id            String    @id @default(uuid())
+  follow_up_id  String
+  step          Int
+  content       String
+  sent_at       DateTime  @default(now())
+  delivered     Boolean   @default(false)
+  delivered_at  DateTime?
+  category      String?
+  funnel_stage  String?
+  template_name String?
+  follow_up     FollowUp  @relation(fields: [follow_up_id], references: [id])
 
   @@index([follow_up_id, step])
   @@map("follow_up_messages")
   @@schema("follow_up_schema")
 }
 
-// Workspace Models
 model User {
-  id                 String               @id @default(uuid())
-  name               String?
-  email              String               @unique
-  email_verified     DateTime?
-  image              String?
-  password           String?
-  is_super_admin     Boolean              @default(false)
-  created_at         DateTime             @default(now())
-  updated_at         DateTime             @updatedAt
-  accounts           Account[]
-  sessions           Session[]
-  owned_workspaces   Workspace[]          @relation("WorkspaceOwner")
-  workspace_members  WorkspaceMember[]
-  invitations        WorkspaceInvitation[]
+  id                String                @id @default(uuid())
+  name              String?
+  email             String                @unique
+  email_verified    DateTime?
+  image             String?
+  password          String?
+  created_at        DateTime              @default(now())
+  updated_at        DateTime              @updatedAt
+  is_super_admin    Boolean               @default(false)
+  accounts          Account[]
+  sessions          Session[]
+  invitations       WorkspaceInvitation[]
+  workspace_members WorkspaceMember[]
+  owned_workspaces  Workspace[]           @relation("WorkspaceOwner")
 
   @@map("users")
   @@schema("workspace_schema")
 }
 
 model Account {
-  id                  String   @id @default(uuid())
+  id                  String  @id @default(uuid())
   user_id             String
   type                String
   provider            String
   provider_account_id String
-  refresh_token       String?  @db.Text
-  access_token        String?  @db.Text
+  refresh_token       String?
+  access_token        String?
   expires_at          Int?
   token_type          String?
   scope               String?
-  id_token            String?  @db.Text
+  id_token            String?
   session_state       String?
-  user                User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user                User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([provider, provider_account_id])
   @@map("accounts")
@@ -199,30 +201,30 @@ model VerificationToken {
 }
 
 model Workspace {
-  id                String               @id @default(uuid())
-  name              String
-  slug              String               @unique
-  owner_id          String
-  created_at        DateTime             @default(now())
-  updated_at        DateTime             @updatedAt
-  owner             User                 @relation("WorkspaceOwner", fields: [owner_id], references: [id])
-  members           WorkspaceMember[]
-  invitations       WorkspaceInvitation[]
+  id                  String                      @id @default(uuid())
+  name                String
+  slug                String                      @unique
+  owner_id            String
+  created_at          DateTime                    @default(now())
+  updated_at          DateTime                    @updatedAt
   follow_up_campaigns WorkspaceFollowUpCampaign[]
+  invitations         WorkspaceInvitation[]
+  members             WorkspaceMember[]
+  owner               User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
 
   @@map("workspaces")
   @@schema("workspace_schema")
 }
 
 model WorkspaceMember {
-  id           String     @id @default(uuid())
+  id           String    @id @default(uuid())
   workspace_id String
   user_id      String
-  role         String     // ADMIN, MEMBER, VIEWER
-  created_at   DateTime   @default(now())
-  updated_at   DateTime   @updatedAt
-  workspace    Workspace  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  user         User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role         String
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, user_id])
   @@map("workspace_members")
@@ -230,29 +232,28 @@ model WorkspaceMember {
 }
 
 model WorkspaceInvitation {
-  id           String     @id @default(uuid())
+  id           String    @id @default(uuid())
   workspace_id String
   email        String
-  role         String     // ADMIN, MEMBER, VIEWER
-  token        String     @unique
+  role         String
+  token        String    @unique
   expires_at   DateTime
-  created_at   DateTime   @default(now())
+  created_at   DateTime  @default(now())
   invited_by   String
-  workspace    Workspace  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  inviter      User       @relation(fields: [invited_by], references: [id])
+  inviter      User      @relation(fields: [invited_by], references: [id])
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, email])
   @@map("workspace_invitations")
   @@schema("workspace_schema")
 }
 
-// Junction table to connect workspaces with follow-up campaigns
 model WorkspaceFollowUpCampaign {
-  id           String          @id @default(uuid())
+  id           String    @id @default(uuid())
   workspace_id String
   campaign_id  String
-  created_at   DateTime        @default(now())
-  workspace    Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  created_at   DateTime  @default(now())
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, campaign_id])
   @@map("workspace_follow_up_campaigns")
