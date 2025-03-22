@@ -46,9 +46,6 @@ export default function Header() {
         <div className="flex justify-between items-center">
           {/* Logo */}
           <Link href={session ? '/workspaces' : '/'} className="flex items-center">
-            {/* <div className="h-10 w-10 bg-[#F54900] rounded-md flex items-center justify-center mr-2">
-              <MessageSquare className="h-6 w-6 text-white" />
-            </div> */}
             <img width={35} height={35} src="https://app.lumibot.com.br/brand-assets/thumbnail-lumibot.svg" alt="Logo lumibot" />
             <span className="text-xl ml-2 font-bold text-white">LumibotAI</span>
           </Link>
@@ -61,7 +58,7 @@ export default function Header() {
                 <Link
                   href="/workspaces"
                   className={`text-sm ${
-                    pathname === '/workspaces' ? 'text-white' : 'text-gray-400 hover:text-white'
+                    pathname === '/workspaces' ? 'text-[#F54900]' : 'text-gray-400 hover:text-white'
                   } transition-colors`}
                 >
                   Workspaces

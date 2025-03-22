@@ -3,7 +3,7 @@ import axios from 'axios';
 import { FollowUp, Campaign, CampaignStep, FunnelStage, FunnelStep } from '../_types';
 
 // Cache simples para campanhas
-const campaignStepsCache: Record<string, {data: any[], timestamp: number}> = {};
+const campaignStepsCache: Record<string, { data: any[], timestamp: number }> = {};
 const CACHE_TTL = 60000; // 1 minuto de TTL para o cache
 
 export const followUpService = {
@@ -47,9 +47,9 @@ export const followUpService = {
       // Adicionar timestamp e cache buster para forçar atualização
       const timestamp = new Date().getTime();
       const cacheBuster = typeof window !== 'undefined' ? window.sessionStorage.getItem('cache_bust') || timestamp : timestamp;
-      
+
       console.log(`🔍 Buscando campanha ${campaignId} com dados relacionais (t=${timestamp})`);
-      
+
       // Configuração para forçar a não utilização de cache
       const config = {
         headers: {
@@ -58,9 +58,9 @@ export const followUpService = {
           'Expires': '0'
         }
       };
-      
+
       const response = await axios.get(
-        `/api/follow-up/campaigns/${campaignId}?t=${timestamp}&cb=${cacheBuster}`, 
+        `/api/follow-up/campaigns/${campaignId}?t=${timestamp}&cb=${cacheBuster}`,
         config
       );
 
@@ -70,13 +70,13 @@ export const followUpService = {
       }
 
       console.log(`✅ Campanha ${campaignId} carregada com sucesso`);
-      
+
       // Os dados já vêm formatados da API
       const campaignData = response.data.data;
-      
+
       // Verificar apenas se steps é um array
       const steps = Array.isArray(campaignData.steps) ? campaignData.steps : [];
-      
+
       // Retornar com os dados normalizados
       return {
         ...campaignData,
@@ -93,10 +93,10 @@ export const followUpService = {
     try {
       // Adicionar timestamp para evitar cache
       const timestamp = new Date().getTime();
-      const url = campaignId 
-        ? `/api/follow-up/funnel-stages?campaignId=${campaignId}&t=${timestamp}` 
+      const url = campaignId
+        ? `/api/follow-up/funnel-stages?campaignId=${campaignId}&t=${timestamp}`
         : `/api/follow-up/funnel-stages?t=${timestamp}`;
-      
+
       const response = await axios.get(url);
 
       if (!response.data.success) {
@@ -123,7 +123,7 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to create funnel stage');
       }
-      
+
       // Limpar cache após modificar dados
       this.clearCampaignCache();
 
@@ -141,12 +141,12 @@ export const followUpService = {
       if (!id || !data.name) {
         throw new Error('ID e nome são campos obrigatórios');
       }
-      
+
       console.log('🔄 Atualizando estágio do funil:', { id, ...data });
-      
+
       // Adicionar timestamp para evitar cache
       const timestamp = new Date().getTime();
-      
+
       // Construir payload com todos os dados necessários
       const payload = {
         id,
@@ -156,9 +156,9 @@ export const followUpService = {
         campaignId: data.campaignId, // FUNDAMENTAL passar o ID da campanha
         t: timestamp // Para evitar problemas de cache
       };
-      
+
       console.log('📤 Payload completo:', JSON.stringify(payload, null, 2));
-      
+
       // Adicionar headers específicos para garantir que não haverá problemas de cache
       const config = {
         headers: {
@@ -169,14 +169,14 @@ export const followUpService = {
         },
         timeout: 15000 // 15 segundos para completar a operação
       };
-      
+
       // ESTRATÉGIA 1: Tentar com método padrão
       try {
         console.log('🔄 ESTRATÉGIA 1: Enviando requisição padrão');
         const response = await axios.put('/api/follow-up/funnel-stages', payload, config);
-        
+
         console.log('📥 Resposta da API:', JSON.stringify(response.data, null, 2));
-        
+
         if (response.data.success) {
           // Limpar qualquer cache que possa afetar a visualização dos dados
           this.clearCampaignCache();
@@ -186,16 +186,16 @@ export const followUpService = {
         }
       } catch (error) {
         console.error('❌ ESTRATÉGIA 1 falhou:', error);
-        
+
         // ESTRATÉGIA 2: Tentar com um delay e nova tentativa
         console.log('🔄 ESTRATÉGIA 2: Tentando com delay...');
-        
+
         // Esperar 2 segundos antes de tentar novamente
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
         try {
           const retryResponse = await axios.put('/api/follow-up/funnel-stages', payload, config);
-          
+
           if (retryResponse.data.success) {
             console.log('✅ ESTRATÉGIA 2 bem-sucedida!');
             this.clearCampaignCache();
@@ -205,17 +205,17 @@ export const followUpService = {
           }
         } catch (retryError) {
           console.error('❌ ESTRATÉGIA 2 falhou:', retryError);
-          
+
           // ESTRATÉGIA 3: Última chance, utilizar força bruta com request direto
           console.log('🔄 ESTRATÉGIA 3: Abordagem direta, última chance...');
-          
+
           // Simplificar o payload para conter apenas os dados essenciais
           const minimalPayload = {
-            id, 
+            id,
             name: data.name,
             description: data.description || null
           };
-          
+
           try {
             const lastChanceResponse = await fetch('/api/follow-up/funnel-stages', {
               method: 'PUT',
@@ -223,9 +223,9 @@ export const followUpService = {
                 'Content-Type': 'application/json',
                 'Cache-Control': 'no-cache'
               },
-              body: JSON.stringify({...minimalPayload, campaignId: data.campaignId})
+              body: JSON.stringify({ ...minimalPayload, campaignId: data.campaignId })
             });
-            
+
             if (lastChanceResponse.ok) {
               const jsonResponse = await lastChanceResponse.json();
               console.log('✅ ESTRATÉGIA 3 bem-sucedida!');
@@ -242,13 +242,13 @@ export const followUpService = {
       }
     } catch (error: any) {
       console.error('❌ ERRO FATAL AO ATUALIZAR ESTÁGIO DO FUNIL:', error);
-      
+
       // Formatar mensagem de erro
       const errorMessage = error.response?.data?.error || error.message || 'Erro desconhecido ao atualizar estágio do funil';
-      
+
       // Limpar cache de qualquer forma, para evitar dados inconsistentes
       this.clearCampaignCache();
-      
+
       throw new Error(errorMessage);
     }
   },
@@ -261,7 +261,7 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete funnel stage');
       }
-      
+
       // Limpar cache após modificar dados
       this.clearCampaignCache();
 
@@ -293,10 +293,10 @@ export const followUpService = {
   async updateStep(stepId: string, data: Partial<FunnelStep>): Promise<any> {
     try {
       console.log('Atualizando passo:', stepId, JSON.stringify(data, null, 2));
-      
+
       // No frontend, temos os dados no formato:
       // id, stage_id, stage_name, template_name, wait_time, message, category, auto_respond
-      
+
       // Manter o formato original do frontend para a nova API
       const requestData = {
         id: stepId,
@@ -308,18 +308,18 @@ export const followUpService = {
         category: data.category,
         auto_respond: data.auto_respond
       };
-      
+
       console.log('Enviando dados para atualização:', JSON.stringify(requestData, null, 2));
-      
+
       // Usar a rota alternativa que aceita o formato do frontend
       const response = await axios.put('/api/follow-up/steps', requestData);
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update step');
       }
-      
+
       this.clearCampaignCache();
-      
+
       return response.data;
     } catch (error) {
       console.error('Error updating step:', error);
@@ -335,7 +335,7 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to delete step');
       }
-      
+
       this.clearCampaignCache();
 
       return response.data;
@@ -346,60 +346,68 @@ export const followUpService = {
   },
 
   // Função unificada otimizada para buscar passos de campanha usando o relacionamento campaign_steps
+  // app/follow-up/_services/followUpService.ts - Método getCampaignSteps modificado
   async getCampaignSteps(campaignId?: string): Promise<CampaignStep[]> {
     if (!campaignId) {
       return [];
     }
-    
+
     const cacheKey = `campaign-steps-${campaignId}`;
     const cachedData = campaignStepsCache[cacheKey];
     const now = Date.now();
-    
+
     if (cachedData && (now - cachedData.timestamp < CACHE_TTL)) {
       return cachedData.data;
     }
-    
+
     try {
-      // Forçar busca direto do servidor sem usar cache
-      const campaign: any = await this.getCampaign(campaignId);
-      const campaignSteps: CampaignStep[] = [];
-      
-      // Usar diretamente os steps da resposta da API (já formatados)
-      if (campaign && Array.isArray(campaign.steps)) {
-        const formattedCampaignSteps = campaign.steps.map((step: any) => ({
-          id: step.id,
-          stage_name: step.stage_name || 'Sem nome',
-          wait_time: step.wait_time || '30m',
-          template_name: step.template_name || '',
-          message: step.message || '',
-          stage_id: step.stage_id || '',
-          stage_order: step.order || 0,
-          category: step.category || 'Utility',
-          auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
-        }));
-        
-        campaignSteps.push(...formattedCampaignSteps);
+      // Adicionar timestamp e cache buster para forçar atualização
+      const timestamp = new Date().getTime();
+      const cacheBuster = typeof window !== 'undefined' ?
+        window.sessionStorage.getItem('cache_bust') || timestamp : timestamp;
+
+      console.log(`Buscando campanha ${campaignId} (t=${timestamp}, cb=${cacheBuster})`);
+
+      // Forçar carregamento sem cache
+      const config = {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      };
+
+      const response = await axios.get(
+        `/api/follow-up/campaigns/${campaignId}?t=${timestamp}&cb=${cacheBuster}`,
+        config
+      );
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to fetch campaign');
       }
-      
+
+      const campaignData = response.data.data;
+      const formattedCampaignSteps = campaignData.steps || [];
+
       campaignStepsCache[cacheKey] = {
-        data: campaignSteps,
+        data: formattedCampaignSteps,
         timestamp: now
       };
-      
-      return campaignSteps;
+
+      return formattedCampaignSteps;
     } catch (error) {
       console.error('Error fetching campaign steps:', error);
       throw error;
     }
   },
-  
+
   // Método para limpar o cache quando necessário (após atualizações) - REESCRITO
   clearCampaignCache(campaignId?: string) {
     console.log(`⚡ LIMPEZA DE CACHE INICIADA - ${campaignId ? `campanha: ${campaignId}` : "todas as campanhas"}`);
-    
+
     // Contador para tracking da operação
     let cacheEntriesCleared = 0;
-    
+
     // 1. Limpar cache local de steps da campanha
     if (campaignId) {
       // Limpar apenas a campanha específica
@@ -411,22 +419,22 @@ export const followUpService = {
     } else {
       // Limpar todas as entradas do cache
       cacheEntriesCleared = Object.keys(campaignStepsCache).length;
-      
+
       // Resetar objeto completamente
       Object.keys(campaignStepsCache).forEach(key => {
         delete campaignStepsCache[key];
       });
     }
-    
+
     // 2. Forçar recarregamento de recursos do browser
     if (typeof window !== 'undefined') {
       try {
         console.log("🔄 Limpando cache do navegador e forçando recarregamento");
-        
+
         // Atualizar timestamp na sessionStorage para evitar cache
         const timestamp = new Date().getTime();
         window.sessionStorage.setItem('cache_bust', timestamp.toString());
-        
+
         // Limpar localStorage específico também (se existir)
         if (campaignId) {
           const campaignCacheKey = `campaign-data-${campaignId}`;
@@ -435,7 +443,7 @@ export const followUpService = {
             cacheEntriesCleared++;
           }
         }
-        
+
         // Estratégia adicional para forçar recargas
         if (typeof window.fetch === 'function') {
           // Fazer uma chamada simples às APIs para limpar qualquer cache do lado do cliente
@@ -443,20 +451,20 @@ export const followUpService = {
             `/api/follow-up/funnel-stages?t=${timestamp}`,
             `/api/follow-up/campaigns?t=${timestamp}`
           ];
-          
+
           if (campaignId) {
             purgeUrls.push(`/api/follow-up/campaigns/${campaignId}?t=${timestamp}`);
           }
-          
+
           // Executar fetches silenciosos para limpar cache
           purgeUrls.forEach(url => {
-            fetch(url, { 
+            fetch(url, {
               method: 'HEAD',
-              headers: { 
+              headers: {
                 'Cache-Control': 'no-cache',
                 'Pragma': 'no-cache'
               }
-            }).catch(e => {}); // Ignorar erros
+            }).catch(e => { }); // Ignorar erros
           });
         }
       } catch (cacheError) {
@@ -464,7 +472,7 @@ export const followUpService = {
         // Continuar mesmo se houver erro
       }
     }
-    
+
     console.log(`✅ LIMPEZA DE CACHE CONCLUÍDA - ${cacheEntriesCleared} entradas removidas`);
   },
 
@@ -514,10 +522,10 @@ export const followUpService = {
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to move client to stage');
       }
-      
+
       // Limpar o cache para garantir que as alterações sejam refletidas
       this.clearCampaignCache();
-      
+
       // Aguardar um pequeno intervalo para permitir que o banco de dados seja atualizado
       await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -552,7 +560,7 @@ export const followUpService = {
     try {
       // Preparar os dados - garantir que steps tem o formato correto
       const preparedData = { ...formData };
-      
+
       // Se os steps forem fornecidos como array, serializá-los
       if (preparedData.steps && Array.isArray(preparedData.steps)) {
         // Garantir que cada step tenha todos os campos necessários no formato padrão
@@ -567,19 +575,19 @@ export const followUpService = {
           category: step.category || 'Utility',
           auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
         }));
-        
+
         // Atribuir os steps formatados
         preparedData.steps = formattedSteps;
       }
-      
+
       console.log('Enviando dados formatados para atualização:', JSON.stringify(preparedData, null, 2));
-      
+
       const response = await axios.put(`/api/follow-up/campaigns/${campaignId}`, preparedData);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to update campaign');
       }
-      
+
       this.clearCampaignCache(campaignId);
 
       return response.data;
@@ -604,13 +612,13 @@ export const followUpService = {
           console.log(`Adicionado campaign_id: ${data.campaign_id} ao passo`);
         }
       }
-      
+
       const response = await axios.post('/api/follow-up/funnel-steps', data);
 
       if (!response.data.success) {
         throw new Error(response.data.error || 'Failed to create step');
       }
-      
+
       this.clearCampaignCache();
 
       return response.data;

@@ -1,5 +1,4 @@
 'use client';
-
 import { useWorkspace } from '@/context/workspace-context';
 import { Loader2 } from 'lucide-react';
 
@@ -9,7 +8,7 @@ export default function WorkspaceDashboard() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#F54900]" />
       </div>
     );
   }
@@ -17,27 +16,26 @@ export default function WorkspaceDashboard() {
   if (!workspace) return null;
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-2">Dashboard</h1>
-        <p className="text-gray-600">Welcome to {workspace.name}</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Summary Cards */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Recent Activity</h2>
-          <p className="text-gray-500 italic">No recent activity found.</p>
+    <div className="p-6">
+      <h1 className="text-xl font-semibold mb-4 text-white">Bem-vindo ao {workspace.name}</h1>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Card Atividade Recente */}
+        <div className="bg-[#111111] border border-[#333333] rounded-lg p-6">
+          <h2 className="text-lg font-medium text-white mb-4">Atividade Recente</h2>
+          <p className="text-gray-400 text-sm">Nenhuma atividade recente encontrada.</p>
         </div>
         
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Campaigns</h2>
-          <p className="text-gray-500 italic">No campaigns found.</p>
+        {/* Card Campanhas */}
+        <div className="bg-[#111111] border border-[#333333] rounded-lg p-6">
+          <h2 className="text-lg font-medium text-white mb-4">Campanhas</h2>
+          <p className="text-gray-400 text-sm">Nenhuma campanha encontrada.</p>
         </div>
         
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Team</h2>
-          <p className="text-gray-500 italic">Workspace information will display here.</p>
+        {/* Card Equipe */}
+        <div className="bg-[#111111] border border-[#333333] rounded-lg p-6">
+          <h2 className="text-lg font-medium text-white mb-4">Equipe</h2>
+          <p className="text-gray-400 text-sm">Informações do workspace serão exibidas aqui.</p>
         </div>
       </div>
     </div>

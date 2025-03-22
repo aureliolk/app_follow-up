@@ -41,11 +41,11 @@ const WorkspaceContext = createContext<WorkspaceContextType>({
   workspaces: [],
   isLoading: true,
   error: null,
-  switchWorkspace: () => {},
+  switchWorkspace: () => { },
   createWorkspace: async () => ({} as Workspace),
   updateWorkspace: async () => ({} as Workspace),
-  deleteWorkspace: async () => {},
-  refreshWorkspaces: async () => {},
+  deleteWorkspace: async () => { },
+  refreshWorkspaces: async () => { },
 });
 
 export const useWorkspace = () => useContext(WorkspaceContext);
@@ -55,11 +55,12 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
-  
+
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  let slug = params?.slug as string;
 
   // Fetch workspaces based on user role
   const fetchWorkspaces = async () => {
@@ -70,19 +71,18 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       setIsLoading(false);
       return [];
     }
-    
+
     // Check if user is super admin
     const isSuperAdmin = session.user.isSuperAdmin;
-    console.log('Fetching workspaces for user:', session.user.id, 'Super Admin:', isSuperAdmin);
+   
 
     try {
       // Use the appropriate endpoint based on user role
-      const endpoint = isSuperAdmin 
+      const endpoint = isSuperAdmin
         ? '/api/workspaces/all' // Super admin endpoint to get all workspaces
         : '/api/workspaces';    // Regular user endpoint to get their workspaces
-      
-      console.log(`Fetching from endpoint: ${endpoint} (isSuperAdmin: ${isSuperAdmin})`);
-      
+
+
       const response = await fetch(endpoint, {
         // Include credentials and prevent caching
         credentials: 'include',
@@ -91,12 +91,12 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
           'Cache-Control': 'no-cache'
         }
       });
-      
+
       if (!response.ok) {
         console.error('Failed to fetch workspaces, status:', response.status);
         throw new Error('Failed to fetch workspaces');
       }
-      
+
       const data = await response.json();
       console.log('Workspaces fetched:', data);
       setWorkspaces(data);
@@ -112,17 +112,27 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
 
   // Load current workspace based on URL parameter
   const loadCurrentWorkspace = async (workspaceList: Workspace[]) => {
-    const slug = params?.slug as string;
-    if (!slug || !workspaceList.length) {
-      setWorkspace(null);
-      return;
+
+    console.log(slug)
+    // if (!slug) {
+    //   setWorkspace(null);
+    //   return;
+    // }
+
+    // Se a lista de workspaces estiver vazia mas estamos tentando acessar um workspace, 
+    // não redirecione imediatamente - pode ser que os dados ainda não foram carregados
+    if (!workspaceList.length) {
+      console.log('Workspace list empty, not redirecting yet');
+      return; // Não redirecione, apenas retorne
     }
 
     const found = workspaceList.find(w => w.slug === slug);
     if (found) {
       setWorkspace(found);
     } else if (pathname?.includes('/workspace/')) {
-      // If in workspace route but workspace not found, redirect to workspaces list
+      console.log('Workspace not found in list:', slug);
+      console.log('Available workspaces:', workspaceList.map(w => w.slug));
+      // Se não encontrar após ter uma lista carregada, aí sim redirecione
       router.push('/workspaces');
     }
   };
@@ -130,7 +140,7 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
   // Initial load
   useEffect(() => {
     if (status === 'loading') return;
-    
+
     const initializeWorkspaces = async () => {
       const workspaceList = await fetchWorkspaces();
       await loadCurrentWorkspace(workspaceList || []);
@@ -189,18 +199,18 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       }
 
       const updatedWorkspace = await response.json();
-      
-      setWorkspaces(workspaces.map(w => 
+
+      setWorkspaces(workspaces.map(w =>
         w.id === id ? updatedWorkspace : w
       ));
-      
+
       if (workspace?.id === id) {
         setWorkspace(updatedWorkspace);
         if (data.slug && data.slug !== workspace.slug) {
           router.push(`/workspace/${data.slug}`);
         }
       }
-      
+
       return updatedWorkspace;
     } catch (err: any) {
       setError(err.message || 'Failed to update workspace');
@@ -221,7 +231,7 @@ export const WorkspaceProvider = ({ children }: { children: React.ReactNode }) =
       }
 
       setWorkspaces(workspaces.filter(w => w.id !== id));
-      
+
       if (workspace?.id === id) {
         setWorkspace(null);
         // If current workspace was deleted, redirect to workspaces list
