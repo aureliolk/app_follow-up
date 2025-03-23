@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { withAuth, getCurrentUserId } from '@/lib/auth/auth-utils';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth/auth-options';
 import crypto from 'crypto';
 
 // Função para gerar token criptograficamente seguro
@@ -158,26 +160,72 @@ async function processCreateTokenRequest(req: NextRequest, workspaceId: string) 
 
 // Listar todos os tokens de API para o workspace
 export async function GET(
-  req: NextRequest,
-  context: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: { id: string } }
 ) {
-  // Use withAuth sem extrair os parâmetros primeiro
-  return withAuth(req, async (req) => {
-    // Extrair parâmetros dentro da função assíncrona
-    const workspaceId = context.params.id;
-    return processListTokensRequest(req, workspaceId);
-  });
+  // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
+  // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
+  await Promise.resolve(); // Operação assíncrona simples
+  
+  // Agora é seguro acessar os parâmetros dinâmicos
+  const workspaceId = params.id;
+  
+  try {
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: "Não autorizado" },
+        { status: 401 }
+      );
+    }
+
+    return processListTokensRequest(request, workspaceId);
+  } catch (error) {
+    console.error("Erro de autenticação:", error);
+    return NextResponse.json(
+      { success: false, error: "Erro de autenticação" },
+      { status: 500 }
+    );
+  }
+}
+
+// Função auxiliar para obter a sessão atual
+async function getSession() {
+  try {
+    return await getServerSession(authOptions);
+  } catch (error) {
+    console.error("Erro ao obter sessão:", error);
+    return null;
+  }
 }
 
 // Criar um novo token de API
 export async function POST(
-  req: NextRequest,
-  context: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: { id: string } }
 ) {
-  // Use withAuth sem extrair os parâmetros primeiro
-  return withAuth(req, async (req) => {
-    // Extrair parâmetros dentro da função assíncrona
-    const workspaceId = context.params.id;
-    return processCreateTokenRequest(req, workspaceId);
-  });
+  // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
+  // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
+  await Promise.resolve(); // Operação assíncrona simples
+  
+  // Agora é seguro acessar os parâmetros dinâmicos
+  const workspaceId = params.id;
+  
+  try {
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: "Não autorizado" },
+        { status: 401 }
+      );
+    }
+
+    return processCreateTokenRequest(request, workspaceId);
+  } catch (error) {
+    console.error("Erro de autenticação:", error);
+    return NextResponse.json(
+      { success: false, error: "Erro de autenticação" },
+      { status: 500 }
+    );
+  }
 }

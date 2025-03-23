@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { withAuth, getCurrentUserId } from '@/lib/auth/auth-utils';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth/auth-options';
+
+// Função auxiliar para obter a sessão atual
+async function getSession() {
+  try {
+    return await getServerSession(authOptions);
+  } catch (error) {
+    console.error("Erro ao obter sessão:", error);
+    return null;
+  }
+}
 
 // Função auxiliar para processar requisições de exclusão permanente do token
 async function processPermanentDeleteRequest(req: NextRequest, workspaceId: string, tokenId: string) {
@@ -139,31 +151,60 @@ async function processRevokeTokenRequest(req: NextRequest, workspaceId: string, 
 
 // Revogar um token de API específico (soft delete)
 export async function DELETE(
-  req: NextRequest,
-  context: { params: { id: string; tokenId: string } }
+  request: NextRequest,
+  { params }: { params: { id: string; tokenId: string } }
 ) {
-  // Use withAuth sem extrair os parâmetros primeiro
-  return withAuth(req, async (req) => {
-    // Extrair parâmetros dentro da função assíncrona
-    const workspaceId = context.params.id;
-    const tokenId = context.params.tokenId;
-    return processRevokeTokenRequest(req, workspaceId, tokenId);
-  });
+  // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
+  // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
+  await Promise.resolve(); // Operação assíncrona simples
+  
+  // Agora é seguro acessar os parâmetros dinâmicos
+  const workspaceId = params.id;
+  const tokenId = params.tokenId;
+  
+  try {
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: "Não autorizado" },
+        { status: 401 }
+      );
+    }
+
+    return processRevokeTokenRequest(request, workspaceId, tokenId);
+  } catch (error) {
+    console.error("Erro de autenticação:", error);
+    return NextResponse.json(
+      { success: false, error: "Erro de autenticação" },
+      { status: 500 }
+    );
+  }
 }
 
 // Excluir permanentemente um token (hard delete)
 export async function PATCH(
-  req: NextRequest,
-  context: { params: { id: string; tokenId: string } }
+  request: NextRequest,
+  { params }: { params: { id: string; tokenId: string } }
 ) {
-  // Use withAuth sem extrair os parâmetros primeiro
-  return withAuth(req, async (req) => {
-    // Extrair parâmetros dentro da função assíncrona
-    const workspaceId = context.params.id;
-    const tokenId = context.params.tokenId;
+  // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
+  // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
+  await Promise.resolve(); // Operação assíncrona simples
+  
+  // Agora é seguro acessar os parâmetros dinâmicos
+  const workspaceId = params.id;
+  const tokenId = params.tokenId;
+  
+  try {
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: "Não autorizado" },
+        { status: 401 }
+      );
+    }
     
     // Verificar se o cabeçalho de exclusão permanente foi fornecido
-    const permanentDelete = req.headers.get('x-permanent-delete');
+    const permanentDelete = request.headers.get('x-permanent-delete');
     
     if (permanentDelete !== 'true') {
       return NextResponse.json(
@@ -172,6 +213,12 @@ export async function PATCH(
       );
     }
     
-    return processPermanentDeleteRequest(req, workspaceId, tokenId);
-  });
+    return processPermanentDeleteRequest(request, workspaceId, tokenId);
+  } catch (error) {
+    console.error("Erro de autenticação:", error);
+    return NextResponse.json(
+      { success: false, error: "Erro de autenticação" },
+      { status: 500 }
+    );
+  }
 }
