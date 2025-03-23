@@ -7,9 +7,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string; tokenId: string } }
 ) {
+  const { id: workspaceId, tokenId } = params;
+  
   return withAuth(req, async (req) => {
     try {
-      const { id: workspaceId, tokenId } = params;
       const userId = await getCurrentUserId(req);
 
       // Verificar se o usuário tem acesso ao workspace

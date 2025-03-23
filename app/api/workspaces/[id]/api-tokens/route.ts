@@ -17,9 +17,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const workspaceId = params.id;
+  
   return withAuth(req, async (req) => {
     try {
-      const workspaceId = params.id;
       const userId = await getCurrentUserId(req);
 
       // Verificar se o usuário tem acesso ao workspace
@@ -88,9 +89,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const workspaceId = params.id;
+  
   return withAuth(req, async (req) => {
     try {
-      const workspaceId = params.id;
       const userId = await getCurrentUserId(req);
       const body = await req.json();
 
