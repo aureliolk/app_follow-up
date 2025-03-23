@@ -154,6 +154,7 @@ model User {
   invitations       WorkspaceInvitation[]
   workspace_members WorkspaceMember[]
   owned_workspaces  Workspace[]           @relation("WorkspaceOwner")
+  created_tokens    WorkspaceApiToken[]
 
   @@map("users")
   @@schema("workspace_schema")
@@ -210,6 +211,7 @@ model Workspace {
   follow_up_campaigns WorkspaceFollowUpCampaign[]
   invitations         WorkspaceInvitation[]
   members             WorkspaceMember[]
+  api_tokens          WorkspaceApiToken[]
   owner               User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
 
   @@map("workspaces")
@@ -257,5 +259,24 @@ model WorkspaceFollowUpCampaign {
 
   @@unique([workspace_id, campaign_id])
   @@map("workspace_follow_up_campaigns")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceApiToken {
+  id           String    @id @default(uuid())
+  workspace_id String
+  name         String
+  token        String    @unique
+  created_at   DateTime  @default(now())
+  expires_at   DateTime?
+  last_used_at DateTime?
+  revoked      Boolean   @default(false)
+  created_by   String
+  
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  creator      User      @relation(fields: [created_by], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id])
+  @@map("workspace_api_tokens")
   @@schema("workspace_schema")
 }
