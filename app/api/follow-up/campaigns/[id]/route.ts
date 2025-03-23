@@ -18,7 +18,32 @@ export async function GET(request: NextRequest) {
   // Obter o ID da URL usando a função auxiliar
   const id = extractIdFromUrl(request.url);
   
+  // Verificar workspace ID nos parâmetros da solicitação
+  const searchParams = request.nextUrl.searchParams;
+  const workspaceId = searchParams.get('workspaceId');
+  
   try {
+    // Verificar se a campanha pertence ao workspace (se workspaceId fornecido)
+    if (workspaceId) {
+      const campaignBelongsToWorkspace = await prisma.workspaceFollowUpCampaign.findFirst({
+        where: { 
+          workspace_id: workspaceId,
+          campaign_id: id
+        }
+      });
+      
+      // Se não encontrar relação e o workspace for fornecido, retornar erro
+      if (!campaignBelongsToWorkspace) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: "Campanha não encontrada neste workspace"
+          }, 
+          { status: 404 }
+        );
+      }
+    }
+    
     // Buscar a campanha incluindo os estágios e os passos relacionados
     const campaign = await prisma.followUpCampaign.findUnique({
       where: { id },
@@ -115,7 +140,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, description, steps, active } = body;
+    const { name, description, steps, active, workspaceId } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -134,6 +159,26 @@ export async function PUT(request: NextRequest) {
         { success: false, error: "Campanha não encontrada" },
         { status: 404 }
       );
+    }
+    
+    // Se workspaceId for fornecido, verificar se a campanha pertence ao workspace
+    if (workspaceId) {
+      const campaignBelongsToWorkspace = await prisma.workspaceFollowUpCampaign.findFirst({
+        where: { 
+          workspace_id: workspaceId,
+          campaign_id: id
+        }
+      });
+      
+      if (!campaignBelongsToWorkspace) {
+        // Se não existir relação, criar uma
+        await prisma.workspaceFollowUpCampaign.create({
+          data: {
+            workspace_id: workspaceId,
+            campaign_id: id
+          }
+        });
+      }
     }
 
     // Usar transação para garantir integridade dos dados
@@ -322,8 +367,32 @@ function calculateWaitTimeMs(waitTime: string): number {
 export async function DELETE(request: NextRequest) {
   // Obter o ID da URL usando a função auxiliar
   const id = extractIdFromUrl(request.url);
+  
+  // Obter o workspaceId dos parâmetros de consulta
+  const searchParams = request.nextUrl.searchParams;
+  const workspaceId = searchParams.get('workspaceId');
 
   try {
+    // Se o workspaceId for fornecido, verificar se a campanha pertence ao workspace
+    if (workspaceId) {
+      const campaignBelongsToWorkspace = await prisma.workspaceFollowUpCampaign.findFirst({
+        where: { 
+          workspace_id: workspaceId,
+          campaign_id: id
+        }
+      });
+      
+      if (!campaignBelongsToWorkspace) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Campanha não encontrada neste workspace"
+          },
+          { status: 404 }
+        );
+      }
+    }
+  
     // Verificar se a campanha existe
     const existingCampaign = await prisma.followUpCampaign.findUnique({
       where: { id },
@@ -360,9 +429,17 @@ export async function DELETE(request: NextRequest) {
       });
     }
 
-    // Excluir a campanha
-    await prisma.followUpCampaign.delete({
-      where: { id }
+    // Usar transação para excluir a campanha e suas associações
+    await prisma.$transaction(async (tx) => {
+      // 1. Excluir associações de workspace
+      await tx.workspaceFollowUpCampaign.deleteMany({
+        where: { campaign_id: id }
+      });
+      
+      // 2. Excluir a campanha
+      await tx.followUpCampaign.delete({
+        where: { id }
+      });
     });
 
     return NextResponse.json({

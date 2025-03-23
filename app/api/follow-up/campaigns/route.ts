@@ -30,13 +30,36 @@ export async function GET(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
     const activeOnly = searchParams.get('active') === 'true';
+    const workspaceId = searchParams.get('workspaceId');
     
     // Construir where com base nos parâmetros
-    const where = activeOnly ? { active: true } : {};
+    const where: any = activeOnly ? { active: true } : {};
+    
+    // Se workspaceId estiver presente, filtrar campanhas por workspace
+    if (workspaceId) {
+      // Buscar IDs de campanhas associadas ao workspace
+      const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
+        where: { workspace_id: workspaceId },
+        select: { campaign_id: true }
+      });
+      
+      const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
+      
+      // Se não houver campanhas associadas a este workspace, retornar array vazio
+      if (campaignIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: []
+        });
+      }
+      
+      // Adicionar filtro de IDs ao where
+      where.id = { in: campaignIds };
+    }
     
     // Buscar campanhas
     const campaigns = await prisma.followUpCampaign.findMany({
-      where: where as any,
+      where: where,
       orderBy: { created_at: 'desc' },
       select: {
         id: true,
@@ -98,7 +121,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, description, steps } = body;
+    const { name, description, steps, workspaceId } = body;
     
     if (!name) {
       return NextResponse.json(
@@ -110,13 +133,52 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Criar a campanha no banco de dados sem steps
-    const campaign = await prisma.followUpCampaign.create({
-      data: {
-        name,
-        description,
-        active: true
-      }
+    // Verificar se o workspaceId foi fornecido
+    if (!workspaceId) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "ID do workspace é obrigatório"
+        }, 
+        { status: 400 }
+      );
+    }
+    
+    // Verificar se o workspace existe
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId }
+    });
+    
+    if (!workspace) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Workspace não encontrado"
+        }, 
+        { status: 404 }
+      );
+    }
+    
+    // Usar transação para garantir que a campanha e a associação com workspace são criadas juntas
+    const campaign = await prisma.$transaction(async (tx) => {
+      // 1. Criar a campanha
+      const newCampaign = await tx.followUpCampaign.create({
+        data: {
+          name,
+          description,
+          active: true
+        }
+      });
+      
+      // 2. Criar associação com o workspace
+      await tx.workspaceFollowUpCampaign.create({
+        data: {
+          workspace_id: workspaceId,
+          campaign_id: newCampaign.id
+        }
+      });
+      
+      return newCampaign;
     });
     
     // Se houver steps, criar separadamente usando o relacionamento campaign_steps
