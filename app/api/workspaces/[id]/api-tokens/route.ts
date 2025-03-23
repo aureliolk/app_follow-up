@@ -161,11 +161,10 @@ export async function GET(
   req: NextRequest,
   context: { params: { id: string } }
 ) {
-  // Extract workspaceId from context before passing to async function
-  const { id: workspaceId } = context.params;
-  
-  // Use withAuth with the extracted workspaceId
+  // Use withAuth sem extrair os parâmetros primeiro
   return withAuth(req, async (req) => {
+    // Extrair parâmetros dentro da função assíncrona
+    const workspaceId = context.params.id;
     return processListTokensRequest(req, workspaceId);
   });
 }
@@ -175,11 +174,10 @@ export async function POST(
   req: NextRequest,
   context: { params: { id: string } }
 ) {
-  // Extract workspaceId from context before passing to async function
-  const { id: workspaceId } = context.params;
-  
-  // Use withAuth with the extracted workspaceId
+  // Use withAuth sem extrair os parâmetros primeiro
   return withAuth(req, async (req) => {
+    // Extrair parâmetros dentro da função assíncrona
+    const workspaceId = context.params.id;
     return processCreateTokenRequest(req, workspaceId);
   });
 }

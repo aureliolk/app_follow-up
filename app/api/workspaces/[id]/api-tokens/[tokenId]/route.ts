@@ -142,11 +142,11 @@ export async function DELETE(
   req: NextRequest,
   context: { params: { id: string; tokenId: string } }
 ) {
-  // Extract parameters from context before passing to async function
-  const { id: workspaceId, tokenId } = context.params;
-  
-  // Use withAuth with the extracted parameters
+  // Use withAuth sem extrair os parâmetros primeiro
   return withAuth(req, async (req) => {
+    // Extrair parâmetros dentro da função assíncrona
+    const workspaceId = context.params.id;
+    const tokenId = context.params.tokenId;
     return processRevokeTokenRequest(req, workspaceId, tokenId);
   });
 }
@@ -156,11 +156,12 @@ export async function PATCH(
   req: NextRequest,
   context: { params: { id: string; tokenId: string } }
 ) {
-  // Extract parameters from context before passing to async function
-  const { id: workspaceId, tokenId } = context.params;
-  
-  // Use withAuth with the extracted parameters
+  // Use withAuth sem extrair os parâmetros primeiro
   return withAuth(req, async (req) => {
+    // Extrair parâmetros dentro da função assíncrona
+    const workspaceId = context.params.id;
+    const tokenId = context.params.tokenId;
+    
     // Verificar se o cabeçalho de exclusão permanente foi fornecido
     const permanentDelete = req.headers.get('x-permanent-delete');
     
