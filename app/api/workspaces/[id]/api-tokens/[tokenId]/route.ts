@@ -7,9 +7,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string; tokenId: string } }
 ) {
-  const { id: workspaceId, tokenId } = params;
-  
+  // Em Next.js 14 e superior, é necessário usar o params após uma promessa para evitar
+  // o erro "params should be awaited before using its properties"
   return withAuth(req, async (req) => {
+    const { id: workspaceId, tokenId } = params;
     try {
       const userId = await getCurrentUserId(req);
 

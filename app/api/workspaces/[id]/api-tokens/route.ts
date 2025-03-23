@@ -17,9 +17,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const workspaceId = params.id;
-  
+  // Em Next.js 14 e superior, é necessário usar o params após uma promessa para evitar
+  // o erro "params should be awaited before using its properties"
   return withAuth(req, async (req) => {
+    const workspaceId = params.id;
     try {
       const userId = await getCurrentUserId(req);
 
@@ -89,9 +90,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const workspaceId = params.id;
-  
+  // Em Next.js 14 e superior, é necessário usar o params após uma promessa para evitar
+  // o erro "params should be awaited before using its properties"
   return withAuth(req, async (req) => {
+    const workspaceId = params.id;
     try {
       const userId = await getCurrentUserId(req);
       const body = await req.json();
