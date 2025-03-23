@@ -152,16 +152,17 @@ async function processRevokeTokenRequest(req: NextRequest, workspaceId: string, 
 // Revogar um token de API específico (soft delete)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; tokenId: string } }
+  props: { params: Promise<{ id: string; tokenId: string }> }
 ) {
+  const params = await props.params;
   // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
   // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
   await Promise.resolve(); // Operação assíncrona simples
-  
+
   // Agora é seguro acessar os parâmetros dinâmicos
   const workspaceId = params.id;
   const tokenId = params.tokenId;
-  
+
   try {
     const session = await getSession();
     if (!session?.user) {
@@ -184,16 +185,17 @@ export async function DELETE(
 // Excluir permanentemente um token (hard delete)
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string; tokenId: string } }
+  props: { params: Promise<{ id: string; tokenId: string }> }
 ) {
+  const params = await props.params;
   // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
   // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
   await Promise.resolve(); // Operação assíncrona simples
-  
+
   // Agora é seguro acessar os parâmetros dinâmicos
   const workspaceId = params.id;
   const tokenId = params.tokenId;
-  
+
   try {
     const session = await getSession();
     if (!session?.user) {

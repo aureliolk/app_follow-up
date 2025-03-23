@@ -159,17 +159,15 @@ async function processCreateTokenRequest(req: NextRequest, workspaceId: string) 
 }
 
 // Listar todos os tokens de API para o workspace
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
   // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
   await Promise.resolve(); // Operação assíncrona simples
-  
+
   // Agora é seguro acessar os parâmetros dinâmicos
   const workspaceId = params.id;
-  
+
   try {
     const session = await getSession();
     if (!session?.user) {
@@ -200,17 +198,15 @@ async function getSession() {
 }
 
 // Criar um novo token de API
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
   // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
   await Promise.resolve(); // Operação assíncrona simples
-  
+
   // Agora é seguro acessar os parâmetros dinâmicos
   const workspaceId = params.id;
-  
+
   try {
     const session = await getSession();
     if (!session?.user) {
