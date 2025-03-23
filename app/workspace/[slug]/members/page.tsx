@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/context/workspace-context';
-import { Loader2, UserPlus, Trash2, Mail } from 'lucide-react';
+import { Loader2, UserPlus, Trash2, Mail, Shield, Users, Eye } from 'lucide-react';
 
 type Member = {
   id: string;
@@ -11,6 +11,7 @@ type Member = {
   name: string;
   role: 'ADMIN' | 'MEMBER' | 'VIEWER';
   status: 'ACTIVE' | 'PENDING';
+  userId: string;
 };
 
 type Invitation = {
@@ -107,7 +108,7 @@ export default function WorkspaceMembers() {
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    if (!workspace || !confirm('Are you sure you want to remove this member?')) return;
+    if (!workspace || !confirm('Tem certeza que deseja remover este membro?')) return;
     
     try {
       const response = await fetch(`/api/workspaces/${workspace.id}/members/${memberId}`, {
@@ -124,7 +125,7 @@ export default function WorkspaceMembers() {
   };
 
   const handleCancelInvitation = async (invitationId: string) => {
-    if (!workspace || !confirm('Are you sure you want to cancel this invitation?')) return;
+    if (!workspace || !confirm('Tem certeza que deseja cancelar este convite?')) return;
     
     try {
       const response = await fetch(`/api/workspaces/${workspace.id}/invitations/${invitationId}`, {
@@ -150,17 +151,31 @@ export default function WorkspaceMembers() {
       
       if (!response.ok) throw new Error('Failed to resend invitation');
       
-      alert('Invitation resent successfully');
+      alert('Convite reenviado com sucesso!');
     } catch (err) {
       setError('Failed to resend invitation');
       console.error(err);
     }
   };
 
+  // Função para obter o ícone baseado no papel do membro
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case 'ADMIN':
+        return <Shield className="w-4 h-4 text-orange-500" />;
+      case 'MEMBER':
+        return <Users className="w-4 h-4 text-blue-500" />;
+      case 'VIEWER':
+        return <Eye className="w-4 h-4 text-gray-500" />;
+      default:
+        return null;
+    }
+  };
+
   if (workspaceLoading || isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#F54900]" />
       </div>
     );
   }
@@ -171,152 +186,173 @@ export default function WorkspaceMembers() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-2">Workspace Members</h1>
-        <p className="text-gray-600">Manage members and permissions for {workspace.name}</p>
-      </div>
-
-      {error && (
-        <div className="bg-red-50 text-red-700 p-4 rounded-md mb-6">
-          {error}
-        </div>
-      )}
-
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4">Invite New Member</h2>
-        <form onSubmit={handleInvite} className="flex flex-col md:flex-row gap-4">
-          <div className="flex-grow">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email address"
-              className="w-full border border-gray-300 rounded-md px-4 py-2"
-              required
-            />
-          </div>
-          <div className="w-full md:w-48">
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
-              className="w-full border border-gray-300 rounded-md px-4 py-2"
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-semibold text-center mb-8">Membros do Workspace</h1>
+        
+        {error && (
+          <div className="bg-red-900/30 text-red-400 p-4 border border-red-800 rounded-md mb-6">
+            {error}
+            <button 
+              className="float-right text-red-400 hover:text-red-300"
+              onClick={() => setError('')}
             >
-              <option value="ADMIN">Admin</option>
-              <option value="MEMBER">Member</option>
-              <option value="VIEWER">Viewer</option>
-            </select>
+              &times;
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="bg-blue-600 text-white rounded-md px-6 py-2 flex items-center justify-center hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <UserPlus className="h-4 w-4 mr-2" />
-            )}
-            Invite
-          </button>
-        </form>
-      </div>
+        )}
 
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4">Workspace Members</h2>
-        {members.length === 0 ? (
-          <p className="text-gray-500 italic">No members found.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {members.map((member) => (
-                  <tr key={member.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{member.name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{member.email}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <select
-                        value={member.role}
-                        onChange={(e) => handleRoleChange(member.id, e.target.value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
-                        className="border border-gray-300 rounded-md px-2 py-1"
-                        disabled={workspace?.ownerId === member.id}
-                      >
-                        <option value="ADMIN">Admin</option>
-                        <option value="MEMBER">Member</option>
-                        <option value="VIEWER">Viewer</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {workspace?.ownerId !== member.id && (
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8 shadow-lg">
+          <h2 className="text-xl font-semibold mb-4 text-gray-200">Convidar Novo Membro</h2>
+          <form onSubmit={handleInvite} className="flex flex-col md:flex-row gap-4">
+            <div className="flex-grow">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Endereço de email"
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F54900] focus:border-transparent"
+                required
+              />
+            </div>
+            <div className="w-full md:w-48">
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[#F54900] focus:border-transparent"
+              >
+                <option value="ADMIN">Administrador</option>
+                <option value="MEMBER">Membro</option>
+                <option value="VIEWER">Visualizador</option>
+              </select>
+            </div>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-6 py-2 bg-[#F54900] hover:bg-[#D93C00] text-white rounded-md flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <UserPlus className="h-4 w-4 mr-2" />
+              )}
+              Convidar
+            </button>
+          </form>
+        </div>
+
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8 shadow-lg">
+          <h2 className="text-xl font-semibold mb-4 text-gray-200">Membros do Workspace</h2>
+          {members.length === 0 ? (
+            <p className="text-gray-400 italic">Nenhum membro encontrado.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-700">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Nome</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Função</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {members.map((member) => (
+                    <tr key={member.id} className="hover:bg-gray-700/50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-200">{member.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{member.email}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        <div className="flex items-center">
+                          {getRoleIcon(member.role)}
+                          <select
+                            value={member.role}
+                            onChange={(e) => handleRoleChange(member.id, e.target.value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
+                            className="ml-2 bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#F54900] focus:border-transparent"
+                            disabled={workspace?.ownerId === member.userId}
+                          >
+                            <option value="ADMIN">Administrador</option>
+                            <option value="MEMBER">Membro</option>
+                            <option value="VIEWER">Visualizador</option>
+                          </select>
+                          {workspace?.ownerId === member.userId && (
+                            <span className="ml-2 text-xs px-2 py-1 bg-[#F54900]/20 text-[#F54900] rounded-full">
+                              Proprietário
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        {workspace?.ownerId !== member.userId && (
+                          <button
+                            onClick={() => handleRemoveMember(member.id)}
+                            className="text-red-400 hover:text-red-300 transition-colors"
+                            title="Remover membro"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {invitations.length > 0 && (
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 shadow-lg">
+            <h2 className="text-xl font-semibold mb-4 text-gray-200">Convites Pendentes</h2>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-700">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Função</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Expira em</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {invitations.map((invitation) => (
+                    <tr key={invitation.id} className="hover:bg-gray-700/50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{invitation.email}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        <div className="flex items-center">
+                          {getRoleIcon(invitation.role)}
+                          <span className="ml-2">
+                            {invitation.role === 'ADMIN' ? 'Administrador' : 
+                             invitation.role === 'MEMBER' ? 'Membro' : 'Visualizador'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        {new Date(invitation.expiresAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 flex gap-3">
                         <button
-                          onClick={() => handleRemoveMember(member.id)}
-                          className="text-red-600 hover:text-red-800"
-                          title="Remove member"
+                          onClick={() => handleResendInvitation(invitation.id)}
+                          className="text-blue-400 hover:text-blue-300 transition-colors"
+                          title="Reenviar convite"
+                        >
+                          <Mail className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={() => handleCancelInvitation(invitation.id)}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                          title="Cancelar convite"
                         >
                           <Trash2 className="h-5 w-5" />
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
-
-      {invitations.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Pending Invitations</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expires</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {invitations.map((invitation) => (
-                  <tr key={invitation.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invitation.email}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{invitation.role}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(invitation.expiresAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 flex gap-2">
-                      <button
-                        onClick={() => handleResendInvitation(invitation.id)}
-                        className="text-blue-600 hover:text-blue-800"
-                        title="Resend invitation"
-                      >
-                        <Mail className="h-5 w-5" />
-                      </button>
-                      <button
-                        onClick={() => handleCancelInvitation(invitation.id)}
-                        className="text-red-600 hover:text-red-800"
-                        title="Cancel invitation"
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
