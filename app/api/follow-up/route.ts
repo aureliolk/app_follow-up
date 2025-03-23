@@ -248,11 +248,7 @@ export async function GET(req: NextRequest) {
           campaign: {
             select: {
               id: true,
-              name: true,
-              workspace_campaigns: workspaceId ? {
-                where: { workspace_id: workspaceId },
-                select: { workspace_id: true }
-              } : undefined
+              name: true
             }
           },
           messages: {
