@@ -13,21 +13,30 @@ O sistema de follow-up permite configurar e gerenciar campanhas de mensagens aut
 
 ## Autenticação
 
-A API utiliza autenticação via NextAuth.js. Para acessar os endpoints protegidos, é necessário incluir um token JWT válido.
+A API utiliza diferentes métodos de autenticação. Para acessar os endpoints protegidos, você pode usar um dos seguintes métodos:
 
 ### Métodos de Autenticação
 
-1. **Session Token**  
+1. **Session Token (Cookie)**  
    Ao fazer login na interface web, um cookie de sessão é criado automaticamente. A API utiliza esse cookie para autenticar requisições.
 
-2. **API Key (para testes)**  
+2. **Token de API do Workspace**  
+   Cada workspace pode gerar tokens de API específicos para integrações. Estes tokens são mais seguros e recomendados para ambientes de produção:
+
+   ```
+   x-api-key: wsat_AbCdEfGhIjKlMnOpQrStUv12345
+   ```
+
+   Os tokens de API podem ser gerenciados na seção de configurações do workspace.
+
+3. **API Key (para testes)**  
    É possível utilizar uma API key no header `x-api-key` para testes:
 
    ```
    x-api-key: test-api-key-123456
    ```
 
-   Essa chave está disponível apenas para ambientes de teste.
+   Essa chave está disponível apenas para ambientes de desenvolvimento e teste.
 
 ## Endpoints da API
 
@@ -599,15 +608,42 @@ Os tempos de espera podem ser configurados nos seguintes formatos:
 
 ## Integração de Workspaces
 
-O sistema suporta múltiplos workspaces, e muitas rotas aceitam o parâmetro `workspaceId` para filtrar resultados por workspace. Cada follow-up pode estar associado a um workspace específico, utilizando o campo `metadata` para armazenar essa associação.
+O sistema suporta múltiplos workspaces, oferecendo isolamento completo de dados entre diferentes equipes ou departamentos.
 
-## Exemplo de Integração
+### Como os Workspaces se Integram com Follow-ups
 
-### Node.js
+1. **Acesso à API por Workspace**:
+   - Cada workspace pode criar seus próprios tokens de API para integrações
+   - Os tokens têm acesso apenas aos recursos do workspace que os criou
+
+2. **Filtragem por Workspace**:
+   - Todas as rotas principais aceitam o parâmetro `workspaceId` para filtrar resultados
+   - O sistema automaticamente busca apenas as campanhas e follow-ups associados ao workspace especificado
+
+3. **Estrutura de Relacionamentos**:
+   - Workspaces → Campanhas → Follow-ups
+   - A associação entre workspaces e campanhas é feita através da tabela `WorkspaceFollowUpCampaign`
+   - Follow-ups são associados a um workspace através de sua campanha e também armazenam o workspace_id no campo `metadata`
+
+### Exemplo de Uso com Workspaces
+
+Para trabalhar com um workspace específico, adicione o `workspaceId` nas suas requisições:
+
+```
+GET /api/follow-up/campaigns?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+GET /api/follow-up?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+GET /api/follow-up/funnel-stages?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+```
+
+Quando usando tokens de API de um workspace, o sistema automaticamente aplicará o contexto daquele workspace às operações, mesmo sem especificar o `workspaceId` explicitamente.
+
+## Exemplos de Integração
+
+### Node.js - Versão Básica
 ```javascript
 const axios = require('axios');
 
-// Configuração com autenticação
+// Configuração com autenticação via API key de teste
 const api = axios.create({
   baseURL: 'https://seu-dominio.com',
   headers: {
@@ -617,12 +653,11 @@ const api = axios.create({
 });
 
 // Criar um novo follow-up
-async function createFollowUp(clientId, campaignId, workspaceId) {
+async function createFollowUp(clientId, campaignId) {
   try {
     const response = await api.post('/api/follow-up', {
       clientId,
       campaignId,
-      workspaceId,
       metadata: {
         source: 'api-example'
       }
@@ -645,46 +680,148 @@ async function checkStatus(followUpId) {
     console.error('Erro ao verificar status:', error.response?.data || error.message);
   }
 }
+```
 
-// Cancelar follow-up
-async function cancelFollowUp(followUpId, reason) {
-  try {
-    const response = await api.post('/api/follow-up/cancel', {
-      followUpId,
-      reason
+### Node.js - Integração com Workspace
+```javascript
+const axios = require('axios');
+
+class FollowUpApiClient {
+  constructor(options) {
+    const { apiToken, workspaceId, baseUrl = 'https://seu-dominio.com' } = options;
+    
+    this.workspaceId = workspaceId;
+    this.api = axios.create({
+      baseURL: baseUrl,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiToken
+      }
     });
-    console.log('Cancelado:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('Erro ao cancelar follow-up:', error.response?.data || error.message);
+  }
+  
+  // Listar campanhas do workspace
+  async listCampaigns(activeOnly = true) {
+    try {
+      const response = await this.api.get('/api/follow-up/campaigns', {
+        params: { 
+          workspaceId: this.workspaceId,
+          active: activeOnly 
+        }
+      });
+      return response.data.data;
+    } catch (error) {
+      console.error('Erro ao listar campanhas:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  // Criar novo follow-up
+  async createFollowUp(clientData) {
+    try {
+      const { clientId, campaignId, ...rest } = clientData;
+      
+      const response = await this.api.post('/api/follow-up', {
+        clientId,
+        campaignId,
+        workspaceId: this.workspaceId,
+        ...rest
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao criar follow-up:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  // Listar follow-ups
+  async listFollowUps(filters = {}) {
+    try {
+      const params = {
+        workspaceId: this.workspaceId,
+        ...filters
+      };
+      
+      const response = await this.api.get('/api/follow-up', { params });
+      return response.data.data;
+    } catch (error) {
+      console.error('Erro ao listar follow-ups:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  // Registrar resposta do cliente
+  async recordClientResponse(clientId, message, followUpId = null) {
+    try {
+      const response = await this.api.post('/api/follow-up/client-response', {
+        clientId,
+        message,
+        followUpId
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao registrar resposta:', error.response?.data || error.message);
+      throw error;
+    }
   }
 }
 
-// Registrar resposta do cliente
-async function recordClientResponse(clientId, message) {
-  try {
-    const response = await api.post('/api/follow-up/client-response', {
-      clientId,
-      message
+// Exemplo de uso
+async function main() {
+  const client = new FollowUpApiClient({
+    apiToken: 'wsat_AbCdEfGhIjKlMnOpQrStUv12345',
+    workspaceId: 'a6736c1d-9dec-40f2-9965-9da3a6ef61cf'
+  });
+  
+  // Listar campanhas ativas
+  const campaigns = await client.listCampaigns();
+  console.log('Campanhas disponíveis:', campaigns);
+  
+  if (campaigns.length > 0) {
+    // Criar um follow-up com a primeira campanha
+    const result = await client.createFollowUp({
+      clientId: 'cliente123',
+      campaignId: campaigns[0].id,
+      metadata: {
+        source: 'integração-exemplo',
+        tags: ['novo-cliente', 'site']
+      }
     });
-    console.log('Resposta registrada:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('Erro ao registrar resposta:', error.response?.data || error.message);
+    
+    console.log('Follow-up criado:', result);
   }
 }
 ```
 
 ## Considerações sobre Uso
 
-1. **Segurança**: Todas as rotas da API são protegidas por autenticação. É necessário um token JWT válido ou a API key de teste para acessá-las.
+1. **Segurança**: 
+   - Todas as rotas da API são protegidas por autenticação
+   - Tokens de API de workspace são o método recomendado para ambientes de produção
+   - Os tokens têm escopo limitado ao workspace que os criou
 
-2. **Timeout**: Os follow-ups são armazenados em memória utilizando `setTimeout`, portanto reiniciar o servidor pode afetar o agendamento. Use o comando `reload` para recarregar mensagens pendentes após reinicialização.
+2. **Multi-tenant**:
+   - O sistema foi projetado como multi-tenant através do conceito de workspaces
+   - Cada workspace tem acesso apenas aos seus próprios dados
+   - Os tokens de API são específicos por workspace e não podem acessar recursos de outros workspaces
 
-3. **Workspaces**: O sistema suporta múltiplos workspaces, o que permite isolar campanhas e follow-ups por equipes ou departamentos diferentes.
+3. **Consistência de Dados**:
+   - Ao criar um follow-up, especifique sempre o mesmo `workspaceId` da campanha associada
+   - Todas as operações relacionadas devem usar o mesmo contexto de workspace
 
-4. **Funil de Vendas**: O conceito de estágios de funil permite acompanhar o progresso dos clientes através do processo de vendas ou jornada do cliente.
+4. **Agendamento**:
+   - Os follow-ups são armazenados em memória utilizando `setTimeout`
+   - Reiniciar o servidor pode afetar o agendamento de mensagens pendentes 
+   - Use o comando `reload` para recarregar mensagens pendentes após reinicialização
 
-5. **Validação**: Os IDs de cliente, campanha e workspace são validados durante a criação de follow-ups.
+5. **Funil de Vendas**:
+   - Os estágios de funil permitem acompanhar o progresso dos clientes
+   - Cada workspace pode ter diferentes configurações de funil de vendas
+   - É possível mover clientes entre estágios manualmente ou automaticamente
 
-6. **Métricas**: O sistema registra todas as mensagens enviadas e suas confirmações de entrega, bem como todas as respostas recebidas dos clientes.
+6. **Métricas e Logging**:
+   - O sistema registra todas as mensagens enviadas e suas confirmações de entrega
+   - Todas as respostas de clientes são registradas com timestamps
+   - Os registros de uso de tokens de API são mantidos para auditoria
