@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useWorkspace } from '@/context/workspace-context';
 import Link from 'next/link';
-import { Loader2, Home, Users, Settings, CheckSquare, MessageSquare } from 'lucide-react';
+import { Loader2, Home, Users, Settings, CheckSquare, MessageSquare, BookOpen } from 'lucide-react';
 
 export default function WorkspaceLayout({
   children,
@@ -107,6 +107,16 @@ export default function WorkspaceLayout({
               >
                 <Settings className="h-5 w-5" />
                 <span>Configurações</span>
+              </Link>
+            </li>
+            <li className="pt-4 mt-4 border-t border-[#333333]">
+              <Link
+                href="/api/docs"
+                target="_blank"
+                className="flex items-center gap-2 px-4 py-2 rounded-md transition-colors hover:bg-[#1a1a1a] text-gray-300"
+              >
+                <BookOpen className="h-5 w-5" />
+                <span>Documentação API</span>
               </Link>
             </li>
           </ul>
