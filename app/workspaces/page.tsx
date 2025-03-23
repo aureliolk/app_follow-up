@@ -4,8 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/context/workspace-context';
 import { useSession } from 'next-auth/react';
-import { Loader2, Plus, ArrowRight, Edit, Trash2 } from 'lucide-react';
+import { Plus, ArrowRight, Edit, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import PageContainer from '@/components/ui/PageContainer';
+import ErrorMessage from '@/components/ui/ErrorMessage';
 
 export default function WorkspacesList() {
   const { data: session, status } = useSession();
@@ -84,32 +87,13 @@ export default function WorkspacesList() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white pt-16">
-      <div className="container mx-auto px-4 py-8">
-        {/* Super Admin Badge */}
-        {isSuperAdmin && (
-          <div className="mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <span className="text-xs font-bold bg-white text-purple-700 px-2 py-1 rounded-full mr-2">SUPER ADMIN</span>
-                <h2 className="text-lg font-bold">Modo de Administração do Sistema</h2>
-              </div>
-              <div className="text-sm">
-                <span>Você tem acesso a todos os workspaces no sistema</span>
-              </div>
-            </div>
-          </div>
-        )}
+    <PageContainer 
+      title={isSuperAdmin ? 'Todos os Workspaces' : 'Seus Workspaces'}
+      adminBadge={isSuperAdmin}
+      adminMessage="Modo de Administração do Sistema"
+    >
 
-        <h1 className="text-3xl font-bold mb-8">
-          {isSuperAdmin ? 'Todos os Workspaces' : 'Seus Workspaces'}
-        </h1>
-
-        {error && (
-          <div className="bg-red-900/50 border border-red-500 text-white p-4 rounded-md mb-6">
-            {error}
-          </div>
-        )}
+        <ErrorMessage message={error} onDismiss={() => setError('')} />
 
         {/* Formulário para criar workspace */}
         <div className="bg-[#111111] border border-[#333333] rounded-lg p-6 mb-8">
@@ -129,7 +113,7 @@ export default function WorkspacesList() {
               className="bg-[#F54900] text-white rounded-md px-6 py-2 flex items-center justify-center hover:bg-[#D93C00] disabled:opacity-50 transition-colors"
             >
               {isCreating ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <div className="h-4 w-4 animate-spin rounded-full border-t-2 border-b-2 border-white mr-2"></div>
               ) : (
                 <Plus className="h-4 w-4 mr-2" />
               )}
@@ -145,9 +129,7 @@ export default function WorkspacesList() {
           </h2>
 
           {isLoading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#F54900]" />
-            </div>
+            <LoadingSpinner message="Carregando workspaces..." />
           ) : workspaces.length === 0 ? (
             <p className="text-gray-400 italic py-6 text-center">Nenhum workspace encontrado. Crie um para começar.</p>
           ) : (
@@ -236,7 +218,6 @@ export default function WorkspacesList() {
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </PageContainer>
   );
 }

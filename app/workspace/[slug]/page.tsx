@@ -1,9 +1,10 @@
 'use client';
 import { useWorkspace } from '@/context/workspace-context';
-import { Loader2, ArrowUpRight, Users, BarChart2 } from 'lucide-react';
+import { ArrowUpRight, Users, BarChart2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { followUpService } from '@/app/follow-up/_services/followUpService';
+import { LoadingSpinner, PageContainer } from '@/components/ui';
 
 export default function WorkspaceDashboard() {
   const { workspace, isLoading } = useWorkspace();
@@ -36,18 +37,13 @@ export default function WorkspaceDashboard() {
   }, [workspace]);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-[#F54900]" />
-      </div>
-    );
+    return <LoadingSpinner message="Carregando workspace..." />;
   }
 
   if (!workspace) return null;
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold mb-4 text-white">Bem-vindo ao {workspace.name}</h1>
+    <PageContainer title={`Bem-vindo ao ${workspace.name}`}>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Card Follow-ups Ativos */}
@@ -58,9 +54,7 @@ export default function WorkspaceDashboard() {
           </div>
           
           {loadingData ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-            </div>
+            <LoadingSpinner size="small" message="" />
           ) : followUps.length > 0 ? (
             <div>
               <p className="text-2xl font-bold text-white mb-2">{followUps.length}</p>
@@ -84,9 +78,7 @@ export default function WorkspaceDashboard() {
           </div>
           
           {loadingData ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-            </div>
+            <LoadingSpinner size="small" message="" />
           ) : campaigns.length > 0 ? (
             <div>
               <p className="text-2xl font-bold text-white mb-2">{campaigns.length}</p>
@@ -142,6 +134,6 @@ export default function WorkspaceDashboard() {
           )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
