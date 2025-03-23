@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { processFollowUpSteps } from './_lib/manager';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/auth-utils';
+import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
 
 // Schema de validação para o corpo da requisição
 const followUpRequestSchema = z.object({
@@ -18,7 +19,7 @@ const followUpRequestSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  return withAuth(req, async (req) => {
+  return withApiTokenAuth(req, async (req, tokenWorkspaceId) => {
     try {
       const body = await req.json();
     
@@ -36,6 +37,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { clientId, campaignId, workspaceId, name, email, phone, metadata } = validationResult.data;
+    
+    // Use o workspaceId do token se fornecido, caso contrário use o do body
+    const effectiveWorkspaceId = tokenWorkspaceId || workspaceId;
 
     // Se o campaignId não for fornecido, usar a campanha padrão (ativa)
     let targetCampaignId = campaignId;
@@ -44,10 +48,27 @@ export async function POST(req: NextRequest) {
       // Buscar uma campanha ativa do workspace se fornecido
       const defaultCampaignWhere: any = { active: true };
       
-      if (workspaceId) {
-        defaultCampaignWhere.workspace_campaigns = {
-          some: { workspace_id: workspaceId }
-        };
+      if (effectiveWorkspaceId) {
+        // Buscar IDs de campanhas associadas ao workspace
+        const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
+          where: { workspace_id: effectiveWorkspaceId },
+          select: { campaign_id: true }
+        });
+        
+        const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
+        
+        // Se não houver campanhas associadas a este workspace, retornar erro
+        if (campaignIds.length === 0) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: "Nenhuma campanha de follow-up ativa encontrada para este workspace"
+            }, 
+            { status: 404 }
+          );
+        }
+        
+        defaultCampaignWhere.id = { in: campaignIds };
       }
       
       const defaultCampaign = await prisma.followUpCampaign.findFirst({
@@ -59,7 +80,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { 
             success: false, 
-            error: workspaceId 
+            error: effectiveWorkspaceId 
               ? "Nenhuma campanha de follow-up ativa encontrada para este workspace" 
               : "Nenhuma campanha de follow-up ativa encontrada"
           }, 
@@ -68,12 +89,12 @@ export async function POST(req: NextRequest) {
       }
       
       targetCampaignId = defaultCampaign.id;
-    } else if (workspaceId) {
+    } else if (effectiveWorkspaceId) {
       // Verificar se a campanha pertence ao workspace
       const campaignBelongsToWorkspace = await prisma.workspaceFollowUpCampaign.findUnique({
         where: {
           workspace_id_campaign_id: {
-            workspace_id: workspaceId,
+            workspace_id: effectiveWorkspaceId,
             campaign_id: targetCampaignId
           }
         }
@@ -139,10 +160,10 @@ export async function POST(req: NextRequest) {
 
     // Metadados para incluir o workspace
     let metadataWithWorkspace = metadata || {};
-    if (workspaceId) {
+    if (effectiveWorkspaceId) {
       metadataWithWorkspace = {
         ...metadataWithWorkspace,
-        workspace_id: workspaceId
+        workspace_id: effectiveWorkspaceId
       };
     }
 
@@ -192,16 +213,19 @@ export async function POST(req: NextRequest) {
 
 // Endpoint GET para listar follow-ups existentes (com paginação)
 export async function GET(req: NextRequest) {
-  return withAuth(req, async (req) => {
+  return withApiTokenAuth(req, async (req, tokenWorkspaceId) => {
     try {
       const searchParams = req.nextUrl.searchParams;
       const clientId = searchParams.get('clientId');
       const status = searchParams.get('status');
       const campaignId = searchParams.get('campaignId');
-      const workspaceId = searchParams.get('workspaceId'); // Novo parâmetro
+      const queryWorkspaceId = searchParams.get('workspaceId'); // Parâmetro de query
       const page = parseInt(searchParams.get('page') || '1');
       const limit = parseInt(searchParams.get('limit') || '10');
       const skip = (page - 1) * limit;
+      
+      // Priorizar o workspaceId do token, caso contrário usar o do query param
+      const effectiveWorkspaceId = tokenWorkspaceId || queryWorkspaceId;
 
       // Construir where com base nos parâmetros
       const where: any = {};
@@ -211,10 +235,10 @@ export async function GET(req: NextRequest) {
       if (campaignId) where.campaign_id = campaignId;
       
       // Filtrar por workspace se fornecido
-      if (workspaceId) {
+      if (effectiveWorkspaceId) {
         // Buscar campanhas associadas ao workspace
         const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
-          where: { workspace_id: workspaceId },
+          where: { workspace_id: effectiveWorkspaceId },
           select: { campaign_id: true }
         });
         

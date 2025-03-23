@@ -27,7 +27,11 @@ A API utiliza diferentes métodos de autenticação. Para acessar os endpoints p
    x-api-key: wsat_AbCdEfGhIjKlMnOpQrStUv12345
    ```
 
-   Os tokens de API podem ser gerenciados na seção de configurações do workspace.
+   Os tokens de API podem ser gerenciados na seção de configurações do workspace. Um aspecto importante: **os tokens de API possuem escopo automaticamente limitado ao workspace que os criou**, o que significa que:
+   
+   - O token só tem acesso aos dados daquele workspace específico
+   - Não é necessário fornecer o `workspaceId` nas requisições, pois o sistema o detecta automaticamente a partir do token
+   - Para operações que requerem super admin, o token não terá permissão, a menos que tenha sido criado por um super admin
 
 3. **API Key (para testes)**  
    É possível utilizar uma API key no header `x-api-key` para testes:
@@ -635,7 +639,7 @@ GET /api/follow-up?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf
 GET /api/follow-up/funnel-stages?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf
 ```
 
-Quando usando tokens de API de um workspace, o sistema automaticamente aplicará o contexto daquele workspace às operações, mesmo sem especificar o `workspaceId` explicitamente.
+Quando usando tokens de API de um workspace, o sistema automaticamente aplicará o contexto daquele workspace às operações, mesmo sem especificar o `workspaceId` explicitamente. Isso simplifica a integração e garante que o token de API só tenha acesso aos dados pertencentes ao seu workspace.
 
 ## Exemplos de Integração
 
@@ -690,7 +694,7 @@ class FollowUpApiClient {
   constructor(options) {
     const { apiToken, workspaceId, baseUrl = 'https://seu-dominio.com' } = options;
     
-    this.workspaceId = workspaceId;
+    this.workspaceId = workspaceId; // Opcional quando usando token de API
     this.api = axios.create({
       baseURL: baseUrl,
       headers: {
@@ -703,12 +707,13 @@ class FollowUpApiClient {
   // Listar campanhas do workspace
   async listCampaigns(activeOnly = true) {
     try {
-      const response = await this.api.get('/api/follow-up/campaigns', {
-        params: { 
-          workspaceId: this.workspaceId,
-          active: activeOnly 
-        }
-      });
+      // Se estiver usando token de API, não é necessário especificar workspaceId
+      const params = { active: activeOnly };
+      if (this.workspaceId) {
+        params.workspaceId = this.workspaceId;
+      }
+      
+      const response = await this.api.get('/api/follow-up/campaigns', { params });
       return response.data.data;
     } catch (error) {
       console.error('Erro ao listar campanhas:', error.response?.data || error.message);
@@ -721,13 +726,18 @@ class FollowUpApiClient {
     try {
       const { clientId, campaignId, ...rest } = clientData;
       
-      const response = await this.api.post('/api/follow-up', {
+      const data = {
         clientId,
         campaignId,
-        workspaceId: this.workspaceId,
         ...rest
-      });
+      };
       
+      // Adicionar workspaceId apenas se não estiver usando token de API
+      if (this.workspaceId) {
+        data.workspaceId = this.workspaceId;
+      }
+      
+      const response = await this.api.post('/api/follow-up', data);
       return response.data;
     } catch (error) {
       console.error('Erro ao criar follow-up:', error.response?.data || error.message);
@@ -738,10 +748,11 @@ class FollowUpApiClient {
   // Listar follow-ups
   async listFollowUps(filters = {}) {
     try {
-      const params = {
-        workspaceId: this.workspaceId,
-        ...filters
-      };
+      // Se estiver usando token de API, não é necessário especificar workspaceId
+      const params = { ...filters };
+      if (this.workspaceId) {
+        params.workspaceId = this.workspaceId;
+      }
       
       const response = await this.api.get('/api/follow-up', { params });
       return response.data.data;
@@ -768,14 +779,15 @@ class FollowUpApiClient {
   }
 }
 
-// Exemplo de uso
+// Exemplo de uso com token de API
 async function main() {
+  // Usando apenas o token de API (sem necessidade de workspaceId)
   const client = new FollowUpApiClient({
-    apiToken: 'wsat_AbCdEfGhIjKlMnOpQrStUv12345',
-    workspaceId: 'a6736c1d-9dec-40f2-9965-9da3a6ef61cf'
+    apiToken: 'wsat_AbCdEfGhIjKlMnOpQrStUv12345'
+    // workspaceId não é necessário quando usando token de API
   });
   
-  // Listar campanhas ativas
+  // Listar campanhas ativas (o token já tem contexto do workspace)
   const campaigns = await client.listCampaigns();
   console.log('Campanhas disponíveis:', campaigns);
   
@@ -792,6 +804,18 @@ async function main() {
     
     console.log('Follow-up criado:', result);
   }
+}
+
+// Exemplo alternativo com session token (precisa especificar workspaceId)
+async function mainWithSessionToken() {
+  const client = new FollowUpApiClient({
+    // Sem token de API, usando cookie de sessão
+    workspaceId: 'a6736c1d-9dec-40f2-9965-9da3a6ef61cf' // Necessário quando não usa token de API
+  });
+  
+  // O resto funciona igual...
+  const campaigns = await client.listCampaigns();
+  // ...
 }
 ```
 
