@@ -18,12 +18,6 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  console.log(status)
-  // Redirect to login if not authenticated
-  if (status === 'authenticated') {
-    router.push('/workspaces');
-    return null;
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

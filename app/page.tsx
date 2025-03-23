@@ -14,9 +14,9 @@ export default function LandingPage() {
 
   useEffect(() => {
     // Redirecionar para workspaces se já estiver autenticado
-    if (status === 'authenticated') {
-      router.push('/workspaces');
-    }
+    // if (status === 'authenticated') {
+    //   router.push('/workspaces');
+    // }
 
     const handleScroll = () => {
       if (window.scrollY > 10) {
