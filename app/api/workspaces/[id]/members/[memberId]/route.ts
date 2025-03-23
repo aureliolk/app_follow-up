@@ -5,10 +5,8 @@ import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 
 // Update a member's role
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string; memberId: string } }
-) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string; memberId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions);
     
@@ -85,10 +83,8 @@ export async function PATCH(
 }
 
 // Remove a member from workspace
-export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string; memberId: string } }
-) {
+export async function DELETE(req: Request, props: { params: Promise<{ id: string; memberId: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions);
     

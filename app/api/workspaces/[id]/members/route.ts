@@ -5,10 +5,8 @@ import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 
 // Get workspace members and invitations
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await getServerSession(authOptions);
     
