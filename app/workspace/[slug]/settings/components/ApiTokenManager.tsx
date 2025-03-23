@@ -22,6 +22,7 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
   const [tokens, setTokens] = useState<ApiToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [newTokenName, setNewTokenName] = useState('');
   const [showTokenForm, setShowTokenForm] = useState(false);
   const [newTokenValue, setNewTokenValue] = useState<string | null>(null);
@@ -184,11 +185,108 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
     }
   };
+
+  // Excluir token revogado
+  const handleDeleteToken = async (tokenId: string) => {
+    if (!confirm('Tem certeza que deseja excluir permanentemente este token?')) {
+      return;
+    }
+    
+    try {
+      // Adicionar um indicador visual de carregamento
+      setLoading(true);
+      setError(null);
+      setSuccessMessage(null);
+      
+      try {
+        // Chamar a API para exclusão permanente
+        console.log(`Excluindo token permanentemente: ${tokenId}`);
+        
+        // Usamos PATCH com um cabeçalho especial para indicar exclusão permanente
+        const response = await fetch(`/api/workspaces/${workspaceId}/api-tokens/${tokenId}`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-permanent-delete': 'true'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          console.log("Resposta da API:", data);
+          
+          // Remover o token da lista local (UI)
+          setTokens(prev => {
+            const updated = prev.filter(token => token.id !== tokenId);
+            console.log('Tokens atualizados após exclusão:', updated);
+            return updated;
+          });
+          
+          // Feedback para o usuário
+          setSuccessMessage(data.message || "Token excluído com sucesso");
+        } else {
+          throw new Error(data.error || "Erro ao excluir token");
+        }
+      } catch (apiError) {
+        console.error("Erro na API ao excluir token:", apiError);
+        setError(apiError instanceof Error ? apiError.message : "Erro ao excluir token");
+        
+        // Não remover o token da UI caso houver erro
+        return;
+      }
+      
+      // Limpar a mensagem de sucesso após 3 segundos
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro desconhecido');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   // Copiar token para a área de transferência
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    // Poderia adicionar uma animação ou mensagem de confirmação aqui
+    // Verificar se estamos em um ambiente de navegador e se a API Clipboard está disponível
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          // Opcional: feedback visual para o usuário que o texto foi copiado
+          console.log('Token copiado para a área de transferência');
+        })
+        .catch(err => {
+          console.error('Erro ao copiar o token:', err);
+        });
+    } else {
+      // Alternativa para ambientes onde a API Clipboard não está disponível
+      console.warn('API Clipboard não disponível - usando método fallback');
+      
+      // Criar um elemento de texto temporário
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      
+      // Esconder o elemento do campo de visão
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      
+      // Selecionar e copiar o texto
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        const successful = document.execCommand('copy');
+        console.log(successful ? 'Token copiado com sucesso' : 'Falha ao copiar o token');
+      } catch (err) {
+        console.error('Erro ao copiar o texto:', err);
+      }
+      
+      // Limpar
+      document.body.removeChild(textArea);
+    }
   };
   
   return (
@@ -328,6 +426,17 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
             </div>
           </div>
         )}
+
+        {/* Mensagem de sucesso */}
+        {successMessage && (
+          <div className="mb-6 bg-green-900/20 border border-green-700 text-green-400 p-4 rounded-md flex items-start">
+            <CheckCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+            <div>
+              <strong className="font-medium">Sucesso: </strong>
+              {successMessage}
+            </div>
+          </div>
+        )}
         
         {/* Tabela de tokens */}
         {loading ? (
@@ -393,7 +502,7 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
                       )}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      {!token.revoked && (
+                      {!token.revoked ? (
                         <button
                           onClick={() => handleRevokeToken(token.id)}
                           className="text-gray-400 hover:text-red-500 transition-colors"
@@ -401,6 +510,20 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
                         >
                           <Trash2 className="h-5 w-5" />
                         </button>
+                      ) : (
+                        <div className="flex items-center justify-end space-x-2">
+                          <button
+                            onClick={() => {
+                              console.log("Excluindo token:", token.id);
+                              handleDeleteToken(token.id);
+                            }}
+                            className="px-2 py-1 text-xs bg-red-900/40 text-red-400 rounded hover:bg-red-800/60 transition-colors flex items-center"
+                            title="Excluir token permanentemente"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Excluir
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
