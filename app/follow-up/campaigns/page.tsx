@@ -86,6 +86,8 @@ export default function CampaignsPage() {
   const handleCreateCampaign = async (formData: any) => {
     setIsSubmitting(true);
     try {
+      console.log('Dados do formulário recebidos:', formData);
+      
       // Obter o workspaceId ativo
       const workspaceId = typeof window !== 'undefined' 
         ? sessionStorage.getItem('activeWorkspaceId') 
@@ -96,13 +98,34 @@ export default function CampaignsPage() {
         return;
       }
       
-      // Adicionar workspaceId aos dados do formulário
-      const requestData = {
-        ...formData,
-        workspaceId
+      // Verificar se o formData contém campos necessários
+      if (!formData.name) {
+        setError('Nome da campanha é obrigatório');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Criar um objeto sem referências circulares
+      const cleanRequestData = {
+        name: formData.name,
+        description: formData.description || '',
+        workspaceId,
+        // Garantir que steps seja um array limpo
+        steps: Array.isArray(formData.steps) ? formData.steps.map(step => ({
+          id: step.id,
+          stage_id: step.stage_id,
+          stage_name: step.stage_name,
+          template_name: step.template_name || '',
+          wait_time: step.wait_time || '30 minutos',
+          message: step.message || '',
+          category: step.category || 'Utility',
+          auto_respond: step.auto_respond === undefined ? true : step.auto_respond
+        })) : []
       };
       
-      const response = await axios.post('/api/follow-up/campaigns', requestData);
+      console.log('Enviando dados para API:', JSON.stringify(cleanRequestData));
+      
+      const response = await axios.post('/api/follow-up/campaigns', cleanRequestData);
       if (response.data.success) {
         // Adicionar a nova campanha à lista
         setCampaigns([response.data.data, ...campaigns]);

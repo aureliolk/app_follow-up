@@ -54,7 +54,7 @@ interface CampaignFormHookProps {
   isLoading: boolean;
   
   // Funções de callback
-  onSubmit: () => void;
+  onSubmit: (formData: any) => void;
   onCancel: () => void;
   onRefreshCampaign?: () => Promise<void>;
   
@@ -87,7 +87,7 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
   onRemoveFunnelStage
 }) => {
   // Acesso ao contexto do formulário
-  const { register, control, formState: { errors } } = useFormContext();
+  const { register, control, formState: { errors }, getValues } = useFormContext();
   
   // Estados para interface de estágios
   const [selectedStage, setSelectedStage] = useState<string>('');
@@ -463,7 +463,30 @@ const CampaignFormHook: React.FC<CampaignFormHookProps> = ({
         </button>
         <button
           type="button"
-          onClick={onSubmit}
+          onClick={() => {
+            // Obter valores do formulário e passá-los para onSubmit
+            const formValues = getValues();
+            
+            // Limpar estruturas circulares (por exemplo, steps com referências circulares)
+            const cleanedValues = {
+              name: formValues.name,
+              description: formValues.description,
+              
+              // Limpar steps para evitar referências circulares
+              steps: Array.isArray(formValues.steps) ? formValues.steps.map(step => ({
+                id: step.id,
+                stage_id: step.stage_id,
+                stage_name: step.stage_name,
+                template_name: step.template_name,
+                wait_time: step.wait_time,
+                message: step.message,
+                category: step.category,
+                auto_respond: step.auto_respond
+              })) : []
+            };
+            
+            onSubmit(cleanedValues);
+          }}
           className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
           disabled={isLoading}
         >
