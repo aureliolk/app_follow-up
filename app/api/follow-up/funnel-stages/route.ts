@@ -7,11 +7,12 @@ export async function GET(req: NextRequest) {
   try {
     const searchParams = req.nextUrl.searchParams;
     const campaignId = searchParams.get('campaignId');
+    const workspaceId = searchParams.get('workspaceId');
     const timestamp = searchParams.get('t'); // Ignore, apenas para cache busting
     
-    console.log(`🔍 GET /api/follow-up/funnel-stages - campaignId: ${campaignId || 'nenhum'}`);
+    console.log(`🔍 GET /api/follow-up/funnel-stages - campaignId: ${campaignId || 'nenhum'}, workspaceId: ${workspaceId || 'nenhum'}`);
     
-    // Se tiver um campaignId, buscar estágios associados à campanha específica
+    // Filtrar por campanha específica
     if (campaignId) {
       // Verificar se a campanha existe
       const campaignExists = await prisma.followUpCampaign.findUnique({
@@ -68,7 +69,68 @@ export async function GET(req: NextRequest) {
       });
     }
     
-    // Caso contrário, buscar todos os estágios
+    // Filtrar por workspace específico
+    else if (workspaceId) {
+      console.log(`🔍 Buscando estágios para o workspace ${workspaceId}`);
+      
+      // Buscar campanhas do workspace
+      const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
+        where: { workspace_id: workspaceId },
+        select: { campaign_id: true }
+      });
+      
+      const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
+      
+      // Se não houver campanhas neste workspace, retornar lista vazia
+      if (campaignIds.length === 0) {
+        console.log('⚠️ Nenhuma campanha encontrada para este workspace');
+        return NextResponse.json({
+          success: true,
+          data: []
+        });
+      }
+      
+      // Buscar estágios associados a qualquer uma dessas campanhas
+      const stages = await prisma.followUpFunnelStage.findMany({
+        where: {
+          campaigns: {
+            some: {
+              id: { in: campaignIds }
+            }
+          }
+        },
+        orderBy: { order: 'asc' },
+        include: {
+          campaigns: true,
+          _count: {
+            select: {
+              steps: true
+            }
+          }
+        }
+      });
+      
+      // Mapear para o formato esperado pelo frontend
+      const formattedStages = stages.map(stage => ({
+        id: stage.id,
+        name: stage.name,
+        description: stage.description,
+        order: stage.order,
+        created_at: stage.created_at,
+        stepsCount: stage._count.steps,
+        campaigns: stage.campaigns.map(c => c.id),
+        workspaceId // Adicionar o workspaceId para facilitar operações no frontend
+      }));
+      
+      console.log(`✅ Encontrados ${stages.length} estágios para o workspace ${workspaceId}`);
+      
+      return NextResponse.json({
+        success: true,
+        data: formattedStages
+      });
+    }
+    
+    // Caso não tenha filtros, buscar todos os estágios
     const stages = await prisma.followUpFunnelStage.findMany({
       orderBy: { order: 'asc' },
       include: {
@@ -115,7 +177,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, description, order, campaignId } = body;
+    const { name, description, order, campaignId, workspaceId } = body;
     
     console.log(`🔍 POST /api/follow-up/funnel-stages - dados:`, JSON.stringify(body, null, 2));
     
@@ -141,14 +203,36 @@ export async function POST(req: NextRequest) {
       console.log(`🔢 Ordem não fornecida, usando: ${stageOrder}`);
     }
     
-    // Se tiver campanhaId, verificar se a campanha existe
-    if (campaignId) {
+    // Lógica para lidar com campaignId e workspaceId
+    let targetCampaignId = campaignId;
+    
+    // Se tiver workspaceId mas não tiver campaignId, podemos criar o estágio
+    // e depois associá-lo a uma campanha específica mais tarde
+    if (workspaceId && !campaignId) {
+      console.log(`ℹ️ Criando estágio para o workspace ${workspaceId} sem campanha específica`);
+      
+      // Opcionalmente, podemos buscar a primeira campanha do workspace
+      // para associar o estágio a ela
+      const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
+        where: { workspace_id: workspaceId },
+        select: { campaign_id: true },
+        take: 1
+      });
+      
+      if (workspaceCampaigns.length > 0) {
+        targetCampaignId = workspaceCampaigns[0].campaign_id;
+        console.log(`ℹ️ Usando campanha ${targetCampaignId} do workspace`);
+      }
+    }
+    
+    // Se tiver campaignId, verificar se a campanha existe
+    if (targetCampaignId) {
       const campaign = await prisma.followUpCampaign.findUnique({
-        where: { id: campaignId }
+        where: { id: targetCampaignId }
       });
       
       if (!campaign) {
-        console.error(`❌ Campanha não encontrada: ${campaignId}`);
+        console.error(`❌ Campanha não encontrada: ${targetCampaignId}`);
         return NextResponse.json(
           { 
             success: false, 
@@ -156,6 +240,27 @@ export async function POST(req: NextRequest) {
           }, 
           { status: 404 }
         );
+      }
+      
+      // Se tiver workspaceId, verificar se a campanha pertence a este workspace
+      if (workspaceId) {
+        const campaignBelongsToWorkspace = await prisma.workspaceFollowUpCampaign.findFirst({
+          where: {
+            workspace_id: workspaceId,
+            campaign_id: targetCampaignId
+          }
+        });
+        
+        if (!campaignBelongsToWorkspace) {
+          console.error(`❌ Campanha ${targetCampaignId} não pertence ao workspace ${workspaceId}`);
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: "Campanha não pertence a este workspace"
+            }, 
+            { status: 403 }
+          );
+        }
       }
     }
     

@@ -25,21 +25,41 @@ export default function CampaignsPage() {
   const [stages, setStages] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const formMethods = useForm({ defaultValues: { name: '', description: '', steps: [] } });
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // Carregar campanhas
-        const campaignsResponse = await axios.get('/api/follow-up/campaigns');
+        // Obter o workspaceId ativo da sessionStorage
+        const workspaceId = typeof window !== 'undefined' 
+          ? sessionStorage.getItem('activeWorkspaceId') 
+          : null;
+        
+        // Carregar campanhas do workspace atual
+        const campaignsResponse = await axios.get('/api/follow-up/campaigns', {
+          params: { workspaceId }
+        });
+        
         if (campaignsResponse.data.success) {
           setCampaigns(campaignsResponse.data.data);
-          console.log(campaignsResponse.data.data)
+          console.log(campaignsResponse.data.data);
         }
 
-        // Carregar estágios do funil
-        const stagesResponse = await axios.get('/api/follow-up/funnel-stages');
+        // Carregar estágios do funil apenas do workspace atual
+        // Aqui não especificamos campaignId já que estamos criando nova campanha
+        const stagesResponse = await axios.get('/api/follow-up/funnel-stages', { 
+          params: { 
+            workspaceId,
+            // Não usar campaignId: estamos criando nova campanha
+            // Adicionar um timestamp para evitar cache
+            t: new Date().getTime() 
+          } 
+        });
+        
         if (stagesResponse.data.success) {
+          // Filtrar estágios que não pertencem a nenhuma campanha
+          // ou pertencem a campanhas do mesmo workspace
           setStages(stagesResponse.data.data);
         }
       } catch (err) {
@@ -66,7 +86,23 @@ export default function CampaignsPage() {
   const handleCreateCampaign = async (formData: any) => {
     setIsSubmitting(true);
     try {
-      const response = await axios.post('/api/follow-up/campaigns', formData);
+      // Obter o workspaceId ativo
+      const workspaceId = typeof window !== 'undefined' 
+        ? sessionStorage.getItem('activeWorkspaceId') 
+        : null;
+      
+      if (!workspaceId) {
+        setError('ID do workspace não encontrado. Selecione um workspace antes de criar uma campanha.');
+        return;
+      }
+      
+      // Adicionar workspaceId aos dados do formulário
+      const requestData = {
+        ...formData,
+        workspaceId
+      };
+      
+      const response = await axios.post('/api/follow-up/campaigns', requestData);
       if (response.data.success) {
         // Adicionar a nova campanha à lista
         setCampaigns([response.data.data, ...campaigns]);
@@ -160,9 +196,9 @@ export default function CampaignsPage() {
           
           {showForm && (
             <div className="mb-6">
-              <FormProvider {...useForm({ defaultValues: { name: '', description: '', steps: [] } })}>
+              <FormProvider {...formMethods}>
                 <CampaignFormHook 
-                  funnelStages={[]} 
+                  funnelStages={stages} 
                   campaignSteps={[]}
                   onSubmit={handleCreateCampaign}
                   onCancel={() => setShowForm(false)}
