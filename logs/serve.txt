@@ -1,0 +1,541 @@
+root@lumi-dev:~/app_follow-up# npm run dev
+
+> app_nextlumibot@0.1.0 dev
+> next dev --turbopack
+
+   ▲ Next.js 15.2.0 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://168.119.247.230:3000
+   - Environments: .env.local, .env
+
+ ✓ Starting...
+ ✓ Ready in 1259ms
+ ○ Compiling /api/follow-up/funnel-stages ...
+ ✓ Compiled /api/follow-up/funnel-stages in 1297ms
+🔍 GET /api/follow-up/funnel-stages - campaignId: 7229d9e9-932e-4834-a51d-a7d8d9566b27, workspaceId: nenhum
+✅ Encontrados 3 estágios para a campanha 7229d9e9-932e-4834-a51d-a7d8d9566b27
+ GET /api/follow-up/funnel-stages?campaignId=7229d9e9-932e-4834-a51d-a7d8d9566b27 200 in 1635ms
+ ○ Compiling /api/follow-up ...
+ ✓ Compiled /api/follow-up in 955ms
+MODO DE TESTE CONFIGURADO COMO: ATIVADO
+Processador de mensagens personalizado configurado.
+Sistema de follow-up inicializado com integração da API Lumibot.
+ GET /api/follow-up?clientId=58 200 in 1096ms
+ ○ Compiling /api/follow-up/cancel ...
+ ✓ Compiled /api/follow-up/cancel in 567ms
+ POST /api/follow-up/cancel 200 in 651ms
+ POST /api/follow-up 201 in 61ms
+Steps ordenados: Etapa 1 - novo_lead_10min (30 minutos), Etapa 1 - novo_lead_30min (30 minutos), Etapa 2 - qualificacao_10min (30 minutos), Etapa 2 - qualificacao_1h (30 minutos), Etapa 3 - qualificado_20mn (30 minutos), Etapa 3 - qualificado_1h (30 minutos)
+Total de steps carregados: 6, step atual: 0
+Etapa atual (0): Etapa 1 - novo_lead_10min
+Detectada mudança de estágio: Inicial -> Etapa 1
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 0
+Cliente ID: 58
+Conteúdo: Ei, Boss! 🚀 Vi que você recebeu a mensagem, mas ainda não respondeu. Quer tirar alguma dúvida antes
+Horário Agendado: 2025-03-24T04:12:18.931Z
+Metadata: {
+  "template_name": "novo_lead_10min",
+  "category": "Utility",
+  "stage_name": "Etapa 1",
+  "clientName": "58",
+  "templateParams": {
+    "name": "novo_lead_10min",
+    "category": "Utility",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29989ms (29.989 segundos)
+Agendando mensagem para daqui a 29.989 segundos
+Timeout armazenado com sucesso para mensagem d465cb94-173a-47e8-a14b-300c05b77654-0
+ ○ Compiling /api/follow-up/status ...
+ ✓ Compiled /api/follow-up/status in 532ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 583ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 41ms
+ ○ Compiling /api/follow-up/messages ...
+ ✓ Compiled /api/follow-up/messages in 572ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 614ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 37ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 55ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 58ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 56ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 55ms
+Executando timeout para mensagem d465cb94-173a-47e8-a14b-300c05b77654-0
+DEBUG - Antes de chamar sendMessage
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 0
+Cliente ID: 58
+Status do follow-up: active
+Metadata do follow-up: {"source":"Teste Automatizado","test_run":true,"timestamp":"2025-03-24T04:11:48.856Z","current_stage_name":"Etapa 1","previous_stage_name":null,"updated_at":"2025-03-24T04:11:48.928Z","step_in_stage":0}
+Enviando mensagem via API Lumibot
+Template: novo_lead_10min
+Categoria: Utility
+===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
+Cliente ID: 58
+Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
+Steps ordenados: Etapa 1 - novo_lead_10min (30 minutos), Etapa 1 - novo_lead_30min (30 minutos), Etapa 2 - qualificacao_10min (30 minutos), Etapa 2 - qualificacao_1h (30 minutos), Etapa 3 - qualificado_20mn (30 minutos), Etapa 3 - qualificado_1h (30 minutos)
+Total de steps carregados: 6, step atual: 1
+Etapa atual (1): Etapa 1 - novo_lead_30min
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 1
+Cliente ID: 58
+Conteúdo: Oi, {{1}}! Percebi que seu atendimento ainda está em andamento. Sei que a rotina pode ser corrida, e
+Horário Agendado: 2025-03-24T04:12:48.970Z
+Metadata: {
+  "template_name": "novo_lead_30min",
+  "category": "Utility",
+  "stage_name": "Etapa 1",
+  "clientName": "58",
+  "templateParams": {
+    "name": "novo_lead_30min",
+    "category": "Utility",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29992ms (29.992 segundos)
+Agendando mensagem para daqui a 29.992 segundos
+Timeout armazenado com sucesso para mensagem d465cb94-173a-47e8-a14b-300c05b77654-1
+===== RESPOSTA GET CONVERSA DO CLIENTE =====
+Status: 200
+Detalhes do envio para Lumibot:
+- clientId: 58
+- templateName: novo_lead_10min
+- category: Utility
+===== RESPOSTA DA API LUMIBOT =====
+Status: 200
+Resultado do envio via Lumibot: SUCESSO
+Atualizando mensagem como entregue no banco de dados
+Mensagem marcada como entregue com sucesso
+DEBUG - Após chamar sendMessage
+DEBUG - Timeout removido do mapa: d465cb94-173a-47e8-a14b-300c05b77654-0
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 74ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 61ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 51ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 34ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 52ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 57ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 58ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 59ms
+Executando timeout para mensagem d465cb94-173a-47e8-a14b-300c05b77654-1
+DEBUG - Antes de chamar sendMessage
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 1
+Cliente ID: 58
+Status do follow-up: active
+Metadata do follow-up: {"source":"Teste Automatizado","test_run":true,"timestamp":"2025-03-24T04:11:48.856Z","current_stage_name":"Etapa 1","previous_stage_name":null,"updated_at":"2025-03-24T04:11:48.928Z","step_in_stage":0}
+Enviando mensagem via API Lumibot
+Template: novo_lead_30min
+Categoria: Utility
+===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
+Cliente ID: 58
+Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
+===== RESPOSTA GET CONVERSA DO CLIENTE =====
+Status: 200
+Detalhes do envio para Lumibot:
+- clientId: 58
+- templateName: novo_lead_30min
+- category: Utility
+===== RESPOSTA DA API LUMIBOT =====
+Status: 200
+Resultado do envio via Lumibot: SUCESSO
+Atualizando mensagem como entregue no banco de dados
+Mensagem marcada como entregue com sucesso
+DEBUG - Após chamar sendMessage
+DEBUG - Timeout removido do mapa: d465cb94-173a-47e8-a14b-300c05b77654-1
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 65ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 57ms
+ ○ Compiling /api/follow-up/client-response ...
+ ✓ Compiled /api/follow-up/client-response in 592ms
+=== DADOS DA RESPOSTA DO CLIENTE ===
+followUpId: d465cb94-173a-47e8-a14b-300c05b77654
+clientId: 58
+message: Esta é uma resposta de teste automático
+=== FIM DADOS DA RESPOSTA DO CLIENTE ===
+=== DADOS DA RESPOSTA DO CLIENTE ===
+followUpId: d465cb94-173a-47e8-a14b-300c05b77654
+clientId: 58
+message: Esta é uma resposta de teste automático
+=== FIM DADOS DA RESPOSTA DO CLIENTE ===
+Processando resposta para follow-up d465cb94-173a-47e8-a14b-300c05b77654, campanha 7229d9e9-932e-4834-a51d-a7d8d9566b27
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654 tem 6 passos na campanha
+Mapeados 6 passos para processamento
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654: processando resposta com 6 passos disponíveis
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654 - Fase atual: Etapa 1, Etapa atual: 1
+Estágios carregados da relação campaign.stages: Etapa 1, Etapa 2, Etapa 3
+Estágios ordenados por ordem: Etapa 1, Etapa 2, Etapa 3
+Estágio atual "Etapa 1" está na posição 0 da sequência ordenada
+Próximo estágio: "Etapa 2" (índice 1)
+Primeiro passo do próximo estágio: 2
+Quando cliente responde, sempre avança para o próximo estágio, independente do passo atual
+Cliente respondeu: Avançando para primeira etapa da próxima fase: 2 (Etapa 2)
+Próximo passo selecionado: Etapa 2 - qualificacao_10min (índice 2)
+Atualizando stage_id para: 0ce768b6-30c2-4c07-ae07-620a5881be11 (Etapa 2)
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654 atualizado com sucesso para o próximo estágio
+Steps ordenados: Etapa 1 - novo_lead_10min (30 minutos), Etapa 1 - novo_lead_30min (30 minutos), Etapa 2 - qualificacao_10min (30 minutos), Etapa 2 - qualificacao_1h (30 minutos), Etapa 3 - qualificado_20mn (30 minutos), Etapa 3 - qualificado_1h (30 minutos)
+Total de steps carregados: 6, step atual: 2
+Etapa atual (2): Etapa 2 - qualificacao_10min
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 2
+Cliente ID: 58
+Conteúdo: Oi, {{1}}! Vi que você iniciou um processo conosco, mas ainda não concluímos sua qualificação. Caso 
+Horário Agendado: 2025-03-24T04:13:41.788Z
+Metadata: {
+  "template_name": "qualificacao_10min",
+  "category": "Utility",
+  "stage_name": "Etapa 2",
+  "clientName": "58",
+  "templateParams": {
+    "name": "qualificacao_10min",
+    "category": "Utility",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29991ms (29.991 segundos)
+Agendando mensagem para daqui a 29.991 segundos
+Timeout armazenado com sucesso para mensagem d465cb94-173a-47e8-a14b-300c05b77654-2
+Próxima etapa processada com sucesso para follow-up d465cb94-173a-47e8-a14b-300c05b77654
+ POST /api/follow-up/client-response 200 in 700ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 54ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 30ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 30ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 33ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 49ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 47ms
+ ○ Compiling /api/follow-up/campaigns ...
+Filtrando campanhas para o workspace: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+Filtrando campanhas para o workspace: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+[
+  {
+    id: '7229d9e9-932e-4834-a51d-a7d8d9566b27',
+    name: 'Teste',
+    description: 'teste camp',
+    active: true,
+    created_at: 2025-03-24T03:48:54.692Z
+  },
+  {
+    id: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
+    name: 'Campanha de Funil Completo',
+    description: 'Campanha com todos os estágios do funil de vendas',
+    active: true,
+    created_at: 2025-03-12T17:47:28.675Z
+  }
+]
+ GET /api/follow-up/campaigns?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 1345ms
+[
+  {
+    id: '7229d9e9-932e-4834-a51d-a7d8d9566b27',
+    name: 'Teste',
+    description: 'teste camp',
+    active: true,
+    created_at: 2025-03-24T03:48:54.692Z
+  },
+  {
+    id: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
+    name: 'Campanha de Funil Completo',
+    description: 'Campanha com todos os estágios do funil de vendas',
+    active: true,
+    created_at: 2025-03-12T17:47:28.675Z
+  }
+]
+ GET /api/follow-up/campaigns?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 1341ms
+ ✓ Compiled /api/follow-up/campaigns in 1393ms
+Super admin verification successful for: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
+Super admin fetching all workspaces: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
+Found 3 total workspaces for super admin
+ GET /api/workspaces/all 200 in 1561ms
+🔍 GET /api/follow-up/funnel-stages - campaignId: nenhum, workspaceId: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+🔍 Buscando estágios para o workspace a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+🔍 GET /api/follow-up/funnel-stages - campaignId: nenhum, workspaceId: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+🔍 Buscando estágios para o workspace a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+✅ Encontrados 9 estágios para o workspace a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+ GET /api/follow-up/funnel-stages?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf&t=1742789610327 200 in 63ms
+✅ Encontrados 9 estágios para o workspace a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+ GET /api/follow-up/funnel-stages?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf&t=1742789610335 200 in 61ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 49ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 46ms
+ ○ Compiling /workspaces ...
+ ✓ Compiled /workspaces in 3.4s
+ GET /workspaces 200 in 3545ms
+Super admin verification successful for: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
+Super admin fetching all workspaces: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
+Found 3 total workspaces for super admin
+ GET /api/workspaces/all 200 in 110ms
+ ○ Compiling /workspace/[slug] ...
+ ✓ Compiled /workspace/[slug] in 1622ms
+ GET /workspace/aurelio-castro-workspace-1742534329060 200 in 2287ms
+Executando timeout para mensagem d465cb94-173a-47e8-a14b-300c05b77654-2
+DEBUG - Antes de chamar sendMessage
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 2
+Cliente ID: 58
+Status do follow-up: active
+Metadata do follow-up: {"source":"Teste Automatizado","test_run":true,"timestamp":"2025-03-24T04:11:48.856Z","current_stage_name":"Etapa 2","previous_stage_name":"Etapa 1","updated_at":"2025-03-24T04:13:11.781Z","step_in_stage":0,"responses":{"1":{"timestamp":"2025-03-24T04:13:11.781Z","message":"Esta é uma resposta de teste automático"}},"last_response":"Esta é uma resposta de teste automático","last_response_date":"2025-03-24T04:13:11.781Z","processed_by_response":true,"advanced_after_response":true,"previous_step":1,"new_step":2}
+Enviando mensagem via API Lumibot
+Template: qualificacao_10min
+Categoria: Utility
+===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
+Cliente ID: 58
+Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654 já processado pela resposta, continuando fluxo normal
+Redefinindo flag processed_by_response para permitir novas respostas do cliente
+Steps ordenados: Etapa 1 - novo_lead_10min (30 minutos), Etapa 1 - novo_lead_30min (30 minutos), Etapa 2 - qualificacao_10min (30 minutos), Etapa 2 - qualificacao_1h (30 minutos), Etapa 3 - qualificado_20mn (30 minutos), Etapa 3 - qualificado_1h (30 minutos)
+Total de steps carregados: 6, step atual: 3
+Etapa atual (3): Etapa 2 - qualificacao_1h
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 3
+Cliente ID: 58
+Conteúdo: Boss! Para te ajudar com mais informações, preparamos um vídeo explicativo sobre como funciona. Você
+Horário Agendado: 2025-03-24T04:14:11.812Z
+Metadata: {
+  "template_name": "qualificacao_1h",
+  "category": "Utility",
+  "stage_name": "Etapa 2",
+  "clientName": "58",
+  "templateParams": {
+    "name": "qualificacao_1h",
+    "category": "Utility",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29991ms (29.991 segundos)
+Agendando mensagem para daqui a 29.991 segundos
+Timeout armazenado com sucesso para mensagem d465cb94-173a-47e8-a14b-300c05b77654-3
+Super admin verification successful for: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
+Super admin fetching all workspaces: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
+Found 3 total workspaces for super admin
+ GET /api/workspaces/all 200 in 66ms
+Filtrando campanhas para o workspace: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+Filtrando campanhas para o workspace: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+[
+  {
+    id: '7229d9e9-932e-4834-a51d-a7d8d9566b27',
+    name: 'Teste',
+    description: 'teste camp',
+    active: true,
+    created_at: 2025-03-24T03:48:54.692Z
+  },
+  {
+    id: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
+    name: 'Campanha de Funil Completo',
+    description: 'Campanha com todos os estágios do funil de vendas',
+    active: true,
+    created_at: 2025-03-12T17:47:28.675Z
+  }
+]
+[
+  {
+    id: '7229d9e9-932e-4834-a51d-a7d8d9566b27',
+    name: 'Teste',
+    description: 'teste camp',
+    active: true,
+    created_at: 2025-03-24T03:48:54.692Z
+  },
+  {
+    id: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
+    name: 'Campanha de Funil Completo',
+    description: 'Campanha com todos os estágios do funil de vendas',
+    active: true,
+    created_at: 2025-03-12T17:47:28.675Z
+  }
+]
+ GET /api/follow-up/campaigns?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 87ms
+ GET /api/follow-up/campaigns?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 112ms
+Filtrando campanhas para o workspace: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+[
+  {
+    id: '7229d9e9-932e-4834-a51d-a7d8d9566b27',
+    name: 'Teste',
+    description: 'teste camp',
+    active: true,
+    created_at: 2025-03-24T03:48:54.692Z
+  },
+  {
+    id: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
+    name: 'Campanha de Funil Completo',
+    description: 'Campanha com todos os estágios do funil de vendas',
+    active: true,
+    created_at: 2025-03-12T17:47:28.675Z
+  }
+]
+ GET /api/follow-up/campaigns?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 100ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 74ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 49ms
+===== RESPOSTA GET CONVERSA DO CLIENTE =====
+Status: 200
+Detalhes do envio para Lumibot:
+- clientId: 58
+- templateName: qualificacao_10min
+- category: Utility
+ GET /api/follow-up?status=active&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 98ms
+ GET /api/follow-up?status=active&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 96ms
+ GET /api/follow-up?status=active&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 74ms
+===== RESPOSTA DA API LUMIBOT =====
+Status: 200
+Resultado do envio via Lumibot: SUCESSO
+Atualizando mensagem como entregue no banco de dados
+Mensagem marcada como entregue com sucesso
+DEBUG - Após chamar sendMessage
+DEBUG - Timeout removido do mapa: d465cb94-173a-47e8-a14b-300c05b77654-2
+ ○ Compiling /follow-up ...
+ ✓ Compiled /follow-up in 1583ms
+ GET /follow-up 200 in 1658ms
+Filtrando campanhas para o workspace: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+Super admin verification successful for: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
+Super admin fetching all workspaces: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
+[
+  {
+    id: '7229d9e9-932e-4834-a51d-a7d8d9566b27',
+    name: 'Teste',
+    description: 'teste camp',
+    active: true,
+    created_at: 2025-03-24T03:48:54.692Z
+  },
+  {
+    id: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
+    name: 'Campanha de Funil Completo',
+    description: 'Campanha com todos os estágios do funil de vendas',
+    active: true,
+    created_at: 2025-03-12T17:47:28.675Z
+  }
+]
+Found 3 total workspaces for super admin
+ GET /api/workspaces/all 200 in 104ms
+ GET /api/follow-up/campaigns?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 113ms
+ GET /api/follow-up?status=active&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 128ms
+Filtrando campanhas para o workspace: a6736c1d-9dec-40f2-9965-9da3a6ef61cf
+[
+  {
+    id: '7229d9e9-932e-4834-a51d-a7d8d9566b27',
+    name: 'Teste',
+    description: 'teste camp',
+    active: true,
+    created_at: 2025-03-24T03:48:54.692Z
+  },
+  {
+    id: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
+    name: 'Campanha de Funil Completo',
+    description: 'Campanha com todos os estágios do funil de vendas',
+    active: true,
+    created_at: 2025-03-12T17:47:28.675Z
+  }
+]
+ GET /api/follow-up/campaigns?workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 82ms
+ GET /api/follow-up?status=active&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 89ms
+ ○ Compiling /api/follow-up/campaigns/[id] ...
+ ✓ Compiled /api/follow-up/campaigns/[id] in 827ms
+Campanha 7229d9e9-932e-4834-a51d-a7d8d9566b27: 6 passos ordenados
+ GET /api/follow-up/campaigns/7229d9e9-932e-4834-a51d-a7d8d9566b27?t=1742789628775&cb=1742789628775&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 1555ms
+Campanha 7229d9e9-932e-4834-a51d-a7d8d9566b27: 6 passos ordenados
+ GET /api/follow-up/campaigns/7229d9e9-932e-4834-a51d-a7d8d9566b27?t=1742789628776&cb=1742789628776&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 1558ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 58ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 59ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 56ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 56ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 64ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 55ms
+Executando timeout para mensagem d465cb94-173a-47e8-a14b-300c05b77654-3
+DEBUG - Antes de chamar sendMessage
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 3
+Cliente ID: 58
+Status do follow-up: active
+Metadata do follow-up: {"source":"Teste Automatizado","test_run":true,"timestamp":"2025-03-24T04:11:48.856Z","current_stage_name":"Etapa 2","previous_stage_name":"Etapa 1","updated_at":"2025-03-24T04:13:41.799Z","step_in_stage":0,"responses":{"1":{"timestamp":"2025-03-24T04:13:11.781Z","message":"Esta é uma resposta de teste automático"}},"last_response":"Esta é uma resposta de teste automático","last_response_date":"2025-03-24T04:13:11.781Z","processed_by_response":false,"advanced_after_response":true,"previous_step":1,"new_step":2}
+Enviando mensagem via API Lumibot
+Template: qualificacao_1h
+Categoria: Utility
+===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
+Cliente ID: 58
+Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654 marcado como responsivo mas não processado - configurando metadata
+Metadata atualizado para o follow-up d465cb94-173a-47e8-a14b-300c05b77654
+Steps ordenados: Etapa 1 - novo_lead_10min (30 minutos), Etapa 1 - novo_lead_30min (30 minutos), Etapa 2 - qualificacao_10min (30 minutos), Etapa 2 - qualificacao_1h (30 minutos), Etapa 3 - qualificado_20mn (30 minutos), Etapa 3 - qualificado_1h (30 minutos)
+Total de steps carregados: 6, step atual: 4
+Etapa atual (4): Etapa 3 - qualificado_20mn
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: d465cb94-173a-47e8-a14b-300c05b77654
+Step Index: 4
+Cliente ID: 58
+Conteúdo: 🔔 Toc, toc, {{1}}! Não quero parecer insistente, mas a hora é agora! Sua oportunidade está aberta e
+Horário Agendado: 2025-03-24T04:14:41.840Z
+Metadata: {
+  "template_name": "qualificado_20mn",
+  "category": "Marketing",
+  "stage_name": "Etapa 3",
+  "clientName": "58",
+  "templateParams": {
+    "name": "qualificado_20mn",
+    "category": "Marketing",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29991ms (29.991 segundos)
+Agendando mensagem para daqui a 29.991 segundos
+Timeout armazenado com sucesso para mensagem d465cb94-173a-47e8-a14b-300c05b77654-4
+===== RESPOSTA GET CONVERSA DO CLIENTE =====
+Status: 200
+Detalhes do envio para Lumibot:
+- clientId: 58
+- templateName: qualificacao_1h
+- category: Utility
+===== RESPOSTA DA API LUMIBOT =====
+Status: 200
+Resultado do envio via Lumibot: SUCESSO
+Atualizando mensagem como entregue no banco de dados
+Mensagem marcada como entregue com sucesso
+DEBUG - Após chamar sendMessage
+DEBUG - Timeout removido do mapa: d465cb94-173a-47e8-a14b-300c05b77654-3
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 62ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 71ms
+=== DADOS DA RESPOSTA DO CLIENTE ===
+followUpId: d465cb94-173a-47e8-a14b-300c05b77654
+clientId: 58
+message: Esta é uma resposta de teste automático
+=== FIM DADOS DA RESPOSTA DO CLIENTE ===
+=== DADOS DA RESPOSTA DO CLIENTE ===
+followUpId: d465cb94-173a-47e8-a14b-300c05b77654
+clientId: 58
+message: Esta é uma resposta de teste automático
+=== FIM DADOS DA RESPOSTA DO CLIENTE ===
+Processando resposta para follow-up d465cb94-173a-47e8-a14b-300c05b77654, campanha 7229d9e9-932e-4834-a51d-a7d8d9566b27
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654 tem 6 passos na campanha
+Mapeados 6 passos para processamento
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654: processando resposta com 6 passos disponíveis
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654 - Fase atual: Etapa 3, Etapa atual: 4
+Timeout para mensagem d465cb94-173a-47e8-a14b-300c05b77654-4 cancelado com sucesso
+Estágios carregados da relação campaign.stages: Etapa 1, Etapa 2, Etapa 3
+Estágios ordenados por ordem: Etapa 1, Etapa 2, Etapa 3
+Estágio atual "Etapa 3" está na posição 2 da sequência ordenada
+Não há próximo estágio após "Etapa 3" - este é o último estágio
+Quando cliente responde, sempre avança para o próximo estágio, independente do passo atual
+Cliente respondeu: Não há mais estágios, completando follow-up d465cb94-173a-47e8-a14b-300c05b77654
+Follow-up d465cb94-173a-47e8-a14b-300c05b77654 marcado como concluído - cliente respondeu no último estágio
+ POST /api/follow-up/client-response 200 in 83ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 57ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 53ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 39ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 45ms
+ GET /api/follow-up/messages?followUpId=d465cb94-173a-47e8-a14b-300c05b77654 200 in 62ms
+ GET /api/follow-up/status?id=d465cb94-173a-47e8-a14b-300c05b77654 200 in 65ms

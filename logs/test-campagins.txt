@@ -1,0 +1,64 @@
+root@lumi-dev:~/app_follow-up# node scripts/test-campaign-flow.js 
+[04:11:45] 
+[04:11:45] ====================================================
+[04:11:45] TESTE DE FLUXO DE CAMPANHA: 7229d9e9-932e-4834-a51d-a7d8d9566b27
+[04:11:45] ====================================================
+[04:11:45] Buscando estágios da campanha 7229d9e9-932e-4834-a51d-a7d8d9566b27...
+[04:11:45] URL: http://localhost:3000/api/follow-up/funnel-stages?campaignId=7229d9e9-932e-4834-a51d-a7d8d9566b27
+[04:11:47] Resposta da API: {"success":true,"data":[{"id":"8702f6cd-ac7e-4cd8-819a-3d67b3d1dc9c","name":"Etapa 1","description":"Etapa 1","order":1,"created_at":"2025-03-24T03:49:19.250Z","stepsCount":2,"campaignId":"7229d9e9-932e-4834-a51d-a7d8d9566b27"},{"id":"0ce768b6-30c2-4c07-ae07-620a5881be11","name":"Etapa 2","description":"Etapa 2","order":2,"created_at":"2025-03-24T03:49:28.940Z","stepsCount":2,"campaignId":"7229d9e9-932e-4834-a51d-a7d8d9566b27"},{"id":"6e54564b-2c0e-4fbc-84ca-666a57b7a31e","name":"Etapa 3","description":"Etapa 3","order":3,"created_at":"2025-03-24T03:49:38.792Z","stepsCount":2,"campaignId":"7229d9e9-932e-4834-a51d-a7d8d9566b27"}]}
+[04:11:47] Encontrados 3 estágios para a campanha:
+[04:11:47]   1. Etapa 1 (ID: 8702f6cd-ac7e-4cd8-819a-3d67b3d1dc9c) - 2 passos
+[04:11:47]   2. Etapa 2 (ID: 0ce768b6-30c2-4c07-ae07-620a5881be11) - 2 passos
+[04:11:47]   3. Etapa 3 (ID: 6e54564b-2c0e-4fbc-84ca-666a57b7a31e) - 2 passos
+[04:11:47] Criando novo follow-up para campanha 7229d9e9-932e-4834-a51d-a7d8d9566b27 e cliente 58...
+[04:11:47] Verificando e cancelando follow-ups existentes...
+[04:11:48] Cancelando follow-up existente: b379d97b-fd50-4205-8006-1b36d13471ac
+[04:11:48] Follow-up criado com sucesso! ID: d465cb94-173a-47e8-a14b-300c05b77654
+[04:11:49] 
+Status inicial:
+[04:11:49]   ID: d465cb94-173a-47e8-a14b-300c05b77654
+[04:11:49]   Status: active
+[04:11:49]   Etapa atual: 1
+[04:11:49] 
+--- INICIANDO PROCESSAMENTO DE ETAPAS ---
+[04:11:49] 
+===> PROCESSANDO ETAPA: Etapa 1 (1/3)
+[04:11:49] Aguardando mensagem da etapa Etapa 1...
+[04:11:49] Aguardando mensagem do passo 0...
+[04:12:20] ✓ Mensagem do passo 0 recebida: "Ei, Boss! 🚀 Vi que você receb..."
+[04:12:20] Etapa avançou para 1
+[04:12:20] Aguardando mensagem do passo 1...
+[04:12:51] ✓ Mensagem do passo 1 recebida: "Oi, {{1}}! Percebi que seu ate..."
+[04:13:01] Sem novas mensagens após 120s, assumindo que é a última da etapa
+[04:13:11] 
+===> ENVIANDO RESPOSTA PARA AVANÇAR PARA PRÓXIMA ETAPA
+[04:13:11] Enviando resposta do cliente para follow-up d465cb94-173a-47e8-a14b-300c05b77654: "Esta é uma resposta de teste automático"
+[04:13:11] ✓ Resposta do cliente enviada com sucesso para follow-up d465cb94-173a-47e8-a14b-300c05b77654
+[04:13:11] Aguardando mudança para próxima etapa: Etapa 2...
+[04:13:11] Aguardando mudança para etapa "Etapa 2"...
+[04:13:11] ✓ Follow-up mudou para etapa "Etapa 2"
+[04:13:11] 
+===> PROCESSANDO ETAPA: Etapa 2 (2/3)
+[04:13:11] Aguardando mensagem da etapa Etapa 2...
+[04:13:11] Aguardando mensagem do passo 2...
+[04:13:52] ✓ Mensagem do passo 2 recebida: "Oi, {{1}}! Vi que você iniciou..."
+[04:13:52] Etapa avançou para 3
+[04:13:52] Aguardando mensagem do passo 3...
+[04:14:12] ✓ Mensagem do passo 3 recebida: "Boss! Para te ajudar com mais ..."
+[04:14:22] IMPORTANTE: Fase do funil mudou de "Etapa 2" para "Etapa 3"
+[04:14:22] Interrompendo monitoramento da fase atual para avançar para próxima
+[04:14:22] 
+===> ENVIANDO RESPOSTA PARA AVANÇAR PARA PRÓXIMA ETAPA
+[04:14:22] Enviando resposta do cliente para follow-up d465cb94-173a-47e8-a14b-300c05b77654: "Esta é uma resposta de teste automático"
+[04:14:22] ✓ Resposta do cliente enviada com sucesso para follow-up d465cb94-173a-47e8-a14b-300c05b77654
+[04:14:22] Aguardando mudança para próxima etapa: Etapa 3...
+[04:14:22] Aguardando mudança para etapa "Etapa 3"...
+[04:14:22] ✓ Follow-up mudou para etapa "Etapa 3"
+[04:14:22] 
+===> PROCESSANDO ETAPA: Etapa 3 (3/3)
+[04:14:23] Aguardando mensagem da etapa Etapa 3...
+[04:14:23] Aguardando mensagem do passo 4...
+[04:14:23] Follow-up não está mais ativo. Status atual: completed
+[04:14:23] Erro ao verificar mensagens: Follow-up não está ativo (completed)
+[04:14:33] Follow-up não está mais ativo. Status atual: completed
+[04:14:33] Erro ao verificar mensagens: Follow-up não está ativo (completed)
