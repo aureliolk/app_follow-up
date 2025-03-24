@@ -157,27 +157,7 @@ export default function FollowUpPage() {
   return (
     <div className="min-h-screen bg-gray-900 flex flex-col">
       <div className="flex-1 container mx-auto px-4 py-6">
-        {/* Super Admin Badge */}
-        {isSuperAdmin && (
-          <div className="mb-6 bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 rounded-lg shadow-md">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <span className="text-xs font-bold bg-white text-purple-700 px-2 py-1 rounded-full mr-2">SUPER ADMIN</span>
-                <h2 className="text-lg font-bold">Visão Global de Follow-ups</h2>
-              </div>
-              <div className="text-sm flex items-center">
-                <span>Você está vendo follow-ups de todos os workspaces</span>
-                <a 
-                  href="/workspaces" 
-                  className="ml-4 bg-white text-purple-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-gray-100"
-                >
-                  Voltar para Workspaces
-                </a>
-              </div>
-            </div>
-          </div>
-        )}
-
+        
         <div className="mb-6">
           <h1 className="text-2xl font-bold mb-4">Lista de Follow-ups</h1>
 

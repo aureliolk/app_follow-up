@@ -1,0 +1,327 @@
+{
+  "directory-structure": {
+    ".chats": {
+      "1.json": null,
+      "2.json": null,
+      "73991121575.json": null,
+      "Marcelo.json": null
+    },
+    ".env": null,
+    ".env.local": null,
+    ".git": {
+      "COMMIT_EDITMSG": null,
+      "FETCH_HEAD": null,
+      "HEAD": null,
+      "ORIG_HEAD": null,
+      "REBASE_HEAD": null,
+      "config": null,
+      "description": null,
+      "index": null
+    },
+    ".gitignore": null,
+    ".next": {
+      "BUILD_ID": null,
+      "app-build-manifest.json": null,
+      "app-path-routes-manifest.json": null,
+      "build-manifest.json": null,
+      "export-marker.json": null,
+      "fallback-build-manifest.json": null,
+      "images-manifest.json": null,
+      "next-minimal-server.js.nft.json": null,
+      "next-server.js.nft.json": null,
+      "package.json": null,
+      "prerender-manifest.json": null,
+      "react-loadable-manifest.json": null,
+      "required-server-files.json": null,
+      "routes-manifest.json": null,
+      "trace": null,
+      "transform.js": null,
+      "transform.js.map": null
+    },
+    "Dockerfile": null,
+    "README.md": null,
+    "app": {
+      "api": {
+        "[id]": {},
+        "auth": {
+          "[...nextauth]": {
+            "route.ts": null
+          },
+          "register": {
+            "route.ts": null
+          }
+        },
+        "docs": {
+          "route.ts": null
+        },
+        "follow-up": {
+          "[id]": {
+            "move-stage": {
+              "route.ts": null
+            }
+          },
+          "_lib": {
+            "initializer.ts": null,
+            "manager.ts": null,
+            "scheduler.ts": null
+          },
+          "_utils": {
+            "csv-parser.ts": null,
+            "time-calculator.ts": null
+          },
+          "campaigns": {
+            "[id]": {
+              "route.ts": null
+            },
+            "funnel-steps": {
+              "route.ts": null
+            },
+            "route.ts": null
+          },
+          "cancel": {
+            "route.ts": null
+          },
+          "client-response": {
+            "route.ts": null
+          },
+          "funnel-stages": {
+            "route.ts": null
+          },
+          "funnel-steps": {
+            "route.ts": null
+          },
+          "messages": {
+            "route.ts": null
+          },
+          "remove-client": {
+            "route.ts": null
+          },
+          "resume": {
+            "route.ts": null
+          },
+          "route.ts": null,
+          "status": {
+            "route.ts": null
+          },
+          "steps": {
+            "route.ts": null
+          }
+        },
+        "workspaces": {
+          "[id]": {
+            "api-tokens": {
+              "[tokenId]": {
+                "route.ts": null
+              },
+              "route.ts": null
+            },
+            "invitations": {
+              "[invitationId]": {
+                "route.ts": null
+              },
+              "route.ts": null
+            },
+            "members": {
+              "[memberId]": {
+                "route.ts": null
+              },
+              "route.ts": null
+            },
+            "route.ts": null
+          },
+          "all": {
+            "route.ts": null
+          },
+          "route.ts": null
+        }
+      },
+      "auth": {
+        "login": {
+          "page.tsx": null
+        },
+        "register": {
+          "page.tsx": null
+        }
+      },
+      "favicon.ico": null,
+      "follow-up": {
+        "_services": {
+          "followUpService.ts": null,
+          "funnelService.ts": null
+        },
+        "_types": {
+          "index.ts": null,
+          "schema.ts": null
+        },
+        "campaigns": {
+          "[id]": {
+            "page.tsx": null
+          },
+          "_components": {
+            "ActionBar.tsx": null,
+            "CampaignBasicInfoForm.tsx": null,
+            "CampaignFormHook.tsx": null,
+            "ErrorMessage.tsx": null,
+            "FollowUpDetailModal.tsx": null,
+            "FollowUpTable.tsx": null,
+            "Footer.tsx": null,
+            "FunnelStageEditModal.tsx": null,
+            "FunnelStageForm.tsx": null,
+            "FunnelStageList.tsx": null,
+            "FunnelStagesColumn.tsx": null,
+            "FunnelStagesView.tsx": null,
+            "Header.tsx": null,
+            "MainNavigation.tsx": null,
+            "NewFollowUpForm.tsx": null,
+            "README.md": null,
+            "SearchBar.tsx": null,
+            "StepEditModal.tsx": null,
+            "StepForm.tsx": null,
+            "StepFormHook.tsx": null,
+            "TabNavigation.tsx": null,
+            "index.ts": null
+          },
+          "page.tsx": null
+        },
+        "kanban": {
+          "page.tsx": null
+        },
+        "page.tsx": null
+      },
+      "globals.css": null,
+      "layout.tsx": null,
+      "middleware.ts": null,
+      "page.tsx": null,
+      "styles": {
+        "theme.css": null
+      },
+      "workspace": {
+        "[slug]": {
+          "campaigns": {
+            "page.tsx": null
+          },
+          "followup": {
+            "page.tsx": null
+          },
+          "layout.tsx": null,
+          "members": {
+            "page.tsx": null
+          },
+          "page.tsx": null,
+          "settings": {
+            "components": {
+              "ApiTokenManager.tsx": null
+            },
+            "page.tsx": null
+          }
+        }
+      },
+      "workspaces": {
+        "page.tsx": null
+      }
+    },
+    "components": {
+      "footer.tsx": null,
+      "header.tsx": null,
+      "session-provider.tsx": null,
+      "ui": {
+        "ErrorMessage.tsx": null,
+        "LoadingSpinner.tsx": null,
+        "PageContainer.tsx": null,
+        "index.ts": null,
+        "tabs.tsx": null
+      }
+    },
+    "context": {
+      "workspace-context.tsx": null
+    },
+    "create-cursorrules.js": null,
+    "docker-compose.yml": null,
+    "files_to_fix.txt": null,
+    "lib": {
+      "auth": {
+        "auth-options.ts": null,
+        "auth-utils.ts": null
+      },
+      "db.ts": null,
+      "middleware": {
+        "api-token-auth.ts": null
+      },
+      "permissions.ts": null,
+      "utils.ts": null
+    },
+    "migrations": {
+      "add_prompts_table.sql": null,
+      "combined_migration.sql": null
+    },
+    "next.config.ts": null,
+    "node_modules": {
+      ".package-lock.json": null
+    },
+    "package-lock.json": null,
+    "package.json": null,
+    "postcss.config.mjs": null,
+    "prisma": {
+      "migrations": {
+        "20250308011222_setup_multi_schema": {
+          "migration.sql": null
+        },
+        "20250308203320_split_prompt_content": {
+          "migration.sql": null
+        },
+        "20250308203410_split_prompt_content": {
+          "migration.sql": null
+        },
+        "20250311155103_add_follow_up_tables": {
+          "migration.sql": null
+        },
+        "20250311201236_add_metadata_field": {
+          "migration.sql": null
+        },
+        "20250312000000_add_funnel_stages": {
+          "migration.sql": null
+        },
+        "20250312174525_add_funnel_stages": {
+          "migration.sql": null
+        },
+        "20250321000000_add_workspace_schema": {
+          "migration.sql": null
+        },
+        "20250321061034_add_super_admin_field": {
+          "migration.sql": null
+        },
+        "20250322013431_add_campaign_id_to_steps": {
+          "migration.sql": null
+        },
+        "20250324000000_add_workspace_api_tokens": {
+          "migration.sql": null
+        },
+        "migration_lock.toml": null
+      },
+      "schema.prisma": null
+    },
+    "public": {
+      "follow-up-api-docs.md": null,
+      "follow-up-sabrina-nunes-atualizado.csv": null,
+      "follow-up-sabrina.csv": null
+    },
+    "scripts": {
+      "add-more-funnel-steps.js": null,
+      "check-funnel-data.js": null,
+      "create-funnel-stages.js": null,
+      "create-sample-followups.js": null,
+      "follow-up-manager.js": null,
+      "import-funnel-stages.js": null,
+      "manager-helper.js": null,
+      "migrate-campaign-steps.js": null,
+      "migrate-workspace-followups.js": null,
+      "run-migrations.js": null,
+      "simulate-message-sender.js": null,
+      "test-campaign-flow.js": null,
+      "test-follow-up.js": null,
+      "test-followup-api.js": null
+    },
+    "server-api.js": null,
+    "tsconfig.json": null
+  }
+}

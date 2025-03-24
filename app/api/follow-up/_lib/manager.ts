@@ -662,7 +662,8 @@ export async function cancelScheduledMessageForStep(followUpId: string, stepInde
 export async function handleClientResponse(
   clientId: string,
   message: string,
-  followUpId?: string
+  followUpId?: string,
+  respondedMessageId?: string // Novo parâmetro para identificar a mensagem respondida
 ): Promise<void> {
   try {
     // Buscar follow-ups ativos para este cliente (específico ou todos)
@@ -733,21 +734,58 @@ export async function handleClientResponse(
           sent_at: new Date(),
           delivered: true,
           delivered_at: new Date(),
-          funnel_stage: currentFunnelStage
+          funnel_stage: currentFunnelStage,
+          // A mensagem respondida será armazenada no metadata em vez de usar um campo que não existe
+          category: respondedMessageId ? `Resposta à mensagem ${respondedMessageId}` : 'Resposta do cliente'
         }
       });
 
-      // Marcar o follow-up como responsivo
+      // Recuperar o metadata atual para preservar informações relevantes
+      let currentMetadata = {};
+      try {
+        if (followUp.metadata) {
+          currentMetadata = JSON.parse(followUp.metadata);
+        }
+      } catch (err) {
+        console.error(`Erro ao analisar metadata atual do follow-up ${followUp.id}:`, err);
+      }
+
+      // Preparar um objeto de respostas para rastrear quais etapas foram respondidas
+      if (!currentMetadata.responses) {
+        currentMetadata.responses = {};
+      }
+      
+      // Registrar esta etapa específica como respondida
+      currentMetadata.responses[currentStepIndex.toString()] = {
+        timestamp: new Date().toISOString(),
+        message: message
+      };
+      
+      // Marcar apenas a etapa atual como respondida, não todo o follow-up
       await prisma.followUp.update({
         where: { id: followUp.id },
         data: {
-          is_responsive: true
+          is_responsive: true, // Ainda usamos este campo para compatibilidade
+          metadata: JSON.stringify({
+            ...currentMetadata,
+            updated_at: new Date().toISOString(),
+            last_response: message,
+            current_stage_name: currentFunnelStage,
+            current_step_responded: currentStepIndex
+          })
         }
       });
 
-      // Determinar a próxima etapa (dentro da mesma fase ou início da próxima fase)
+      console.log(`Registrada resposta para etapa ${currentStepIndex} do follow-up ${followUp.id}`);
+
+      // IMPORTANTE: Cancelar apenas as mensagens agendadas para a etapa atual
+      // NÃO cancelamos todas as mensagens do follow-up
+      await cancelScheduledMessageForStep(followUp.id, currentStepIndex);
       
-      // 1. Procurar a próxima etapa na mesma fase
+      // Quando recebemos uma resposta do cliente, queremos avançar para a próxima FASE
+      // e não para o próximo estágio dentro da mesma fase
+      
+      // 1. Procurar a próxima etapa na mesma fase (apenas para referência)
       let nextStepInSamePhase = -1;
       for (let i = currentStepIndex + 1; i < steps.length; i++) {
         const stepFunnelStage = steps[i]?.stage_name;
@@ -769,29 +807,28 @@ export async function handleClientResponse(
         }
       }
 
-      // IMPORTANTE: Cancelar apenas as mensagens agendadas para a etapa atual
-      // NÃO cancelamos todas as mensagens do follow-up
-      await cancelScheduledMessageForStep(followUp.id, currentStepIndex);
-
       // Lógica de decisão: para onde vamos mover o cliente?
       let nextStepIndex: number;
       let nextStageName: string;
       let completeCampaign = false;
 
-      if (nextStepInSamePhase >= 0) {
-        // Avançar para a próxima etapa na mesma fase
-        nextStepIndex = nextStepInSamePhase;
-        nextStageName = currentFunnelStage;
-        console.log(`Avançando para próxima etapa na mesma fase: ${nextStepIndex}`);
-      } else if (firstStepOfNextPhase >= 0) {
+      // IMPORTANTE: Quando recebemos uma resposta do cliente, o comportamento é diferente
+      // Ao invés de seguir para a próxima etapa da mesma fase, vamos direto para a próxima fase
+      if (firstStepOfNextPhase >= 0) {
         // Avançar para a primeira etapa da próxima fase
         nextStepIndex = firstStepOfNextPhase;
         nextStageName = nextPhaseName;
-        console.log(`Avançando para primeira etapa da próxima fase: ${nextStepIndex} (${nextPhaseName})`);
+        console.log(`Cliente respondeu: Avançando para primeira etapa da próxima fase: ${nextStepIndex} (${nextPhaseName})`);
+      } else if (nextStepInSamePhase >= 0) {
+        // Se não houver próxima fase, mas houver mais etapas na fase atual
+        // Isso só deve acontecer se a campanha tiver múltiplas etapas na mesma fase
+        nextStepIndex = nextStepInSamePhase;
+        nextStageName = currentFunnelStage;
+        console.log(`Cliente respondeu: Não há próxima fase, avançando para próxima etapa na mesma fase: ${nextStepIndex}`);
       } else {
-        // Não há mais etapas, completar o follow-up
+        // Não há mais etapas em nenhuma fase, completar o follow-up
         completeCampaign = true;
-        console.log(`Não há mais etapas, completando follow-up ${followUp.id}`);
+        console.log(`Cliente respondeu: Não há mais etapas, completando follow-up ${followUp.id}`);
       }
 
       if (completeCampaign) {
@@ -800,7 +837,13 @@ export async function handleClientResponse(
           where: { id: followUp.id },
           data: {
             status: 'completed',
-            completed_at: new Date()
+            completed_at: new Date(),
+            metadata: JSON.stringify({
+              ...currentMetadata,
+              updated_at: new Date().toISOString(),
+              campaign_completed: true,
+              completion_reason: "Cliente respondeu à última etapa"
+            })
           }
         });
       } else {
@@ -812,10 +855,15 @@ export async function handleClientResponse(
             status: 'active',
             next_message_at: new Date(), // Processar próxima etapa imediatamente
             metadata: JSON.stringify({
+              ...currentMetadata,
               current_stage_name: nextStageName,
               updated_at: new Date().toISOString(),
               last_response: message,
-              processed_by_response: true
+              last_response_date: new Date().toISOString(),
+              processed_by_response: true,
+              advanced_after_response: true,
+              previous_step: currentStepIndex,
+              new_step: nextStepIndex
             })
           }
         });

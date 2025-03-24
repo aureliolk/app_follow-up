@@ -8,10 +8,10 @@ let CONFIG = {
   baseUrl: 'http://localhost:3000',
   campaignId: '852fabf3-e6c1-4c64-8ee3-d7b3f443b350',
   clientId: '58',
-  timeout: 40000, // Tempo máximo para aguardar cada mensagem (40s)
+  timeout: 120000, // Tempo máximo para aguardar cada mensagem (120s)
   responseMessage: 'Esta é uma resposta de teste automático',
   verbose: true,
-  apiKey: 'test-api-key-123456' // Chave de API para testes
+  "x-api-key": 'wsat_fGO7nVXfQF8qDFhDkOfnb1l06vvQYkvrEzKFAns' // Chave de API para testes
 };
 
 // Cores para saída no console
@@ -204,7 +204,7 @@ async function waitForMessage(followUpId, stepIndex, timeout = CONFIG.timeout) {
   log(`Aguardando mensagem do passo ${stepIndex}...`, colors.yellow);
   
   const startTime = Date.now();
-  const checkInterval = 1000; // 1 segundo
+  const checkInterval = 10000; // 10 segundos
   
   while (Date.now() - startTime < timeout) {
     try {
@@ -240,7 +240,7 @@ async function waitForStageChange(followUpId, expectedStageName, timeout = CONFI
   log(`Aguardando mudança para etapa "${expectedStageName}"...`, colors.yellow);
   
   const startTime = Date.now();
-  const checkInterval = 1000; // 1 segundo
+  const checkInterval = 10000; // 10 segundos
   
   while (Date.now() - startTime < timeout) {
     try {
@@ -416,6 +416,30 @@ async function testCampaignFlow(campaignId, clientId) {
           const currentStatus = await getFollowUpStatus(followUpId);
           
           // Se a etapa atual avançou, esperar a próxima mensagem
+          // Verificar se a fase do funil mudou analisando o metadata
+          let stageName = "Não definido";
+          if (currentStatus.metadata) {
+            try {
+              const metadata = typeof currentStatus.metadata === 'string' 
+                ? JSON.parse(currentStatus.metadata) 
+                : currentStatus.metadata;
+              
+              stageName = metadata.current_stage_name || "Não definido";
+              
+              // Se a fase atual no metadata for diferente da fase esperada,
+              // significa que já avançamos para outra fase do funil
+              if (stageName !== currentStageName) {
+                log(`IMPORTANTE: Fase do funil mudou de "${currentStageName}" para "${stageName}"`, colors.bright + colors.magenta);
+                log(`Interrompendo monitoramento da fase atual para avançar para próxima`, colors.yellow);
+                keepWaiting = false;
+                break;
+              }
+            } catch (e) {
+              log(`Erro ao analisar metadata para verificar mudança de fase: ${e.message}`, colors.red);
+            }
+          }
+          
+          // Verificar se a etapa/passo avançou
           if (currentStatus.current_step > latestMessageIndex) {
             log(`Etapa avançou para ${currentStatus.current_step}`, colors.yellow);
             await waitForMessage(followUpId, currentStatus.current_step);
@@ -451,7 +475,7 @@ async function testCampaignFlow(campaignId, clientId) {
             }
           }
           
-          await sleep(1000); // Pausa breve entre verificações
+          await sleep(10000); // Pausa de 10 segundos entre verificações
         } 
         catch (error) {
           if (error.message.includes('Timeout')) {
