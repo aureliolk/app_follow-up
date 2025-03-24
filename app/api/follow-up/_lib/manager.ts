@@ -825,9 +825,29 @@ export async function handleClientResponse(
       // Agora, procurar qual é o próximo estágio do funil
       // Precisamos encontrar a primeira etapa do próximo estágio
 
-      // 1. Identificar todos os estágios únicos na ordem correta
-      const stageNames = [...new Set(steps.map(s => s.stage_name))];
+      // 1. Vamos obter os estágios ordenados pela propriedade order
+      // Primeiro, criar um Map de nomes de estágio para suas ordens
+      const stageOrderMap = new Map<string, number>();
+      steps.forEach(step => {
+        if (step.stage_name && step.stage_order !== undefined) {
+          stageOrderMap.set(step.stage_name, step.stage_order);
+        }
+      });
+      
+      // Pegar estágios únicos
+      const uniqueStageNames = [...new Set(steps.map(s => s.stage_name))];
+      
+      // Ordenar os estágios pela propriedade order
+      const stageNames = uniqueStageNames.sort((a, b) => {
+        const orderA = stageOrderMap.get(a) || 0;
+        const orderB = stageOrderMap.get(b) || 0;
+        return orderA - orderB;
+      });
+      
+      console.log(`Estágios ordenados por ordem: ${stageNames.join(', ')}`);
+      
       const currentStageIndex = stageNames.indexOf(currentStageName);
+      console.log(`Estágio atual "${currentStageName}" está na posição ${currentStageIndex} da sequência ordenada`);
 
       // 2. Verificar se há um próximo estágio
       let nextStageIndex = currentStageIndex + 1;
@@ -836,9 +856,13 @@ export async function handleClientResponse(
 
       if (nextStageIndex < stageNames.length) {
         nextStageName = stageNames[nextStageIndex];
+        console.log(`Próximo estágio: "${nextStageName}" (índice ${nextStageIndex})`);
 
         // 3. Encontrar o primeiro passo do próximo estágio
         firstStepOfNextStage = steps.findIndex(s => s.stage_name === nextStageName);
+        console.log(`Primeiro passo do próximo estágio: ${firstStepOfNextStage}`);
+      } else {
+        console.log(`Não há próximo estágio após "${currentStageName}"`);
       }
 
       // 4. Decidir para qual passo avançar

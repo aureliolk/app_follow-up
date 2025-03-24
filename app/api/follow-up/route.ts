@@ -3,14 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { processFollowUpSteps } from './_lib/manager';
 import { z } from 'zod';
-import { withAuth } from '@/lib/auth/auth-utils';
 import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
+import { 
+  findActiveCampaignForWorkspace,
+  isCampaignInWorkspace,
+  findActiveFollowUp,
+  initializeNewFollowUp
+} from './_lib/initializer';
 
 // Schema de validação para o corpo da requisição
 const followUpRequestSchema = z.object({
   clientId: z.string().min(1, "ID do cliente é obrigatório"),
   campaignId: z.string().optional(),
-  workspaceId: z.string().optional(), // Novo campo para o workspace
+  workspaceId: z.string().optional(),
   customerId: z.string().optional(),
   name: z.string().optional(),
   email: z.string().email().optional(),
@@ -23,42 +28,32 @@ export async function POST(req: NextRequest) {
     try {
       const body = await req.json();
     
-    // Validar o corpo da requisição
-    const validationResult = followUpRequestSchema.safeParse(body);
-    if (!validationResult.success) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: "Dados inválidos", 
-          details: validationResult.error.format() 
-        }, 
-        { status: 400 }
-      );
-    }
+      // Validar o corpo da requisição
+      const validationResult = followUpRequestSchema.safeParse(body);
+      if (!validationResult.success) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: "Dados inválidos", 
+            details: validationResult.error.format() 
+          }, 
+          { status: 400 }
+        );
+      }
 
-    const { clientId, campaignId, workspaceId, name, email, phone, metadata } = validationResult.data;
-    
-    // Use o workspaceId do token se fornecido, caso contrário use o do body
-    const effectiveWorkspaceId = tokenWorkspaceId || workspaceId;
-
-    // Se o campaignId não for fornecido, usar a campanha padrão (ativa)
-    let targetCampaignId = campaignId;
-    
-    if (!targetCampaignId) {
-      // Buscar uma campanha ativa do workspace se fornecido
-      const defaultCampaignWhere: any = { active: true };
+      const { clientId, campaignId, workspaceId, metadata } = validationResult.data;
       
-      if (effectiveWorkspaceId) {
-        // Buscar IDs de campanhas associadas ao workspace
-        const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
-          where: { workspace_id: effectiveWorkspaceId },
-          select: { campaign_id: true }
-        });
+      // Use o workspaceId do token se fornecido, caso contrário use o do body
+      const effectiveWorkspaceId = tokenWorkspaceId || workspaceId;
+
+      // Determinar a campanha a ser usada
+      let targetCampaignId = campaignId;
+      
+      if (!targetCampaignId && effectiveWorkspaceId) {
+        // Buscar uma campanha ativa para o workspace
+        targetCampaignId = await findActiveCampaignForWorkspace(effectiveWorkspaceId);
         
-        const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
-        
-        // Se não houver campanhas associadas a este workspace, retornar erro
-        if (campaignIds.length === 0) {
+        if (!targetCampaignId) {
           return NextResponse.json(
             { 
               success: false, 
@@ -67,147 +62,85 @@ export async function POST(req: NextRequest) {
             { status: 404 }
           );
         }
+      } else if (!targetCampaignId) {
+        // Se não temos workspace nem campanha específica, buscar qualquer campanha ativa
+        const defaultCampaign = await prisma.followUpCampaign.findFirst({
+          where: { active: true },
+          orderBy: { created_at: 'desc' }
+        });
         
-        defaultCampaignWhere.id = { in: campaignIds };
+        if (!defaultCampaign) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: "Nenhuma campanha de follow-up ativa encontrada"
+            }, 
+            { status: 404 }
+          );
+        }
+        
+        targetCampaignId = defaultCampaign.id;
+      } else if (effectiveWorkspaceId) {
+        // Se temos campanha específica e workspace, verificar se a campanha pertence ao workspace
+        const belongsToWorkspace = await isCampaignInWorkspace(targetCampaignId, effectiveWorkspaceId);
+        
+        if (!belongsToWorkspace) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: "A campanha selecionada não pertence ao workspace informado"
+            }, 
+            { status: 403 }
+          );
+        }
       }
+
+      // Verificar se o cliente já está em um follow-up ativo para essa campanha
+      const existingFollowUp = await findActiveFollowUp(clientId, targetCampaignId);
       
-      const defaultCampaign = await prisma.followUpCampaign.findFirst({
-        where: defaultCampaignWhere,
-        orderBy: { created_at: 'desc' }
-      });
-      
-      if (!defaultCampaign) {
+      if (existingFollowUp) {
         return NextResponse.json(
           { 
             success: false, 
-            error: effectiveWorkspaceId 
-              ? "Nenhuma campanha de follow-up ativa encontrada para este workspace" 
-              : "Nenhuma campanha de follow-up ativa encontrada"
+            error: "Cliente já está em um follow-up ativo", 
+            followUpId: existingFollowUp.id,
+            status: existingFollowUp.status
           }, 
-          { status: 404 }
+          { status: 409 }
         );
       }
-      
-      targetCampaignId = defaultCampaign.id;
-    } else if (effectiveWorkspaceId) {
-      // Verificar se a campanha pertence ao workspace
-      const campaignBelongsToWorkspace = await prisma.workspaceFollowUpCampaign.findUnique({
-        where: {
-          workspace_id_campaign_id: {
-            workspace_id: effectiveWorkspaceId,
-            campaign_id: targetCampaignId
-          }
-        }
-      });
-      
-      if (!campaignBelongsToWorkspace) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: "A campanha selecionada não pertence ao workspace informado"
-          }, 
-          { status: 403 }
-        );
-      }
-    }
 
-    // Verificar se o cliente já está em um follow-up ativo para essa campanha
-    const existingFollowUp = await prisma.followUp.findFirst({
-      where: {
-        client_id: clientId,
-        campaign_id: targetCampaignId,
-        status: { in: ['active', 'paused'] }
-      }
-    });
+      // Criar um novo follow-up utilizando a função de domínio
+      const newFollowUp = await initializeNewFollowUp(
+        clientId, 
+        targetCampaignId, 
+        effectiveWorkspaceId,
+        metadata
+      );
 
-    if (existingFollowUp) {
+      // Iniciar o processamento das etapas de follow-up
+      processFollowUpSteps(newFollowUp.id);
+
+      return NextResponse.json(
+        { 
+          success: true, 
+          message: "Follow-up iniciado com sucesso", 
+          followUpId: newFollowUp.id 
+        }, 
+        { status: 201 }
+      );
+      
+    } catch (error) {
+      console.error("Erro ao iniciar follow-up:", error);
       return NextResponse.json(
         { 
           success: false, 
-          error: "Cliente já está em um follow-up ativo", 
-          followUpId: existingFollowUp.id,
-          status: existingFollowUp.status
+          error: "Erro interno do servidor", 
+          details: error instanceof Error ? error.message : "Erro desconhecido"
         }, 
-        { status: 409 }
+        { status: 500 }
       );
     }
-
-    // Carregar a campanha para verificar se existe e obter o primeiro estágio
-    const campaign = await prisma.followUpCampaign.findUnique({
-      where: { id: targetCampaignId },
-      include: {
-        stages: {
-          orderBy: {
-            order: 'asc'
-          },
-          take: 1 // Pegar o primeiro estágio (menor ordem)
-        }
-      }
-    });
-
-    if (!campaign) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: "Campanha não encontrada"
-        }, 
-        { status: 404 }
-      );
-    }
-
-    // Obter o primeiro estágio do funil da campanha
-    const initialStageId = campaign.stages.length > 0 ? campaign.stages[0].id : null;
-
-    // Metadados para incluir o workspace
-    let metadataWithWorkspace = metadata || {};
-    if (effectiveWorkspaceId) {
-      metadataWithWorkspace = {
-        ...metadataWithWorkspace,
-        workspace_id: effectiveWorkspaceId
-      };
-    }
-
-    // Criar um novo follow-up
-    const newFollowUp = await prisma.followUp.create({
-      data: {
-        campaign_id: targetCampaignId,
-        client_id: clientId,
-        status: "active",
-        current_step: 0,
-        current_stage_id: initialStageId,
-        started_at: new Date(),
-        next_message_at: new Date(), // Inicia imediatamente
-        is_responsive: false,
-        // Campos opcionais extras
-        metadata: Object.keys(metadataWithWorkspace).length > 0 
-          ? JSON.stringify(metadataWithWorkspace) 
-          : null,
-      }
-    });
-
-    // Iniciar o processamento das etapas de follow-up
-    processFollowUpSteps(newFollowUp.id);
-
-    return NextResponse.json(
-      { 
-        success: true, 
-        message: "Follow-up iniciado com sucesso", 
-        followUpId: newFollowUp.id 
-      }, 
-      { status: 201 }
-    );
-    
-  } catch (error) {
-    console.error("Erro ao iniciar follow-up:", error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: "Erro interno do servidor", 
-        details: error instanceof Error ? error.message : "Erro desconhecido"
-      }, 
-      { status: 500 }
-    );
-  }
   });
 }
 
@@ -219,7 +152,7 @@ export async function GET(req: NextRequest) {
       const clientId = searchParams.get('clientId');
       const status = searchParams.get('status');
       const campaignId = searchParams.get('campaignId');
-      const queryWorkspaceId = searchParams.get('workspaceId'); // Parâmetro de query
+      const queryWorkspaceId = searchParams.get('workspaceId');
       const page = parseInt(searchParams.get('page') || '1');
       const limit = parseInt(searchParams.get('limit') || '10');
       const skip = (page - 1) * limit;
@@ -242,10 +175,7 @@ export async function GET(req: NextRequest) {
           select: { campaign_id: true }
         });
         
-        const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
-        
-        // Se não houver campanhas associadas ao workspace, retornar lista vazia
-        if (campaignIds.length === 0) {
+        if (workspaceCampaigns.length === 0) {
           return NextResponse.json({
             success: true,
             data: [],
@@ -258,81 +188,102 @@ export async function GET(req: NextRequest) {
           });
         }
         
-        // Filtrar follow-ups das campanhas do workspace
+        const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
         where.campaign_id = { in: campaignIds };
       }
 
-      // Obter total de registros para paginação
-      const total = await prisma.followUp.count({ where });
+      // Usar transação para garantir consistência nos dados paginados
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Obter total de registros para paginação
+        const total = await tx.followUp.count({ where });
 
-      // Buscar registros com paginação
-      const followUps = await prisma.followUp.findMany({
-        where,
-        include: {
-          campaign: {
-            select: {
-              id: true,
-              name: true
+        // 2. Buscar registros com paginação e incluir dados relacionados
+        const followUps = await tx.followUp.findMany({
+          where,
+          include: {
+            campaign: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            messages: {
+              orderBy: { sent_at: 'desc' },
+              take: 5
             }
           },
-          messages: {
-            orderBy: { sent_at: 'desc' },
-            take: 5
-          }
-        },
-        orderBy: { updated_at: 'desc' },
-        skip,
-        take: limit
-      });
+          orderBy: { updated_at: 'desc' },
+          skip,
+          take: limit
+        });
 
-      // Expandir os dados com o nome do estágio atual
-      const followUpsWithStageNames = await Promise.all(followUps.map(async (followUp) => {
-        // Se temos um current_stage_id, buscar o nome do estágio
-        let current_stage_name = null;
-        if (followUp.current_stage_id) {
-          const stage = await prisma.followUpFunnelStage.findUnique({
-            where: { id: followUp.current_stage_id }
-          });
-          if (stage) {
-            current_stage_name = stage.name;
-          }
-        } else {
-          // Se não temos um current_stage_id mas temos mensagens, usar o último estágio conhecido
-          const lastMessage = followUp.messages
-            .filter(m => m.funnel_stage)
-            .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime())[0];
+        // 3. Buscar todos os estágios relevantes numa única consulta
+        const stageIds = followUps
+          .map(f => f.current_stage_id)
+          .filter(id => id) as string[];
           
-          if (lastMessage?.funnel_stage) {
-            current_stage_name = lastMessage.funnel_stage;
+        const stages = stageIds.length > 0 
+          ? await tx.followUpFunnelStage.findMany({
+              where: { id: { in: stageIds } }
+            })
+          : [];
+          
+        // Criar um mapa de ID para nome do estágio para facilitar a busca
+        const stageMap = new Map<string, string>();
+        stages.forEach(stage => {
+          stageMap.set(stage.id, stage.name);
+        });
+
+        // 4. Expandir os dados com o nome do estágio atual
+        const followUpsWithStageNames = followUps.map(followUp => {
+          // Obter o nome do estágio do mapa criado acima
+          let current_stage_name = followUp.current_stage_id 
+            ? stageMap.get(followUp.current_stage_id) || null
+            : null;
+            
+          // Se não temos o nome do estágio mas temos mensagens, usar o último estágio conhecido
+          if (!current_stage_name && followUp.messages.length > 0) {
+            const lastMessage = followUp.messages
+              .filter(m => m.funnel_stage)
+              .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime())[0];
+            
+            if (lastMessage?.funnel_stage) {
+              current_stage_name = lastMessage.funnel_stage;
+            }
           }
-        }
-        
-        // Extrair workspace_id dos metadados
-        let workspace_id = null;
-        if (followUp.metadata) {
-          try {
-            const metadata = JSON.parse(followUp.metadata);
-            workspace_id = metadata.workspace_id;
-          } catch (e) {
-            // Ignorar erros de parsing
+          
+          // Extrair workspace_id dos metadados de forma segura
+          let workspace_id = null;
+          if (followUp.metadata) {
+            try {
+              const metadata = JSON.parse(followUp.metadata);
+              workspace_id = metadata.workspace_id;
+            } catch (e) {
+              // Ignorar erros de parsing
+            }
           }
-        }
-        
+          
+          return {
+            ...followUp,
+            current_stage_name,
+            workspace_id
+          };
+        });
+
         return {
-          ...followUp,
-          current_stage_name,
-          workspace_id
+          total,
+          followUps: followUpsWithStageNames
         };
-      }));
+      });
 
       return NextResponse.json({
         success: true,
-        data: followUpsWithStageNames,
+        data: result.followUps,
         pagination: {
-          total,
+          total: result.total,
           page,
           limit,
-          pages: Math.ceil(total / limit)
+          pages: Math.ceil(result.total / limit)
         }
       });
       

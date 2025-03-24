@@ -44,85 +44,33 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Buscar a campanha incluindo os estágios e os passos relacionados
-    const campaign = await prisma.followUpCampaign.findUnique({
-      where: { id },
-      include: {
-        stages: {
-          select: {
-            id: true,
-            name: true,
-            order: true,
-            description: true
-          },
-          orderBy: {
-            order: 'asc'
-          }
-        },
-        campaign_steps: {
-          include: {
-            funnel_stage: true
-          }
-          // Removemos a ordenação aqui para ordenar manualmente depois
-        }
-      }
-    });
+    // Importar a função de domínio no início do arquivo
+    const { getCampaignDetails } = await import('../../_lib/initializer');
     
-    if (!campaign) {
+    try {
+      // Buscar os detalhes completos da campanha usando a função de domínio
+      const campaignDetails = await getCampaignDetails(id);
+      
+      // Log para depuração
+      console.log(`Campanha ${id}: ${campaignDetails.steps.length} passos ordenados`);
+      
+      return NextResponse.json({
+        success: true,
+        data: campaignDetails
+      });
+    } catch (error) {
+      // Se a função getCampaignDetails lançar erro (ex: campanha não encontrada)
+      console.error("Erro ao buscar detalhes da campanha:", error);
       return NextResponse.json(
         { 
           success: false, 
-          error: "Campanha não encontrada"
+          error: error instanceof Error ? error.message : "Campanha não encontrada"
         }, 
         { status: 404 }
       );
     }
-    
-    // Mapear os passos e incluir informações da etapa
-    const mappedSteps = campaign.campaign_steps.map(step => ({
-      id: step.id,
-      stage_id: step.funnel_stage_id,
-      stage_name: step.funnel_stage.name,
-      template_name: step.template_name,
-      wait_time: step.wait_time,
-      message: step.message_content,
-      category: step.message_category || 'Utility',
-      auto_respond: step.auto_respond,
-      stage_order: step.funnel_stage.order,
-      wait_time_ms: step.wait_time_ms
-    }));
-    
-    // Ordenar os passos primeiro pela ordem da etapa (stage_order) e depois pelo tempo de espera (wait_time_ms)
-    const formattedSteps = mappedSteps.sort((a, b) => {
-      // Primeiro, ordenar por stage_order
-      if (a.stage_order !== b.stage_order) {
-        return a.stage_order - b.stage_order;
-      }
-      
-      // Se estiverem na mesma etapa, ordenar pelo tempo de espera
-      return a.wait_time_ms - b.wait_time_ms;
-    });
-    
-    // Log para depuração
-    console.log(`Campanha ${id}: ${formattedSteps.length} estágios ordenados`);
-    
-    // Estruturar a resposta no formato esperado pelo frontend
-    const responseData = {
-      id: campaign.id,
-      name: campaign.name,
-      description: campaign.description,
-      active: campaign.active,
-      steps: formattedSteps,
-      stages: campaign.stages
-    };
-    
-    return NextResponse.json({
-      success: true,
-      data: responseData
-    });
-    
   } catch (error) {
-    console.error("Erro ao buscar detalhes da campanha:", error);
+    console.error("Erro ao processar solicitação:", error);
     return NextResponse.json(
       { 
         success: false, 
