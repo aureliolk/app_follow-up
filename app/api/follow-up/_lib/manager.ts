@@ -60,7 +60,7 @@ export function parseTimeString(timeStr: string): number {
   if (TEST_MODE) {
     return 30 * 1000; // 30 segundos para testes
   }
-  
+
   // Se o tempo estiver vazio ou for inválido, usar 30 minutos como padrão
   if (!timeStr || timeStr === undefined || timeStr.trim() === "") {
     return 30 * 60 * 1000; // 30 minutos
@@ -134,7 +134,6 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
               include: {
                 funnel_stage: true
               }
-              // Removemos a ordenação aqui para ordenar manualmente depois
             }
           }
         }
@@ -152,7 +151,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
 
     // Converter campaign_steps para o formato esperado
     let steps: FollowUpStep[] = [];
-    
+
     if (followUp.campaign?.campaign_steps && followUp.campaign.campaign_steps.length > 0) {
       // Mapear para o formato esperado por FollowUpStep
       steps = followUp.campaign.campaign_steps.map(step => ({
@@ -164,18 +163,15 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
         message: step.message_content,
         category: step.message_category || 'Utility',
         auto_respond: step.auto_respond !== undefined ? step.auto_respond : true,
-        stage_order: step.funnel_stage.order, // Adicionar a ordem da etapa
-        wait_time_ms: step.wait_time_ms // Adicionar o tempo em milissegundos
+        stage_order: step.funnel_stage.order,
+        wait_time_ms: step.wait_time_ms
       }));
 
-      // Ordenar os steps primeiro por stage_order (ordem da etapa) e depois por wait_time_ms (tempo de espera)
+      // Ordenar os steps primeiro por stage_order e depois por wait_time_ms
       steps.sort((a, b) => {
-        // Primeiro, ordenar por stage_order
         if (a.stage_order !== b.stage_order) {
           return a.stage_order - b.stage_order;
         }
-        
-        // Se estiverem na mesma etapa, ordenar pelo tempo de espera
         return a.wait_time_ms - b.wait_time_ms;
       });
 
@@ -204,7 +200,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     }
 
     // Verificar qual é a etapa atual
-    const currentStepIndex = followUp.current_step;
+    let currentStepIndex = followUp.current_step;
 
     // Se já completou todas as etapas, marcar como concluído
     if (currentStepIndex >= steps.length) {
@@ -222,48 +218,76 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     const currentStep = steps[currentStepIndex];
     console.log(`Etapa atual (${currentStepIndex}): ${currentStep.stage_name} - ${currentStep.template_name}`);
 
-    // Obter o nome do estágio atual (usando sempre stage_name - convertido na interface)
-    const currentStageName = currentStep.stage_name;
+    // Extrair metadados existentes
+    let existingMetadata: any = {};
+    let currentStageName = "";
 
-    // Obter o nome do estágio atual do metadata
-    let metadataStageName = "Não definido";
     try {
       if (followUp.metadata) {
-        const meta = JSON.parse(followUp.metadata);
-        metadataStageName = meta.current_stage_name || "Não definido";
+        existingMetadata = JSON.parse(followUp.metadata);
+        currentStageName = existingMetadata.current_stage_name || "";
       }
     } catch (e) {
       console.error("Erro ao analisar metadata:", e);
     }
 
-    // Vamos armazenar o nome da etapa no campo metadata como JSON
-    if (currentStageName && currentStageName !== metadataStageName) {
-      // Preparar o metadata como JSON
-      const metadata = JSON.stringify({
-        current_stage_name: currentStageName,
-        updated_at: new Date().toISOString()
-      });
+    // Verificar se o estágio mudou
+    const stageChanged = currentStep.stage_name !== currentStageName;
+    
+    // Verificar se a mudança foi resultado de uma resposta já processada
+    const isFromClientResponse = existingMetadata.processed_by_response === true;
 
+    if (stageChanged) {
+      console.log(`Detectada mudança de estágio: ${currentStageName || 'Inicial'} -> ${currentStep.stage_name}`);
+      
+      // Se a mudança foi resultado de uma resposta já processada,
+      // não precisamos fazer ajustes de índice, apenas seguir o fluxo
+      if (isFromClientResponse) {
+        console.log(`Mudança de estágio devido a uma resposta do cliente já processada, mantendo índice atual: ${currentStepIndex}`);
+      }
+      // Se não foi por resposta processada e o cliente respondeu, podemos ajustar para o início do estágio
+      else if (followUp.is_responsive && currentStageName !== "") {
+        // Encontrar o primeiro passo do estágio atual
+        const firstStepOfStage = steps.findIndex(s => s.stage_name === currentStep.stage_name);
+
+        if (firstStepOfStage !== -1 && firstStepOfStage !== currentStepIndex) {
+          console.log(`Ajustando índice do passo para o início do estágio atual: ${firstStepOfStage}`);
+          currentStepIndex = firstStepOfStage;
+        }
+      }
+
+      // Atualizar metadata com o novo estágio, mantendo a flag processed_by_response
+      const updatedMetadata = {
+        ...existingMetadata,
+        current_stage_name: currentStep.stage_name,
+        previous_stage_name: currentStageName || null,
+        updated_at: new Date().toISOString(),
+        step_in_stage: 0 // Resetar o contador de passos dentro deste estágio
+      };
+
+      // Atualizar o follow-up com o novo estágio
       await prisma.followUp.update({
         where: { id: followUpId },
         data: {
-          metadata: metadata,
-          current_stage_id: currentStep.stage_id // Também atualizar o ID da etapa atual
+          metadata: JSON.stringify(updatedMetadata),
+          current_stage_id: currentStep.stage_id,
+          current_step: currentStepIndex // Garantir que o índice do passo esteja correto
         }
       });
     }
 
-    // Obter o tempo de espera do estágio atual (usando sempre wait_time do novo formato)
+    // Obter o tempo de espera do passo atual
     const waitTime = parseTimeString(currentStep.wait_time);
 
-    // Calcular o horário da próxima mensagem - SEMPRE respeitando o tempo de espera definido
+    // Calcular o horário da próxima mensagem
     const nextMessageTime = new Date(Date.now() + waitTime);
 
     // Atualizar o follow-up com o horário da próxima mensagem
     await prisma.followUp.update({
       where: { id: followUpId },
       data: {
-        next_message_at: nextMessageTime
+        next_message_at: nextMessageTime,
+        current_step: currentStepIndex // Garantir que o current_step esteja correto
       }
     });
 
@@ -273,7 +297,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
         follow_up_id: followUpId,
         step: currentStepIndex,
         content: currentStep.message,
-        funnel_stage: currentStageName,
+        funnel_stage: currentStep.stage_name,
         template_name: currentStep.template_name,
         category: currentStep.category,
         sent_at: new Date(),
@@ -284,24 +308,22 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
     // Extrair o nome do cliente do ID ou usar valores default
     let clientName = followUp.client_id;
 
-    // Formatar o nome do cliente para título caso (primeira letra maiúscula)
+    // Formatar o nome do cliente
     if (clientName && clientName.length > 0) {
       clientName = clientName.charAt(0).toUpperCase() + clientName.slice(1).toLowerCase();
     }
 
-    // Todas as mensagens respeitam o tempo de espera definido
-    const messageScheduledTime = nextMessageTime;
-    
     // Agendar o envio da mensagem atual
     await scheduleMessage({
       followUpId,
       stepIndex: currentStepIndex,
       message: currentStep.message,
-      scheduledTime: messageScheduledTime,
+      scheduledTime: nextMessageTime,
       clientId: followUp.client_id,
       metadata: {
         template_name: currentStep.template_name,
         category: currentStep.category,
+        stage_name: currentStep.stage_name,
         clientName: clientName,
         templateParams: {
           name: currentStep.template_name,
@@ -314,7 +336,7 @@ export async function processFollowUpSteps(followUpId: string): Promise<void> {
       }
     });
 
-    // Agendar a próxima etapa se o cliente não responder
+    // Agendar a próxima etapa
     await scheduleNextStep(followUpId, currentStepIndex + 1, nextMessageTime);
   } catch (error) {
     console.error("Erro ao processar etapas de follow-up:", error);
@@ -449,7 +471,7 @@ export async function scheduleNextStep(
             // Continuar normalmente
           } else {
             console.log(`Follow-up ${followUpId} marcado como responsivo mas não processado - configurando metadata`);
-            
+
             // Configurar metadata em vez de pausar
             try {
               // Obter metadata atual ou criar novo objeto
@@ -461,23 +483,23 @@ export async function scheduleNextStep(
                   // Se não conseguir analisar, usar objeto vazio
                 }
               }
-              
+
               // Marcar como processado para não pausar nas próximas vezes
               metadata.processed_by_response = true;
               metadata.updated_at = new Date().toISOString();
-              
+
               await prisma.followUp.update({
                 where: { id: followUpId },
                 data: {
                   metadata: JSON.stringify(metadata)
                 }
               });
-              
+
               console.log(`Metadata atualizado para o follow-up ${followUpId}`);
             } catch (e) {
               console.error(`Erro ao atualizar metadata do follow-up ${followUpId}:`, e);
             }
-            
+
             // Continuar o fluxo normalmente em vez de pausar
           }
         }
@@ -507,6 +529,22 @@ export async function scheduleNextStep(
           });
 
           updateData.metadata = metadata;
+        }
+
+        // Se não estamos mudando de estágio devido a uma resposta do cliente,
+        // devemos limpar o flag processed_by_response para permitir novas respostas
+        if (!updateData.metadata && currentFollowUp.metadata) {
+          try {
+            const metadata = JSON.parse(currentFollowUp.metadata);
+            if (metadata.processed_by_response) {
+              metadata.processed_by_response = false;
+              metadata.updated_at = new Date().toISOString();
+              updateData.metadata = JSON.stringify(metadata);
+              console.log(`Redefinindo flag processed_by_response para permitir novas respostas do cliente`);
+            }
+          } catch (e) {
+            console.error("Erro ao analisar metadata para limpar flag processed_by_response:", e);
+          }
         }
 
         // Atualizar o follow-up para a próxima etapa
@@ -645,7 +683,7 @@ export async function cancelScheduledMessageForStep(followUpId: string, stepInde
   try {
     // Encontrar a chave específica para esta etapa
     const keyToRemove = `${followUpId}-${stepIndex}`;
-    
+
     // Verificar se existe um timeout ativo para esta etapa
     if (activeTimeouts.has(keyToRemove)) {
       clearTimeout(activeTimeouts.get(keyToRemove)!);
@@ -662,21 +700,26 @@ export async function cancelScheduledMessageForStep(followUpId: string, stepInde
 export async function handleClientResponse(
   clientId: string,
   message: string,
-  followUpId?: string,
-  respondedMessageId?: string // Novo parâmetro para identificar a mensagem respondida
+  followUpId?: string
 ): Promise<void> {
   try {
+    console.log('=== DADOS DA RESPOSTA DO CLIENTE ===');
+    console.log('followUpId:', followUpId);
+    console.log('clientId:', clientId);
+    console.log('message:', message);
+    console.log('=== FIM DADOS DA RESPOSTA DO CLIENTE ===');
+
     // Buscar follow-ups ativos para este cliente (específico ou todos)
     const whereClause = {
       client_id: clientId,
       status: { in: ['active', 'paused'] }
     };
-    
+
     // Se temos um ID específico, adicionar à consulta
     if (followUpId) {
       Object.assign(whereClause, { id: followUpId });
     }
-    
+
     const activeFollowUps = await prisma.followUp.findMany({
       where: whereClause,
       include: {
@@ -690,27 +733,44 @@ export async function handleClientResponse(
 
     // Para cada follow-up ativo deste cliente
     for (const followUp of activeFollowUps) {
-      // Carregar etapas da campanha
+      // Carregar etapas da campanha e ordenar corretamente
       let steps: FollowUpStep[] = [];
-      if (followUp.campaign?.steps) {
+
+      if (followUp.campaign?.campaign_steps && followUp.campaign.campaign_steps.length > 0) {
+        // Usar os campaign_steps relacionados
+        const campaignSteps = await prisma.followUpStep.findMany({
+          where: { campaign_id: followUp.campaign_id },
+          include: { funnel_stage: true },
+          orderBy: [
+            { funnel_stage: { order: 'asc' } },
+            { wait_time_ms: 'asc' }
+          ]
+        });
+
+        // Mapear para o formato esperado
+        steps = campaignSteps.map(step => ({
+          id: step.id,
+          stage_id: step.funnel_stage_id,
+          stage_name: step.funnel_stage.name,
+          template_name: step.template_name,
+          wait_time: step.wait_time,
+          message: step.message_content,
+          category: step.message_category || 'Utility',
+          auto_respond: step.auto_respond,
+          stage_order: step.funnel_stage.order,
+          wait_time_ms: step.wait_time_ms
+        }));
+      } else if (followUp.campaign?.steps) {
+        // Fallback para o campo steps como JSON
         try {
-          const stepsString = followUp.campaign.steps as string;
-          if (stepsString && stepsString.trim() !== '' && stepsString !== '[]') {
-            steps = JSON.parse(stepsString) as FollowUpStep[];
-          } else {
-            // Sem dados de etapas, não podemos continuar
-            console.log(`Follow-up ${followUp.id} tem campanha sem steps válidos`);
-            continue;
+          const stepsData = JSON.parse(followUp.campaign.steps as string);
+          if (Array.isArray(stepsData) && stepsData.length > 0) {
+            steps = stepsData;
           }
         } catch (err) {
-          console.error(`Erro ao analisar steps da campanha para follow-up ${followUp.id}:`, err);
-          // Não usar fallback para CSV, simplesmente continuar para o próximo follow-up
+          console.error(`Erro ao analisar steps de campanha para follow-up ${followUp.id}:`, err);
           continue;
         }
-      } else {
-        // Não há campanha ou steps, não podemos continuar
-        console.log(`Follow-up ${followUp.id} não tem campanha ou steps`);
-        continue;
       }
 
       if (!steps || steps.length === 0) {
@@ -721,9 +781,9 @@ export async function handleClientResponse(
       // Identificar a fase atual do funil
       const currentStepIndex = followUp.current_step;
       const currentStep = steps[currentStepIndex];
-      const currentFunnelStage = currentStep?.stage_name;
+      const currentStageName = currentStep?.stage_name;
 
-      console.log(`Follow-up ${followUp.id} - Fase atual: ${currentFunnelStage}, Etapa atual: ${currentStepIndex}`);
+      console.log(`Follow-up ${followUp.id} - Fase atual: ${currentStageName}, Etapa atual: ${currentStepIndex}`);
 
       // Registrar a resposta do cliente
       await prisma.followUpMessage.create({
@@ -734,101 +794,65 @@ export async function handleClientResponse(
           sent_at: new Date(),
           delivered: true,
           delivered_at: new Date(),
-          funnel_stage: currentFunnelStage,
-          // A mensagem respondida será armazenada no metadata em vez de usar um campo que não existe
-          category: respondedMessageId ? `Resposta à mensagem ${respondedMessageId}` : 'Resposta do cliente'
+          funnel_stage: currentStageName,
+          category: 'Resposta do cliente'
         }
       });
 
-      // Recuperar o metadata atual para preservar informações relevantes
-      let currentMetadata = {};
+      // Recuperar o metadata atual
+      let currentMetadata: any = {};
       try {
         if (followUp.metadata) {
           currentMetadata = JSON.parse(followUp.metadata);
         }
       } catch (err) {
-        console.error(`Erro ao analisar metadata atual do follow-up ${followUp.id}:`, err);
+        console.error(`Erro ao analisar metadata do follow-up ${followUp.id}:`, err);
       }
 
-      // Preparar um objeto de respostas para rastrear quais etapas foram respondidas
+      // Registrar a resposta do cliente nos metadados
       if (!currentMetadata.responses) {
         currentMetadata.responses = {};
       }
-      
-      // Registrar esta etapa específica como respondida
+
       currentMetadata.responses[currentStepIndex.toString()] = {
         timestamp: new Date().toISOString(),
         message: message
       };
-      
-      // Marcar apenas a etapa atual como respondida, não todo o follow-up
-      await prisma.followUp.update({
-        where: { id: followUp.id },
-        data: {
-          is_responsive: true, // Ainda usamos este campo para compatibilidade
-          metadata: JSON.stringify({
-            ...currentMetadata,
-            updated_at: new Date().toISOString(),
-            last_response: message,
-            current_stage_name: currentFunnelStage,
-            current_step_responded: currentStepIndex
-          })
-        }
-      });
 
-      console.log(`Registrada resposta para etapa ${currentStepIndex} do follow-up ${followUp.id}`);
-
-      // IMPORTANTE: Cancelar apenas as mensagens agendadas para a etapa atual
-      // NÃO cancelamos todas as mensagens do follow-up
+      // Cancelar a mensagem atual pois o cliente já respondeu
       await cancelScheduledMessageForStep(followUp.id, currentStepIndex);
-      
-      // Quando recebemos uma resposta do cliente, queremos avançar para a próxima FASE
-      // e não para o próximo estágio dentro da mesma fase
-      
-      // 1. Procurar a próxima etapa na mesma fase (apenas para referência)
-      let nextStepInSamePhase = -1;
-      for (let i = currentStepIndex + 1; i < steps.length; i++) {
-        const stepFunnelStage = steps[i]?.stage_name;
-        if (stepFunnelStage === currentFunnelStage) {
-          nextStepInSamePhase = i;
-          break;
-        }
+
+      // Agora, procurar qual é o próximo estágio do funil
+      // Precisamos encontrar a primeira etapa do próximo estágio
+
+      // 1. Identificar todos os estágios únicos na ordem correta
+      const stageNames = [...new Set(steps.map(s => s.stage_name))];
+      const currentStageIndex = stageNames.indexOf(currentStageName);
+
+      // 2. Verificar se há um próximo estágio
+      let nextStageIndex = currentStageIndex + 1;
+      let nextStageName = "";
+      let firstStepOfNextStage = -1;
+
+      if (nextStageIndex < stageNames.length) {
+        nextStageName = stageNames[nextStageIndex];
+
+        // 3. Encontrar o primeiro passo do próximo estágio
+        firstStepOfNextStage = steps.findIndex(s => s.stage_name === nextStageName);
       }
 
-      // 2. Procurar a primeira etapa da próxima fase
-      let firstStepOfNextPhase = -1;
-      let nextPhaseName = '';
-      for (let i = 0; i < steps.length; i++) {
-        const stepFunnelStage = steps[i]?.stage_name;
-        if (stepFunnelStage && stepFunnelStage !== currentFunnelStage) {
-          firstStepOfNextPhase = i;
-          nextPhaseName = stepFunnelStage;
-          break;
-        }
-      }
-
-      // Lógica de decisão: para onde vamos mover o cliente?
-      let nextStepIndex: number;
-      let nextStageName: string;
+      // 4. Decidir para qual passo avançar
+      let nextStepIndex = -1;
       let completeCampaign = false;
 
-      // IMPORTANTE: Quando recebemos uma resposta do cliente, o comportamento é diferente
-      // Ao invés de seguir para a próxima etapa da mesma fase, vamos direto para a próxima fase
-      if (firstStepOfNextPhase >= 0) {
-        // Avançar para a primeira etapa da próxima fase
-        nextStepIndex = firstStepOfNextPhase;
-        nextStageName = nextPhaseName;
-        console.log(`Cliente respondeu: Avançando para primeira etapa da próxima fase: ${nextStepIndex} (${nextPhaseName})`);
-      } else if (nextStepInSamePhase >= 0) {
-        // Se não houver próxima fase, mas houver mais etapas na fase atual
-        // Isso só deve acontecer se a campanha tiver múltiplas etapas na mesma fase
-        nextStepIndex = nextStepInSamePhase;
-        nextStageName = currentFunnelStage;
-        console.log(`Cliente respondeu: Não há próxima fase, avançando para próxima etapa na mesma fase: ${nextStepIndex}`);
+      if (firstStepOfNextStage >= 0) {
+        // Avançar para o primeiro passo do próximo estágio
+        nextStepIndex = firstStepOfNextStage;
+        console.log(`Cliente respondeu: Avançando para primeira etapa da próxima fase: ${nextStepIndex} (${nextStageName})`);
       } else {
-        // Não há mais etapas em nenhuma fase, completar o follow-up
+        // Não há próximo estágio, completar a campanha
         completeCampaign = true;
-        console.log(`Cliente respondeu: Não há mais etapas, completando follow-up ${followUp.id}`);
+        console.log(`Cliente respondeu: Não há mais estágios, completando follow-up ${followUp.id}`);
       }
 
       if (completeCampaign) {
@@ -852,6 +876,7 @@ export async function handleClientResponse(
           where: { id: followUp.id },
           data: {
             current_step: nextStepIndex,
+            is_responsive: false, // Redefinir para false ao mudar para o próximo estágio
             status: 'active',
             next_message_at: new Date(), // Processar próxima etapa imediatamente
             metadata: JSON.stringify({
@@ -863,7 +888,8 @@ export async function handleClientResponse(
               processed_by_response: true,
               advanced_after_response: true,
               previous_step: currentStepIndex,
-              new_step: nextStepIndex
+              new_step: nextStepIndex,
+              previous_stage_name: currentStageName // Salvar o nome do estágio anterior
             })
           }
         });
