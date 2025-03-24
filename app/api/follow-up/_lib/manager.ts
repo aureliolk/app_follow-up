@@ -386,8 +386,43 @@ async function handleStageTransition(
   nextStep: FollowUpStep
 ): Promise<void> {
   try {
-    // Não pausar para interação, sempre avançar automaticamente
-    console.log(`Follow-up ${followUp.id} - Avançando automaticamente para o próximo estágio: ${nextStep.stage_name}`);
+    // Modificação: Ao invés de avançar automaticamente, pausar para aguardar interação ou envio completo
+    console.log(`Follow-up ${followUp.id} - Preparando transição para o próximo estágio: ${nextStep.stage_name}`);
+    
+    // Verificar se existem mensagens pendentes (não entregues) neste estágio
+    const pendingMessages = await prisma.followUpMessage.findMany({
+      where: {
+        follow_up_id: followUp.id,
+        funnel_stage: currentStep.stage_name,
+        delivered: false
+      }
+    });
+
+    if (pendingMessages.length > 0) {
+      console.log(`Follow-up ${followUp.id} - Existem ${pendingMessages.length} mensagens pendentes no estágio "${currentStep.stage_name}". Pausando para aguardar envio completo.`);
+      
+      // Pausar o follow-up para aguardar o envio completo das mensagens
+      await prisma.followUp.update({
+        where: { id: followUp.id },
+        data: {
+          is_responsive: false,
+          waiting_for_response: true,
+          paused_reason: `Aguardando envio de ${pendingMessages.length} mensagens pendentes do estágio "${currentStep.stage_name}"`
+        }
+      });
+      
+      // Criar mensagem de sistema informando sobre a pausa
+      await createSystemMessage(
+        followUp.id,
+        `Follow-up pausado para aguardar envio completo das mensagens do estágio "${currentStep.stage_name}".`,
+        "System"
+      );
+      
+      return; // Encerrar o processamento até que todas as mensagens sejam enviadas
+    }
+    
+    // Todas as mensagens já foram enviadas, podemos avançar para o próximo estágio
+    console.log(`Follow-up ${followUp.id} - Avançando para o próximo estágio: ${nextStep.stage_name}`);
 
     // Criar registro de transição
     await prisma.followUpStateTransition.create({
@@ -397,17 +432,17 @@ async function handleStageTransition(
         to_stage_id: nextStep.stage_id || nextStep.funnel_stage_id,
         from_stage_name: currentStep.stage_name,
         to_stage_name: nextStep.stage_name,
-        triggered_by: 'automatic_stage_advance'
+        triggered_by: 'stage_completion'
       }
     });
 
     // Criar mensagem de sistema informando sobre a transição
     await createSystemMessage(
       followUp.id,
-      `Sistema avançou automaticamente do estágio "${currentStep.stage_name}" para "${nextStep.stage_name}".`
+      `Sistema avançou para o próximo estágio "${nextStep.stage_name}" após concluir o estágio "${currentStep.stage_name}".`
     );
 
-    // Avançar diretamente para o próximo estágio
+    // Avançar para o próximo estágio
     const nextStepIndex = followUp.current_step + 1;
     
     // Atualizar o follow-up para o novo estágio
@@ -417,6 +452,8 @@ async function handleStageTransition(
         current_stage_name: nextStep.stage_name,
         previous_stage_name: currentStep.stage_name,
         current_stage_id: nextStep.stage_id || nextStep.funnel_stage_id,
+        waiting_for_response: false,
+        is_responsive: false,
         metadata: null // Limpar metadados para evitar confusão
       }
     });
