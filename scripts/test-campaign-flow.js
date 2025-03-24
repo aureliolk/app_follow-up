@@ -6,12 +6,12 @@ import axios from 'axios';
 // Configuração - será sobrescrita pelos argumentos da linha de comando
 let CONFIG = {
   baseUrl: 'http://localhost:3000',
-  campaignId: '7229d9e9-932e-4834-a51d-a7d8d9566b27',
+  campaignId: 'd17d857b-8366-4a90-9434-6dec8416dab6',
   clientId: '58',
   timeout: 120000, // Tempo máximo para aguardar cada mensagem (120s)
   responseMessage: 'Esta é uma resposta de teste automático',
   verbose: true,
-  "x-api-key": 'wsat_fGO7nVXfQF8qDFhDkOfnb1l06vvQYkvrEzKFAns' // Chave de API para testes
+  "x-api-key": 'wsat_SzYfBm0661doBFQ4LdcgFSGCUAhjCkvadXleIphPE4' // Chave de API para testes
 };
 
 // Cores para saída no console

@@ -1,8 +1,8 @@
-// app/api/follow-up/_lib/scheduler.ts
+// app/api/follow-up/_lib/scheduler.refactor.ts
+// Versão refatorada do agendador de mensagens
 
-// Importações necessárias
 import { prisma } from '@/lib/db';
-import axios from 'axios'; // Usando axios que já deve estar instalado
+import axios from 'axios';
 
 // Mapa para armazenar timeouts ativos
 export const activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
@@ -53,16 +53,14 @@ export async function scheduleMessage(message: ScheduledMessage): Promise<string
     const timeout = setTimeout(async () => {
       try {
         console.log(`Executando timeout para mensagem ${messageId}`);
-        console.log("DEBUG - Antes de chamar sendMessage");
         await sendMessage(message);
-        console.log("DEBUG - Após chamar sendMessage");
       } catch (error: any) {
         console.error(`Erro ao enviar mensagem agendada ${messageId}:`, error);
         console.error(`Stack trace do erro:`, error.stack);
       } finally {
         // Remover do mapa após execução
         activeTimeouts.delete(messageId);
-        console.log(`DEBUG - Timeout removido do mapa: ${messageId}`);
+        console.log(`Timeout removido do mapa: ${messageId}`);
       }
     }, delay);
     
@@ -160,9 +158,6 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
     
     return true;
   } catch (error: any) {
-    // Definir requestBody aqui para o escopo do bloco catch
-    const requestBody = "Dados da requisição não disponíveis no escopo de erro";
-    
     console.error(`===== ERRO AO ENVIAR MENSAGEM PARA API LUMIBOT =====`);
     console.error(`Mensagem de erro:`, error.message);
     console.error(`Request URL: https://app.lumibot.com.br/api/v1/accounts/10/conversations/${clientId}/messages`);
@@ -174,7 +169,7 @@ async function sendMessageToLumibot(clientId: string, content: string, metadata?
   }
 }
 
-// Função para enviar a mensagem
+// Função para enviar a mensagem - refatorada para usar campos estruturados
 async function sendMessage(message: ScheduledMessage): Promise<void> {
   try {
     console.log('===== LOG DE ENVIO DE MENSAGEM =====');
@@ -194,19 +189,10 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
       return;
     }
     
-    // Verificar se o cliente já respondeu e mudou de fase
-    try {
-      if (followUp.metadata) {
-        const metadata = JSON.parse(followUp.metadata);
-        console.log('Metadata do follow-up:', JSON.stringify(metadata));
-        
-        if (metadata.processed_by_response && followUp.current_step !== message.stepIndex) {
-          console.log('Cliente já respondeu e mudou de fase, cancelando envio');
-          return;
-        }
-      }
-    } catch (e) {
-      console.error("Erro ao analisar metadata:", e);
+    // Verificar se o cliente já respondeu e mudou de fase usando os campos estruturados
+    if (followUp.processed_by_response && followUp.current_step !== message.stepIndex) {
+      console.log('Cliente já respondeu e mudou de fase, cancelando envio');
+      return;
     }
     
     // Sempre enviar mensagens reais para a API
@@ -216,7 +202,7 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
     console.log('Template:', message.metadata?.template_name);
     console.log('Categoria:', message.metadata?.category);
     
-    // Enviar a mensagem para a API Lumibot, independentemente do ambiente
+    // Enviar a mensagem para a API Lumibot
     success = await sendMessageToLumibot(message.clientId, message.message, message.metadata);
     console.log('Resultado do envio via Lumibot:', success ? 'SUCESSO' : 'FALHA');
     
@@ -279,7 +265,51 @@ export async function cancelScheduledMessages(followUpId: string): Promise<void>
 
 // Função para carregar e reagendar mensagens pendentes na inicialização do servidor
 export async function reloadPendingMessages(): Promise<void> {
-  // Implementação existente...
+  try {
+    // Buscar todos os follow-ups ativos com próxima mensagem agendada
+    const activeFollowUps = await prisma.followUp.findMany({
+      where: {
+        status: 'active',
+        next_message_at: { not: null }
+      },
+      include: {
+        messages: {
+          where: {
+            delivered: false
+          },
+          orderBy: { step: 'asc' }
+        }
+      }
+    });
+
+    console.log(`Recarregando ${activeFollowUps.length} follow-ups ativos com mensagens pendentes`);
+
+    for (const followUp of activeFollowUps) {
+      // Verificar se temos mensagens não entregues para este follow-up
+      if (followUp.messages.length === 0) continue;
+
+      // Obter a próxima mensagem a ser enviada
+      const nextMessage = followUp.messages[0];
+      
+      // Agendar o envio
+      await scheduleMessage({
+        followUpId: followUp.id,
+        stepIndex: nextMessage.step,
+        message: nextMessage.content,
+        scheduledTime: followUp.next_message_at || new Date(),
+        clientId: followUp.client_id,
+        metadata: {
+          template_name: nextMessage.template_name,
+          category: nextMessage.category,
+          stage_name: nextMessage.funnel_stage
+        }
+      });
+
+      console.log(`Reagendado envio da mensagem do passo ${nextMessage.step} para follow-up ${followUp.id}`);
+    }
+  } catch (error) {
+    console.error("Erro ao recarregar mensagens pendentes:", error);
+  }
 }
 
 // Exportar as funções necessárias
@@ -301,4 +331,3 @@ if (typeof window === 'undefined') { // Verificar se estamos no lado do servidor
     });
   }, 5000); // Aguardar 5 segundos após a inicialização
 }
-

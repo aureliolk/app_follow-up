@@ -1,4 +1,6 @@
 // app/api/follow-up/_lib/initializer.ts
+// Versão refatorada do inicializador de follow-up
+
 import { prisma } from '@/lib/db';
 import { processFollowUpSteps } from './manager';
 import { setMessageProcessor } from './scheduler';
@@ -110,7 +112,7 @@ export async function findActiveFollowUp(
 }
 
 /**
- * Inicia um novo follow-up
+ * Inicia um novo follow-up - refatorado para usar campos estruturados
  */
 export async function initializeNewFollowUp(
   clientId: string,
@@ -138,9 +140,11 @@ export async function initializeNewFollowUp(
     }
 
     // 2. Obter o primeiro estágio do funil
-    const initialStageId = campaign.stages.length > 0 ? campaign.stages[0].id : null;
+    const initialStage = campaign.stages.length > 0 ? campaign.stages[0] : null;
+    const initialStageId = initialStage?.id || null;
+    const initialStageName = initialStage?.name || null;
 
-    // 3. Preparar metadados
+    // 3. Preparar metadados auxiliares (não críticos)
     let metadataObj = metadata || {};
     if (workspaceId) {
       metadataObj = {
@@ -149,7 +153,7 @@ export async function initializeNewFollowUp(
       };
     }
 
-    // 4. Criar o novo follow-up
+    // 4. Criar o novo follow-up com campos estruturados
     const newFollowUp = await tx.followUp.create({
       data: {
         campaign_id: campaignId,
@@ -157,14 +161,29 @@ export async function initializeNewFollowUp(
         status: "active",
         current_step: 0,
         current_stage_id: initialStageId,
+        current_stage_name: initialStageName,
         started_at: new Date(),
         next_message_at: new Date(), // Inicia imediatamente
         is_responsive: false,
+        waiting_for_response: false,
+        processed_by_response: false,
         metadata: Object.keys(metadataObj).length > 0 
           ? JSON.stringify(metadataObj) 
           : null,
       }
     });
+
+    // 5. Registrar a criação do follow-up como transição inicial
+    if (initialStageId && initialStageName) {
+      await tx.followUpStateTransition.create({
+        data: {
+          follow_up_id: newFollowUp.id,
+          to_stage_id: initialStageId,
+          to_stage_name: initialStageName,
+          triggered_by: 'initialization'
+        }
+      });
+    }
 
     return newFollowUp;
   });

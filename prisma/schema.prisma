@@ -100,23 +100,35 @@ model FollowUpStep {
 }
 
 model FollowUp {
-  id               String            @id @default(uuid())
-  campaign_id      String
-  client_id        String
-  current_step     Int               @default(0)
-  status           String
-  started_at       DateTime          @default(now())
-  updated_at       DateTime          @updatedAt
-  next_message_at  DateTime?
-  completed_at     DateTime?
-  is_responsive    Boolean           @default(false)
-  metadata         String?
-  current_stage_id String?
-  messages         FollowUpMessage[]
-  campaign         FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
+  id                   String                    @id @default(uuid())
+  campaign_id          String
+  client_id            String
+  current_step         Int                       @default(0)
+  status               String
+  started_at           DateTime                  @default(now())
+  updated_at           DateTime                  @updatedAt
+  next_message_at      DateTime?
+  completed_at         DateTime?
+  is_responsive        Boolean                   @default(false)
+  metadata             String?                   // Mantido para compatibilidade, será gradualmente deprecado
+  current_stage_id     String?
+  current_stage_name   String?
+  previous_stage_name  String?
+  waiting_for_response Boolean                   @default(false)
+  paused_reason        String?
+  completion_reason    String?                   // Adicionado para registrar o motivo da conclusão
+  last_response        String?
+  last_response_date   DateTime?
+  processed_by_response Boolean?                 @default(false)
+  messages             FollowUpMessage[]
+  state_transitions    FollowUpStateTransition[]
+  client_responses     FollowUpClientResponse[]
+  campaign             FollowUpCampaign          @relation(fields: [campaign_id], references: [id])
 
   @@index([client_id])
   @@index([status])
+  @@index([current_stage_name])
+  @@index([waiting_for_response])
   @@map("follow_ups")
   @@schema("follow_up_schema")
 }
@@ -132,10 +144,42 @@ model FollowUpMessage {
   category      String?
   funnel_stage  String?
   template_name String?
-  follow_up     FollowUp  @relation(fields: [follow_up_id], references: [id])
+  follow_up     FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
 
   @@index([follow_up_id, step])
   @@map("follow_up_messages")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpStateTransition {
+  id              String    @id @default(uuid())
+  follow_up_id    String
+  from_stage_id   String?
+  to_stage_id     String?
+  from_stage_name String?
+  to_stage_name   String?
+  transition_date DateTime  @default(now())
+  triggered_by    String?   // "system", "client_response", "manual", etc
+  metadata        String?
+  follow_up       FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
+
+  @@index([follow_up_id])
+  @@map("follow_up_state_transitions")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpClientResponse {
+  id                String    @id @default(uuid())
+  follow_up_id      String
+  message           String
+  received_at       DateTime  @default(now())
+  current_step      Int
+  current_stage_name String?
+  triggered_advance Boolean?  @default(false)
+  follow_up         FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
+
+  @@index([follow_up_id])
+  @@map("follow_up_client_responses")
   @@schema("follow_up_schema")
 }
 
