@@ -937,12 +937,14 @@ async function processActiveFollowUpResponse(
       return;
     }
     
-    // Verificar se existem mensagens pendentes no estágio atual
+    // Verificar se existem mensagens pendentes e já criadas/agendadas no estágio atual
+    // É importante verificar apenas mensagens que já foram agendadas (com step <= current_step)
     const pendingMessages = await prisma.followUpMessage.findMany({
       where: {
         follow_up_id: followUp.id,
         funnel_stage: followUp.current_stage_name || currentStep.stage_name,
-        delivered: false
+        delivered: false,
+        step: { lte: followUp.current_step } // Apenas passos até o atual (já enviados/agendados)
       }
     });
     
@@ -1031,8 +1033,13 @@ async function processActiveFollowUpResponse(
     stepsInCurrentStage.sort((a, b) => steps.indexOf(a) - steps.indexOf(b));
     
     // Verificar se o passo atual é o último passo do estágio
+    // Essa verificação não é mais usada, pois vamos avançar ao próximo estágio
+    // independentemente de estar no último passo ou não, se o cliente responder
     const isLastStepOfStage = stepsInCurrentStage.length > 0 && 
                               stepsInCurrentStage[stepsInCurrentStage.length - 1].id === currentStep.id;
+                              
+    // Informar no log que vamos tentar avançar o estágio de qualquer forma
+    console.log(`Cliente respondeu durante estágio ${currentStageName}. Vamos tentar avançar para o próximo estágio, independente do passo atual.`);
     
     // Verificar se existe próximo estágio
     if (currentStageIndex < stageNames.length - 1) {

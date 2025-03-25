@@ -229,12 +229,17 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
       if (followUp && followUp.status === 'active' && 
           followUp.paused_reason && followUp.paused_reason.includes('Aguardando envio de')) {
         
-        // Verificar se ainda existem mensagens pendentes para este estágio
+        // Verificar se ainda existem mensagens pendentes (já criadas) para este estágio
         const pendingMessages = await prisma.followUpMessage.findMany({
           where: {
             follow_up_id: message.followUpId,
             funnel_stage: message.metadata?.stage_name,
-            delivered: false
+            delivered: false,
+            // Apenas mensagens que já foram criadas (passo específico ou passos anteriores)
+            OR: [
+              { step: message.stepIndex }, // A própria mensagem que está sendo verificada
+              { step: { lt: message.stepIndex } } // Ou mensagens de passos anteriores
+            ]
           }
         });
         
