@@ -1,88 +1,84 @@
 root@lumi-dev:~/app_follow-up# node scripts/test-refactored-followup.js 
-[21:41:31] 
+[23:50:23] 
 =============================================
-[21:41:31] TESTE DO SISTEMA DE FOLLOW-UP REFATORADO
-[21:41:31] =============================================
+[23:50:23] TESTE DO SISTEMA DE FOLLOW-UP REFATORADO
+[23:50:23] =============================================
 
-[21:41:31] Preparando criação de follow-up para cliente 58...
-[21:41:31] Verificando se existe follow-up ativo para o cliente 58...
-[21:41:31] Encontrados 1 follow-ups ativos para o cliente 58
-[21:41:31] Cancelando 1 follow-ups existentes antes de criar um novo...
-[21:41:31] Cancelando follow-up 20cc0b7b-6c16-4627-98d1-cc5da6cf4369...
-[21:41:31] Cancelando follow-up 20cc0b7b-6c16-4627-98d1-cc5da6cf4369...
-[21:41:32] Follow-up cancelado com sucesso via API!
-[21:41:33] Criando novo follow-up para cliente 58...
-[21:41:33] Follow-up criado com sucesso! ID: 1664b953-6bbf-43e0-9b1f-0e5945347eed
-[21:41:34] Verificando campos estruturados do follow-up...
-[21:41:34] Status: active
-[21:41:34] Stage atual: Etapa 1
-[21:41:34] ID do estágio atual: db23d600-a32d-4364-9f42-1bea9671e59d
-[21:41:34] Estágio anterior: Nenhum
-[21:41:34] Aguardando resposta: Não
-[21:41:34] Total de transições registradas: 1
-[21:41:34] Transição 1: Início -> Etapa 1
-[21:41:34] Total de respostas registradas: 0
-[21:41:34] Estágio inicial: "Etapa 1"
-[21:41:34] Aguardando o envio de TODAS as mensagens do estágio inicial...
-[21:41:34] Total de passos no estágio "Etapa 1": 2
-[21:41:34] Mensagens pendentes: 1
-[21:41:34] Mensagens entregues até agora: 0/2
-[21:41:34] Ainda existem 1 mensagens pendentes.
-[21:41:34] Aguardando envio de mais mensagens (tentativa 1/20)...
-[21:41:44] Mensagens entregues até agora: 0/2
-[21:41:44] Ainda existem 1 mensagens pendentes.
-[21:41:44] Aguardando envio de mais mensagens (tentativa 2/20)...
-[21:41:54] Mensagens entregues até agora: 0/2
-[21:41:54] Ainda existem 1 mensagens pendentes.
-[21:41:54] Aguardando envio de mais mensagens (tentativa 3/20)...
-[21:42:04] Mensagens entregues até agora: 0/2
-[21:42:04] Ainda existem 2 mensagens pendentes.
-[21:42:04] Aguardando envio de mais mensagens (tentativa 4/20)...
-[21:42:14] Mensagens entregues até agora: 1/2
-[21:42:14] Já temos 1/2 mensagens entregues. Continuando a aguardar...
-[21:42:14] Ainda existem 1 mensagens pendentes.
-[21:42:14] Aguardando envio de mais mensagens (tentativa 5/20)...
-[21:42:24] Mensagens entregues até agora: 1/2
-[21:42:24] Já temos 1/2 mensagens entregues. Continuando a aguardar...
-[21:42:24] Ainda existem 1 mensagens pendentes.
-[21:42:24] Aguardando envio de mais mensagens (tentativa 6/20)...
-[21:42:34] Mensagens entregues até agora: 2/2
-[21:42:34] ✓ TODAS as mensagens do estágio "Etapa 1" foram entregues!
-[21:42:39] Enviando resposta do cliente para testar avanço de estágio...
-[21:42:39] Enviando resposta do cliente: "Olá, estou testando o avanço de estágio!"...
-[21:42:40] Resposta enviada com sucesso!
-[21:42:41] Verificando campos estruturados do follow-up...
-[21:42:41] Status: active
-[21:42:41] Stage atual: Etapa 3
-[21:42:41] ID do estágio atual: 827f241c-49d8-4d07-8b30-99fbedcf621f
-[21:42:41] Estágio anterior: Etapa 2
-[21:42:41] Aguardando resposta: Não
-[21:42:41] Total de transições registradas: 3
-[21:42:41] Transição 1: Início -> Etapa 1
-[21:42:41] Transição 2: Etapa 1 -> Etapa 2
-[21:42:41] Transição 3: Etapa 2 -> Etapa 3
-[21:42:41] Total de respostas registradas: 1
-[21:42:41] Aguardando processamento após resposta (15s)...
-[21:42:56] ATENÇÃO: previous_stage_name (Etapa 2) não corresponde ao estágio inicial (Etapa 1)
-[21:42:56] Última transição: Etapa 2 -> Etapa 3
-[21:42:56] Avanço de estágio verificado com sucesso! De "Etapa 1" para "Etapa 3"
-[21:42:56] ✅ TESTE DE AVANÇO DE ESTÁGIO BEM-SUCEDIDO!
-[21:42:56] Follow-up continuará sendo processado em segundo plano...
-[21:42:56] 
+[23:50:23] Preparando criação de follow-up para cliente 58...
+[23:50:23] Verificando se existe follow-up ativo para o cliente 58...
+[23:50:23] Nenhum follow-up ativo encontrado para o cliente 58
+[23:50:23] Criando novo follow-up para cliente 58...
+[23:50:26] Follow-up criado com sucesso! ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+[23:50:27] Verificando campos estruturados do follow-up...
+[23:50:27] Status: active
+[23:50:27] Stage atual: Etapa 1
+[23:50:27] ID do estágio atual: db23d600-a32d-4364-9f42-1bea9671e59d
+[23:50:27] Estágio anterior: Nenhum
+[23:50:27] Aguardando resposta: Não
+[23:50:27] Total de transições registradas: 1
+[23:50:27] Transição 1: Início -> Etapa 1
+[23:50:27] Total de respostas registradas: 0
+[23:50:27] Estágio inicial: "Etapa 1"
+[23:50:27] Aguardando o envio de TODAS as mensagens do estágio inicial...
+[23:50:27] Total de passos no estágio "Etapa 1": 2
+[23:50:27] Mensagens pendentes: 1
+[23:50:27] Mensagens entregues até agora: 0/2
+[23:50:27] Ainda existem 1 mensagens pendentes.
+[23:50:27] Aguardando envio de mais mensagens (tentativa 1/20)...
+[23:50:37] Mensagens entregues até agora: 0/2
+[23:50:37] Ainda existem 1 mensagens pendentes.
+[23:50:37] Aguardando envio de mais mensagens (tentativa 2/20)...
+[23:50:47] Mensagens entregues até agora: 0/2
+[23:50:47] Ainda existem 1 mensagens pendentes.
+[23:50:47] Aguardando envio de mais mensagens (tentativa 3/20)...
+[23:50:57] Mensagens entregues até agora: 1/2
+[23:50:57] Já temos 1/2 mensagens entregues. Continuando a aguardar...
+[23:50:57] Ainda existem 1 mensagens pendentes.
+[23:50:57] Aguardando envio de mais mensagens (tentativa 4/20)...
+[23:51:07] Mensagens entregues até agora: 1/2
+[23:51:07] Já temos 1/2 mensagens entregues. Continuando a aguardar...
+[23:51:07] Ainda existem 1 mensagens pendentes.
+[23:51:07] Aguardando envio de mais mensagens (tentativa 5/20)...
+[23:51:17] Mensagens entregues até agora: 1/2
+[23:51:17] Já temos 1/2 mensagens entregues. Continuando a aguardar...
+[23:51:17] Ainda existem 1 mensagens pendentes.
+[23:51:17] Aguardando envio de mais mensagens (tentativa 6/20)...
+[23:51:27] Mensagens entregues até agora: 2/2
+[23:51:27] ✓ TODAS as mensagens do estágio "Etapa 1" foram entregues!
+[23:51:32] Enviando resposta do cliente para testar avanço de estágio...
+[23:51:32] Enviando resposta do cliente: "Olá, estou testando o avanço de estágio!"...
+[23:51:33] Resposta enviada com sucesso!
+[23:51:34] Verificando campos estruturados do follow-up...
+[23:51:34] Status: active
+[23:51:34] Stage atual: Etapa 2
+[23:51:34] ID do estágio atual: 94d52e99-5eee-49c8-b08d-5103ba8af877
+[23:51:34] Estágio anterior: Etapa 1
+[23:51:34] Aguardando resposta: Não
+[23:51:34] Motivo da pausa: Aguardando envio de 2 mensagens pendentes do estágio "Etapa 1"
+[23:51:34] Total de transições registradas: 2
+[23:51:34] Transição 1: Início -> Etapa 1
+[23:51:34] Transição 2: Etapa 1 -> Etapa 2
+[23:51:34] Total de respostas registradas: 1
+[23:51:34] Aguardando processamento após resposta (15s)...
+[23:51:49] Última transição: Etapa 1 -> Etapa 2
+[23:51:49] Avanço de estágio verificado com sucesso! De "Etapa 1" para "Etapa 2"
+[23:51:49] ✅ TESTE DE AVANÇO DE ESTÁGIO BEM-SUCEDIDO!
+[23:51:49] Follow-up continuará sendo processado em segundo plano...
+[23:51:49] 
 =============================================
-[21:42:56] ESTÁGIO 1 CONCLUÍDO COM SUCESSO!
-[21:42:56] Monitorando o fluxo completo da campanha...
-[21:42:56] =============================================
+[23:51:49] ESTÁGIO 1 CONCLUÍDO COM SUCESSO!
+[23:51:49] Monitorando o fluxo completo da campanha...
+[23:51:49] =============================================
 
-[21:42:56] 
-🔄 AVANÇO DETECTADO: Etapa 2 -> Etapa 3
-[21:42:56] Este é o último estágio da campanha
-[21:42:56] Status atual: active, Estágio: Etapa 3
-[21:42:56] Aguardando processamento... (verificação 1/15)
-[21:43:16] 
-✅ FOLLOW-UP CONCLUÍDO COM SUCESSO!
-[21:43:16] Todas as etapas da campanha foram processadas.
-[21:43:16] 
-=============================================
-[21:43:16] TESTE CONCLUÍDO COM SUCESSO!
-[21:43:16] =============================================
+[23:51:49] Status atual: active, Estágio: Etapa 2
+[23:51:49] Aguardando processamento... (verificação 1/15)
+[23:52:09] Status atual: active, Estágio: Etapa 2
+[23:52:09] Aguardando processamento... (verificação 2/15)
+[23:52:29] Status atual: active, Estágio: Etapa 2
+[23:52:29] Aguardando processamento... (verificação 3/15)
+[23:52:49] Status atual: active, Estágio: Etapa 2
+[23:52:49] Aguardando processamento... (verificação 4/15)
+[23:53:10] Status atual: active, Estágio: Etapa 2
+[23:53:10] Aguardando processamento... (verificação 5/15)
+[23:53:30] Status atual: active, Estágio: Etapa 2
+[23:53:30] Aguardando processamento... (verificação 6/15)

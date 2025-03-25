@@ -609,7 +609,9 @@ export async function handleClientResponse(
   followUpId?: string
 ): Promise<void> {
   try {
-    console.log('=== DADOS DA RESPOSTA DO CLIENTE ===', { followUpId, clientId, message });
+    console.log('=== DADOS DA RESPOSTA DO CLIENTE ===');
+    console.log({ followUpId, clientId, message });
+    console.log('=== FIM DADOS DA RESPOSTA DO CLIENTE ===');
 
     // 1. Buscar follow-ups ativos ou pausados para este cliente
     const activeFollowUps = await prisma.followUp.findMany({
@@ -686,11 +688,52 @@ export async function handleClientResponse(
         }
       });
 
-      // Verificar se é uma resposta para avançar para o próximo estágio
-      if (followUp.status === 'paused' && followUp.waiting_for_response) {
-        await processStageAdvancement(followUp, steps, currentStep, message);
+      // Verificar se o follow-up está pausado aguardando mensagens ou resposta do cliente
+      if (followUp.status === 'paused') {
+        if (followUp.waiting_for_response) {
+          // Cliente respondeu a uma solicitação específica de resposta
+          await processStageAdvancement(followUp, steps, currentStep, message);
+        } 
+        else if (followUp.paused_reason && followUp.paused_reason.includes('Aguardando envio de')) {
+          // Verificar se temos mensagens pendentes
+          const pendingMessages = await prisma.followUpMessage.findMany({
+            where: {
+              follow_up_id: followUp.id,
+              funnel_stage: followUp.current_stage_name,
+              delivered: false
+            }
+          });
+          
+          if (pendingMessages.length === 0) {
+            // Não há mais mensagens pendentes, podemos retomar o fluxo
+            console.log(`Cliente respondeu e não há mais mensagens pendentes no estágio ${followUp.current_stage_name}`);
+            
+            // Atualizar status para ativo e limpar razão de pausa
+            await prisma.followUp.update({
+              where: { id: followUp.id },
+              data: {
+                status: 'active',
+                paused_reason: null,
+                waiting_for_response: false
+              }
+            });
+            
+            // Avançar para próximo estágio
+            await processStageAdvancement(followUp, steps, currentStep, message);
+          }
+          else {
+            console.log(`Cliente respondeu mas ainda temos ${pendingMessages.length} mensagens pendentes no estágio ${followUp.current_stage_name}`);
+            // Manter pausado, mas marcar como responsivo
+            await prisma.followUp.update({
+              where: { id: followUp.id },
+              data: {
+                is_responsive: true
+              }
+            });
+          }
+        }
       } else {
-        // É uma resposta durante um follow-up ativo - pode afetar a lógica futura
+        // É uma resposta durante um follow-up ativo
         await processActiveFollowUpResponse(followUp, message);
       }
     }
@@ -894,6 +937,37 @@ async function processActiveFollowUpResponse(
       return;
     }
     
+    // Verificar se existem mensagens pendentes no estágio atual
+    const pendingMessages = await prisma.followUpMessage.findMany({
+      where: {
+        follow_up_id: followUp.id,
+        funnel_stage: followUp.current_stage_name || currentStep.stage_name,
+        delivered: false
+      }
+    });
+    
+    if (pendingMessages.length > 0) {
+      console.log(`Follow-up ${followUp.id} - Existem ${pendingMessages.length} mensagens pendentes no estágio atual. Registrando resposta, mas mantendo o estágio.`);
+      
+      // Atualizar para registrar que o cliente é responsivo
+      await prisma.followUp.update({
+        where: { id: followUp.id },
+        data: {
+          is_responsive: true,
+          waiting_for_response: false
+        }
+      });
+      
+      // Criar mensagem de sistema
+      await createSystemMessage(
+        followUp.id,
+        `Cliente respondeu enquanto ainda há mensagens sendo enviadas. Resposta registrada, aguardando conclusão do envio.`,
+        "System"
+      );
+      
+      return;
+    }
+    
     // Verificar se pelo menos uma mensagem foi enviada para este follow-up
     const messagesDelivered = await prisma.followUpMessage.count({
       where: {
@@ -947,8 +1021,23 @@ async function processActiveFollowUpResponse(
     const currentStageIndex = stageNames.indexOf(currentStageName);
     console.log('Estágio atual:', currentStageName, 'índice:', currentStageIndex);
     
+    // Verificar se este é o último passo do estágio atual
+    const stepsInCurrentStage = steps.filter(s => 
+      s.stage_name === currentStageName || 
+      s.funnel_stage?.name === currentStageName
+    );
+    
+    // Ordenar passos no estágio atual
+    stepsInCurrentStage.sort((a, b) => steps.indexOf(a) - steps.indexOf(b));
+    
+    // Verificar se o passo atual é o último passo do estágio
+    const isLastStepOfStage = stepsInCurrentStage.length > 0 && 
+                              stepsInCurrentStage[stepsInCurrentStage.length - 1].id === currentStep.id;
+    
     // Verificar se existe próximo estágio
     if (currentStageIndex < stageNames.length - 1) {
+      // A resposta do cliente pode avançar para o próximo estágio em qualquer passo, 
+      // não apenas no último passo do estágio
       const nextStageName = stageNames[currentStageIndex + 1];
       
       // Encontrar o primeiro passo do próximo estágio

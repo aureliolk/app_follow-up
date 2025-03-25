@@ -220,6 +220,87 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
         }
       });
       console.log('Mensagem marcada como entregue com sucesso');
+      
+      // Verificar se o follow-up está pausado aguardando envio de mensagens
+      const followUp = await prisma.followUp.findUnique({
+        where: { id: message.followUpId }
+      });
+      
+      if (followUp && followUp.status === 'active' && 
+          followUp.paused_reason && followUp.paused_reason.includes('Aguardando envio de')) {
+        
+        // Verificar se ainda existem mensagens pendentes para este estágio
+        const pendingMessages = await prisma.followUpMessage.findMany({
+          where: {
+            follow_up_id: message.followUpId,
+            funnel_stage: message.metadata?.stage_name,
+            delivered: false
+          }
+        });
+        
+        // Se não houver mais mensagens pendentes, retomar o follow-up automaticamente
+        if (pendingMessages.length === 0) {
+          console.log(`Todas as mensagens do estágio "${message.metadata?.stage_name}" foram entregues, retomando transição de estágio`);
+          
+          // Importar a função dinamicamente para evitar referência circular
+          const { processStageTransition } = await import('./manager');
+          
+          // Verificar qual o próximo estágio
+          const stages = await prisma.followUpFunnelStage.findMany({
+            where: { 
+              campaign_id: followUp.campaign_id
+            },
+            orderBy: { order: 'asc' }
+          });
+          
+          // Encontrar o índice do estágio atual
+          const currentStageIndex = stages.findIndex(s => s.id === followUp.current_stage_id);
+          
+          // Se encontrou o estágio atual e existe um próximo estágio
+          if (currentStageIndex >= 0 && currentStageIndex < stages.length - 1) {
+            const nextStage = stages[currentStageIndex + 1];
+            
+            // Registrar mensagem de sistema sobre retomada automática
+            await prisma.followUpMessage.create({
+              data: {
+                follow_up_id: message.followUpId,
+                step: -1,
+                content: `Todas mensagens do estágio "${message.metadata?.stage_name}" foram entregues, retomando transição para estágio "${nextStage.name}"`,
+                category: "System",
+                sent_at: new Date(),
+                delivered: true,
+                delivered_at: new Date(),
+                funnel_stage: message.metadata?.stage_name
+              }
+            });
+            
+            // Atualizar follow-up para continuar o fluxo
+            await prisma.followUp.update({
+              where: { id: message.followUpId },
+              data: {
+                waiting_for_response: false,
+                paused_reason: null
+              }
+            });
+            
+            // Chamar função para continuar o processamento
+            try {
+              // Aguardar um breve momento para garantir que tudo seja salvo no banco
+              setTimeout(async () => {
+                try {
+                  // Importar e chamar a função de continuação
+                  const { advanceToNextStage } = await import('./manager');
+                  await advanceToNextStage(message.followUpId);
+                } catch (err) {
+                  console.error('Erro ao avançar automaticamente após entrega de mensagens:', err);
+                }
+              }, 1000);
+            } catch (err) {
+              console.error('Erro ao programar avanço automático:', err);
+            }
+          }
+        }
+      }
     } else {
       console.log('Não foi possível marcar a mensagem como entregue');
     }
