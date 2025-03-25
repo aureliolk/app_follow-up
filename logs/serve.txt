@@ -1,30 +1,43 @@
-○ Compiling /api/follow-up/cancel ...
- ✓ Compiled /api/follow-up/cancel in 1712ms
- POST /api/follow-up/cancel 200 in 2078ms
+root@lumi-dev:~/app_follow-up# npm run dev
+
+> app_nextlumibot@0.1.0 dev
+> next dev --turbopack
+
+   ▲ Next.js 15.2.0 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://168.119.247.230:3000
+   - Environments: .env.local, .env
+
+ ✓ Starting...
+ ✓ Ready in 1357ms
+ ○ Compiling /api/follow-up/remove-client ...
+ ✓ Compiled /api/follow-up/remove-client in 1406ms
+ POST /api/follow-up/remove-client 200 in 1773ms
  ○ Compiling /api/follow-up ...
- ✓ Compiled /api/follow-up in 669ms
+ ✓ Compiled /api/follow-up in 614ms
 MODO DE TESTE CONFIGURADO COMO: ATIVADO
 Processador de mensagens personalizado configurado.
 Sistema de follow-up inicializado com integração da API Lumibot.
- POST /api/follow-up 201 in 805ms
+ GET /api/follow-up?status=active&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 708ms
+Recarregando 0 follow-ups ativos com mensagens pendentes
+ POST /api/follow-up 201 in 85ms
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Processando passo 0 (Etapa 1)
+Processando passo para follow-up 9135fb50-fec3-427b-b336-4317466c4fba
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
 Step Index: 0
 Cliente ID: 58
 Conteúdo: "Ei, Boss! 🚀 Vi que você recebeu a mensagem, mas ainda não respondeu. Quer tirar alguma dúvida ante
-Horário Agendado: 2025-03-25T00:23:44.126Z
+Horário Agendado: 2025-03-25T16:34:09.342Z
 Metadata: {
   "template_name": "novo_lead_10min",
   "category": "Utility",
-  "stage_name": "Etapa 1",
   "clientName": "58",
   "templateParams": {
     "name": "novo_lead_10min",
@@ -35,32 +48,16 @@ Metadata: {
     "1": "58"
   }
 }
-Atraso calculado: 29991ms (29.991 segundos)
-Agendando mensagem para daqui a 29.991 segundos
-Timeout armazenado com sucesso para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-0
-Mensagem para o passo 0 agendada com sucesso
+Atraso calculado: 29988ms (29.988 segundos)
+Agendando mensagem para daqui a 29.988 segundos
+Timeout armazenado com sucesso para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-0
+Mensagem para o follow-up 9135fb50-fec3-427b-b336-4317466c4fba agendada com sucesso
 Próximo passo: novo_lead_30min, tempo de espera: 30000ms
-Agendando próximo passo 1 para follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 com delay de 30000ms
-Recarregando 1 follow-ups ativos com mensagens pendentes
-===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Step Index: 0
-Cliente ID: 58
-Conteúdo: "Ei, Boss! 🚀 Vi que você recebeu a mensagem, mas ainda não respondeu. Quer tirar alguma dúvida ante
-Horário Agendado: 2025-03-25T00:23:44.126Z
-Metadata: {
-  "template_name": "novo_lead_10min",
-  "category": "Utility",
-  "stage_name": "Etapa 1"
-}
-Cancelando timeout existente para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-0
-Atraso calculado: 26951ms (26.951 segundos)
-Agendando mensagem para daqui a 26.951 segundos
-Timeout armazenado com sucesso para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-0
-Reagendado envio da mensagem do passo 0 para follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Executando timeout para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-0
+Agendando próximo passo 1 para follow-up 9135fb50-fec3-427b-b336-4317466c4fba com delay de 30000ms
+ GET /api/follow-up?status=active&workspaceId=a6736c1d-9dec-40f2-9965-9da3a6ef61cf 200 in 100ms
+Executando timeout para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-0
 ===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
 Step Index: 0
 Cliente ID: 58
 Status do follow-up: active
@@ -76,18 +73,17 @@ Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Processando passo 1 (Etapa 1)
+Processando passo para follow-up 9135fb50-fec3-427b-b336-4317466c4fba
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
 Step Index: 1
 Cliente ID: 58
 Conteúdo: Oi, {{1}}! Percebi que seu atendimento ainda está em andamento. Sei que a rotina pode ser corrida, e
-Horário Agendado: 2025-03-25T00:24:14.164Z
+Horário Agendado: 2025-03-25T16:34:39.390Z
 Metadata: {
   "template_name": "novo_lead_30min",
   "category": "Utility",
-  "stage_name": "Etapa 1",
   "clientName": "58",
   "templateParams": {
     "name": "novo_lead_30min",
@@ -98,13 +94,17 @@ Metadata: {
     "1": "58"
   }
 }
-Atraso calculado: 29990ms (29.99 segundos)
-Agendando mensagem para daqui a 29.99 segundos
-Timeout armazenado com sucesso para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-1
-Mensagem para o passo 1 agendada com sucesso
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Último passo do estágio, aguardando resposta antes de avançar para Etapa 2
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Preparando transição para o próximo estágio: Etapa 2
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Existem 2 mensagens pendentes no estágio "Etapa 1". Pausando para aguardar envio completo.
+Atraso calculado: 29993ms (29.993 segundos)
+Agendando mensagem para daqui a 29.993 segundos
+Timeout armazenado com sucesso para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-1
+Mensagem para o follow-up 9135fb50-fec3-427b-b336-4317466c4fba agendada com sucesso
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Último passo do estágio "Etapa 1", avançando diretamente para "Etapa 2"
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Preparando transição para o próximo estágio: Etapa 2
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Ignorando verificação de mensagens pendentes para avançar fluxo normalmente.
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Avançando para o próximo estágio: Etapa 2
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba atualizado para estágio Etapa 2 (ID: 58a8a55b-e2be-4b2c-a916-bcc553527d90)
+Transição de estágio para: Etapa 2, próximo passo com tempo de espera: 30000ms
+Agendando próximo passo 0 para follow-up 9135fb50-fec3-427b-b336-4317466c4fba com delay de 30000ms
 ===== RESPOSTA GET CONVERSA DO CLIENTE =====
 Status: 200
 Detalhes do envio para Lumibot:
@@ -116,10 +116,10 @@ Status: 200
 Resultado do envio via Lumibot: SUCESSO
 Atualizando mensagem como entregue no banco de dados
 Mensagem marcada como entregue com sucesso
-Timeout removido do mapa: 9fd397f7-4a4a-4441-93aa-826d2d46b101-0
-Executando timeout para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-1
+Timeout removido do mapa: 9135fb50-fec3-427b-b336-4317466c4fba-0
+Executando timeout para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-1
 ===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
 Step Index: 1
 Cliente ID: 58
 Status do follow-up: active
@@ -129,6 +129,39 @@ Categoria: Utility
 ===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
 Cliente ID: 58
 Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Processando passo para follow-up 9135fb50-fec3-427b-b336-4317466c4fba
+Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 0
+Cliente ID: 58
+Conteúdo: "Ei, Boss! 🚀 Vi que você recebeu a mensagem, mas ainda não respondeu. Quer tirar alguma dúvida ante
+Horário Agendado: 2025-03-25T16:35:09.432Z
+Metadata: {
+  "template_name": "novo_lead_10min",
+  "category": "Utility",
+  "clientName": "58",
+  "templateParams": {
+    "name": "novo_lead_10min",
+    "category": "Utility",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29994ms (29.994 segundos)
+Agendando mensagem para daqui a 29.994 segundos
+Timeout armazenado com sucesso para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-0
+Mensagem para o follow-up 9135fb50-fec3-427b-b336-4317466c4fba agendada com sucesso
+Próximo passo: novo_lead_30min, tempo de espera: 30000ms
+Agendando próximo passo 1 para follow-up 9135fb50-fec3-427b-b336-4317466c4fba com delay de 30000ms
 ===== RESPOSTA GET CONVERSA DO CLIENTE =====
 Status: 200
 Detalhes do envio para Lumibot:
@@ -140,36 +173,158 @@ Status: 200
 Resultado do envio via Lumibot: SUCESSO
 Atualizando mensagem como entregue no banco de dados
 Mensagem marcada como entregue com sucesso
-Todas as mensagens do estágio "Etapa 1" foram entregues, retomando transição de estágio
-Timeout removido do mapa: 9fd397f7-4a4a-4441-93aa-826d2d46b101-1
-Retomando transição de estágio para follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 após entrega de todas as mensagens
+Timeout removido do mapa: 9135fb50-fec3-427b-b336-4317466c4fba-1
+Executando timeout para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-0
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 0
+Cliente ID: 58
+Status do follow-up: active
+Enviando mensagem via API Lumibot
+Template: novo_lead_10min
+Categoria: Utility
+===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
+Cliente ID: 58
+Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Processando passo 2 (Etapa 2)
+Processando passo para follow-up 9135fb50-fec3-427b-b336-4317466c4fba
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Step Index: 2
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 1
 Cliente ID: 58
-Conteúdo: Oi, {{1}}! Vi que você iniciou um processo conosco, mas ainda não concluímos sua qualificação. Caso 
-Horário Agendado: 2025-03-25T00:24:45.786Z
+Conteúdo: Oi, {{1}}! Percebi que seu atendimento ainda está em andamento. Sei que a rotina pode ser corrida, e
+Horário Agendado: 2025-03-25T16:35:39.489Z
 Metadata: {
-  "template_name": "qualificacao_10min",
+  "template_name": "novo_lead_30min",
   "category": "Utility",
-  "stage_name": "Etapa 2",
   "clientName": "58",
   "templateParams": {
-    "name": "qualificacao_10min",
+    "name": "novo_lead_30min",
+    "category": "Utility",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29987ms (29.987 segundos)
+Agendando mensagem para daqui a 29.987 segundos
+Timeout armazenado com sucesso para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-1
+Mensagem para o follow-up 9135fb50-fec3-427b-b336-4317466c4fba agendada com sucesso
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Último passo do estágio "Etapa 1", avançando diretamente para "Etapa 2"
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Preparando transição para o próximo estágio: Etapa 2
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Ignorando verificação de mensagens pendentes para avançar fluxo normalmente.
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Avançando para o próximo estágio: Etapa 2
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba atualizado para estágio Etapa 2 (ID: 58a8a55b-e2be-4b2c-a916-bcc553527d90)
+Transição de estágio para: Etapa 2, próximo passo com tempo de espera: 30000ms
+Agendando próximo passo 0 para follow-up 9135fb50-fec3-427b-b336-4317466c4fba com delay de 30000ms
+===== RESPOSTA GET CONVERSA DO CLIENTE =====
+Status: 200
+Detalhes do envio para Lumibot:
+- clientId: 58
+- templateName: novo_lead_10min
+- category: Utility
+===== RESPOSTA DA API LUMIBOT =====
+Status: 200
+Resultado do envio via Lumibot: SUCESSO
+Atualizando mensagem como entregue no banco de dados
+Mensagem marcada como entregue com sucesso
+Timeout removido do mapa: 9135fb50-fec3-427b-b336-4317466c4fba-0
+Executando timeout para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-1
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 1
+Cliente ID: 58
+Status do follow-up: active
+Enviando mensagem via API Lumibot
+Template: novo_lead_30min
+Categoria: Utility
+===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
+Cliente ID: 58
+Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Processando passo para follow-up 9135fb50-fec3-427b-b336-4317466c4fba
+Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 0
+Cliente ID: 58
+Conteúdo: "Ei, Boss! 🚀 Vi que você recebeu a mensagem, mas ainda não respondeu. Quer tirar alguma dúvida ante
+Horário Agendado: 2025-03-25T16:36:09.530Z
+Metadata: {
+  "template_name": "novo_lead_10min",
+  "category": "Utility",
+  "clientName": "58",
+  "templateParams": {
+    "name": "novo_lead_10min",
+    "category": "Utility",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29995ms (29.995 segundos)
+Agendando mensagem para daqui a 29.995 segundos
+Timeout armazenado com sucesso para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-0
+Mensagem para o follow-up 9135fb50-fec3-427b-b336-4317466c4fba agendada com sucesso
+Próximo passo: novo_lead_30min, tempo de espera: 30000ms
+Agendando próximo passo 1 para follow-up 9135fb50-fec3-427b-b336-4317466c4fba com delay de 30000ms
+===== RESPOSTA GET CONVERSA DO CLIENTE =====
+Status: 200
+Detalhes do envio para Lumibot:
+- clientId: 58
+- templateName: novo_lead_30min
+- category: Utility
+===== RESPOSTA DA API LUMIBOT =====
+Status: 200
+Resultado do envio via Lumibot: SUCESSO
+Atualizando mensagem como entregue no banco de dados
+Mensagem marcada como entregue com sucesso
+Timeout removido do mapa: 9135fb50-fec3-427b-b336-4317466c4fba-1
+Executando timeout para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-0
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 0
+Cliente ID: 58
+Status do follow-up: active
+Enviando mensagem via API Lumibot
+Template: novo_lead_10min
+Categoria: Utility
+===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
+Cliente ID: 58
+Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Processando passo para follow-up 9135fb50-fec3-427b-b336-4317466c4fba
+Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 1
+Cliente ID: 58
+Conteúdo: Oi, {{1}}! Percebi que seu atendimento ainda está em andamento. Sei que a rotina pode ser corrida, e
+Horário Agendado: 2025-03-25T16:36:39.560Z
+Metadata: {
+  "template_name": "novo_lead_30min",
+  "category": "Utility",
+  "clientName": "58",
+  "templateParams": {
+    "name": "novo_lead_30min",
     "category": "Utility",
     "language": "pt_BR"
   },
@@ -179,55 +334,35 @@ Metadata: {
 }
 Atraso calculado: 29993ms (29.993 segundos)
 Agendando mensagem para daqui a 29.993 segundos
-Timeout armazenado com sucesso para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-2
-Mensagem para o passo 2 agendada com sucesso
-Próximo passo: qualificacao_1h, tempo de espera: 30000ms
-Agendando próximo passo 3 para follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 com delay de 30000ms
- ○ Compiling /api/follow-up/client-response ...
- ✓ Compiled /api/follow-up/client-response in 603ms
-=== DADOS DA RESPOSTA DO CLIENTE ===
-followUpId: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-clientId: 58
-message: Olá, estou testando o avanço de estágio!
-=== FIM DADOS DA RESPOSTA DO CLIENTE ===
-=== DADOS DA RESPOSTA DO CLIENTE ===
-{
-  followUpId: '9fd397f7-4a4a-4441-93aa-826d2d46b101',
-  clientId: '58',
-  message: 'Olá, estou testando o avanço de estágio!'
-}
-=== FIM DADOS DA RESPOSTA DO CLIENTE ===
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Verificando mensagens pendentes:
-      - Estágio atual: Etapa 2
-      - Passo atual: 3
-      - Total de mensagens pendentes: 1
-      - Passos pendentes: 2
-    
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Existem 1 mensagens pendentes no estágio atual. Registrando resposta, mas mantendo o estágio.
- POST /api/follow-up/client-response 200 in 734ms
- ○ Compiling /api/follow-up/status ...
- ✓ Compiled /api/follow-up/status in 555ms
- GET /api/follow-up/status?id=9fd397f7-4a4a-4441-93aa-826d2d46b101 200 in 615ms
-Executando timeout para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-2
+Timeout armazenado com sucesso para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-1
+Mensagem para o follow-up 9135fb50-fec3-427b-b336-4317466c4fba agendada com sucesso
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Último passo do estágio "Etapa 1", avançando diretamente para "Etapa 2"
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Preparando transição para o próximo estágio: Etapa 2
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Ignorando verificação de mensagens pendentes para avançar fluxo normalmente.
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Avançando para o próximo estágio: Etapa 2
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba atualizado para estágio Etapa 2 (ID: 58a8a55b-e2be-4b2c-a916-bcc553527d90)
+Transição de estágio para: Etapa 2, próximo passo com tempo de espera: 30000ms
+Agendando próximo passo 0 para follow-up 9135fb50-fec3-427b-b336-4317466c4fba com delay de 30000ms
+===== RESPOSTA GET CONVERSA DO CLIENTE =====
+Status: 200
+Detalhes do envio para Lumibot:
+- clientId: 58
+- templateName: novo_lead_10min
+- category: Utility
+===== RESPOSTA DA API LUMIBOT =====
+Status: 200
+Resultado do envio via Lumibot: SUCESSO
+Atualizando mensagem como entregue no banco de dados
+Mensagem marcada como entregue com sucesso
+Timeout removido do mapa: 9135fb50-fec3-427b-b336-4317466c4fba-0
+Executando timeout para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-1
 ===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Step Index: 2
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 1
 Cliente ID: 58
 Status do follow-up: active
 Enviando mensagem via API Lumibot
-Template: qualificacao_10min
+Template: novo_lead_30min
 Categoria: Utility
 ===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
 Cliente ID: 58
@@ -238,21 +373,20 @@ Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Processando passo 3 (Etapa 2)
+Processando passo para follow-up 9135fb50-fec3-427b-b336-4317466c4fba
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Step Index: 3
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 0
 Cliente ID: 58
-Conteúdo: Boss! Para te ajudar com mais informações, preparamos um vídeo explicativo sobre como funciona. Você
-Horário Agendado: 2025-03-25T00:25:15.806Z
+Conteúdo: "Ei, Boss! 🚀 Vi que você recebeu a mensagem, mas ainda não respondeu. Quer tirar alguma dúvida ante
+Horário Agendado: 2025-03-25T16:37:09.594Z
 Metadata: {
-  "template_name": "qualificacao_1h",
+  "template_name": "novo_lead_10min",
   "category": "Utility",
-  "stage_name": "Etapa 2",
   "clientName": "58",
   "templateParams": {
-    "name": "qualificacao_1h",
+    "name": "novo_lead_10min",
     "category": "Utility",
     "language": "pt_BR"
   },
@@ -260,80 +394,57 @@ Metadata: {
     "1": "58"
   }
 }
-Atraso calculado: 29992ms (29.992 segundos)
-Agendando mensagem para daqui a 29.992 segundos
-Timeout armazenado com sucesso para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-3
-Mensagem para o passo 3 agendada com sucesso
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Último passo do estágio, aguardando resposta antes de avançar para Etapa 3
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Preparando transição para o próximo estágio: Etapa 3
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Existem 2 mensagens pendentes no estágio "Etapa 2". Pausando para aguardar envio completo.
+Atraso calculado: 29993ms (29.993 segundos)
+Agendando mensagem para daqui a 29.993 segundos
+Timeout armazenado com sucesso para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-0
+Mensagem para o follow-up 9135fb50-fec3-427b-b336-4317466c4fba agendada com sucesso
+Próximo passo: novo_lead_30min, tempo de espera: 30000ms
+Agendando próximo passo 1 para follow-up 9135fb50-fec3-427b-b336-4317466c4fba com delay de 30000ms
 ===== RESPOSTA GET CONVERSA DO CLIENTE =====
 Status: 200
 Detalhes do envio para Lumibot:
 - clientId: 58
-- templateName: qualificacao_10min
+- templateName: novo_lead_30min
 - category: Utility
 ===== RESPOSTA DA API LUMIBOT =====
 Status: 200
 Resultado do envio via Lumibot: SUCESSO
 Atualizando mensagem como entregue no banco de dados
 Mensagem marcada como entregue com sucesso
-Timeout removido do mapa: 9fd397f7-4a4a-4441-93aa-826d2d46b101-2
- GET /api/follow-up/status?id=9fd397f7-4a4a-4441-93aa-826d2d46b101 200 in 63ms
-Executando timeout para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-3
+Timeout removido do mapa: 9135fb50-fec3-427b-b336-4317466c4fba-1
+Executando timeout para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-0
 ===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Step Index: 3
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 0
 Cliente ID: 58
 Status do follow-up: active
 Enviando mensagem via API Lumibot
-Template: qualificacao_1h
+Template: novo_lead_10min
 Categoria: Utility
 ===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
 Cliente ID: 58
 Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
-===== RESPOSTA GET CONVERSA DO CLIENTE =====
-Status: 200
-Detalhes do envio para Lumibot:
-- clientId: 58
-- templateName: qualificacao_1h
-- category: Utility
-===== RESPOSTA DA API LUMIBOT =====
-Status: 200
-Resultado do envio via Lumibot: SUCESSO
-Atualizando mensagem como entregue no banco de dados
-Mensagem marcada como entregue com sucesso
-Todas as mensagens do estágio "Etapa 2" foram entregues, retomando transição de estágio
-Timeout removido do mapa: 9fd397f7-4a4a-4441-93aa-826d2d46b101-3
-Retomando transição de estágio para follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 após entrega de todas as mensagens
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Processando passo 4 (Etapa 3)
+Processando passo para follow-up 9135fb50-fec3-427b-b336-4317466c4fba
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Step Index: 4
+FollowUp ID: 9135fb50-fec3-427b-b336-4317466c4fba
+Step Index: 1
 Cliente ID: 58
-Conteúdo: 🔔 Toc, toc, {{1}}! Não quero parecer insistente, mas a hora é agora! Sua oportunidade está aberta e
-Horário Agendado: 2025-03-25T00:25:47.442Z
+Conteúdo: Oi, {{1}}! Percebi que seu atendimento ainda está em andamento. Sei que a rotina pode ser corrida, e
+Horário Agendado: 2025-03-25T16:37:39.622Z
 Metadata: {
-  "template_name": "qualificado_20mn",
-  "category": "Marketing",
-  "stage_name": "Etapa 3",
+  "template_name": "novo_lead_30min",
+  "category": "Utility",
   "clientName": "58",
   "templateParams": {
-    "name": "qualificado_20mn",
-    "category": "Marketing",
+    "name": "novo_lead_30min",
+    "category": "Utility",
     "language": "pt_BR"
   },
   "processedParams": {
@@ -342,69 +453,24 @@ Metadata: {
 }
 Atraso calculado: 29994ms (29.994 segundos)
 Agendando mensagem para daqui a 29.994 segundos
-Timeout armazenado com sucesso para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-4
-Mensagem para o passo 4 agendada com sucesso
-Próximo passo: qualificado_1h, tempo de espera: 30000ms
-Agendando próximo passo 5 para follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 com delay de 30000ms
- GET /api/follow-up/status?id=9fd397f7-4a4a-4441-93aa-826d2d46b101 200 in 56ms
- GET /api/follow-up/status?id=9fd397f7-4a4a-4441-93aa-826d2d46b101 200 in 58ms
-Executando timeout para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-4
-===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Step Index: 4
-Cliente ID: 58
-Status do follow-up: active
-Enviando mensagem via API Lumibot
-Template: qualificado_20mn
-Categoria: Marketing
-===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
-Cliente ID: 58
-Endpoint: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
-Processando passo 5 (Etapa 3)
-Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
-===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 9fd397f7-4a4a-4441-93aa-826d2d46b101
-Step Index: 5
-Cliente ID: 58
-Conteúdo: {{1}}, quem avisa amiga é! Outras pessoas já estão aproveitando essa chance e colhendo resultados. S
-Horário Agendado: 2025-03-25T00:26:17.463Z
-Metadata: {
-  "template_name": "qualificado_1h",
-  "category": "Marketing",
-  "stage_name": "Etapa 3",
-  "clientName": "58",
-  "templateParams": {
-    "name": "qualificado_1h",
-    "category": "Marketing",
-    "language": "pt_BR"
-  },
-  "processedParams": {
-    "1": "58"
-  }
-}
-Atraso calculado: 29992ms (29.992 segundos)
-Agendando mensagem para daqui a 29.992 segundos
-Timeout armazenado com sucesso para mensagem 9fd397f7-4a4a-4441-93aa-826d2d46b101-5
-Mensagem para o passo 5 agendada com sucesso
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 - Todos os passos foram processados
-Follow-up 9fd397f7-4a4a-4441-93aa-826d2d46b101 atualizado para status: completed
+Timeout armazenado com sucesso para mensagem 9135fb50-fec3-427b-b336-4317466c4fba-1
+Mensagem para o follow-up 9135fb50-fec3-427b-b336-4317466c4fba agendada com sucesso
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Último passo do estágio "Etapa 1", avançando diretamente para "Etapa 2"
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Preparando transição para o próximo estágio: Etapa 2
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Ignorando verificação de mensagens pendentes para avançar fluxo normalmente.
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba - Avançando para o próximo estágio: Etapa 2
+Follow-up 9135fb50-fec3-427b-b336-4317466c4fba atualizado para estágio Etapa 2 (ID: 58a8a55b-e2be-4b2c-a916-bcc553527d90)
+Transição de estágio para: Etapa 2, próximo passo com tempo de espera: 30000ms
+Agendando próximo passo 0 para follow-up 9135fb50-fec3-427b-b336-4317466c4fba com delay de 30000ms
 ===== RESPOSTA GET CONVERSA DO CLIENTE =====
 Status: 200
 Detalhes do envio para Lumibot:
 - clientId: 58
-- templateName: qualificado_20mn
-- category: Marketing
+- templateName: novo_lead_10min
+- category: Utility
 ===== RESPOSTA DA API LUMIBOT =====
 Status: 200
 Resultado do envio via Lumibot: SUCESSO
 Atualizando mensagem como entregue no banco de dados
 Mensagem marcada como entregue com sucesso
-Timeout removido do mapa: 9fd397f7-4a4a-4441-93aa-826d2d46b101-4
- GET /api/follow-up/status?id=9fd397f7-4a4a-4441-93aa-826d2d46b101 200 in 62ms
-Executando 
+Timeout removido do mapa: 9135fb50-fec3-427b-b336-4317466c4fba-0

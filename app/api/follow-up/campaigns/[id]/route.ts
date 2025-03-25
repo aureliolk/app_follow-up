@@ -148,15 +148,25 @@ export async function PUT(request: NextRequest) {
           .filter(step => step.id)
           .map(step => step.id);
 
-        // Excluir passos que não estão mais na lista
-        await tx.followUpStep.deleteMany({
-          where: {
-            campaign_id: id,
-            id: {
-              notIn: existingStepIds.length > 0 ? existingStepIds : ['dummy-id-to-prevent-deleting-all']
-            }
-          }
+        // Buscar os estágios da campanha
+        const stages = await tx.followUpFunnelStage.findMany({
+          where: { campaign_id: id },
+          select: { id: true }
         });
+        
+        const stageIds = stages.map(stage => stage.id);
+        
+        // Excluir passos que não estão mais na lista - usando funnel_stage_id em vez de campaign_id
+        if (stageIds.length > 0) {
+          await tx.followUpStep.deleteMany({
+            where: {
+              funnel_stage_id: { in: stageIds },
+              id: {
+                notIn: existingStepIds.length > 0 ? existingStepIds : ['dummy-id-to-prevent-deleting-all']
+              }
+            }
+          });
+        }
 
         // Atualizar ou criar passos
         for (const step of steps) {
@@ -195,16 +205,17 @@ export async function PUT(request: NextRequest) {
             return 30 * 60 * 1000; // Default 30 minutos
           };
 
+          // Criar dados do passo com todos os campos do modelo atualizado
           const stepData = {
-            campaign_id: id,
             funnel_stage_id: step.stage_id,
             name: step.template_name,
             template_name: step.template_name,
+            category: step.category || 'Utility',
             wait_time: step.wait_time,
             wait_time_ms: calculateWaitTimeMs(step.wait_time),
             message_content: step.message,
-            message_category: step.category || 'Utility',
-            auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
+            order: 0, // Valor padrão para ordem
+            status: "created" // Status padrão
           };
 
           if (step.id) {
@@ -230,27 +241,34 @@ export async function PUT(request: NextRequest) {
             select: {
               id: true,
               name: true,
-              order: true,
-              description: true
+              order: true
             },
             orderBy: {
               order: 'asc'
-            }
-          },
-          campaign_steps: {
-            include: {
-              funnel_stage: true
-            },
-            orderBy: {
-              wait_time_ms: 'asc'
             }
           }
         }
       });
     });
 
+    // Buscar as etapas do funil para esta campanha
+    const funnelStages = await prisma.followUpFunnelStage.findMany({
+      where: { campaign_id: id }
+    });
+    
+    // Buscar os passos da campanha
+    const campaignSteps = await prisma.followUpStep.findMany({
+      where: { 
+        funnel_stage_id: { 
+          in: funnelStages.map(stage => stage.id) 
+        } 
+      },
+      include: { funnel_stage: true },
+      orderBy: { wait_time_ms: 'asc' }
+    });
+    
     // Formatar passos para o formato esperado pelo frontend
-    const formattedSteps = result.campaign_steps.map((step: any) => ({
+    const formattedSteps = campaignSteps.map((step: any) => ({
       id: step.id,
       stage_id: step.funnel_stage_id,
       stage_name: step.funnel_stage.name,

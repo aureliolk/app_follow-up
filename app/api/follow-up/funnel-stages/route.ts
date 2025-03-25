@@ -30,18 +30,14 @@ export async function GET(req: NextRequest) {
         );
       }
       
-      // Buscar estágios diretamente pela relação com a campanha
+      // Buscar estágios para a campanha específica
       const stages = await prisma.followUpFunnelStage.findMany({
         where: {
-          campaigns: {
-            some: {
-              id: campaignId
-            }
-          }
+          campaign_id: campaignId
         },
         orderBy: { order: 'asc' },
         include: {
-          campaigns: true,
+          campaign: true,
           _count: {
             select: {
               steps: true
@@ -93,15 +89,11 @@ export async function GET(req: NextRequest) {
       // Buscar estágios associados a qualquer uma dessas campanhas
       const stages = await prisma.followUpFunnelStage.findMany({
         where: {
-          campaigns: {
-            some: {
-              id: { in: campaignIds }
-            }
-          }
+          campaign_id: { in: campaignIds }
         },
         orderBy: { order: 'asc' },
         include: {
-          campaigns: true,
+          campaign: true,
           _count: {
             select: {
               steps: true
@@ -118,7 +110,7 @@ export async function GET(req: NextRequest) {
         order: stage.order,
         created_at: stage.created_at,
         stepsCount: stage._count.steps,
-        campaigns: stage.campaigns.map(c => c.id),
+        campaignId: stage.campaign_id,
         workspaceId // Adicionar o workspaceId para facilitar operações no frontend
       }));
       
@@ -134,7 +126,7 @@ export async function GET(req: NextRequest) {
     const stages = await prisma.followUpFunnelStage.findMany({
       orderBy: { order: 'asc' },
       include: {
-        campaigns: true,
+        campaign: true,
         _count: {
           select: {
             steps: true
@@ -151,7 +143,7 @@ export async function GET(req: NextRequest) {
       order: stage.order,
       created_at: stage.created_at,
       stepsCount: stage._count.steps,
-      campaigns: stage.campaigns.map(c => c.id)
+      campaignId: stage.campaign_id
     }));
     
     console.log(`✅ Encontrados ${stages.length} estágios no total`);
@@ -266,31 +258,31 @@ export async function POST(req: NextRequest) {
     
     console.log(`🔧 Criando estágio: ${name}, ordem: ${stageOrder}, campaignId: ${campaignId || 'nenhum'}`);
     
-    // Criar o estágio com relacionamento correctly definido
+    // Criar o estágio com relacionamento correto
     const stage = await prisma.followUpFunnelStage.create({
       data: {
         name,
-        description,
         order: stageOrder,
-        // Se houver campaignId, conectar à campanha
+        description: description || "",
+        // Se houver campaignId, definir a campanha
         ...(campaignId ? {
-          campaigns: {
-            connect: {
-              id: campaignId
-            }
-          }
+          campaign_id: campaignId
         } : {})
       },
       include: {
-        campaigns: true
+        campaign: true
       }
     });
     
     console.log(`✅ Estágio criado com sucesso: ${stage.id}`);
     
     // Formatar o resultado para incluir meta-dados úteis
+    // Remover propriedades que não devem ser enviadas para o cliente
+    const { campaign, ...rest } = stage;
+    
+    // Formatar o resultado para incluir meta-dados úteis
     const formattedStage = {
-      ...stage,
+      ...rest,
       stepsCount: 0,
       campaignId
     };
@@ -336,16 +328,17 @@ export async function PUT(req: NextRequest) {
     }
     
     // ABORDAGEM DE DUAS PARTES:
-    // 1. Atualizar os metadados diretamente com SQL
-    console.log(`🔧 PARTE 1: Atualizando campos básicos do estágio ${id} via SQL`);
+    // 1. Atualizar os metadados básicos
+    console.log(`🔧 PARTE 1: Atualizando campos básicos do estágio ${id}`);
     try {
-      await prisma.$executeRaw`
-        UPDATE "follow_up_schema"."follow_up_funnel_stages" 
-        SET name = ${name}, 
-            description = ${description || null},
-            order = ${order !== undefined ? order : 999}
-        WHERE id = ${id};
-      `;
+      await prisma.followUpFunnelStage.update({
+        where: { id },
+        data: {
+          name,
+          description,
+          order: order !== undefined ? order : 999
+        }
+      });
       console.log('✅ Atualização SQL concluída com sucesso');
     } catch (sqlError) {
       console.error('❌ Erro na atualização SQL:', sqlError);
@@ -356,26 +349,22 @@ export async function PUT(req: NextRequest) {
       console.log(`🔧 PARTE 2: Verificando relacionamento com a campanha ${campaignId}`);
       
       // Verificar se o estágio já está associado à campanha
-      const existingRelation = await prisma.followUpCampaign.findFirst({
-        where: {
-          id: campaignId,
-          stages: {
-            some: {
-              id
-            }
-          }
-        }
+      const existingStage = await prisma.followUpFunnelStage.findUnique({
+        where: { id }
       });
+      
+      const existingRelation = existingStage && existingStage.campaign_id === campaignId;
       
       if (!existingRelation) {
         console.log(`➕ Adicionando relação entre estágio ${id} e campanha ${campaignId}`);
         try {
-          // Adicionar relação usando abordagem direta
-          await prisma.$executeRaw`
-            INSERT INTO "follow_up_schema"."_FollowUpCampaignToFollowUpFunnelStage" ("A", "B")
-            VALUES (${campaignId}, ${id})
-            ON CONFLICT DO NOTHING;
-          `;
+          // Atualizar a campanha do estágio
+          await prisma.followUpFunnelStage.update({
+            where: { id },
+            data: {
+              campaign_id: campaignId
+            }
+          });
           console.log('✅ Relação adicionada com sucesso');
         } catch (relationError) {
           console.error('❌ Erro ao adicionar relação:', relationError);
@@ -390,7 +379,7 @@ export async function PUT(req: NextRequest) {
     const updatedStage = await prisma.followUpFunnelStage.findUnique({
       where: { id },
       include: {
-        campaigns: true,
+        campaign: true,
         _count: {
           select: {
             steps: true
@@ -416,7 +405,7 @@ export async function PUT(req: NextRequest) {
     const formattedStage = {
       ...updatedStage,
       stepsCount: updatedStage._count.steps,
-      campaignId: campaignId || (updatedStage.campaigns[0]?.id || null)
+      campaignId: campaignId || updatedStage.campaign_id
     };
     
     return NextResponse.json({
@@ -460,7 +449,7 @@ export async function DELETE(req: NextRequest) {
       where: { id },
       include: {
         steps: true,
-        campaigns: true
+        campaign: true
       }
     });
     
@@ -475,7 +464,7 @@ export async function DELETE(req: NextRequest) {
       );
     }
     
-    console.log(`🔍 Estágio ${id} encontrado, passos: ${existingStage.steps.length}, campanhas: ${existingStage.campaigns.length}`);
+    console.log(`🔍 Estágio ${id} encontrado, passos: ${existingStage.steps.length}, campanha: ${existingStage.campaign_id || 'nenhuma'}`);
     
     // ESTRATÉGIA: Remover em várias etapas para evitar erros de integridade referencial
     
@@ -487,18 +476,15 @@ export async function DELETE(req: NextRequest) {
       });
     }
     
-    // 2. Remover as relações com campanhas (many-to-many)
-    if (existingStage.campaigns.length > 0) {
-      console.log(`🧹 Removendo relações com ${existingStage.campaigns.length} campanhas`);
-      // Criamos um desconectador para cada campanha
-      const disconnects = existingStage.campaigns.map(campaign => ({ id: campaign.id }));
+    // 2. Se estiver associado a uma campanha, remover a associação
+    if (existingStage.campaign_id) {
+      console.log(`🧹 Removendo relação com a campanha ${existingStage.campaign_id}`);
       
+      // Limpar a referência da campanha
       await prisma.followUpFunnelStage.update({
         where: { id },
         data: {
-          campaigns: {
-            disconnect: disconnects
-          }
+          campaign_id: null
         }
       });
     }

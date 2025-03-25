@@ -212,7 +212,7 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
       await prisma.followUpMessage.updateMany({
         where: {
           follow_up_id: message.followUpId,
-          step: message.stepIndex
+          delivered: false
         },
         data: {
           delivered: true,
@@ -234,7 +234,6 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
         const pendingMessages = await prisma.followUpMessage.findMany({
           where: {
             follow_up_id: message.followUpId,
-            funnel_stage: message.metadata?.stage_name,
             delivered: false
           }
         });
@@ -405,7 +404,7 @@ export async function reloadPendingMessages(): Promise<void> {
           where: {
             delivered: false
           },
-          orderBy: { step: 'asc' }
+          orderBy: { step_id: 'asc' }
         }
       }
     });
@@ -422,18 +421,17 @@ export async function reloadPendingMessages(): Promise<void> {
       // Agendar o envio
       await scheduleMessage({
         followUpId: followUp.id,
-        stepIndex: nextMessage.step,
+        stepIndex: 0, // Valor padrão, pois step foi removido do modelo
         message: nextMessage.content,
         scheduledTime: followUp.next_message_at || new Date(),
         clientId: followUp.client_id,
         metadata: {
-          template_name: nextMessage.template_name,
-          category: nextMessage.category,
-          stage_name: nextMessage.funnel_stage
+          template_name: "default", // Valores padrão já que os campos foram removidos
+          category: "Utility"
         }
       });
 
-      console.log(`Reagendado envio da mensagem do passo ${nextMessage.step} para follow-up ${followUp.id}`);
+      console.log(`Reagendado envio da mensagem para follow-up ${followUp.id}`);
     }
   } catch (error) {
     console.error("Erro ao recarregar mensagens pendentes:", error);

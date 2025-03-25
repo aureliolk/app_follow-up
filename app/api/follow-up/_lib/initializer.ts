@@ -142,16 +142,11 @@ export async function initializeNewFollowUp(
     // 2. Obter o primeiro estágio do funil
     const initialStage = campaign.stages.length > 0 ? campaign.stages[0] : null;
     const initialStageId = initialStage?.id || null;
-    const initialStageName = initialStage?.name || null;
+    let initialStageName = initialStage?.name || null;
 
-    // 3. Preparar metadados auxiliares (não críticos)
-    let metadataObj = metadata || {};
-    if (workspaceId) {
-      metadataObj = {
-        ...metadataObj,
-        workspace_id: workspaceId
-      };
-    }
+    // 3. Verificar metadados (não são mais armazenados diretamente)
+    // Se precisarmos de funcionalidade similar, podemos adicionar campos específicos
+    // ou armazenar os metadados em mensagens do sistema
 
     // 4. Criar o novo follow-up com campos estruturados
     const newFollowUp = await tx.followUp.create({
@@ -159,28 +154,25 @@ export async function initializeNewFollowUp(
         campaign_id: campaignId,
         client_id: clientId,
         status: "active",
-        current_step: 0,
+        current_step_id: null, // Alterado de current_step para current_step_id
         current_stage_id: initialStageId,
-        current_stage_name: initialStageName,
         started_at: new Date(),
         next_message_at: new Date(), // Inicia imediatamente
-        is_responsive: false,
         waiting_for_response: false,
-        processed_by_response: false,
-        metadata: Object.keys(metadataObj).length > 0 
-          ? JSON.stringify(metadataObj) 
-          : null,
       }
     });
 
-    // 5. Registrar a criação do follow-up como transição inicial
+    // 5. Registrar a mensagem inicial de sistema sobre a criação do follow-up
     if (initialStageId && initialStageName) {
-      await tx.followUpStateTransition.create({
+      await tx.followUpMessage.create({
         data: {
           follow_up_id: newFollowUp.id,
-          to_stage_id: initialStageId,
-          to_stage_name: initialStageName,
-          triggered_by: 'initialization'
+          step_id: null,
+          content: `Follow-up iniciado no estágio "${initialStageName}" (workspace: ${workspaceId || 'nenhum'})`,
+          is_from_client: false,
+          sent_at: new Date(),
+          delivered: true,
+          delivered_at: new Date()
         }
       });
     }
@@ -230,9 +222,19 @@ export async function getCampaignsWithCounts(
   
   // 4. Adicionar contagens para cada campanha
   return await Promise.all(campaigns.map(async (campaign) => {
-    // Contar passos da campanha
+    // Buscar estágios da campanha
+    const stages = await prisma.followUpFunnelStage.findMany({
+      where: { campaign_id: campaign.id },
+      select: { id: true }
+    });
+    
+    // Contar passos da campanha através dos estágios
     const stepsCount = await prisma.followUpStep.count({
-      where: { campaign_id: campaign.id }
+      where: { 
+        funnel_stage_id: { 
+          in: stages.map(stage => stage.id) 
+        } 
+      }
     });
     
     // Contar follow-ups ativos
@@ -265,16 +267,10 @@ export async function getCampaignDetails(
         select: {
           id: true,
           name: true,
-          order: true,
-          description: true
+          order: true
         },
         orderBy: {
           order: 'asc'
-        }
-      },
-      campaign_steps: {
-        include: {
-          funnel_stage: true
         }
       }
     }
@@ -284,16 +280,30 @@ export async function getCampaignDetails(
     throw new Error("Campanha não encontrada");
   }
   
+  // Buscar as etapas do funil para esta campanha
+  const funnelStages = await prisma.followUpFunnelStage.findMany({
+    where: { campaign_id: campaignId }
+  });
+  
+  // Buscar os passos da campanha separadamente
+  const steps = await prisma.followUpStep.findMany({
+    where: { 
+      funnel_stage_id: { 
+        in: funnelStages.map(stage => stage.id) 
+      } 
+    },
+    include: { funnel_stage: true }
+  });
+  
   // Mapear os passos e incluir informações da etapa
-  const mappedSteps = campaign.campaign_steps.map(step => ({
+  const mappedSteps = steps.map(step => ({
     id: step.id,
     stage_id: step.funnel_stage_id,
     stage_name: step.funnel_stage.name,
     template_name: step.template_name,
+    category: step.category,
     wait_time: step.wait_time,
     message: step.message_content,
-    category: step.message_category || 'Utility',
-    auto_respond: step.auto_respond,
     stage_order: step.funnel_stage.order,
     wait_time_ms: step.wait_time_ms
   }));

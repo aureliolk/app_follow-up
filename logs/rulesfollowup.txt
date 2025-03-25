@@ -1,0 +1,44 @@
+Chat vc etende que o sistema deve esta preparado para 
+  receber a resposta do clietem em passo, ao importa se for 
+  no primeiro ou o ultimo passo.. A idea e quando agente 
+  monta a campanha add os estagio deposi os passos. Cada 
+  passo e uma mensagem com um tempo de expiracao.   A ideia 
+  do app e ente esse tempo de expericao, receber a resposta 
+  do cliente, e enviar ele para o proximo estagio.  Vc 
+  entende isso?
+
+● Sim, entendo perfeitamente o conceito do sistema. Vou
+  explicar para confirmar:
+
+  O sistema funciona assim:
+
+  1. Uma campanha é montada com diferentes estágios (por
+  exemplo: Contato Inicial, Interesse, Proposta, Fechamento)
+  2. Cada estágio contém passos (mensagens) que serão
+  enviados automaticamente
+  3. Cada passo tem um tempo de expiração
+  4. O objetivo é que:
+    - As mensagens sejam enviadas automaticamente seguindo
+  os passos de cada estágio
+    - Se o cliente responder a qualquer momento, o sistema
+  deve avançá-lo para o próximo estágio
+    - Não importa se a resposta veio no primeiro ou último
+  passo do estágio atual
+
+  O fluxo ideal seria:
+  - Enviar mensagem(s) do Estágio 1
+  - Se o cliente responder → avançar para Estágio 2
+  - Se não responder → continuar enviando mensagens do
+  Estágio 1 até terminar
+  - Quando terminar as mensagens do Estágio 1 → aguardar
+  resposta para avançar
+  - Quando receber resposta → avançar para o Estágio 2 e
+  começar a enviar suas mensagens
+
+  O problema atual é que o sistema está pausando o follow-up
+   depois de enviar a primeira mensagem porque está
+  detectando mensagens "pendentes" (pré-agendadas mas não
+  enviadas) e pausando o fluxo. O comportamento correto
+  seria deixar todas as mensagens de um estágio serem
+  enviadas, a menos que o cliente responda e avance para o
+  próximo estágio.

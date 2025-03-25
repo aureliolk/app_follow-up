@@ -51,135 +51,90 @@ model PromptContent {
   @@schema("prompts_schema")
 }
 
-model FollowUpFunnelStage {
-  id          String             @id @default(uuid())
-  name        String
-  order       Int
-  description String?
-  created_at  DateTime           @default(now())
-  steps       FollowUpStep[]
-  campaigns   FollowUpCampaign[] @relation("FollowUpCampaignToFollowUpFunnelStage")
-
-  @@map("follow_up_funnel_stages")
-  @@schema("follow_up_schema")
-}
-
 model FollowUpCampaign {
-  id          String                @id @default(uuid())
-  name        String
-  description String?
-  created_at  DateTime              @default(now())
-  active      Boolean               @default(true)
-  steps       Json?                 // Mantemos para compatibilidade, mas será depreciado
-  follow_ups  FollowUp[]
-  campaign_steps FollowUpStep[]     // Adicionamos o relacionamento
-  stages      FollowUpFunnelStage[] @relation("FollowUpCampaignToFollowUpFunnelStage")
+  id                String                @id @default(uuid())
+  name              String
+  description       String?
+  created_at        DateTime              @default(now())
+  active            Boolean               @default(true)
+  idLumibot         String?
+  tokenAgentLumibot String?
+  stages            FollowUpFunnelStage[] @relation("FollowUpCampaignToFollowUpFunnelStage")
+  follow_ups        FollowUp[]
 
   @@map("follow_up_campaigns")
   @@schema("follow_up_schema")
 }
 
+model FollowUpFunnelStage {
+  id                String           @id @default(uuid())
+  name              String
+  order             Int              @default(0)
+  created_at        DateTime         @default(now())
+  campaign_id       String           @default("")
+  requires_response Boolean          @default(false)
+  description       String
+  campaign          FollowUpCampaign @relation("FollowUpCampaignToFollowUpFunnelStage", fields: [campaign_id], references: [id])
+  steps             FollowUpStep[]
+
+  @@map("follow_up_funnel_stages")
+  @@schema("follow_up_schema")
+}
+
 model FollowUpStep {
-  id               String              @id @default(uuid())
-  funnel_stage_id  String
-  campaign_id      String
-  name             String
-  template_name    String
-  wait_time        String
-  wait_time_ms     Int
-  message_content  String
-  message_category String?
-  auto_respond     Boolean             @default(true)
-  status           String              @default("created")
-  created_at       DateTime            @default(now())
-  funnel_stage     FollowUpFunnelStage @relation(fields: [funnel_stage_id], references: [id])
-  campaign         FollowUpCampaign    @relation(fields: [campaign_id], references: [id])
+  id              String              @id @default(uuid())
+  funnel_stage_id String
+  name            String
+  template_name   String
+  wait_time       String
+  wait_time_ms    Int
+  message_content String
+  status          String              @default("created")
+  created_at      DateTime            @default(now())
+  order           Int                 @default(0)
+  category        String
+  funnel_stage    FollowUpFunnelStage @relation(fields: [funnel_stage_id], references: [id])
 
   @@map("follow_up_steps")
   @@schema("follow_up_schema")
 }
 
 model FollowUp {
-  id                   String                    @id @default(uuid())
+  id                   String            @id @default(uuid())
   campaign_id          String
   client_id            String
-  current_step         Int                       @default(0)
-  status               String
-  started_at           DateTime                  @default(now())
-  updated_at           DateTime                  @updatedAt
+  status               String            @default("active")
+  started_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
   next_message_at      DateTime?
   completed_at         DateTime?
-  is_responsive        Boolean                   @default(false)
-  metadata             String?                   // Mantido para compatibilidade, será gradualmente deprecado
   current_stage_id     String?
-  current_stage_name   String?
-  previous_stage_name  String?
-  waiting_for_response Boolean                   @default(false)
-  paused_reason        String?
-  completion_reason    String?                   // Adicionado para registrar o motivo da conclusão
+  waiting_for_response Boolean           @default(false)
   last_response        String?
-  last_response_date   DateTime?
-  processed_by_response Boolean?                 @default(false)
+  current_step_id      String?
+  last_response_at     DateTime?
   messages             FollowUpMessage[]
-  state_transitions    FollowUpStateTransition[]
-  client_responses     FollowUpClientResponse[]
-  campaign             FollowUpCampaign          @relation(fields: [campaign_id], references: [id])
+  campaign             FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
 
   @@index([client_id])
   @@index([status])
-  @@index([current_stage_name])
-  @@index([waiting_for_response])
   @@map("follow_ups")
   @@schema("follow_up_schema")
 }
 
 model FollowUpMessage {
-  id            String    @id @default(uuid())
-  follow_up_id  String
-  step          Int
-  content       String
-  sent_at       DateTime  @default(now())
-  delivered     Boolean   @default(false)
-  delivered_at  DateTime?
-  category      String?
-  funnel_stage  String?
-  template_name String?
-  follow_up     FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
+  id             String    @id @default(uuid())
+  follow_up_id   String
+  content        String
+  sent_at        DateTime  @default(now())
+  delivered      Boolean   @default(false)
+  delivered_at   DateTime?
+  is_from_client Boolean   @default(false)
+  step_id        String?
+  follow_up      FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
 
-  @@index([follow_up_id, step])
+  @@index([follow_up_id])
   @@map("follow_up_messages")
-  @@schema("follow_up_schema")
-}
-
-model FollowUpStateTransition {
-  id              String    @id @default(uuid())
-  follow_up_id    String
-  from_stage_id   String?
-  to_stage_id     String?
-  from_stage_name String?
-  to_stage_name   String?
-  transition_date DateTime  @default(now())
-  triggered_by    String?   // "system", "client_response", "manual", etc
-  metadata        String?
-  follow_up       FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
-
-  @@index([follow_up_id])
-  @@map("follow_up_state_transitions")
-  @@schema("follow_up_schema")
-}
-
-model FollowUpClientResponse {
-  id                String    @id @default(uuid())
-  follow_up_id      String
-  message           String
-  received_at       DateTime  @default(now())
-  current_step      Int
-  current_stage_name String?
-  triggered_advance Boolean?  @default(false)
-  follow_up         FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
-
-  @@index([follow_up_id])
-  @@map("follow_up_client_responses")
   @@schema("follow_up_schema")
 }
 
@@ -195,10 +150,10 @@ model User {
   is_super_admin    Boolean               @default(false)
   accounts          Account[]
   sessions          Session[]
+  created_tokens    WorkspaceApiToken[]
   invitations       WorkspaceInvitation[]
   workspace_members WorkspaceMember[]
   owned_workspaces  Workspace[]           @relation("WorkspaceOwner")
-  created_tokens    WorkspaceApiToken[]
 
   @@map("users")
   @@schema("workspace_schema")
@@ -252,10 +207,10 @@ model Workspace {
   owner_id            String
   created_at          DateTime                    @default(now())
   updated_at          DateTime                    @updatedAt
+  api_tokens          WorkspaceApiToken[]
   follow_up_campaigns WorkspaceFollowUpCampaign[]
   invitations         WorkspaceInvitation[]
   members             WorkspaceMember[]
-  api_tokens          WorkspaceApiToken[]
   owner               User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
 
   @@map("workspaces")
@@ -316,9 +271,8 @@ model WorkspaceApiToken {
   last_used_at DateTime?
   revoked      Boolean   @default(false)
   created_by   String
-  
-  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   creator      User      @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@index([workspace_id])
   @@map("workspace_api_tokens")
