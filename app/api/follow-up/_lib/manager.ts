@@ -313,12 +313,30 @@ async function determineNextStep(
 
     // Verificar se chegamos ao fim dos passos
     if (nextStepIndex >= steps.length) {
-      console.log(`Follow-up ${followUp.id} - Todos os passos foram processados`);
-      // Armazenar a razão na metadata, já que não existe campo completion_reason
+      console.log(`Follow-up ${followUp.id} - Todos os passos foram processados. Verificando mensagens pendentes...`);
+      
+      // Verificar se há mensagens pendentes antes de completar
+      const pendingMessages = await prisma.followUpMessage.findMany({
+        where: {
+          follow_up_id: followUp.id,
+          delivered: false
+        }
+      });
+      
+      if (pendingMessages.length > 0) {
+        console.log(`Ainda existem ${pendingMessages.length} mensagens pendentes (passos ${pendingMessages.map(m => m.step).join(', ')}) antes de completar o follow-up. Aguardando envio...`);
+        
+        // Não marcar como completo ainda, apenas retornar
+        return;
+      }
+      
+      // Armazenar a razão na metadata
       const metadataObj = {
         completion_reason: "Todos os passos foram processados",
         timestamp: new Date().toISOString()
       };
+      
+      console.log(`Todas as mensagens foram entregues. Marcando follow-up como completo.`);
       
       await updateFollowUpStatus(followUp.id, 'completed', {
         completed_at: new Date(),
@@ -1057,8 +1075,6 @@ async function processActiveFollowUpResponse(
     stepsInCurrentStage.sort((a, b) => steps.indexOf(a) - steps.indexOf(b));
     
     // Verificar se o passo atual é o último passo do estágio
-    // Essa verificação não é mais usada, pois vamos avançar ao próximo estágio
-    // independentemente de estar no último passo ou não, se o cliente responder
     const isLastStepOfStage = stepsInCurrentStage.length > 0 && 
                               stepsInCurrentStage[stepsInCurrentStage.length - 1].id === currentStep.id;
                               
