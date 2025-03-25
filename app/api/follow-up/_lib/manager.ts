@@ -1169,6 +1169,7 @@ export async function resumeFollowUp(followUpId: string): Promise<void> {
   }
 }
 
+// Função para avançar manualmente para o próximo passo - também usada pelos mecanismos automáticos
 export async function advanceToNextStep(followUpId: string): Promise<void> {
   try {
     const followUp = await prisma.followUp.findUnique({

@@ -301,9 +301,39 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
                   if (currentFollowUp && currentFollowUp.status === 'active') {
                     console.log(`Retomando transição de estágio para follow-up ${message.followUpId} após entrega de todas as mensagens`);
                     
-                    // Importar apenas advanceToNextStage para evitar erros circulares
-                    const { advanceToNextStage } = await import('./manager');
-                    await advanceToNextStage(message.followUpId);
+                    // Importar apenas a função que precisamos e verificar se ela existe
+                    const manager = await import('./manager');
+                    
+                    if (typeof manager.advanceToNextStep === 'function') {
+                      await manager.advanceToNextStep(message.followUpId);
+                    } else {
+                      // Fallback: se não conseguir importar a função específica, faz a atualização manual
+                      console.log(`Função advanceToNextStep não encontrada, tentando método alternativo`);
+                      
+                      // Atualizar manualmente o follow-up
+                      await prisma.followUp.update({
+                        where: { id: message.followUpId },
+                        data: {
+                          status: 'active',
+                          waiting_for_response: false,
+                          paused_reason: null
+                        }
+                      });
+                      
+                      // Criar mensagem de sistema informando
+                      await prisma.followUpMessage.create({
+                        data: {
+                          follow_up_id: message.followUpId,
+                          step: -1,
+                          content: `Sistema retomou transição de estágio automaticamente após entrega de mensagens pendentes`,
+                          category: "System",
+                          sent_at: new Date(),
+                          delivered: true,
+                          delivered_at: new Date(),
+                          funnel_stage: message.metadata?.stage_name
+                        }
+                      });
+                    }
                   } else {
                     console.log(`Follow-up ${message.followUpId} não está mais ativo, não avançando automaticamente`);
                   }
