@@ -345,7 +345,15 @@ async function determineNextStep(
 
     if (isChangingStage && isLastStepOfStage) {
       // Apenas pausar para transição de estágio quando for o último passo do estágio atual
-      console.log(`Follow-up ${followUp.id} - Último passo do estágio, aguardando resposta antes de avançar para ${nextStep.stage_name}`);
+      console.log(`Follow-up ${followUp.id} - Último passo do estágio "${currentStep.stage_name}", aguardando resposta do cliente antes de avançar para "${nextStep.stage_name}"`);
+    
+    // Marcar que este follow-up necessita de resposta do cliente para avançar
+    await prisma.followUp.update({
+      where: { id: followUp.id },
+      data: {
+        waiting_for_response: true
+      }
+    });
       await handleStageTransition(followUp, currentStep, nextStep);
     } else if (isChangingStage) {
       // Se não for o último passo do estágio, continuar executando os passos dentro do mesmo estágio
@@ -954,6 +962,16 @@ async function processActiveFollowUpResponse(
       - Passos pendentes: ${pendingMessages.map(m => m.step).join(', ')}
     `);
     
+    // Consultar quantas mensagens estão previstas para esse estágio
+    const stagesDetails = await prisma.followUpStep.count({
+      where: {
+        campaign_id: followUp.campaign_id,
+        funnel_stage_id: followUp.current_stage_id
+      }
+    });
+    
+    console.log(`Total de passos previstos para o estágio "${followUp.current_stage_name}": ${stagesDetails}`);
+    
     if (pendingMessages.length > 0) {
       console.log(`Follow-up ${followUp.id} - Existem ${pendingMessages.length} mensagens pendentes no estágio atual. Registrando resposta, mas mantendo o estágio.`);
       
@@ -1044,8 +1062,30 @@ async function processActiveFollowUpResponse(
     const isLastStepOfStage = stepsInCurrentStage.length > 0 && 
                               stepsInCurrentStage[stepsInCurrentStage.length - 1].id === currentStep.id;
                               
-    // Informar no log que vamos tentar avançar o estágio de qualquer forma
-    console.log(`Cliente respondeu durante estágio ${currentStageName}. Vamos tentar avançar para o próximo estágio, independente do passo atual.`);
+    // Informar no log que vamos tentar avançar o estágio
+    // Mas somente se o cliente realmente respondeu por iniciativa própria
+    // (não por um mecanismo automático)
+    
+    // Verificar total de mensagens entregues neste estágio
+    const deliveredMessages = await prisma.followUpMessage.count({
+      where: {
+        follow_up_id: followUp.id,
+        funnel_stage: currentStageName,
+        delivered: true
+      }
+    });
+    
+    // Verificar total de passos neste estágio
+    const totalStepsInStage = await prisma.followUpStep.count({
+      where: {
+        campaign_id: followUp.campaign_id,
+        funnel_stage_id: followUp.current_stage_id
+      }
+    });
+    
+    console.log(`Cliente respondeu durante estágio ${currentStageName}. 
+    - Mensagens entregues: ${deliveredMessages}/${totalStepsInStage} 
+    - Tentaremos avançar para o próximo estágio.`);
     
     // Verificar se existe próximo estágio
     if (currentStageIndex < stageNames.length - 1) {
