@@ -535,6 +535,11 @@ async function testFollowUpFlow() {
     // Função para continuar monitorando o fluxo completo da campanha
     async function monitorCampaignFlow() {
       try {
+        log('\n=============================================', colors.bright + colors.cyan);
+        log('MONITORANDO FLUXO COMPLETO DA CAMPANHA', colors.bright + colors.cyan);
+        log('Aguardando recebimento de TODAS as mensagens', colors.bright + colors.cyan);
+        log('=============================================\n', colors.bright + colors.cyan);
+        
         let currentStatus = null;
         let previousStage = 'Etapa 2'; // Começamos no estágio 2 após o primeiro avanço
         let monitoringAttempts = 0;
@@ -582,6 +587,10 @@ async function testFollowUpFlow() {
                 // Função para aguardar todas as mensagens do estágio atual
                 async function waitForAllCurrentStageMessages() {
                   try {
+                    log(`\n---------------------------------------------`, colors.bright + colors.blue);
+                    log(`VERIFICANDO MENSAGENS DO ESTÁGIO ${currentStatus.current_stage_name.toUpperCase()}`, colors.bright + colors.blue);
+                    log(`---------------------------------------------`, colors.bright + colors.blue);
+                    
                     // Buscar quantos passos existem neste estágio
                     const stageSteps = await prisma.followUpStep.count({
                       where: {
@@ -591,6 +600,36 @@ async function testFollowUpFlow() {
                     });
                     
                     log(`Total de passos no estágio "${currentStatus.current_stage_name}": ${stageSteps}`, colors.blue);
+                    
+                    // Mostrar os passos previstos para melhor depuração
+                    const stageStepDetails = await prisma.followUpStep.findMany({
+                      where: {
+                        campaign_id: CONFIG.campaignId,
+                        funnel_stage: { name: currentStatus.current_stage_name }
+                      },
+                      select: {
+                        id: true,
+                        wait_time: true,
+                        template_name: true
+                      },
+                      orderBy: { wait_time_ms: 'asc' }
+                    });
+                    
+                    log(`Passos esperados neste estágio:`, colors.blue);
+                    stageStepDetails.forEach((step, index) => {
+                      log(`  ${index+1}. ${step.template_name} (${step.wait_time})`, colors.blue);
+                    });
+                    
+                    // Verificar se existe algum passo agendado mas não entregue
+                    const pendingMessagesInitial = await prisma.followUpMessage.findMany({
+                      where: {
+                        follow_up_id: followUpId,
+                        funnel_stage: currentStatus.current_stage_name,
+                        delivered: false
+                      }
+                    });
+                    
+                    log(`Mensagens pendentes no início da verificação: ${pendingMessagesInitial.length}`, colors.yellow);
                     
                     let messagesDelivered = 0;
                     let attempts = 0;
@@ -620,8 +659,46 @@ async function testFollowUpFlow() {
                       attempts++;
                     }
                     
-                    // Se não conseguiu receber todas as mensagens, continuar mesmo assim
-                    log(`⚠️ Tempo máximo excedido. Continuando mesmo sem todas as mensagens...`, colors.yellow);
+                    // Se não conseguiu receber todas as mensagens, tente mostrar quantas estão pendentes
+                    const pendingMessages = await prisma.followUpMessage.findMany({
+                      where: {
+                        follow_up_id: followUpId,
+                        funnel_stage: currentStatus.current_stage_name,
+                        delivered: false
+                      }
+                    });
+                    
+                    log(`⚠️ Tempo máximo excedido. Ainda existem ${pendingMessages.length} mensagens pendentes:`, colors.yellow);
+                    pendingMessages.forEach(msg => {
+                      log(`  - Passo ${msg.step}: ${msg.content.substring(0, 30)}...`, colors.yellow);
+                    });
+                    
+                    // Não continue até que todas as mensagens sejam entregues
+                    if (pendingMessages.length > 0) {
+                      log(`⚠️ Aguardando mais ${pendingMessages.length} mensagens...`, colors.yellow);
+                      // Mais 5 tentativas
+                      for (let i = 0; i < 5; i++) {
+                        await sleep(10000);
+                        // Verificar novamente
+                        const stillPending = await prisma.followUpMessage.findMany({
+                          where: {
+                            follow_up_id: followUpId,
+                            funnel_stage: currentStatus.current_stage_name,
+                            delivered: false
+                          }
+                        });
+                        
+                        if (stillPending.length === 0) {
+                          log(`✓ Todas as mensagens pendentes foram entregues!`, colors.green);
+                          return true;
+                        } else {
+                          log(`Ainda existem ${stillPending.length} mensagens pendentes. Tentativa extra ${i+1}/5`, colors.yellow);
+                        }
+                      }
+                      
+                      log(`⚠️ ALERTA: Mensagens pendentes mesmo após tempo máximo. O teste pode falhar.`, colors.bright + colors.red);
+                    }
+                    
                     return true;
                   } catch (error) {
                     log(`Erro ao aguardar mensagens: ${error.message}`, colors.red);
