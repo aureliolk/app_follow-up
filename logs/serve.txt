@@ -1,22 +1,10 @@
-root@lumi-dev:~/app_follow-up#
-root@lumi-dev:~/app_follow-up# npm run dev
-
-> app_nextlumibot@0.1.0 dev
-> next dev --turbopack
-
-   ▲ Next.js 15.2.0 (Turbopack)
-   - Local:        http://localhost:3000
-   - Network:      http://168.119.247.230:3000
-   - Environments: .env.local, .env
-
- ✓ Starting...
- ✓ Ready in 1335ms
- ○ Compiling /api/follow-up ...
- ✓ Compiled /api/follow-up in 1694ms
+Compiling /api/follow-up/cancel ...
+ ✓ Compiled /api/follow-up/cancel in 732ms
+ POST /api/follow-up/cancel 200 in 867ms
 MODO DE TESTE CONFIGURADO COMO: ATIVADO
 Processador de mensagens personalizado configurado.
 Sistema de follow-up inicializado com integração da API Lumibot.
- POST /api/follow-up 201 in 2101ms
+ POST /api/follow-up 201 in 353ms
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
@@ -26,11 +14,11 @@ Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Processando passo 0 (Etapa 1)
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 0
 Cliente ID: 58
 Conteúdo: "Ei, Boss! 🚀 Vi que você recebeu a mensagem, mas ainda não respondeu. Quer tirar alguma dúvida ante
-Horário Agendado: 2025-03-24T23:50:56.151Z
+Horário Agendado: 2025-03-25T00:02:49.032Z
 Metadata: {
   "template_name": "novo_lead_10min",
   "category": "Utility",
@@ -45,32 +33,32 @@ Metadata: {
     "1": "58"
   }
 }
-Atraso calculado: 29987ms (29.987 segundos)
-Agendando mensagem para daqui a 29.987 segundos
-Timeout armazenado com sucesso para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-0
+Atraso calculado: 29992ms (29.992 segundos)
+Agendando mensagem para daqui a 29.992 segundos
+Timeout armazenado com sucesso para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-0
 Mensagem para o passo 0 agendada com sucesso
 Próximo passo: novo_lead_30min, tempo de espera: 30000ms
-Agendando próximo passo 1 para follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c com delay de 30000ms
+Agendando próximo passo 1 para follow-up af27c504-d471-4fc7-9310-c2f800ccd631 com delay de 30000ms
 Recarregando 1 follow-ups ativos com mensagens pendentes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 0
 Cliente ID: 58
 Conteúdo: "Ei, Boss! 🚀 Vi que você recebeu a mensagem, mas ainda não respondeu. Quer tirar alguma dúvida ante
-Horário Agendado: 2025-03-24T23:50:56.151Z
+Horário Agendado: 2025-03-25T00:02:49.032Z
 Metadata: {
   "template_name": "novo_lead_10min",
   "category": "Utility",
   "stage_name": "Etapa 1"
 }
-Cancelando timeout existente para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-0
-Atraso calculado: 25173ms (25.173 segundos)
-Agendando mensagem para daqui a 25.173 segundos
-Timeout armazenado com sucesso para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-0
-Reagendado envio da mensagem do passo 0 para follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c
-Executando timeout para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-0
+Cancelando timeout existente para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-0
+Atraso calculado: 25030ms (25.03 segundos)
+Agendando mensagem para daqui a 25.03 segundos
+Timeout armazenado com sucesso para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-0
+Reagendado envio da mensagem do passo 0 para follow-up af27c504-d471-4fc7-9310-c2f800ccd631
+Executando timeout para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-0
 ===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 0
 Cliente ID: 58
 Status do follow-up: active
@@ -89,11 +77,11 @@ Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Processando passo 1 (Etapa 1)
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 1
 Cliente ID: 58
 Conteúdo: Oi, {{1}}! Percebi que seu atendimento ainda está em andamento. Sei que a rotina pode ser corrida, e
-Horário Agendado: 2025-03-24T23:51:26.202Z
+Horário Agendado: 2025-03-25T00:03:19.066Z
 Metadata: {
   "template_name": "novo_lead_30min",
   "category": "Utility",
@@ -108,13 +96,13 @@ Metadata: {
     "1": "58"
   }
 }
-Atraso calculado: 29991ms (29.991 segundos)
-Agendando mensagem para daqui a 29.991 segundos
-Timeout armazenado com sucesso para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-1
+Atraso calculado: 29992ms (29.992 segundos)
+Agendando mensagem para daqui a 29.992 segundos
+Timeout armazenado com sucesso para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-1
 Mensagem para o passo 1 agendada com sucesso
-Follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c - Último passo do estágio, aguardando resposta antes de avançar para Etapa 2
-Follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c - Preparando transição para o próximo estágio: Etapa 2
-Follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c - Existem 2 mensagens pendentes no estágio "Etapa 1". Pausando para aguardar envio completo.
+Follow-up af27c504-d471-4fc7-9310-c2f800ccd631 - Último passo do estágio, aguardando resposta antes de avançar para Etapa 2
+Follow-up af27c504-d471-4fc7-9310-c2f800ccd631 - Preparando transição para o próximo estágio: Etapa 2
+Follow-up af27c504-d471-4fc7-9310-c2f800ccd631 - Existem 2 mensagens pendentes no estágio "Etapa 1". Pausando para aguardar envio completo.
 ===== RESPOSTA GET CONVERSA DO CLIENTE =====
 Status: 200
 Detalhes do envio para Lumibot:
@@ -126,10 +114,10 @@ Status: 200
 Resultado do envio via Lumibot: SUCESSO
 Atualizando mensagem como entregue no banco de dados
 Mensagem marcada como entregue com sucesso
-Timeout removido do mapa: 813da06e-e3eb-40e1-92eb-12d15151fa3c-0
-Executando timeout para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-1
+Timeout removido do mapa: af27c504-d471-4fc7-9310-c2f800ccd631-0
+Executando timeout para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-1
 ===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 1
 Cliente ID: 58
 Status do follow-up: active
@@ -150,19 +138,146 @@ Status: 200
 Resultado do envio via Lumibot: SUCESSO
 Atualizando mensagem como entregue no banco de dados
 Mensagem marcada como entregue com sucesso
-Timeout removido do mapa: 813da06e-e3eb-40e1-92eb-12d15151fa3c-1
- ○ Compiling /api/follow-up/client-response ...
- ✓ Compiled /api/follow-up/client-response in 613ms
+Todas as mensagens do estágio "Etapa 1" foram entregues, retomando transição de estágio
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+Erro ao enviar mensagem: Error [PrismaClientValidationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].followUpFunnelStage.findMany()` invocation in
+/root/app_follow-up/.next/server/chunks/[root of the server]__65335b24._.js:1609:180
+
+  1606 // Importar a função dinamicamente para evitar referência circular
+  1607 const { processStageTransition } = await __turbopack_context__.r("[project]/app/api/follow-up/_lib/manager.ts [app-route] (ecmascript, async loader)")(__turbopack_context__.i);
+  1608 // Verificar qual o próximo estágio
+→ 1609 const stages = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].followUpFunnelStage.findMany({
+         where: {
+           campaign_id: "d17d857b-8366-4a90-9434-6dec8416dab6",
+           ~~~~~~~~~~~
+       ?   AND?: FollowUpFunnelStageWhereInput | FollowUpFunnelStageWhereInput[],
+       ?   OR?: FollowUpFunnelStageWhereInput[],
+       ?   NOT?: FollowUpFunnelStageWhereInput | FollowUpFunnelStageWhereInput[],
+       ?   id?: StringFilter | String,
+       ?   name?: StringFilter | String,
+       ?   order?: IntFilter | Int,
+       ?   description?: StringNullableFilter | String | Null,
+       ?   created_at?: DateTimeFilter | DateTime,
+       ?   steps?: FollowUpStepListRelationFilter,
+       ?   campaigns?: FollowUpCampaignListRelationFilter
+         },
+         orderBy: {
+           order: "asc"
+         }
+       })
+
+Unknown argument `campaign_id`. Did you mean `campaigns`? Available options are marked with ?.
+    at <unknown> (app/api/follow-up/_lib/scheduler.ts:249:58)
+    at async sendMessage (app/api/follow-up/_lib/scheduler.ts:249:25)
+    at async Timeout._onTimeout (app/api/follow-up/_lib/scheduler.ts:56:8)
+  247 |           
+  248 |           // Verificar qual o próximo estágio
+> 249 |           const stages = await prisma.followUpFunnelStage.findMany({
+      |                                                          ^
+  250 |             where: { 
+  251 |               campaign_id: followUp.campaign_id
+  252 |             }, {
+  clientVersion: '6.4.1'
+}
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+file:///root/app_follow-up/node_modules/@prisma/client/runtime/library.js: Invalid source map. Only conformant source maps can be used to find the original code. Cause: TypeError [ERR_INVALID_ARG_TYPE]: The "payload" argument must be of type object. Received null
+Erro ao enviar mensagem agendada af27c504-d471-4fc7-9310-c2f800ccd631-1: Error [PrismaClientValidationError]: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].followUpFunnelStage.findMany()` invocation in
+/root/app_follow-up/.next/server/chunks/[root of the server]__65335b24._.js:1609:180
+
+  1606 // Importar a função dinamicamente para evitar referência circular
+  1607 const { processStageTransition } = await __turbopack_context__.r("[project]/app/api/follow-up/_lib/manager.ts [app-route] (ecmascript, async loader)")(__turbopack_context__.i);
+  1608 // Verificar qual o próximo estágio
+→ 1609 const stages = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].followUpFunnelStage.findMany({
+         where: {
+           campaign_id: "d17d857b-8366-4a90-9434-6dec8416dab6",
+           ~~~~~~~~~~~
+       ?   AND?: FollowUpFunnelStageWhereInput | FollowUpFunnelStageWhereInput[],
+       ?   OR?: FollowUpFunnelStageWhereInput[],
+       ?   NOT?: FollowUpFunnelStageWhereInput | FollowUpFunnelStageWhereInput[],
+       ?   id?: StringFilter | String,
+       ?   name?: StringFilter | String,
+       ?   order?: IntFilter | Int,
+       ?   description?: StringNullableFilter | String | Null,
+       ?   created_at?: DateTimeFilter | DateTime,
+       ?   steps?: FollowUpStepListRelationFilter,
+       ?   campaigns?: FollowUpCampaignListRelationFilter
+         },
+         orderBy: {
+           order: "asc"
+         }
+       })
+
+Unknown argument `campaign_id`. Did you mean `campaigns`? Available options are marked with ?.
+    at <unknown> (app/api/follow-up/_lib/scheduler.ts:249:58)
+    at async sendMessage (app/api/follow-up/_lib/scheduler.ts:249:25)
+    at async Timeout._onTimeout (app/api/follow-up/_lib/scheduler.ts:56:8)
+  247 |           
+  248 |           // Verificar qual o próximo estágio
+> 249 |           const stages = await prisma.followUpFunnelStage.findMany({
+      |                                                          ^
+  250 |             where: { 
+  251 |               campaign_id: followUp.campaign_id
+  252 |             }, {
+  clientVersion: '6.4.1'
+}
+Stack trace do erro: PrismaClientValidationError: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].followUpFunnelStage.findMany()` invocation in
+/root/app_follow-up/.next/server/chunks/[root of the server]__65335b24._.js:1609:180
+
+  1606 // Importar a função dinamicamente para evitar referência circular
+  1607 const { processStageTransition } = await __turbopack_context__.r("[project]/app/api/follow-up/_lib/manager.ts [app-route] (ecmascript, async loader)")(__turbopack_context__.i);
+  1608 // Verificar qual o próximo estágio
+→ 1609 const stages = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["prisma"].followUpFunnelStage.findMany({
+         where: {
+           campaign_id: "d17d857b-8366-4a90-9434-6dec8416dab6",
+           ~~~~~~~~~~~
+       ?   AND?: FollowUpFunnelStageWhereInput | FollowUpFunnelStageWhereInput[],
+       ?   OR?: FollowUpFunnelStageWhereInput[],
+       ?   NOT?: FollowUpFunnelStageWhereInput | FollowUpFunnelStageWhereInput[],
+       ?   id?: StringFilter | String,
+       ?   name?: StringFilter | String,
+       ?   order?: IntFilter | Int,
+       ?   description?: StringNullableFilter | String | Null,
+       ?   created_at?: DateTimeFilter | DateTime,
+       ?   steps?: FollowUpStepListRelationFilter,
+       ?   campaigns?: FollowUpCampaignListRelationFilter
+         },
+         orderBy: {
+           order: "asc"
+         }
+       })
+
+Unknown argument `campaign_id`. Did you mean `campaigns`? Available options are marked with ?.
+    at Pn (/root/app_follow-up/node_modules/@prisma/client/runtime/library.js:29:1363)
+    at Un.handleRequestError (/root/app_follow-up/node_modules/@prisma/client/runtime/library.js:121:7090)
+    at Un.handleAndLogRequestError (/root/app_follow-up/node_modules/@prisma/client/runtime/library.js:121:6771)
+    at Un.request (/root/app_follow-up/node_modules/@prisma/client/runtime/library.js:121:6478)
+    at async l (/root/app_follow-up/node_modules/@prisma/client/runtime/library.js:130:9644)
+    at async sendMessage (/root/app_follow-up/.next/server/chunks/[root of the server]__65335b24._.js:1609:36)
+    at async Timeout._onTimeout (/root/app_follow-up/.next/server/chunks/[root of the server]__65335b24._.js:1451:17)
+Timeout removido do mapa: af27c504-d471-4fc7-9310-c2f800ccd631-1
+MODO DE TESTE CONFIGURADO COMO: ATIVADO
 === DADOS DA RESPOSTA DO CLIENTE ===
-followUpId: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+followUpId: af27c504-d471-4fc7-9310-c2f800ccd631
 clientId: 58
 message: Olá, estou testando o avanço de estágio!
 === FIM DADOS DA RESPOSTA DO CLIENTE ===
-=== DADOS DA RESPOSTA DO CLIENTE === {
-  followUpId: '813da06e-e3eb-40e1-92eb-12d15151fa3c',
+=== DADOS DA RESPOSTA DO CLIENTE ===
+{
+  followUpId: 'af27c504-d471-4fc7-9310-c2f800ccd631',
   clientId: '58',
   message: 'Olá, estou testando o avanço de estágio!'
 }
+=== FIM DADOS DA RESPOSTA DO CLIENTE ===
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
@@ -186,11 +301,11 @@ Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Processando passo 2 (Etapa 2)
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 2
 Cliente ID: 58
 Conteúdo: Oi, {{1}}! Vi que você iniciou um processo conosco, mas ainda não concluímos sua qualificação. Caso 
-Horário Agendado: 2025-03-24T23:52:03.008Z
+Horário Agendado: 2025-03-25T00:03:55.501Z
 Metadata: {
   "template_name": "qualificacao_10min",
   "category": "Utility",
@@ -205,24 +320,39 @@ Metadata: {
     "1": "58"
   }
 }
-Atraso calculado: 29994ms (29.994 segundos)
-Agendando mensagem para daqui a 29.994 segundos
-Timeout armazenado com sucesso para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-2
+Atraso calculado: 29991ms (29.991 segundos)
+Agendando mensagem para daqui a 29.991 segundos
+Timeout armazenado com sucesso para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-2
 Mensagem para o passo 2 agendada com sucesso
 Próximo passo: qualificacao_1h, tempo de espera: 30000ms
-Agendando próximo passo 3 para follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c com delay de 30000ms
- POST /api/follow-up/client-response 200 in 746ms
- ○ Compiling /api/follow-up/status ...
- ✓ Compiled /api/follow-up/status in 591ms
- GET /api/follow-up/status?id=813da06e-e3eb-40e1-92eb-12d15151fa3c 200 in 660ms
-Executando timeout para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-2
+Agendando próximo passo 3 para follow-up af27c504-d471-4fc7-9310-c2f800ccd631 com delay de 30000ms
+ POST /api/follow-up/client-response 200 in 394ms
+Recarregando 1 follow-ups ativos com mensagens pendentes
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
+Step Index: 2
+Cliente ID: 58
+Conteúdo: Oi, {{1}}! Vi que você iniciou um processo conosco, mas ainda não concluímos sua qualificação. Caso 
+Horário Agendado: 2025-03-25T00:03:55.501Z
+Metadata: {
+  "template_name": "qualificacao_10min",
+  "category": "Utility",
+  "stage_name": "Etapa 2"
+}
+Cancelando timeout existente para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-2
+Atraso calculado: 25044ms (25.044 segundos)
+Agendando mensagem para daqui a 25.044 segundos
+Timeout armazenado com sucesso para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-2
+Reagendado envio da mensagem do passo 2 para follow-up af27c504-d471-4fc7-9310-c2f800ccd631
+ GET /api/follow-up/status?id=af27c504-d471-4fc7-9310-c2f800ccd631 200 in 80ms
+Executando timeout para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-2
 ===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 2
 Cliente ID: 58
 Status do follow-up: active
 Cliente já respondeu e mudou de fase, cancelando envio
-Timeout removido do mapa: 813da06e-e3eb-40e1-92eb-12d15151fa3c-2
+Timeout removido do mapa: af27c504-d471-4fc7-9310-c2f800ccd631-2
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
@@ -232,11 +362,11 @@ Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
 Processando passo 3 (Etapa 2)
 Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
 ===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 3
 Cliente ID: 58
 Conteúdo: Boss! Para te ajudar com mais informações, preparamos um vídeo explicativo sobre como funciona. Você
-Horário Agendado: 2025-03-24T23:52:33.027Z
+Horário Agendado: 2025-03-25T00:04:25.526Z
 Metadata: {
   "template_name": "qualificacao_1h",
   "category": "Utility",
@@ -251,18 +381,18 @@ Metadata: {
     "1": "58"
   }
 }
-Atraso calculado: 29992ms (29.992 segundos)
-Agendando mensagem para daqui a 29.992 segundos
-Timeout armazenado com sucesso para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-3
+Atraso calculado: 29991ms (29.991 segundos)
+Agendando mensagem para daqui a 29.991 segundos
+Timeout armazenado com sucesso para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-3
 Mensagem para o passo 3 agendada com sucesso
-Follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c - Último passo do estágio, aguardando resposta antes de avançar para Etapa 3
-Follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c - Preparando transição para o próximo estágio: Etapa 3
-Follow-up 813da06e-e3eb-40e1-92eb-12d15151fa3c - Existem 2 mensagens pendentes no estágio "Etapa 2". Pausando para aguardar envio completo.
- GET /api/follow-up/status?id=813da06e-e3eb-40e1-92eb-12d15151fa3c 200 in 71ms
- GET /api/follow-up/status?id=813da06e-e3eb-40e1-92eb-12d15151fa3c 200 in 61ms
-Executando timeout para mensagem 813da06e-e3eb-40e1-92eb-12d15151fa3c-3
+Follow-up af27c504-d471-4fc7-9310-c2f800ccd631 - Último passo do estágio, aguardando resposta antes de avançar para Etapa 3
+Follow-up af27c504-d471-4fc7-9310-c2f800ccd631 - Preparando transição para o próximo estágio: Etapa 3
+Follow-up af27c504-d471-4fc7-9310-c2f800ccd631 - Existem 2 mensagens pendentes no estágio "Etapa 2". Pausando para aguardar envio completo.
+ GET /api/follow-up/status?id=af27c504-d471-4fc7-9310-c2f800ccd631 200 in 72ms
+ GET /api/follow-up/status?id=af27c504-d471-4fc7-9310-c2f800ccd631 200 in 59ms
+Executando timeout para mensagem af27c504-d471-4fc7-9310-c2f800ccd631-3
 ===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: 813da06e-e3eb-40e1-92eb-12d15151fa3c
+FollowUp ID: af27c504-d471-4fc7-9310-c2f800ccd631
 Step Index: 3
 Cliente ID: 58
 Status do follow-up: active
@@ -283,7 +413,7 @@ Status: 200
 Resultado do envio via Lumibot: SUCESSO
 Atualizando mensagem como entregue no banco de dados
 Mensagem marcada como entregue com sucesso
-Timeout removido do mapa: 813da06e-e3eb-40e1-92eb-12d15151fa3c-3
- GET /api/follow-up/status?id=813da06e-e3eb-40e1-92eb-12d15151fa3c 200 in 60ms
- GET /api/follow-up/status?id=813da06e-e3eb-40e1-92eb-12d15151fa3c 200 in 61ms
- GET /api/follow-up/status?id=813da06e-e3eb-40e1-92eb-12d15151fa3c 200 in 59ms
+Timeout removido do mapa: af27c504-d471-4fc7-9310-c2f800ccd631-3
+ GET /api/follow-up/status?id=af27c504-d471-4fc7-9310-c2f800ccd631 200 in 65ms
+ GET /api/follow-up/status?id=af27c504-d471-4fc7-9310-c2f800ccd631 200 in 61ms
+ GET /api/follow-up/status?id=af27c504-d471-4fc7-9310-c2f800ccd631 200 in 63ms

@@ -245,13 +245,18 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
           // Importar a função dinamicamente para evitar referência circular
           const { processStageTransition } = await import('./manager');
           
-          // Verificar qual o próximo estágio
-          const stages = await prisma.followUpFunnelStage.findMany({
-            where: { 
-              campaign_id: followUp.campaign_id
-            },
-            orderBy: { order: 'asc' }
+          // Verificar qual o próximo estágio - usando o relacionamento correto
+          const campaign = await prisma.followUpCampaign.findUnique({
+            where: { id: followUp.campaign_id },
+            include: {
+              stages: {
+                orderBy: { order: 'asc' }
+              }
+            }
           });
+          
+          // Usar os estágios do relacionamento campaign->stages
+          const stages = campaign?.stages || [];
           
           // Encontrar o índice do estágio atual
           const currentStageIndex = stages.findIndex(s => s.id === followUp.current_stage_id);
@@ -288,9 +293,20 @@ async function sendMessage(message: ScheduledMessage): Promise<void> {
               // Aguardar um breve momento para garantir que tudo seja salvo no banco
               setTimeout(async () => {
                 try {
-                  // Importar e chamar a função de continuação
-                  const { advanceToNextStage } = await import('./manager');
-                  await advanceToNextStage(message.followUpId);
+                  // Verificar novamente se o follow-up ainda está ativo
+                  const currentFollowUp = await prisma.followUp.findUnique({
+                    where: { id: message.followUpId }
+                  });
+                  
+                  if (currentFollowUp && currentFollowUp.status === 'active') {
+                    console.log(`Retomando transição de estágio para follow-up ${message.followUpId} após entrega de todas as mensagens`);
+                    
+                    // Importar apenas advanceToNextStage para evitar erros circulares
+                    const { advanceToNextStage } = await import('./manager');
+                    await advanceToNextStage(message.followUpId);
+                  } else {
+                    console.log(`Follow-up ${message.followUpId} não está mais ativo, não avançando automaticamente`);
+                  }
                 } catch (err) {
                   console.error('Erro ao avançar automaticamente após entrega de mensagens:', err);
                 }
