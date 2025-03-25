@@ -611,8 +611,6 @@ export async function handleClientResponse(
   message: string,
   followUpId?: string
 ): Promise<void> {
-  // Nota: Esta função usa o modelo FollowUpClientResponse que não existe no schema
-  // Precisamos modificar para usar apenas os modelos existentes
   try {
     console.log('=== DADOS DA RESPOSTA DO CLIENTE ===');
     console.log({ followUpId, clientId, message });
@@ -628,7 +626,6 @@ export async function handleClientResponse(
       include: {
         campaign: {
           include: {
-            campaign_steps: { include: { funnel_stage: true } },
             stages: { orderBy: { order: 'asc' } }
           }
         }
@@ -651,7 +648,7 @@ export async function handleClientResponse(
       }
 
       // Obter o passo atual
-      const currentStepIndex = formattedSteps.findIndex(step => step.id === followUp.current_step_id) || 0;
+      const currentStepIndex = steps.findIndex(step => step.id === followUp.current_step_id) || 0;
       const currentStep = currentStepIndex < steps.length ? steps[currentStepIndex] : null;
 
       if (!currentStep) {
@@ -691,12 +688,11 @@ export async function handleClientResponse(
           // Cliente respondeu a uma solicitação específica de resposta
           await processStageAdvancement(followUp, steps, currentStep, message);
         } 
-        else if (followUp.paused_reason && followUp.paused_reason.includes('Aguardando envio de')) {
+        else {
           // Verificar se temos mensagens pendentes
           const pendingMessages = await prisma.followUpMessage.findMany({
             where: {
               follow_up_id: followUp.id,
-              // Removido: funnel_stage não existe no modelo FollowUpMessage
               delivered: false
             }
           });
@@ -710,7 +706,6 @@ export async function handleClientResponse(
               where: { id: followUp.id },
               data: {
                 status: 'active',
-                // paused_reason não existe no modelo FollowUp
                 waiting_for_response: false
               }
             });
@@ -724,7 +719,9 @@ export async function handleClientResponse(
             await prisma.followUp.update({
               where: { id: followUp.id },
               data: {
-                // Removido: is_responsive não existe no modelo FollowUp
+                // Campo marcado como responsivo foi removido pois não existe no modelo
+                last_response: message,
+                last_response_at: new Date()
               }
             });
           }
@@ -775,7 +772,6 @@ async function processStageAdvancement(
     console.log('Estágios ordenados:', stageNames);
 
     // Encontrar o índice do estágio atual
-    // Usando nome do estágio do passo atual já que current_stage_name não existe no modelo
     const currentStageName = currentStep.stage_name;
     const currentStageIndex = stageNames.indexOf(currentStageName);
     console.log('Estágio atual:', currentStageName, 'índice:', currentStageIndex);
@@ -793,27 +789,16 @@ async function processStageAdvancement(
     if (nextStageIndex >= stageNames.length || !nextStageName) {
       console.log(`Follow-up ${followUp.id} - Cliente já está no último estágio`);
 
-      // Atualizar a resposta do cliente como triggerando avanço
-      await prisma.followUpClientResponse.updateMany({
-        where: {
-          follow_up_id: followUp.id,
-          message
-        },
-        data: {
-          triggered_advance: true
-        }
-      });
-
       await updateFollowUpStatus(followUp.id, 'completed', {
-        // completion_reason e processed_by_response não existem no modelo FollowUp
-        // metadata não existe no modelo FollowUp
+        completed_at: new Date(),
+        last_response: message,
+        last_response_at: new Date()
       });
       
       // Criar mensagem de sistema
       await createSystemMessage(
         followUp.id,
-        `Follow-up concluído após resposta do cliente no último estágio "${currentStageName}"`,
-        "System"
+        `Follow-up concluído após resposta do cliente no último estágio "${currentStageName}"`
       );
 
       console.log(`Follow-up ${followUp.id} concluído após resposta do cliente`);
@@ -822,24 +807,31 @@ async function processStageAdvancement(
 
     console.log(`Avançando de "${currentStageName}" para "${nextStageName}"`);
 
-    // Encontrar o primeiro passo do próximo estágio
-    const stepsInNextStage = steps
-      .filter(s => s.stage_name === nextStageName)
-      .sort((a, b) => a.wait_time_ms - b.wait_time_ms);
+    // Obter o ID do próximo estágio
+    const nextStageId = sortedStages[nextStageIndex]?.id;
+    
+    // Encontrar o primeiro passo do próximo estágio diretamente do banco
+    const stepsInNextStage = await prisma.followUpStep.findMany({
+      where: {
+        funnel_stage_id: nextStageId
+      },
+      orderBy: { wait_time_ms: 'asc' },
+      take: 1
+    });
 
     if (stepsInNextStage.length === 0) {
       console.error(`Não foi possível encontrar passos para o estágio ${nextStageName}`);
 
       await updateFollowUpStatus(followUp.id, 'paused', {
-        // paused_reason não existe no modelo FollowUp
-        // metadata não existe no modelo FollowUp
+        waiting_for_response: false,
+        last_response: message,
+        last_response_at: new Date()
       });
 
       // Criar mensagem de sistema
       await createSystemMessage(
         followUp.id,
-        `Follow-up pausado: o estágio "${nextStageName}" não possui passos configurados`,
-        "System"
+        `Follow-up pausado: o estágio "${nextStageName}" não possui passos configurados`
       );
 
       return;
@@ -847,39 +839,28 @@ async function processStageAdvancement(
 
     // Usar o primeiro passo do próximo estágio
     const nextStep = stepsInNextStage[0];
-    const firstStepOfNextStage = steps.findIndex(s => s.id === nextStep.id);
 
-    if (firstStepOfNextStage < 0) {
-      console.error(`Não foi possível encontrar o índice do primeiro passo do estágio ${nextStageName}`);
-      return;
-    }
-
-    // Removido: o modelo FollowUpStateTransition não existe no schema
-
-    // Removido: o modelo FollowUpClientResponse não existe no schema
-
-    // Atualizar o follow-up para o novo estágio e passo usando campos estruturados
+    // Atualizar o follow-up para o novo estágio e passo
     await prisma.followUp.update({
       where: { id: followUp.id },
       data: {
-        current_step_id: stepsInNextStage[0]?.id || null,
-        // Removido: is_responsive não existe no modelo FollowUp
+        current_step_id: nextStep.id || null,
         status: 'active',
         next_message_at: new Date(),
-        current_stage_id: nextStep.stage_id || nextStep.funnel_stage_id,
-        // Removido: current_stage_name e previous_stage_name não existem no modelo FollowUp
-        waiting_for_response: false
+        current_stage_id: nextStageId,
+        waiting_for_response: false,
+        last_response: message,
+        last_response_at: new Date()
       }
     });
 
     // Criar mensagem de sistema
     await createSystemMessage(
       followUp.id,
-      `Cliente respondeu e avançou de "${currentStageName}" para "${nextStageName}"`,
-      "System"
+      `Cliente respondeu e avançou de "${currentStageName}" para "${nextStageName}"`
     );
 
-    console.log(`Follow-up ${followUp.id} avançado para o estágio ${nextStageName}, passo ${firstStepOfNextStage}`);
+    console.log(`Follow-up ${followUp.id} avançado para o estágio ${nextStageName}`);
 
     // Iniciar processamento no novo estágio
     await processFollowUpSteps(followUp.id);
@@ -916,7 +897,6 @@ async function processActiveFollowUpResponse(
     const pendingMessages = await prisma.followUpMessage.findMany({
       where: {
         follow_up_id: followUp.id,
-        // Removido: funnel_stage não existe no modelo FollowUpMessage
         delivered: false
       }
     });
@@ -926,36 +906,35 @@ async function processActiveFollowUpResponse(
       - Estágio atual: ${currentStep.stage_name}
       - Passo atual ID: ${followUp.current_step_id || 'não definido'}
       - Total de mensagens pendentes: ${pendingMessages.length}
-      - Passos pendentes: ${pendingMessages.map(m => m.step).join(', ')}
+      - Passos pendentes: ${pendingMessages.map(m => m.step_id).join(', ')}
     `);
     
     // Consultar quantas mensagens estão previstas para esse estágio
-    const stagesDetails = await prisma.followUpStep.count({
+    const stepsCount = await prisma.followUpStep.count({
       where: {
-        campaign_id: followUp.campaign_id,
         funnel_stage_id: followUp.current_stage_id
       }
     });
     
-    console.log(`Total de passos previstos: ${stagesDetails}`);
+    console.log(`Total de passos previstos: ${stepsCount}`);
     
     if (pendingMessages.length > 0) {
       console.log(`Follow-up ${followUp.id} - Existem ${pendingMessages.length} mensagens pendentes no estágio atual. Registrando resposta, mas mantendo o estágio.`);
       
-      // Atualizar para registrar que o cliente é responsivo
+      // Atualizar para registrar que o cliente respondeu
       await prisma.followUp.update({
         where: { id: followUp.id },
         data: {
-          // Removido: is_responsive não existe no modelo FollowUp
-          waiting_for_response: false
+          waiting_for_response: false,
+          last_response: message,
+          last_response_at: new Date()
         }
       });
       
       // Criar mensagem de sistema
       await createSystemMessage(
         followUp.id,
-        `Cliente respondeu enquanto ainda há mensagens sendo enviadas. Resposta registrada, aguardando conclusão do envio.`,
-        "System"
+        `Cliente respondeu enquanto ainda há mensagens sendo enviadas. Resposta registrada, aguardando conclusão do envio.`
       );
       
       return;
@@ -972,21 +951,21 @@ async function processActiveFollowUpResponse(
     if (messagesDelivered === 0) {
       console.log(`Follow-up ${followUp.id} - Nenhuma mensagem enviada ainda. Registrando resposta, mas mantendo estágio atual.`);
       
-      // Atualizar para registrar que o cliente é responsivo, mas não avançar estágio
+      // Atualizar para registrar que o cliente respondeu, mas não avançar estágio
       await prisma.followUp.update({
         where: { id: followUp.id },
         data: {
-          // Removido: is_responsive não existe no modelo FollowUp
           waiting_for_response: false,
-          status: 'active'
+          status: 'active',
+          last_response: message,
+          last_response_at: new Date()
         }
       });
       
       // Criar mensagem de sistema
       await createSystemMessage(
         followUp.id,
-        `Cliente respondeu antes da primeira mensagem ser enviada. Resposta registrada, mas mantendo estágio atual.`,
-        "System"
+        `Cliente respondeu antes da primeira mensagem ser enviada. Resposta registrada, mas mantendo estágio atual.`
       );
       
       return;
@@ -1010,7 +989,7 @@ async function processActiveFollowUpResponse(
     }
     
     // Encontrar o índice do estágio atual
-    // Usando nome do estágio do passo atual já que current_stage_name não existe no modelo
+    // Usando nome do estágio do passo atual
     const currentStageName = currentStep.stage_name;
     const currentStageIndex = stageNames.indexOf(currentStageName);
     console.log('Estágio atual:', currentStageName, 'índice:', currentStageIndex);
@@ -1029,14 +1008,11 @@ async function processActiveFollowUpResponse(
                               stepsInCurrentStage[stepsInCurrentStage.length - 1].id === currentStep.id;
                               
     // Informar no log que vamos tentar avançar o estágio
-    // Mas somente se o cliente realmente respondeu por iniciativa própria
-    // (não por um mecanismo automático)
     
     // Verificar total de mensagens entregues neste estágio
     const deliveredMessages = await prisma.followUpMessage.count({
       where: {
         follow_up_id: followUp.id,
-        // Removido: funnel_stage não existe no modelo FollowUpMessage
         delivered: true
       }
     });
@@ -1044,7 +1020,6 @@ async function processActiveFollowUpResponse(
     // Verificar total de passos neste estágio
     const totalStepsInStage = await prisma.followUpStep.count({
       where: {
-        campaign_id: followUp.campaign_id,
         funnel_stage_id: followUp.current_stage_id
       }
     });
@@ -1060,44 +1035,43 @@ async function processActiveFollowUpResponse(
       const nextStageName = stageNames[currentStageIndex + 1];
       
       // Encontrar o primeiro passo do próximo estágio
-      const stepsInNextStage = steps
-        .filter(s => s.stage_name === nextStageName)
-        .sort((a, b) => a.wait_time_ms - b.wait_time_ms);
+      const nextStageId = sortedStages[currentStageIndex + 1]?.id;
       
-      if (stepsInNextStage.length > 0) {
-        const nextStep = stepsInNextStage[0];
-        const firstStepOfNextStage = steps.findIndex(s => s.id === nextStep.id);
+      if (nextStageId) {
+        // Buscar os passos do próximo estágio diretamente do banco
+        const stepsInNextStage = await prisma.followUpStep.findMany({
+          where: {
+            funnel_stage_id: nextStageId
+          },
+          orderBy: { wait_time_ms: 'asc' },
+          take: 1
+        });
         
-        if (firstStepOfNextStage >= 0) {
+        if (stepsInNextStage.length > 0) {
+          const nextStep = stepsInNextStage[0];
+          
           console.log(`Cliente respondeu durante follow-up ativo. Avançando para próximo estágio: ${nextStageName}`);
           
           // Cancelar mensagens agendadas do estágio atual
           await cancelScheduledMessages(followUp.id);
           
-          // Removido: o modelo FollowUpStateTransition não existe no schema
-          
-          // Removido: o modelo FollowUpClientResponse não existe no schema
-          
           // Atualizar o follow-up para o novo estágio usando campos estruturados
           await prisma.followUp.update({
             where: { id: followUp.id },
             data: {
-              current_step_id: stepsInNextStage[0]?.id || null,
-              // Removido: is_responsive não existe no modelo FollowUp,
+              current_step_id: nextStep?.id || null,
               status: 'active', // Garantir que o status está ativo
               waiting_for_response: false, // Não está mais aguardando resposta
-              current_stage_id: nextStep.stage_id || nextStep.funnel_stage_id,
-              // Removido: current_stage_name e previous_stage_name não existem no modelo FollowUp
-              // processed_by_response não existe no modelo FollowUp
-              // metadata não existe no modelo FollowUp
+              current_stage_id: nextStageId,
+              last_response: message,
+              last_response_at: new Date()
             }
           });
           
           // Criar mensagem de sistema registrando a transição de estágio
           await createSystemMessage(
             followUp.id,
-            `Cliente respondeu e avançou de "${currentStageName}" para "${nextStageName}"`,
-            "System"
+            `Cliente respondeu e avançou de "${currentStageName}" para "${nextStageName}"`
           );
           
           // Iniciar processamento no novo estágio
@@ -1111,9 +1085,10 @@ async function processActiveFollowUpResponse(
     await prisma.followUp.update({
       where: { id: followUp.id },
       data: {
-        // Removido: is_responsive não existe no modelo FollowUp
         waiting_for_response: false,
-        status: 'active' // Garantir que está ativo
+        status: 'active', // Garantir que está ativo
+        last_response: message,
+        last_response_at: new Date()
       }
     });
     
