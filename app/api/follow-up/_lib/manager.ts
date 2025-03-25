@@ -937,16 +937,22 @@ async function processActiveFollowUpResponse(
       return;
     }
     
-    // Verificar se existem mensagens pendentes e já criadas/agendadas no estágio atual
-    // É importante verificar apenas mensagens que já foram agendadas (com step <= current_step)
+    // Verificar se existem mensagens já criadas/agendadas e pendentes no estágio atual
     const pendingMessages = await prisma.followUpMessage.findMany({
       where: {
         follow_up_id: followUp.id,
         funnel_stage: followUp.current_stage_name || currentStep.stage_name,
-        delivered: false,
-        step: { lte: followUp.current_step } // Apenas passos até o atual (já enviados/agendados)
+        delivered: false
       }
     });
+    
+    // Registrar informações adicionais para debug
+    console.log(`Follow-up ${followUp.id} - Verificando mensagens pendentes:
+      - Estágio atual: ${followUp.current_stage_name || currentStep.stage_name}
+      - Passo atual: ${followUp.current_step}
+      - Total de mensagens pendentes: ${pendingMessages.length}
+      - Passos pendentes: ${pendingMessages.map(m => m.step).join(', ')}
+    `);
     
     if (pendingMessages.length > 0) {
       console.log(`Follow-up ${followUp.id} - Existem ${pendingMessages.length} mensagens pendentes no estágio atual. Registrando resposta, mas mantendo o estágio.`);
