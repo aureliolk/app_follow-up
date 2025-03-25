@@ -1,0 +1,35 @@
+Prompt para Adicionar Sistema de Webhook ao Projeto
+Preciso implementar um sistema de webhooks na minha aplicação Next.js que permita:
+
+Que os clientes criem webhooks personalizados através da interface de usuário
+Que esses webhooks possam receber notificações HTTP de aplicativos externos
+Que o cliente possa gerenciar (criar, visualizar, revogar, excluir) seus webhooks na página de configurações do workspace
+
+Requisitos técnicos:
+
+Frontend em Next.js 14 (App Router) com TypeScript
+Componentes de UI usando Tailwind CSS e shadcn/ui
+Backend integrado com Prisma e PostgreSQL
+A interface deve ser coerente com o design atual do sistema que usa:
+
+Tema escuro com cores primárias #F54900 (laranja) e secundárias
+Estilo de componentes similar ao existente na aplicação
+
+
+
+O que já existe:
+
+Sistema de autenticação com Next Auth
+Sistema de workspaces onde os usuários configuram suas preferências
+Uma seção de configurações em /workspace/[slug]/settings/page.tsx que usa abas para diferentes configurações
+Já existe um componente ApiTokenManager para gerenciar tokens de API
+
+O que precisa ser feito:
+
+Criar o modelo Webhook no banco de dados (schema Prisma)
+Criar endpoints de API para gerenciar webhooks
+Criar um componente WebhookManager para a interface de usuário
+Integrar o componente na página de configurações do workspace
+Implementar a lógica para processar requisições recebidas nos webhooks
+
+Agradeço a ajuda para implementar esta funcionalidade com todas as melhores práticas e seguindo a estrutura já estabelecida no projeto.

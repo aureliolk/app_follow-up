@@ -151,6 +151,7 @@ model User {
   accounts          Account[]
   sessions          Session[]
   created_tokens    WorkspaceApiToken[]
+  created_webhooks  WorkspaceWebhook[]
   invitations       WorkspaceInvitation[]
   workspace_members WorkspaceMember[]
   owned_workspaces  Workspace[]           @relation("WorkspaceOwner")
@@ -208,6 +209,7 @@ model Workspace {
   created_at          DateTime                    @default(now())
   updated_at          DateTime                    @updatedAt
   api_tokens          WorkspaceApiToken[]
+  webhooks            WorkspaceWebhook[]
   follow_up_campaigns WorkspaceFollowUpCampaign[]
   invitations         WorkspaceInvitation[]
   members             WorkspaceMember[]
@@ -276,5 +278,25 @@ model WorkspaceApiToken {
 
   @@index([workspace_id])
   @@map("workspace_api_tokens")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceWebhook {
+  id           String    @id @default(uuid())
+  workspace_id String
+  name         String
+  url          String
+  secret       String
+  events       String[]
+  active       Boolean   @default(true)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  last_used_at DateTime?
+  created_by   String
+  creator      User      @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id])
+  @@map("workspace_webhooks")
   @@schema("workspace_schema")
 }

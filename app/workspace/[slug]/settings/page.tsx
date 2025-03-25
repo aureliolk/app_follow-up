@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useWorkspace } from '@/context/workspace-context';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ApiTokenManager from './components/ApiTokenManager';
+import WebhookManager from './components/WebhookManager';
 
 export default function WorkspaceSettingsPage() {
   const { workspace, isLoading } = useWorkspace();
@@ -24,6 +25,7 @@ export default function WorkspaceSettingsPage() {
         <TabsList className="mb-8">
           <TabsTrigger value="general" className="px-4 py-2">Geral</TabsTrigger>
           <TabsTrigger value="api" className="px-4 py-2">API</TabsTrigger>
+          <TabsTrigger value="webhooks" className="px-4 py-2">Webhooks</TabsTrigger>
           <TabsTrigger value="notifications" className="px-4 py-2">Notificações</TabsTrigger>
         </TabsList>
         
@@ -64,6 +66,10 @@ export default function WorkspaceSettingsPage() {
         
         <TabsContent value="api" className="space-y-6">
           <ApiTokenManager workspaceId={workspace.id} />
+        </TabsContent>
+        
+        <TabsContent value="webhooks" className="space-y-6">
+          <WebhookManager workspaceId={workspace.id} />
         </TabsContent>
         
         <TabsContent value="notifications" className="space-y-6">
