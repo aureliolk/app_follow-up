@@ -88,7 +88,18 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, description, steps, active, workspaceId } = body;
+    const { name, description, steps, active, workspaceId, idLumibot, tokenAgentLumibot } = body;
+    
+    // Log para depuração
+    console.log("Dados recebidos para atualização da campanha:", {
+      id,
+      name,
+      description,
+      steps: steps?.length || 0,
+      active,
+      idLumibot,
+      tokenAgentLumibot
+    });
 
     if (!name) {
       return NextResponse.json(
@@ -132,14 +143,29 @@ export async function PUT(request: NextRequest) {
     // Usar transação para garantir integridade dos dados
     const result: any = await prisma.$transaction(async (tx) => {
       // 1. Atualizar dados básicos da campanha
+      // Log para depuração antes da atualização
+      console.log("Atualizando campanha com dados:", {
+        id,
+        name,
+        description,
+        idLumibot,
+        tokenAgentLumibot,
+        active: active !== undefined ? active : existingCampaign.active
+      });
+      
+      // Atualizar a campanha
       const updatedCampaign = await tx.followUpCampaign.update({
         where: { id },
         data: {
           name,
           description,
+          idLumibot,
+          tokenAgentLumibot,
           active: active !== undefined ? active : existingCampaign.active
         }
       });
+      
+      console.log("Campanha atualizada com sucesso:", updatedCampaign.id);
 
       // 2. Se passos forem fornecidos, atualizar os passos
       if (steps && Array.isArray(steps)) {
@@ -280,21 +306,27 @@ export async function PUT(request: NextRequest) {
       stage_order: step.funnel_stage.order // Incluir a ordem da etapa do funil
     }));
 
-    // Estruturar resposta
+    // Estruturar resposta - incluir os novos campos
     const responseData = {
       id: result.id,
       name: result.name,
       description: result.description,
       active: result.active,
+      idLumibot: result.idLumibot,
+      tokenAgentLumibot: result.tokenAgentLumibot,
       steps: formattedSteps,
       stages: result.stages
     };
 
-    return NextResponse.json({
+    const response = {
       success: true,
       message: "Campanha atualizada com sucesso",
       data: responseData
-    });
+    };
+    
+    console.log("Resposta final:", response);
+    
+    return NextResponse.json(response);
 
   } catch (error) {
     console.error("Erro ao atualizar campanha:", error);

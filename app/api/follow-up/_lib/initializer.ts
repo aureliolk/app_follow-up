@@ -316,12 +316,14 @@ export async function getCampaignDetails(
     return a.wait_time_ms - b.wait_time_ms;
   });
   
-  // Estruturar a resposta
+  // Estruturar a resposta - incluindo os novos campos
   return {
     id: campaign.id,
     name: campaign.name,
     description: campaign.description,
     active: campaign.active,
+    idLumibot: campaign.idLumibot,
+    tokenAgentLumibot: campaign.tokenAgentLumibot,
     steps: formattedSteps,
     stages: campaign.stages
   };

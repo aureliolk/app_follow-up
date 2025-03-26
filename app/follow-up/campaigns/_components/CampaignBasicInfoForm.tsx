@@ -8,6 +8,10 @@ interface CampaignBasicInfoFormProps {
   setName: (name: string) => void;
   description: string;
   setDescription: (description: string) => void;
+  idLumibot?: string;
+  setIdLumibot?: (id: string) => void;
+  tokenAgentLumibot?: string;
+  setTokenAgentLumibot?: (token: string) => void;
   isLoading: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
@@ -19,6 +23,10 @@ const CampaignBasicInfoForm: React.FC<CampaignBasicInfoFormProps> = ({
   setName,
   description,
   setDescription,
+  idLumibot = '',
+  setIdLumibot,
+  tokenAgentLumibot = '',
+  setTokenAgentLumibot,
   isLoading,
   onSubmit,
   onCancel,
@@ -50,6 +58,30 @@ const CampaignBasicInfoForm: React.FC<CampaignBasicInfoFormProps> = ({
             className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600"
             placeholder="Descreva o objetivo desta campanha"
             rows={3}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">
+            ID Lumibot
+          </label>
+          <input
+            type="text"
+            value={idLumibot}
+            onChange={(e) => setIdLumibot && setIdLumibot(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600"
+            placeholder="ID do bot no Lumibot"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">
+            Token do Agente Lumibot
+          </label>
+          <input
+            type="text"
+            value={tokenAgentLumibot}
+            onChange={(e) => setTokenAgentLumibot && setTokenAgentLumibot(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600"
+            placeholder="Token de autenticação do agente"
           />
         </div>
       </div>

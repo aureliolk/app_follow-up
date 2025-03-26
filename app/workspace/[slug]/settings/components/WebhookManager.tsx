@@ -32,15 +32,24 @@ export default function WebhookManager({ workspaceId }: { workspaceId: string })
   const [webhookName, setWebhookName] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookEvents, setWebhookEvents] = useState<string[]>(['follow-up.created']);
+  const [webhookType, setWebhookType] = useState<'outgoing' | 'incoming'>('outgoing');
+  const [webhookPath, setWebhookPath] = useState('');
   const [newSecret, setNewSecret] = useState<string | null>(null);
   
   // Eventos disponíveis para webhooks
   const availableEvents = [
-    { id: 'follow-up.created', label: 'Follow-up criado' },
-    { id: 'follow-up.completed', label: 'Follow-up concluído' },
-    { id: 'follow-up.cancelled', label: 'Follow-up cancelado' },
-    { id: 'message.sent', label: 'Mensagem enviada' },
-    { id: 'message.received', label: 'Resposta do cliente recebida' }
+    // Webhooks de saída (nosso sistema enviando para sistemas externos)
+    { id: 'follow-up.created', label: 'Follow-up criado', type: 'outgoing' },
+    { id: 'follow-up.completed', label: 'Follow-up concluído', type: 'outgoing' },
+    { id: 'follow-up.cancelled', label: 'Follow-up cancelado', type: 'outgoing' },
+    { id: 'message.sent', label: 'Mensagem enviada', type: 'outgoing' },
+    { id: 'message.received', label: 'Resposta do cliente recebida', type: 'outgoing' },
+    
+    // Webhooks de entrada (sistemas externos enviando para nosso sistema)
+    { id: 'chatwoot.message', label: 'Mensagem do Chatwoot', type: 'incoming' },
+    { id: 'dialogflow.message', label: 'Mensagem do Dialogflow', type: 'incoming' },
+    { id: 'whatsapp.message', label: 'Mensagem do WhatsApp', type: 'incoming' },
+    { id: 'custom.message', label: 'Mensagem personalizada', type: 'incoming' }
   ];
   
   // Buscar webhooks existentes
@@ -93,6 +102,12 @@ export default function WebhookManager({ workspaceId }: { workspaceId: string })
     
     if (!webhookName.trim() || !webhookUrl.trim() || webhookEvents.length === 0) {
       setError('Todos os campos são obrigatórios');
+      return;
+    }
+    
+    // Validar o caminho do webhook de entrada
+    if (webhookType === 'incoming' && !webhookPath.trim()) {
+      setError('O caminho personalizado é obrigatório para webhooks de entrada');
       return;
     }
     
@@ -437,40 +452,111 @@ export default function WebhookManager({ workspaceId }: { workspaceId: string })
               
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-1">
-                  URL do Endpoint
+                  Tipo de Webhook
                 </label>
-                <input
-                  type="url"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  placeholder="https://seu-app.com/api/webhooks/follow-up"
-                  className="w-full px-3 py-2 bg-[#111111] border border-[#333333] rounded-md text-white"
-                  required
-                />
+                <div className="flex space-x-4 mt-2">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      checked={webhookType === 'outgoing'}
+                      onChange={() => setWebhookType('outgoing')}
+                      className="rounded bg-[#111111] border-[#333333] text-[#F54900] focus:ring-[#F54900]"
+                    />
+                    <span className="text-gray-300">De saída (seu sistema envia dados)</span>
+                  </label>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      checked={webhookType === 'incoming'}
+                      onChange={() => setWebhookType('incoming')}
+                      className="rounded bg-[#111111] border-[#333333] text-[#F54900] focus:ring-[#F54900]"
+                    />
+                    <span className="text-gray-300">De entrada (seu sistema recebe dados)</span>
+                  </label>
+                </div>
                 <p className="text-gray-500 text-xs mt-1">
-                  A URL que receberá as requisições POST com dados dos eventos.
+                  Escolha se este webhook envia dados para sistemas externos ou recebe dados de sistemas externos.
                 </p>
               </div>
+              
+              {webhookType === 'outgoing' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                    URL do Endpoint
+                  </label>
+                  <input
+                    type="url"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    placeholder="https://seu-app.com/api/webhooks/follow-up"
+                    className="w-full px-3 py-2 bg-[#111111] border border-[#333333] rounded-md text-white"
+                    required
+                  />
+                  <p className="text-gray-500 text-xs mt-1">
+                    A URL que receberá as requisições POST com dados dos eventos.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                    Caminho personalizado
+                  </label>
+                  <div className="flex items-center">
+                    <span className="px-3 py-2 bg-[#0F0F0F] border border-r-0 border-[#333333] rounded-l-md text-gray-500">
+                      /api/webhook-receiver/
+                    </span>
+                    <input
+                      type="text"
+                      value={webhookPath}
+                      onChange={(e) => {
+                        // Sanitizar o caminho para URLs válidas (sem espaços, caracteres especiais, etc)
+                        const sanitized = e.target.value.replace(/[^a-zA-Z0-9-_]/g, '').toLowerCase();
+                        setWebhookPath(sanitized);
+                        
+                        if (sanitized) {
+                          // Atualizar a URL com o caminho completo apenas se tiver um valor válido
+                          setWebhookUrl(`/api/webhook-receiver/${sanitized}`);
+                        } else {
+                          setWebhookUrl('');
+                        }
+                      }}
+                      placeholder="meu-webhook-personalizado"
+                      className="flex-1 px-3 py-2 bg-[#111111] border border-[#333333] rounded-r-md text-white"
+                      required
+                    />
+                  </div>
+                  <p className="text-gray-500 text-xs mt-1">
+                    URL completa: <span className="font-mono text-gray-400">https://seu-dominio.com/api/webhook-receiver/{webhookPath || "[caminho]"}</span>
+                  </p>
+                  <p className="text-gray-500 text-xs mt-1">
+                    Use este URL para configurar webhooks em sistemas externos como Chatwoot, Dialogflow, etc.
+                  </p>
+                </div>
+              )}
               
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-1">
                   Eventos
                 </label>
                 <div className="space-y-2 mt-2">
-                  {availableEvents.map(event => (
-                    <label key={event.id} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={webhookEvents.includes(event.id)}
-                        onChange={() => toggleEvent(event.id)}
-                        className="rounded bg-[#111111] border-[#333333] text-[#F54900] focus:ring-[#F54900]"
-                      />
-                      <span className="text-gray-300">{event.label}</span>
-                    </label>
-                  ))}
+                  {availableEvents
+                    .filter(event => event.type === webhookType)
+                    .map(event => (
+                      <label key={event.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={webhookEvents.includes(event.id)}
+                          onChange={() => toggleEvent(event.id)}
+                          className="rounded bg-[#111111] border-[#333333] text-[#F54900] focus:ring-[#F54900]"
+                        />
+                        <span className="text-gray-300">{event.label}</span>
+                      </label>
+                    ))}
                 </div>
                 <p className="text-gray-500 text-xs mt-2">
-                  Selecione os eventos para os quais deseja receber notificações.
+                  {webhookType === 'outgoing' 
+                    ? "Selecione os eventos para os quais deseja enviar notificações para a URL externa."
+                    : "Selecione os formatos de mensagem que seu sistema receberá no endpoint configurado."}
                 </p>
               </div>
               
@@ -636,11 +722,18 @@ export default function WebhookManager({ workspaceId }: { workspaceId: string })
         <h2 className="text-xl font-semibold mb-4">Como usar webhooks</h2>
         <div className="space-y-4 text-gray-300">
           <p>
-            Os webhooks enviam notificações POST para o endpoint configurado sempre que ocorre um evento no sistema.
-            Para verificar a autenticidade das requisições, você pode usar o segredo do webhook.
+            Os webhooks podem ser configurados de duas formas: webhooks de saída e webhooks de entrada.
           </p>
           
+          {/* Seção de Webhooks de Saída */}
           <div className="bg-[#0F0F0F] p-4 rounded-md">
+            <h3 className="font-medium mb-3 text-[#F54900]">Webhooks de Saída (Seu sistema enviando dados)</h3>
+            <p className="mb-3">
+              Os webhooks de saída enviam notificações POST para o endpoint configurado sempre que ocorre um evento no sistema.
+              Para verificar a autenticidade das requisições, você pode usar o segredo do webhook.
+            </p>
+            
+            <p className="font-medium mb-2">Verificando a autenticidade:</p>
             <code className="block font-mono text-sm overflow-x-auto">
               <span className="text-blue-400">const</span> <span className="text-green-400">crypto</span> = <span className="text-blue-400">require</span>(<span className="text-yellow-300">'crypto'</span>);<br/><br/>
               
@@ -657,10 +750,8 @@ export default function WebhookManager({ workspaceId }: { workspaceId: string })
               &nbsp;&nbsp;<span className="text-blue-400">return</span> signature === calculated;<br/>
               {'}'}
             </code>
-          </div>
-          
-          <div className="bg-[#0F0F0F] p-4 rounded-md">
-            <p className="font-medium mb-2">Estrutura dos eventos:</p>
+            
+            <p className="font-medium mt-4 mb-2">Estrutura dos eventos:</p>
             <code className="block font-mono text-sm overflow-x-auto">
               {'{'}<br/>
               &nbsp;&nbsp;<span className="text-yellow-300">"event"</span>: <span className="text-yellow-300">"follow-up.created"</span>,<br/>
@@ -673,12 +764,51 @@ export default function WebhookManager({ workspaceId }: { workspaceId: string })
             </code>
           </div>
           
+          {/* Seção de Webhooks de Entrada */}
+          <div className="bg-[#0F0F0F] p-4 rounded-md">
+            <h3 className="font-medium mb-3 text-[#F54900]">Webhooks de Entrada (Seu sistema recebendo dados)</h3>
+            <p className="mb-3">
+              Os webhooks de entrada permitem que sistemas externos enviem mensagens para seu sistema. 
+              Configure a URL gerada no sistema externo (como Chatwoot, Dialogflow, etc.) e as mensagens 
+              dos clientes serão automaticamente processadas pelo sistema de follow-up.
+            </p>
+            
+            <p className="font-medium mb-2">Configurando no Chatwoot:</p>
+            <ol className="list-decimal pl-5 space-y-1 mb-3">
+              <li>Acesse as configurações do seu inbox no Chatwoot</li>
+              <li>Vá para a seção "Integrações" ou "Webhooks"</li>
+              <li>Adicione a URL fornecida pelo sistema (ex: <code className="bg-black px-1 rounded">https://seu-dominio.com/api/webhook-receiver/chatwoot</code>)</li>
+              <li>Selecione os eventos "Mensagem Criada" ou similar</li>
+              <li>Salve as configurações</li>
+            </ol>
+            
+            <p className="font-medium mb-2">Exemplo de formato suportado:</p>
+            <code className="block font-mono text-sm overflow-x-auto">
+              <span className="text-green-400">// Mensagem do Chatwoot</span><br/>
+              {'{'}<br/>
+              &nbsp;&nbsp;<span className="text-yellow-300">"event"</span>: <span className="text-yellow-300">"message_created"</span>,<br/>
+              &nbsp;&nbsp;<span className="text-yellow-300">"message"</span>: {'{'}<br/>
+              &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-yellow-300">"content"</span>: <span className="text-yellow-300">"Olá, preciso de ajuda"</span>,<br/>
+              &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-yellow-300">"message_type"</span>: <span className="text-yellow-300">0</span> <span className="text-green-400">// 0 = mensagem do cliente</span><br/>
+              &nbsp;&nbsp;{'}'},<br/>
+              &nbsp;&nbsp;<span className="text-yellow-300">"conversation"</span>: {'{'}<br/>
+              &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-yellow-300">"contact"</span>: {'{'}<br/>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span className="text-yellow-300">"identifier"</span>: <span className="text-yellow-300">"cliente123"</span><br/>
+              &nbsp;&nbsp;&nbsp;&nbsp;{'}'}<br/>
+              &nbsp;&nbsp;{'}'}<br/>
+              {'}'}
+            </code>
+          </div>
+          
           <div className="bg-blue-900/20 border border-blue-700 text-blue-400 p-4 rounded-md flex items-start">
             <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
             <div>
-              <strong className="font-medium">Dica de segurança: </strong>
-              Sempre verifique a assinatura do webhook para garantir que as requisições são autênticas e vêm do nosso sistema.
-              O cabeçalho <code className="text-blue-300 bg-blue-900/30 px-1 rounded">x-webhook-signature</code> contém um hash HMAC SHA-256 do corpo da requisição.
+              <strong className="font-medium">Dicas de segurança: </strong>
+              <ul className="list-disc pl-5 mt-1">
+                <li>Para webhooks de saída, sempre verifique a assinatura para garantir a autenticidade.</li>
+                <li>Para webhooks de entrada, use caminhos difíceis de adivinhar e considere adicionar validação adicional nos sistemas externos.</li>
+                <li>Mantenha os segredos dos webhooks em local seguro e nunca os compartilhe.</li>
+              </ul>
             </div>
           </div>
         </div>

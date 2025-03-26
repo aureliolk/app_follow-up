@@ -126,13 +126,25 @@ export async function POST(
       }
 
       // Validar URL
-      try {
-        new URL(url);
-      } catch (e) {
-        return NextResponse.json(
-          { error: "URL inválida" },
-          { status: 400 }
-        );
+      // Para URLs internas do webhook receiver, não usamos o construtor URL
+      if (url.startsWith('/api/webhook-receiver/')) {
+        const path = url.replace('/api/webhook-receiver/', '');
+        if (!path || path.trim() === '') {
+          return NextResponse.json(
+            { error: "Caminho do webhook inválido" },
+            { status: 400 }
+          );
+        }
+      } else {
+        // Para URLs externas, validamos normalmente
+        try {
+          new URL(url);
+        } catch (e) {
+          return NextResponse.json(
+            { error: "URL inválida" },
+            { status: 400 }
+          );
+        }
       }
 
       // Gerar um segredo para o webhook

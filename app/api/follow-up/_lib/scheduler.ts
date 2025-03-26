@@ -78,10 +78,35 @@ export async function scheduleMessage(message: ScheduledMessage): Promise<string
 // Função para enviar a mensagem para a API Lumibot
 async function sendMessageToLumibot(clientId: string, content: string, metadata?: Record<string, any>): Promise<boolean> {
   try {
-    // Configurações fixas para a API conforme solicitado
-    const accountId = 10;
+
+    // Novo: Obter informações da campanha associada ao cliente
+    const followUp = await prisma.followUp.findFirst({
+      where: {
+        client_id: clientId
+      },
+      include: {
+        campaign: true // Incluir os dados da campanha relacionada
+      }
+    });
+    
+    if (!followUp) {
+      console.error(`Nenhum followUp encontrado para o cliente ID: ${clientId}`);
+      return false;
+    }
+    
+    console.log('Campanha encontrada:', followUp.campaign);
+    
+    // Agora você tem acesso às informações da campanha em followUp.campaign
+    // Pode usar essas informações conforme necessário
+    const accountId = followUp.campaign.idLumibot;
+    const apiToken = followUp.campaign.tokenAgentLumibot;
     const conversationId = clientId;
-    const apiToken = 'Z41o5FJFVEdZJjQaqDz6pYC7';
+   
+    console.log('Metada', metadata)
+
+    const data = await prisma.followUpCampaign.findMany({
+      
+    })
 
     // Pega Dados da Conversa do Cliente
     console.log(`===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====`);

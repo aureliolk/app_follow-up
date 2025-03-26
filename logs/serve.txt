@@ -1,56 +1,46 @@
- GET /workspace/aurelio-castro-workspace-1742534329060/settings 200 in 213ms
- GET /api/auth/session 200 in 134ms
- GET /api/auth/session 200 in 95ms
-Super admin verification successful for: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
-Super admin fetching all workspaces: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
-Found 4 total workspaces for super admin
- GET /api/workspaces/all 200 in 95ms
- GET /api/workspaces/a6736c1d-9dec-40f2-9965-9da3a6ef61cf/api-tokens 200 in 165ms
- GET /api/workspaces/a6736c1d-9dec-40f2-9965-9da3a6ef61cf/api-tokens 200 in 165ms
-Error: Route "/api/workspaces/[id]/webhooks" used `params.id`. `params` should be awaited before using its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
-    at <unknown> (app/api/workspaces/[id]/webhooks/route.ts:19:18)
-  17 |       
-  18 |       const userId = token.id as string;
-> 19 |       const { id: workspaceId } = params;
-     |                  ^
-  20 |
-  21 |       // Verificar se o usuário tem permissão para este workspace
-  22 |       const userMembership = await prisma.workspaceMember.findFirst({
- GET /api/workspaces/a6736c1d-9dec-40f2-9965-9da3a6ef61cf/webhooks 200 in 306ms
-Error: Route "/api/workspaces/[id]/webhooks" used `params.id`. `params` should be awaited before using its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
-    at <unknown> (app/api/workspaces/[id]/webhooks/route.ts:19:18)
-  17 |       
-  18 |       const userId = token.id as string;
-> 19 |       const { id: workspaceId } = params;
-     |                  ^
-  20 |
-  21 |       // Verificar se o usuário tem permissão para este workspace
-  22 |       const userMembership = await prisma.workspaceMember.findFirst({
- GET /api/workspaces/a6736c1d-9dec-40f2-9965-9da3a6ef61cf/weGET /workspace/aurelio-castro-workspace-1742534329060/settings 200 in 202ms
- GET /api/auth/session 200 in 131ms
- GET /api/auth/session 200 in 113ms
-Super admin verification successful for: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
-Super admin fetching all workspaces: 1b171d92-86a8-4b1a-b1f5-3558d2a00ff9
-Found 4 total workspaces for super admin
- GET /api/workspaces/all 200 in 113ms
-Error: Route "/api/workspaces/[id]/webhooks" used `params.id`. `params` should be awaited before using its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
-    at GET (app/api/workspaces/[id]/webhooks/route.ts:12:29)
-  10 | ) {
-  11 |   const { params } = context;
-> 12 |   const workspaceId = params.id;
-     |                             ^
-  13 |   
-  14 |   return withAuth(request, async (req: NextRequest) => {
-  15 |     try {
-Error: Route "/api/workspaces/[id]/webhooks" used `params.id`. `params` should be awaited before using its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
-    at GET (app/api/workspaces/[id]/webhooks/route.ts:12:29)
-  10 | ) {
-  11 |   const { params } = context;
-> 12 |   const workspaceId = params.id;
-     |                             ^
-  13 |   
-  14 |   return withAuth(request, async (req: NextRequest) => {
-  15 |     try {
- GET /api/workspaces/a6736c1d-9dec-40f2-9965-9da3a6ef61cf/webhooks 200 in 442ms
- GET /api/workspaces/a6736c1d-9dec-40f2-9965-9da3a6ef61cf/webhooks 200 in 445ms
-bhooks 200 in 464ms
+xecutando timeout para mensagem 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a-0
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a
+Step Index: 0
+Cliente ID: 58
+Status do follow-up: active
+Cliente já respondeu e mudou de fase, cancelando envio
+Timeout removido do mapa: 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a-0
+Modo de teste: reduzindo tempo de espera de 1800000ms para 30 segundos
+Follow-up 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a - Buscando passos do estágio: 0518124a-2716-4d6e-bdc4-e39df1b17bb3
+Follow-up 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a - Encontrados 2 passos para o estágio atual
+Processando passo para follow-up 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a
+Modo de teste: convertendo tempo "30 minutos" para 30 segundos para testes
+===== LOG DE AGENDAMENTO DE MENSAGEM =====
+FollowUp ID: 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a
+Step Index: 1
+Cliente ID: 58
+Conteúdo: Oi, {{1}}! Percebi que seu atendimento ainda está em andamento. Sei que a rotina pode ser corrida, e
+Horário Agendado: 2025-03-26T22:12:43.622Z
+Metadata: {
+  "template_name": "novo_lead_30min",
+  "category": "Utility",
+  "clientName": "58",
+  "templateParams": {
+    "name": "novo_lead_30min",
+    "category": "Utility",
+    "language": "pt_BR"
+  },
+  "processedParams": {
+    "1": "58"
+  }
+}
+Atraso calculado: 29992ms (29.992 segundos)
+Agendando mensagem para daqui a 29.992 segundos
+Timeout armazenado com sucesso para mensagem 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a-1
+Mensagem para o follow-up 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a agendada com sucesso
+Follow-up 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a - Todos os passos foram processados. Verificando mensagens pendentes...
+Ainda existem 2 mensagens pendentes (passos , ) antes de completar o follow-up. Aguardando envio...
+Executando timeout para mensagem 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a-1
+===== LOG DE ENVIO DE MENSAGEM =====
+FollowUp ID: 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a
+Step Index: 1
+Cliente ID: 58
+Status do follow-up: active
+Cliente já respondeu e mudou de fase, cancelando envio
+Timeout removido do mapa: 20a6d87a-3b65-4bf5-acb9-95d4b960dc6a-1

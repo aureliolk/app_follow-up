@@ -32,6 +32,8 @@ interface Campaign {
   name: string
   description: string | null
   active: boolean
+  idLumibot?: string
+  tokenAgentLumibot?: string
   steps: Step[]
   stages?: FunnelStage[]
 }
@@ -51,6 +53,8 @@ export default function EditCampaignPage() {
   // Estado para edição
   const [campaignName, setCampaignName] = useState("")
   const [campaignDescription, setCampaignDescription] = useState("")
+  const [idLumibot, setIdLumibot] = useState<string>("") 
+  const [tokenAgentLumibot, setTokenAgentLumibot] = useState<string>("")
   const [campaignSteps, setCampaignSteps] = useState<Step[]>([])
 
   // Estado para modal de edição de estágio
@@ -78,7 +82,7 @@ export default function EditCampaignPage() {
 
       const data = await response.json()
 
-      console.log(data)
+      console.log("Dados recebidos da API:", data)
 
       if (!data.success) {
         throw new Error(data.error || "Erro ao carregar campanha")
@@ -102,9 +106,19 @@ export default function EditCampaignPage() {
         steps,
       }
 
+      console.log("Dados processados da campanha:", {
+        id: campaignData.id,
+        name: campaignData.name,
+        description: campaignData.description,
+        idLumibot: campaignData.idLumibot,
+        tokenAgentLumibot: campaignData.tokenAgentLumibot
+      })
+
       setCampaign(campaignData)
       setCampaignName(campaignData.name)
       setCampaignDescription(campaignData.description || "")
+      setIdLumibot(campaignData.idLumibot || "")
+      setTokenAgentLumibot(campaignData.tokenAgentLumibot || "")
       setCampaignSteps(steps)
 
       // Carregar estágios do funil
@@ -151,6 +165,15 @@ export default function EditCampaignPage() {
     setError(null)
 
     try {
+      // Log para depuração
+      console.log("Enviando dados para API:", {
+        name: campaignName,
+        description: campaignDescription,
+        idLumibot,
+        tokenAgentLumibot,
+        steps: campaignSteps.length,
+      });
+      
       const response = await fetch(`/api/follow-up/campaigns/${campaignId}`, {
         method: "PUT",
         headers: {
@@ -159,18 +182,35 @@ export default function EditCampaignPage() {
         body: JSON.stringify({
           name: campaignName,
           description: campaignDescription,
+          idLumibot,
+          tokenAgentLumibot,
           steps: campaignSteps,
         }),
       })
 
       if (!response.ok) {
-        throw new Error("Falha ao salvar campanha")
+        console.error("Resposta não-OK da API:", {
+          status: response.status,
+          statusText: response.statusText
+        });
+        throw new Error(`Falha ao salvar campanha: ${response.status} ${response.statusText}`);
+      }
+      
+      // Tenta extrair e logar a resposta
+      const responseText = await response.text();
+      let data;
+      
+      try {
+        data = JSON.parse(responseText);
+        console.log("Resposta da API:", data);
+      } catch (e) {
+        console.error("Falha ao interpretar resposta como JSON:", responseText);
+        throw new Error("Resposta inválida da API");
       }
 
-      const data = await response.json()
-
       if (!data.success) {
-        throw new Error(data.error || "Erro ao salvar campanha")
+        console.error("API retornou erro:", data.error);
+        throw new Error(data.error || "Erro ao salvar campanha");
       }
 
       toast.success("Campanha salva com sucesso!")
@@ -448,6 +488,26 @@ export default function EditCampaignPage() {
                 className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600"
                 placeholder="Descreva o objetivo desta campanha"
                 rows={3}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">ID Lumibot</label>
+              <input
+                type="text"
+                value={idLumibot}
+                onChange={(e) => setIdLumibot(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600"
+                placeholder="ID do bot no Lumibot"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Token do Agente Lumibot</label>
+              <input
+                type="text"
+                value={tokenAgentLumibot}
+                onChange={(e) => setTokenAgentLumibot(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600"
+                placeholder="Token de autenticação do agente"
               />
             </div>
           </div>
