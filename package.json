@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start",
+     "start": "prisma generate && next start",
+    "build": "prisma generate && next build",
     "lint": "next lint",
     "migrate:prompts": "node scripts/apply-prompts-migration.js"
   },

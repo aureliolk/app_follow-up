@@ -1,23 +1,55 @@
-FROM node:18-alpine
+# Use imagem Debian-based para melhor compatibilidade com módulos nativos
+FROM node:18-slim AS base
+
+# Instala dependências essenciais (incluindo Python e compiladores)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    openssl \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Instale dependências
+# Estágio de instalação de dependências
+FROM base AS deps
 COPY package*.json ./
-RUN npm install
+COPY prisma ./prisma/
+RUN npm ci --include=dev  # Inclui devDependencies para Prisma
 
-# Copie todos os arquivos do projeto
+# Estágio de build
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Gere o Prisma Client para Alpine Linux
+# Gerar Prisma Client
 RUN npx prisma generate
 
-# Construa a aplicação
+ENV NODE_ENV=production
 RUN npm run build
+
+# Estágio de produção
+FROM base AS runner
+WORKDIR /app
+
+
+# Copiar apenas o necessário
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/prisma ./prisma
+
+# Adicionar usuário não-root
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs && \
+    chown -R nextjs:nodejs /app
+USER nextjs
 
 EXPOSE 3000
 
-ENV NODE_ENV=production
-ENV DATABASE_URL=postgresql://postgres:lumibot@127.0.0.1:5432/products?schema=public
-
-CMD ["npm", "run", "dev"]
+# Use o comando padrão do Next.js
+CMD ["npm", "start"]
