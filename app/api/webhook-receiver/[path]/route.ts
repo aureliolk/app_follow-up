@@ -44,67 +44,34 @@ export async function POST(
 
       // Obter os dados do webhook
       const payload = await request.json();
-      // console.log(`Webhook recebido em ${path}:`, payload);
 
-      webhookConfig.events.map((i) => {
-        if (i === 'chatwoot.message') {
-          console.log(i)
-        }else{
-          console.log('No condition ', i)
-        }
-      })
-
-      console.log('Body lumibot', payload)
-
-
-      return NextResponse.json(
-        {
-          error: "WorkspaceID",
-          received: payload
-        },
-        { status: 200 }
-      );
-      // console.log('Webhook config', webhookConfig)
-
-
-
-      // Extrair informações com base no formato do payload
-      // Formato pode variar dependendo do sistema que está enviando o webhook
+      // Extrair informações do payload do Lumibot
       let clientId = '';
       let message = '';
 
-      // Verificar se é do Chatwoot
-      if (payload.event === 'message_created' && payload.message) {
-        // Formato do Chatwoot
-        clientId = payload.conversation?.meta?.sender?.id?.toString() ||
-          payload.conversation?.contact?.identifier ||
-          'unknown';
-
-        // Verificar se é uma mensagem do cliente (não do agente)
-        const isIncoming = payload.message.message_type === 0; // 0 = incoming message no Chatwoot
-
-        if (isIncoming) {
-          message = payload.message.content || '';
+      // Verificar se é um webhook do Lumibot com o formato esperado
+      if (payload.event === 'message_created' && payload.conversation) {
+        // Usar o ID da conversa como clientId
+        clientId = payload.conversation.id?.toString() || 'unknown';
+        
+        // Verificar se é uma mensagem do cliente (incoming)
+        if (payload.message_type === 'incoming') {
+          message = payload.content || '';
         } else {
           // Se não for uma mensagem do cliente, ignoramos
           return NextResponse.json({ success: true, ignored: "Mensagem do agente ignorada" });
         }
-      }
-      // Verificar se é do Dialogflow
-      else if (payload.queryResult) {
-        // Formato do Dialogflow
-        clientId = payload.originalDetectIntentRequest?.payload?.userId ||
-          payload.session?.split('/').pop() ||
-          'unknown';
-        message = payload.queryResult.queryText || '';
-      }
-      // Formato genérico
-      else {
-        clientId = payload.clientId || payload.userId || payload.customer_id || payload.id || 'unknown';
-        message = payload.message || payload.text || payload.content || '';
+      } else {
+        return NextResponse.json(
+          {
+            error: "Formato de webhook não suportado",
+            received: payload
+          },
+          { status: 400 }
+        );
       }
 
-      // Se não conseguiu extrair clientId ou mensagem, retorna erro
+      // Validar se temos as informações necessárias
       if (!clientId || !message) {
         return NextResponse.json(
           {
@@ -115,17 +82,25 @@ export async function POST(
         );
       }
 
+      // CORREÇÃO: Primeiro buscar os IDs de campanha associados ao workspace
+      const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
+        where: { 
+          workspace_id: workspaceId 
+        },
+        select: { 
+          campaign_id: true 
+        }
+      });
+
+      const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
+
       // Buscar follow-ups ativos para este cliente neste workspace
       const activeFollowUps = await prisma.followUp.findMany({
         where: {
           client_id: clientId,
           status: "active",
-          campaign: {
-            WorkspaceFollowUpCampaign: {
-              some: {
-                workspace_id: workspaceId
-              }
-            }
+          campaign_id: {
+            in: campaignIds
           }
         },
         orderBy: {
@@ -167,6 +142,12 @@ export async function POST(
           last_response_at: new Date()
         }
       });
+
+      // Importar a função de processamento de resposta para seguir o fluxo
+      const { handleClientResponse } = await import('@/app/api/follow-up/_lib/manager');
+      
+      // Processar a resposta do cliente para continuar o fluxo de follow-up
+      await handleClientResponse(clientId, message, followUp.id);
 
       // Registramos o uso do webhook
       await prisma.workspaceWebhook.update({
