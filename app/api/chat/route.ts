@@ -1,6 +1,6 @@
 // src/app/api/ai/route.ts
 import { openai } from '@ai-sdk/openai';
-import { streamText } from 'ai';
+import { generateText, streamText } from 'ai';
 import { createChat, loadChat } from './tools/chat-store';
 
 // Allow streaming responses up to 30 seconds
@@ -11,12 +11,13 @@ export async function POST(req: Request) {
   console.log('Messages', messages)
   
  
-  const result = streamText({
-    model: openai('gpt-4o'),
-    messages,
-    // user: 'test-user'
+  const result = await generateText({
+    model: openai('gpt-3.5-turbo'),
+    maxTokens: 1024,
+    system: 'You are a helpful chatbot.',
+    messages
   });
 
-  return result.toDataStreamResponse();
+  return result.text;
 } 
 

@@ -1,87 +1,66 @@
-Executando timeout para mensagem efb066b1-3b35-4aff-95e3-110fc36fc9a9-0
-===== LOG DE ENVIO DE MENSAGEM =====
-FollowUp ID: efb066b1-3b35-4aff-95e3-110fc36fc9a9
-Step Index: 0
-Cliente ID: 58
-Status do follow-up: active
-Enviando mensagem via API Lumibot
-Template: novo_lead_48h
-Categoria: Utility
-Campanha encontrada: {
-  id: '6cff40d8-2898-4bb1-8203-f352411c6dd8',
-  name: 'sabrina follow',
-  description: '',
-  created_at: 2025-03-26T12:26:44.513Z,
-  active: true,
-  idLumibot: null,
-  tokenAgentLumibot: null
-}
-Metada {
-  template_name: 'novo_lead_48h',
-  category: 'Utility',
-  clientName: '58',
-  templateParams: { name: 'novo_lead_48h', category: 'Utility', language: 'pt_BR' },
-  processedParams: { '1': '58' }
-}
-===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====
-Cliente ID: 58
-Endpoint: https://app.lumibot.com.br/api/v1/accounts/null/conversations/58
-===== ERRO AO ENVIAR MENSAGEM PARA API LUMIBOT =====
-Mensagem de erro: Request failed with status code 401
-Request URL: https://app.lumibot.com.br/api/v1/accounts/10/conversations/58/messages
-Status: 401
-Status Text: Unauthorized
-Resposta da API: {
-  "errors": [
-    "Você precisa entrar ou se cadastrar antes de continuar."
-  ]
-}
-Stack: AxiosError: Request failed with status code 401
-    at settle (/root/app_follow-up/.next/server/chunks/node_modules_ff71df3d._.js:15561:16)
-    at IncomingMessage.handleStreamEnd (/root/app_follow-up/.next/server/chunks/node_modules_ff71df3d._.js:18222:181)
-    at IncomingMessage.emit (node:events:530:35)
-    at endReadableNT (node:internal/streams/readable:1698:12)
-    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
-    at Axios.request (/root/app_follow-up/.next/server/chunks/node_modules_ff71df3d._.js:19291:49)
-    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-    at async sendMessageToLumibot (/root/app_follow-up/.next/server/chunks/[root of the server]__fa5e184b._.js:425:30)
-    at async sendMessage (/root/app_follow-up/.next/server/chunks/[root of the server]__fa5e184b._.js:516:19)
-    at async Timeout._onTimeout (/root/app_follow-up/.next/server/chunks/[root of the server]__fa5e184b._.js:378:17)
-Resultado do envio via Lumibot: FALHA
-Não foi possível marcar a mensagem como entregue
-Timeout removido do mapa: efb066b1-3b35-4aff-95e3-110fc36fc9a9-0
-Modo de teste: reduzindo tempo de espera de 180000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 300000ms para 30 segundos
-Modo de teste: reduzindo tempo de espera de 600000ms para 30 segundos
-Follow-up efb066b1-3b35-4aff-95e3-110fc36fc9a9 - Buscando passos do estágio: 4c04d974-d784-46a4-863b-907998c89fde
-Follow-up efb066b1-3b35-4aff-95e3-110fc36fc9a9 - Encontrados 5 passos para o estágio atual
-Processando passo para follow-up efb066b1-3b35-4aff-95e3-110fc36fc9a9
-Modo de teste: convertendo tempo "1 minutos" para 30 segundos para testes
-===== LOG DE AGENDAMENTO DE MENSAGEM =====
-FollowUp ID: efb066b1-3b35-4aff-95e3-110fc36fc9a9
-Step Index: 1
-Cliente ID: 58
-Conteúdo: Olá, {{1}}! Você iniciou um contato conosco recentemente e queremos garantir que você receba todas a
-Horário Agendado: 2025-03-26T22:52:23.813Z
-Metadata: {
-  "template_name": "novo_lead_1h",
-  "category": "Utility",
-  "clientName": "58",
-  "templateParams": {
-    "name": "novo_lead_1h",
-    "category": "Utility",
-    "language": "pt_BR"
-  },
-  "processedParams": {
-    "1": "58"
-  }
-}
-Atraso calculado: 29993ms (29.993 segundos)
-Agendando mensagem para daqui a 29.993 segundos
-Timeout armazenado com sucesso para mensagem efb066b1-3b35-4aff-95e3-110fc36fc9a9-1
-Mensagem para o follow-up efb066b1-3b35-4aff-95e3-110fc36fc9a9 agendada com sucesso
-Próximo passo: novo_lead_10min, tempo de espera: 30000ms
-Agendando próximo passo 2 para follow-up efb066b1-3b35-4aff-95e3-110fc36fc9a9 com delay de 30000ms
-^C
+root@lumi-dev:~/app_follow-up# npx prisma migrate dev --name Add_Table_FollowUpAIAnalysis
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "nextlumibot", schemas "follow_up_schema, products_schema, prompts_schema, public, workspace_schema" at "168.119.247.230:5432"
 
+Drift detected: Your database schema is not in sync with your migration history.
+
+The following is a summary of the differences between the expected database schema given your migrations files, and the actual schema of the database.
+
+It should be understood as the set of changes to get from the expected schema to the actual schema.
+
+[-] Removed tables
+  - _FollowUpCampaignToFollowUpFunnelStage
+
+[*] Changed the `_FollowUpCampaignToFollowUpFunnelStage` table
+  [-] Removed foreign key on columns (A)
+  [-] Removed foreign key on columns (B)
+
+[*] Changed the `follow_up_campaigns` table
+  [-] Removed column `steps`
+  [+] Added column `idLumibot`
+  [+] Added column `tokenAgentLumibot`
+
+[*] Changed the `follow_up_funnel_stages` table
+  [+] Added column `campaign_id`
+  [+] Added column `requires_response`
+  [*] Altered column `order` (default changed from `None` to `Some(Value(Int(0)))`)
+  [*] Altered column `description` (changed from Nullable to Required)
+  [+] Added foreign key on columns (campaign_id)
+
+[*] Changed the `follow_up_messages` table
+  [-] Removed foreign key on columns (follow_up_id)
+  [-] Removed index on columns (follow_up_id, step)
+  [-] Removed column `category`
+  [-] Removed column `funnel_stage`
+  [-] Removed column `step`
+  [-] Removed column `template_name`
+  [+] Added column `is_from_client`
+  [+] Added column `step_id`
+  [+] Added index on columns (follow_up_id)
+  [+] Added foreign key on columns (follow_up_id)
+
+[*] Changed the `follow_up_steps` table
+  [-] Removed foreign key on columns (campaign_id)
+  [-] Removed column `auto_respond`
+  [-] Removed column `campaign_id`
+  [-] Removed column `message_category`
+  [+] Added column `category`
+  [+] Added column `order`
+
+[*] Changed the `follow_ups` table
+  [-] Removed column `completion_reason`
+  [-] Removed column `current_step`
+  [-] Removed column `is_responsive`
+  [-] Removed column `metadata`
+  [+] Added column `current_step_id`
+  [+] Added column `last_response`
+  [+] Added column `last_response_at`
+  [+] Added column `waiting_for_response`
+  [*] Altered column `status` (default changed from `None` to `Some(Value(String("active")))`)
+
+✔ We need to reset the following schemas: "follow_up_schema, products_schema, prompts_schema, public, workspace_schema" at "168.119.247.230:5432"
+Do you want to continue? All data will be lost. … no
+
+Reset cancelled.
 root@lumi-dev:~/app_follow-up# 
