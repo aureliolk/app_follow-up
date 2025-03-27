@@ -4,8 +4,12 @@
       "1.json": null,
       "2.json": null,
       "73991121575.json": null,
-      "Marcelo.json": null
+      "GK5elGm98fefiUGi.json": null,
+      "Marcelo.json": null,
+      "xVYQTpZRp0ynqpUz.json": null,
+      "yvmG2wplnf65TVKi.json": null
     },
+    ".cursorrules": null,
     ".env": null,
     ".env.local": null,
     ".git": {
@@ -38,9 +42,14 @@
       "transform.js": null,
       "transform.js.map": null
     },
+    "CLAUDE.md": null,
     "Dockerfile": null,
     "README.md": null,
+    "SOLUTION.md": null,
     "app": {
+      "ai-chat": {
+        "page.tsx": null
+      },
       "api": {
         "[id]": {},
         "auth": {
@@ -49,6 +58,12 @@
           },
           "register": {
             "route.ts": null
+          }
+        },
+        "chat": {
+          "route.ts": null,
+          "tools": {
+            "chat-store.ts": null
           }
         },
         "docs": {
@@ -61,13 +76,22 @@
             }
           },
           "_lib": {
+            "ai": {
+              "functionIa.ts": null
+            },
             "initializer.ts": null,
+            "internal": {
+              "followUpHelpers.ts": null
+            },
             "manager.ts": null,
             "scheduler.ts": null
           },
           "_utils": {
             "csv-parser.ts": null,
             "time-calculator.ts": null
+          },
+          "ai-chat": {
+            "route.ts": null
           },
           "campaigns": {
             "[id]": {
@@ -107,6 +131,14 @@
             "route.ts": null
           }
         },
+        "webhook-receiver": {
+          "[path]": {
+            "route.ts": null
+          }
+        },
+        "webhook-trigger": {
+          "route.ts": null
+        },
         "workspaces": {
           "[id]": {
             "api-tokens": {
@@ -127,7 +159,13 @@
               },
               "route.ts": null
             },
-            "route.ts": null
+            "route.ts": null,
+            "webhooks": {
+              "[webhookId]": {
+                "route.ts": null
+              },
+              "route.ts": null
+            }
           },
           "all": {
             "route.ts": null
@@ -147,7 +185,8 @@
       "follow-up": {
         "_services": {
           "followUpService.ts": null,
-          "funnelService.ts": null
+          "funnelService.ts": null,
+          "webhookService.ts": null
         },
         "_types": {
           "index.ts": null,
@@ -210,7 +249,8 @@
           "page.tsx": null,
           "settings": {
             "components": {
-              "ApiTokenManager.tsx": null
+              "ApiTokenManager.tsx": null,
+              "WebhookManager.tsx": null
             },
             "page.tsx": null
           }
@@ -221,6 +261,9 @@
       }
     },
     "components": {
+      "ai": {
+        "aichat.tsx": null
+      },
       "footer.tsx": null,
       "header.tsx": null,
       "session-provider.tsx": null,
@@ -228,15 +271,21 @@
         "ErrorMessage.tsx": null,
         "LoadingSpinner.tsx": null,
         "PageContainer.tsx": null,
+        "button.tsx": null,
         "index.ts": null,
+        "input.tsx": null,
         "tabs.tsx": null
       }
     },
+    "components.json": null,
     "context": {
       "workspace-context.tsx": null
     },
     "create-cursorrules.js": null,
     "docker-compose.yml": null,
+    "docnext": {
+      "Dynamic_APIs_are_Asynchronous.txt": null
+    },
     "files_to_fix.txt": null,
     "lib": {
       "auth": {
@@ -249,6 +298,10 @@
       },
       "permissions.ts": null,
       "utils.ts": null
+    },
+    "logs": {
+      "serve.txt": null,
+      "test-campagins.txt": null
     },
     "migrations": {
       "add_prompts_table.sql": null,
@@ -296,14 +349,30 @@
         "20250324000000_add_workspace_api_tokens": {
           "migration.sql": null
         },
+        "20250325000000_add_structured_fields_to_follow_up": {
+          "migration.sql": null
+        },
+        "20250326000000_add_webhooks_table": {
+          "migration.sql": null
+        },
         "migration_lock.toml": null
       },
       "schema.prisma": null
     },
+    "prompt": {
+      "promptwebhook.txt": null
+    },
     "public": {
+      "follow-up-ai-docs.md": null,
       "follow-up-api-docs.md": null,
       "follow-up-sabrina-nunes-atualizado.csv": null,
       "follow-up-sabrina.csv": null
+    },
+    "roadmap": {
+      "iainfollowup.txt": null,
+      "rulesfollowup.txt": null,
+      "webhook-bug-fix.md": null,
+      "webhook-receiver-resumo.md": null
     },
     "scripts": {
       "add-more-funnel-steps.js": null,
@@ -311,17 +380,25 @@
       "create-funnel-stages.js": null,
       "create-sample-followups.js": null,
       "follow-up-manager.js": null,
+      "healthcheck.js": null,
       "import-funnel-stages.js": null,
       "manager-helper.js": null,
       "migrate-campaign-steps.js": null,
       "migrate-workspace-followups.js": null,
+      "migrations": {
+        "apply-followup-refactor.js": null
+      },
+      "refactor-implementation.sh": null,
+      "reset-followup-tables-auto.js": null,
+      "reset-followup-tables.js": null,
       "run-migrations.js": null,
       "simulate-message-sender.js": null,
       "test-campaign-flow.js": null,
       "test-follow-up.js": null,
-      "test-followup-api.js": null
+      "test-followup-api.js": null,
+      "test-refactored-followup.js": null
     },
-    "server-api.js": null,
+    "server.js": null,
     "tsconfig.json": null
   }
 }

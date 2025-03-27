@@ -1,30 +1,25 @@
 // app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
-import { createChat, loadChat } from './tools/chat-store';
+import { generateChatCompletion } from '@/lib/ai/chatService'; // Ajuste o caminho se necessário
+import { CoreMessage } from 'ai';
 
-// Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
     const { messages, systemPrompt } = await req.json();
-    console.log('Processing chat request with messages:', 
-      messages.length > 0 ? `${messages.length} messages` : 'No messages');
-    
-    // Usar o prompt do sistema fornecido ou o padrão
-    const systemMessage = systemPrompt || 'You are a helpful assistant for a follow-up system.';
-    
-    const result = await generateText({
-      model: openai('gpt-3.5-turbo'),
-      maxTokens: 1500,
-      system: systemMessage,
-      messages
+
+    if (!messages || !Array.isArray(messages)) {
+       return NextResponse.json({ error: 'Formato de mensagens inválido' }, { status: 400 });
+    }
+
+    // Chamar o serviço compartilhado
+    const generatedText = await generateChatCompletion({ 
+        messages: messages as CoreMessage[], // Cast para o tipo esperado
+        systemPrompt 
     });
 
-    // Simular o formato de resposta esperado pela função de IA
-    // que espera um formato similar ao da API do OpenAI
+    // Manter a estrutura de resposta que seu código original espera
     return NextResponse.json({
       id: `chatcmpl-${Date.now()}`,
       object: 'chat.completion',
@@ -33,19 +28,20 @@ export async function POST(req: NextRequest) {
         {
           message: {
             role: 'assistant',
-            content: result
+            content: generatedText // Usar o texto gerado
           },
           index: 0,
-          finish_reason: 'stop'
+          finish_reason: 'stop' // Assumindo que sempre para
         }
       ]
     });
   } catch (error) {
-    console.error('Erro ao processar solicitação de chat:', error);
+    console.error('Erro na rota /api/chat:', error);
+    // Verifica se o erro tem uma mensagem mais específica
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido ao processar solicitação de chat';
     return NextResponse.json(
-      { error: 'Erro ao processar solicitação de chat' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
 }
-

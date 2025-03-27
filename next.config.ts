@@ -6,9 +6,6 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ['image/avif', 'image/webp'], // Exemplo para otimização
-  },
-  experimental: {
-    serverComponentsExternalPackages: ['sharp', 'bcrypt'], // Se necessário
   }
 };
 
