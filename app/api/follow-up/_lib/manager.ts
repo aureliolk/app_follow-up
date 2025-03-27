@@ -222,19 +222,24 @@ export async function handleClientResponse(
         }
       });
 
-      // Se você tiver criado o modelo FollowUpAIAnalysis no seu schema, descomente este código:
-      // Criar registro de análise
-      await prisma.followUpAIAnalysis.create({
-        data: {
-          follow_up_id: followUp.id,
-          message_id: clientMessage.id, // Usando o ID da mensagem que acabamos de criar
-          sentiment: aiAnalysis.sentiment,
-          intent: aiAnalysis.intent,
-          topics: aiAnalysis.topics,
-          next_action: aiAnalysis.nextAction,
-          suggested_stage: aiAnalysis.suggestedStage
-        }
-      });
+      // Criar registro de análise na tabela FollowUpAIAnalysis
+      try {
+        const analysisRecord = await prisma.followUpAIAnalysis.create({
+          data: {
+            follow_up_id: followUp.id,
+            message_id: clientMessage.id, // Usando o ID da mensagem que acabamos de criar
+            sentiment: aiAnalysis.sentiment,
+            intent: aiAnalysis.intent,
+            topics: aiAnalysis.topics || [],
+            next_action: aiAnalysis.nextAction,
+            suggested_stage: aiAnalysis.suggestedStage
+          }
+        });
+        console.log(`✅ Análise de IA registrada com ID: ${analysisRecord.id}`);
+      } catch (aiAnalysisError) {
+        console.error(`❌ Erro ao registrar análise de IA:`, aiAnalysisError);
+        // Continuar o fluxo mesmo se não conseguir registrar a análise
+      }
       
 
       // MODIFICAÇÃO: Usar a IA para decidir o próximo passo
@@ -312,14 +317,22 @@ export async function handleClientResponse(
             `IA determinou avançar para o estágio "${targetStage.name}". Motivo: ${aiDecision.reason}`
           );
 
-          // Buscar o primeiro passo do estágio alvo
-          const firstStepInTargetStage = steps.find(s => s.stage_id === targetStage.id);
+          // Buscar o primeiro passo do estágio alvo diretamente do banco
+          // Isso é mais preciso que procurar nos steps locais, que podem estar filtrados
+          const firstStepsInTargetStage = await prisma.followUpStep.findMany({
+            where: { funnel_stage_id: targetStage.id },
+            orderBy: { wait_time_ms: 'asc' },
+            take: 1
+          });
 
-          if (firstStepInTargetStage) {
+          if (firstStepsInTargetStage && firstStepsInTargetStage.length > 0) {
+            const firstStep = firstStepsInTargetStage[0];
+            console.log(`IA: Avançando para estágio "${targetStage.name}" e passo "${firstStep.name}"`);
+            
             await prisma.followUp.update({
               where: { id: followUp.id },
               data: {
-                current_step_id: firstStepInTargetStage.id,
+                current_step_id: firstStep.id,
                 current_stage_id: targetStage.id,
                 status: 'active',
                 waiting_for_response: false
