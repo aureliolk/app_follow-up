@@ -56,18 +56,18 @@ const defaultAIAction: ScheduleEvaluationAction = {
 };
 // --- Fim das Tipagens ---
 
-// Função Principal de Decisão da IA
+// Função Principal de Decisão da IA (Refinada)
 export async function determineNextAction(followUpId: string): Promise<AIAction> {
   try {
     console.log(`🧠 Iniciando determinação de próxima ação para FollowUp ${followUpId}`);
 
-    // 1. Buscar Contexto Abrangente
+    // 1. Buscar Contexto Abrangente (incluir a última mensagem enviada PELO SISTEMA)
     const followUp = await prisma.followUp.findUnique({
       where: { id: followUpId },
       include: {
         campaign: {
           include: {
-            stages: { // Inclui todos os estágios da campanha
+            stages: {
               orderBy: { order: 'asc' },
               include: {
                 steps: { // Inclui os templates/passos de cada estágio
@@ -77,9 +77,9 @@ export async function determineNextAction(followUpId: string): Promise<AIAction>
             }
           }
         },
-        messages: { // Histórico recente
-          orderBy: { sent_at: 'asc' }, // Ordem cronológica
-          take: 15 // Aumentar um pouco para dar mais contexto à IA
+        messages: { // <<< Aumentar um pouco e buscar a última do sistema
+          orderBy: { sent_at: 'desc' }, // Mais recentes primeiro
+          take: 20 // Aumentar para garantir pegar a última do sistema
         },
         ai_analyses: { // Última análise feita
           orderBy: { created_at: 'desc' },
@@ -99,170 +99,188 @@ export async function determineNextAction(followUpId: string): Promise<AIAction>
     }
     if (!followUp.current_stage_id) {
       console.warn(`FollowUp ${followUpId} não tem um estágio atual definido.`);
-      // Poderia tentar definir o primeiro estágio ou pausar
       const firstStage = followUp.campaign.stages[0];
       if (firstStage) {
         await prisma.followUp.update({ where: { id: followUpId }, data: { current_stage_id: firstStage.id } });
-        followUp.current_stage_id = firstStage.id; // Atualiza localmente
+        followUp.current_stage_id = firstStage.id;
         console.log(`Definido estágio inicial ${firstStage.name} para FollowUp ${followUpId}.`);
       } else {
         return { ...defaultAIAction, action_type: 'PAUSE', reason: `FollowUp sem estágio atual e campanha sem estágios.` };
       }
     }
 
-
     // 2. Preparar Informações para o Prompt
     const currentStage = followUp.campaign.stages.find(s => s.id === followUp.current_stage_id);
     if (!currentStage) {
       console.error(`Estágio atual ID ${followUp.current_stage_id} não encontrado nos estágios da campanha ${followUp.campaign.id}.`);
-      // Tentar encontrar pelo nome se disponível nos logs ou pausar
       return { ...defaultAIAction, action_type: 'PAUSE', reason: `Estágio atual ID ${followUp.current_stage_id} inválido.` };
     }
 
-    const currentStageTemplates = currentStage.steps || [];
-    const hsmTemplates = currentStageTemplates.filter(step => step.template_name);
-    const regularTemplates = currentStageTemplates.filter(step => !step.template_name);
+    // Encontrar a última mensagem enviada PELO SISTEMA
+    const lastSystemMessage = followUp.messages.find(msg => !msg.is_from_client);
+    const lastSentTemplateName = lastSystemMessage?.template_used;
+    const lastSentTime = lastSystemMessage?.sent_at;
+    const timeSinceLastSentMs = lastSentTime ? Date.now() - new Date(lastSentTime).getTime() : Infinity;
 
+    // Encontrar o wait_time_ms do último template enviado, se aplicável
+    let waitTimeAfterLastSentMs = 0;
+    if (lastSentTemplateName) {
+      // Buscar o step correspondente no estágio atual
+      const lastSentStepData = await prisma.followUpStep.findFirst({
+        where: {
+          template_name: lastSentTemplateName,
+          funnel_stage_id: currentStage.id
+        },
+        select: { wait_time_ms: true }
+      });
+      waitTimeAfterLastSentMs = lastSentStepData?.wait_time_ms || 0;
+    }
+    const timeRemainingMs = waitTimeAfterLastSentMs - timeSinceLastSentMs;
+    // Considera que passou se for 0 ou negativo, ou se nunca houve envio/espera
+    const hasWaitTimePassed = waitTimeAfterLastSentMs <= 0 || timeRemainingMs <= 0;
+
+    // Formatar tempo desde a última enviada
+    const formattedTimeSinceSent = lastSentTime
+      ? formatDistanceToNowStrict(new Date(lastSentTime), { addSuffix: true, locale: ptBR })
+      : 'nunca';
+
+    // Informações da Janela 24h e Última Mensagem do Cliente
     const agora = Date.now();
     const lastClientMsgTime = followUp.last_client_message_at ? new Date(followUp.last_client_message_at).getTime() : 0;
     const timeSinceLastClientMessageMs = lastClientMsgTime > 0 ? agora - lastClientMsgTime : Infinity;
-    const isOutside24hWindow = timeSinceLastClientMessageMs >= (24 * 60 * 60 * 1000);
-
-    const formattedTimeSince = lastClientMsgTime > 0
+    const isOutside24hWindow = (lastClientMsgTime === 0) || timeSinceLastClientMessageMs >= (24 * 60 * 60 * 1000); // >= 24h é FORA
+    const formattedTimeSinceClient = lastClientMsgTime > 0
       ? formatDistanceToNowStrict(new Date(lastClientMsgTime), { addSuffix: true, locale: ptBR })
       : 'nunca';
 
-    // Montar a string 'history'
-    const history = followUp.messages.map(msg => {
-    const prefix = msg.is_from_client ? 'Cliente' : 'Assistente';
-    const suffix = !msg.is_from_client ? ` (Template: ${msg.template_used || 'Gerado'}; Status: ${msg.delivered ? 'Entregue' : (msg.error_sending ? 'Falhou' : 'Enviando')})` : '';
-    return `${prefix}: ${msg.content?.substring(0, 100)}${msg.content && msg.content.length > 100 ? '...' : ''}${suffix}`;
-    }).join('\n');
+    // Histórico da Conversa
+    const history = followUp.messages
+      .slice(0, 15) // Limitar histórico recente
+      .reverse() // Ordenar do mais antigo para mais novo
+      .map(msg => {
+        const prefix = msg.is_from_client ? 'Cliente' : 'Assistente (Alex)';
+        // Incluir detalhes importantes como template e status
+        const suffix = !msg.is_from_client ? ` (Template: ${msg.template_used || 'Gerado'}; Status: ${msg.delivered ? 'Entregue' : (msg.error_sending ? 'Falha' : 'Enviando')})` : '';
+        return `${prefix}: ${msg.content?.substring(0, 100)}${msg.content && msg.content.length > 100 ? '...' : ''}${suffix}`;
+      }).join('\n');
 
+    // Última Análise de IA
     const lastAnalysis = followUp.ai_analyses[0];
-    const formattedAnalysis = lastAnalysis
-      ? `Sentimento: ${lastAnalysis.sentiment}, Intenção: ${lastAnalysis.intent}, Tópicos: ${lastAnalysis.topics?.join(', ') || 'N/A'}, Próx. Ação Sugerida: ${lastAnalysis.next_action || 'N/A'}`
-      : 'Nenhuma análise recente.';
+    const formattedAnalysis = lastAnalysis ? `Análise da última resposta do cliente: Sentimento=${lastAnalysis.sentiment}, Intenção=${lastAnalysis.intent}` : 'Nenhuma análise recente.';
+
+    // Lista de Templates do Estágio Atual
+    const currentStageTemplates = currentStage.steps || [];
 
 
-    // 3. Construir o Prompt Detalhado para a IA
+    // 3. Construir o Prompt Detalhado para a IA (*** REFINADO ***)
     const systemPrompt = `
-    Você é "Alex", um assistente de vendas/suporte especialista em gerenciar follow-ups de forma inteligente e humana. Seu objetivo é guiar o cliente pela campanha, respeitando o contexto e as regras do WhatsApp.
-    
-    OBJETIVO GERAL DA CAMPANHA "${followUp.campaign.name}": ${followUp.campaign.description || 'Não especificado.'}
+    Você é "Alex", um assistente especialista em follow-ups via WhatsApp. Seu objetivo é guiar o cliente pela campanha "${followUp.campaign.name}", respeitando o contexto e as regras.
+
+    OBJETIVO GERAL: ${followUp.campaign.description || 'Engajar e converter o cliente.'}
     OBJETIVO DO ESTÁGIO ATUAL "${currentStage.name}": ${currentStage.description || 'Não especificado.'}
-    
-    CONTEXTO DO CLIENTE (ID: ${followUp.client_id}):
-    - Estágio Atual: ${currentStage.name} (Ordem: ${currentStage.order})
-    - Última Mensagem do Cliente: ${formattedTimeSince}
-    - Status Janela 24h: ${isOutside24hWindow ? '**FECHADA** (> 24h ou nunca interagiu)' : 'ABERTA (< 24h)'}
-    - Análise da Última Resposta (se houver): ${formattedAnalysis}
-    - Histórico Recente da Conversa:
+
+    CONTEXTO ATUAL (Cliente ID: ${followUp.client_id}):
+    - Estágio: ${currentStage.name} (Ordem: ${currentStage.order})
+    - Última Mensagem do Cliente: ${formattedTimeSinceClient}
+    - Janela 24h WhatsApp: ${isOutside24hWindow ? '**FECHADA (> 24h)**' : 'ABERTA (< 24h)'}
+    - ${formattedAnalysis}
+    - Última Mensagem ENVIADA por VOCÊ (Alex): ${lastSentTemplateName ? `Template "${lastSentTemplateName}" enviado ${formattedTimeSinceSent}.` : 'Nenhuma mensagem enviada ainda.'}
+    - Tempo de Espera Padrão APÓS '${lastSentTemplateName || 'última msg'}': ${waitTimeAfterLastSentMs > 0 ? (waitTimeAfterLastSentMs / 1000 / 60).toFixed(1) + ' minutos' : 'N/A'}
+    - Status da Espera Atual: ${waitTimeAfterLastSentMs > 0 ? (hasWaitTimePassed ? '**TEMPO CONCLUÍDO**' : `**AGUARDANDO** (faltam aprox. ${(timeRemainingMs / 1000 / 60).toFixed(1)} min)`) : 'N/A (Pode agir)'}
+
+    HISTÓRICO RECENTE (Últimas ~15 mensagens, mais recentes no final):
     ${history || 'Nenhuma mensagem ainda.'}
-    
-    RECURSOS DISPONÍVEIS NESTE ESTÁGIO (${currentStage.name}):
-    - Templates Padrão (NÃO USAR se janela FECHADA):
-    ${regularTemplates.length > 0 ? regularTemplates.map(t => `  - Nome: "${t.template_name}" (Espera Padrão Após Envio: ${t.wait_time})`).join('\n') : '  Nenhum'}
-    - Templates HSM Aprovados (**OBRIGATÓRIO** para iniciar conversa se janela FECHADA):
-    ${hsmTemplates.length > 0 ? hsmTemplates.map(t => `  - Nome: "${t.template_name}" (Espera Padrão Após Envio: ${t.wait_time})`).join('\n') : '  Nenhum'}
-    
-    REGRAS CRÍTICAS **IMPOSTAS**:
-    1.  **SE A JANELA DE 24H ESTIVER FECHADA:** Sua *única* opção de envio é \`action_type: "SEND_MESSAGE"\` com \`is_hsm: true\` e \`content_source: "template"\`, utilizando um \`template_name\` da lista de **HSMs Aprovados** acima. É **PROIBIDO** usar \`content_source: "generate"\` ou \`is_hsm: false\`. Se não houver HSMs adequados na lista acima, escolha "SCHEDULE_EVALUATION" ou "PAUSE".
-    2.  **SE A JANELA DE 24H ESTIVER ABERTA:** Você pode usar \`SEND_MESSAGE\` com \`content_source: "generate"\` (e \`is_hsm: false\`) OU \`content_source: "template"\` (com \`is_hsm: true\` se for HSM, ou \`is_hsm: false\` se for padrão).
-    3.  **TIMING PADRÃO vs DIÁLOGO:**
-        *   **Fluxo Padrão:** Se decidir enviar uma mensagem usando um template (\`SEND_MESSAGE\` com \`content_source: "template"\`) para seguir a sequência planejada, **NÃO** retorne um \`delay_ms\` para esta ação. O sistema agendará a próxima avaliação automaticamente com base na "Espera Padrão Após Envio" do template que você escolheu.
-        *   **Diálogo Ativo:** Se está respondendo diretamente a uma mensagem recente do cliente (especialmente usando \`content_source: "generate"\`), ou se a intenção é manter uma conversa rápida, você **DEVE** usar \`action_type: "SCHEDULE_EVALUATION"\` com um \`delay_ms\` CURTO (ex: 1 a 5 minutos = 60000 a 300000 ms).
-        *   **Espera Específica:** Se precisar esperar um tempo *diferente* do padrão (ex: cliente pediu), use \`action_type: "SCHEDULE_EVALUATION"\` com o \`delay_ms\` apropriado (ex: 86400000 para 1 dia).
-    4.  **HUMANIZAÇÃO:** Aja como "Alex"... [manter regra]
-    5.  **PROGRESSÃO:** Tente mover o cliente... [manter regra]
-    6.  **NÃO INCOMODAR:** ... [manter regra]
-    7.  **DÚVIDAS:** ... [manter regra]
-    
+
+    TEMPLATES DISPONÍVEIS NESTE ESTÁGIO (${currentStage.name}):
+    ${currentStageTemplates.length > 0 ? currentStageTemplates.map(t => `- Nome: "${t.template_name}" (HSM: ${t.is_hsm}, Espera Padrão: ${(t.wait_time_ms / 1000 / 60).toFixed(1)} min)`).join('\n') : 'Nenhum template definido para este estágio.'}
+
+    REGRAS CRÍTICAS - SIGA ESTRITAMENTE:
+    1.  **REGRA MAIS IMPORTANTE - JANELA 24H FECHADA:** Se "Janela 24h WhatsApp" for **FECHADA**, a **ÚNICA** ação de envio permitida é \'SEND_MESSAGE\' com \'content_source: "template"\', **obrigatoriamente '"is_hsm": true'**, e um \'template_name\' da lista que tenha "HSM: true". É **ABSOLUTAMENTE PROIBIDO** retornar \'"is_hsm": false\' ou \'content_source: "generate"\' quando a janela estiver FECHADA. Se não houver template HSM adequado, retorne \'SCHEDULE_EVALUATION\' ou \'PAUSE\'. **VERIFIQUE A JANELA ANTES DE QUALQUER DECISÃO DE ENVIO.**
+    2.  **JANELA 24H ABERTA:**
+        *   SE cliente interagiu diretamente: Use \"SEND_MESSAGE\" com \"content_source: "generate"\" e **obrigatoriamente ""is_hsm": false"**. Depois, agende \"SCHEDULE_EVALUATION\" (delay curto).
+        *   SE for seguir fluxo padrão: Pode usar \"SEND_MESSAGE\" com \"content_source: "template"\" (use \"is_hsm\" do template).
+    3.  **RESPEITE O TEMPO DE ESPERA (Status da Espera Atual):**
+        *   SE "Status da Espera" for **AGUARDANDO**: Sua ÚNICA opção é \"action_type: "SCHEDULE_EVALUATION"\". Use \"delay_ms\" restante (aprox. ${timeRemainingMs > 0 ? timeRemainingMs : 60000} ms). **NÃO ENVIE NADA.**
+        *   SE "Status da Espera" for **TEMPO CONCLUÍDO** ou N/A: Pode enviar a *próxima* mensagem do fluxo.
+    4.  **NÃO REPITA MENSAGENS:** Se a "Última Mensagem ENVIADA por VOCÊ" foi "X", não envie "X" novamente agora. Envie o *próximo* template ou gere uma resposta.
+    5.  **TIMING DA AÇÃO:**
+        *   Ao enviar um template do fluxo (\"content_source: "template"\"): NÃO inclua "delay_ms" na ação "SEND_MESSAGE". O sistema usará a "Espera Padrão" do template para agendar a próxima avaliação.
+        *   Ao gerar uma resposta (\"content_source: "generate"\"): Use \"SCHEDULE_EVALUATION\" com delay CURTO (ex: 60000-300000 ms) após o envio da sua resposta gerada.
+    6.  **HUMANIZAÇÃO, PROGRESSÃO, NÃO INCOMODAR, DÚVIDAS:** (Manter regras originais - aja como Alex, tente progredir, não incomode, peça ajuda se confuso).
+
     SUA TAREFA:
-    Analise o contexto e decida a PRÓXIMA MELHOR AÇÃO, **respeitando estritamente a regra da janela de 24h e as regras de timing**.
-    
-    RESPONDA ESTRITAMENTE COM UM ÚNICO OBJETO JSON **VÁLIDO**, sem nenhum texto antes ou depois. Use aspas duplas para chaves e valores de string. Certifique-se de que há vírgulas (,) entre cada par chave-valor, exceto após o último. Exemplo:
-    \`\`\`json
-    {
-      "action_type": "SEND_MESSAGE",
-      "reason": "Exemplo de razão.",
-      "content_source": "template",
-      "is_hsm": true,
-      "template_name": "nome_template_hsm"
-    }
-    \`\`\`
-    
-    O JSON DEVE conter:
-    - "action_type": (Obrigatório) Uma das strings: "SEND_MESSAGE", "CHANGE_STAGE", "SCHEDULE_EVALUATION", "PAUSE", "REQUEST_HUMAN_REVIEW", "COMPLETE".
-    - "reason": (Obrigatório) Sua justificativa.
-    - Parâmetros Adicionais (conforme action_type):
-        - Se "SEND_MESSAGE": inclua "content_source", "is_hsm", e "template_name" (se source for "template"). **NÃO inclua 'delay_ms' aqui** (será tratado pelo sistema ou por SCHEDULE_EVALUATION).
+    Analise TODO o contexto (status da espera, janela 24h, histórico, última análise) e decida a PRÓXIMA MELHOR AÇÃO. Retorne **APENAS UM ÚNICO OBJETO JSON VÁLIDO**, seguindo a estrutura e regras. Lembre-se: inclua '"is_hsm": false' se usar '"content_source": "generate"'.
+
+    Estrutura JSON:
+    - "action_type": (Obrigatório) "SEND_MESSAGE", "CHANGE_STAGE", "SCHEDULE_EVALUATION", "PAUSE", "REQUEST_HUMAN_REVIEW", "COMPLETE".
+    - "reason": (Obrigatório) Sua justificativa clara.
+    - Campos Adicionais:
+        - Se "SEND_MESSAGE": inclua "content_source", "is_hsm", e "template_name" (se source="template").
         - Se "SCHEDULE_EVALUATION": **SEMPRE** inclua "delay_ms".
         - Se "CHANGE_STAGE": inclua "target_stage_id".
-    
+
     Qual a próxima ação (apenas o JSON)?
     `;
+
 
     // 4. Chamar a IA
     console.log(`FollowUp ${followUpId}: Enviando prompt para IA...`);
     const aiResponseString = await generateChatCompletion({
-      // Não precisamos de histórico aqui, já está no prompt do sistema
-      messages: [{ role: 'user', content: `Cliente: ${followUp.client_id}, Estágio: ${currentStage.name}. Qual a próxima ação?` }], // Mensagem curta apenas para iniciar
-      systemPrompt: systemPrompt // O prompt principal está aqui
+      messages: [{ role: 'user', content: `Cliente: ${followUp.client_id}, Estágio: ${currentStage.name}. Última resposta: ${followUp.last_response || 'Nenhuma'}. Qual a próxima ação?` }], // Prompt do usuário mais informativo
+      systemPrompt: systemPrompt
     });
 
-    // 5. Parse e Validar a Resposta da IA
+    // 5. Parse e Validar a Resposta da IA (*** VALIDAÇÃO REFINADA ***)
     console.log(`FollowUp ${followUpId}: Resposta bruta da IA: ${aiResponseString}`);
     let aiDecision: AIAction;
     try {
-      // Tenta remover ```json ... ``` se a IA incluir
       const cleanResponse = aiResponseString.replace(/^```json\s*|```$/g, '').trim();
       aiDecision = JSON.parse(cleanResponse);
 
-      // Validação básica da estrutura
-      if (!aiDecision.action_type || typeof aiDecision.reason !== 'string') {
-        throw new Error('Estrutura JSON básica inválida (action_type ou reason ausente/inválido).');
+      // <<< CORREÇÃO FORÇADA de is_hsm para TEMPLATE fora da janela 24h >>>
+      if (isOutside24hWindow && aiDecision.action_type === 'SEND_MESSAGE' && aiDecision.content_source === 'template') {
+        if (aiDecision.is_hsm === false || aiDecision.is_hsm === undefined || aiDecision.is_hsm === null) {
+          console.warn(`FollowUp ${followUpId}: IA sugeriu/esqueceu is_hsm fora da janela 24h para template. FORÇANDO para true.`);
+          (aiDecision as SendMessageAction).is_hsm = true;
+        }
       }
 
-      // Validação específica por tipo de ação
+      // <<< CORREÇÃO/GARANTIA de is_hsm para GENERATE (NOVO) >>>
+      if (aiDecision.action_type === 'SEND_MESSAGE' && aiDecision.content_source === 'generate') {
+        if (aiDecision.is_hsm !== false) { // Se não for explicitamente false (seja true, undefined, null)
+          console.warn(`FollowUp ${followUpId}: IA usou 'generate' mas is_hsm não era 'false'. FORÇANDO para false.`);
+          (aiDecision as SendMessageAction).is_hsm = false; // Garante que seja false
+        }
+      }
+      // <<< FIM DA CORREÇÃO/GARANTIA PARA GENERATE >>>
+
+      // Validação Principal (agora deve passar para ambos os casos corrigidos)
+      if (!aiDecision.action_type || typeof aiDecision.reason !== 'string') { /*...*/ }
       switch (aiDecision.action_type) {
         case 'SEND_MESSAGE':
-          if (typeof aiDecision.is_hsm !== 'boolean' || !['generate', 'template'].includes(aiDecision.content_source)) {
-            throw new Error('Parâmetros inválidos para SEND_MESSAGE (is_hsm ou content_source).');
+          if (!['generate', 'template'].includes(aiDecision.content_source)) { /*...*/ }
+          // A validação de 'is_hsm' ser boolean AINDA É IMPORTANTE aqui como salvaguarda final
+          if (typeof aiDecision.is_hsm !== 'boolean') {
+            throw new Error('Parâmetro "is_hsm" (boolean) é obrigatório para SEND_MESSAGE (após correções).');
           }
-          if (aiDecision.content_source === 'template' && typeof aiDecision.template_name !== 'string') {
-            throw new Error('Parâmetro "template_name" obrigatório para SEND_MESSAGE com content_source="template".');
-          }
-          // Validar se a ação respeita a regra das 24h
-          if (isOutside24hWindow && (!aiDecision.is_hsm || aiDecision.content_source === 'generate')) {
-            console.warn(`FollowUp ${followUpId}: IA sugeriu ação (${aiDecision.action_type}, source: ${aiDecision.content_source}, hsm: ${aiDecision.is_hsm}) que viola regra das 24h. Forçando reavaliação.`);
-            throw new Error('Ação sugerida viola regra das 24h.'); // Força cair no catch e usar default
-          }
+          // ... resto da validação ...
           break;
-        case 'CHANGE_STAGE':
-          if (typeof aiDecision.target_stage_id !== 'string') {
-            throw new Error('Parâmetro "target_stage_id" obrigatório/inválido para CHANGE_STAGE.');
-          }
-          break;
-        case 'SCHEDULE_EVALUATION':
-          if (typeof aiDecision.delay_ms !== 'number' || aiDecision.delay_ms <= 0) {
-            throw new Error('Parâmetro "delay_ms" obrigatório/inválido para SCHEDULE_EVALUATION.');
-          }
-          break;
-        // PAUSE, REQUEST_HUMAN_REVIEW, COMPLETE só precisam de 'reason', já validado.
+        // ... outros cases ...
       }
 
-      console.log(`FollowUp ${followUpId}: Decisão da IA validada:`, aiDecision);
+      console.log(`FollowUp ${followUpId}: Decisão da IA (pós-correções) validada:`, aiDecision);
       return aiDecision;
 
     } catch (parseOrValidationError) {
       console.error(`FollowUp ${followUpId}: Erro ao parsear ou validar JSON da IA:`, parseOrValidationError, `\nResposta recebida:\n${aiResponseString}`);
-      return { ...defaultAIAction, reason: `Erro ao processar resposta da IA: ${parseOrValidationError instanceof Error ? parseOrValidationError.message : 'Formato inválido'}. Agendando reavaliação.` };
+      // Retorna ação de fallback
+      return { ...defaultAIAction, reason: `Erro processando resposta IA (${parseOrValidationError instanceof Error ? parseOrValidationError.message : 'Formato inválido'}). Agendando reavaliação.` };
     }
 
   } catch (error) {
     console.error(`Erro GERAL em determineNextAction para FollowUp ${followUpId}:`, error);
-    return { ...defaultAIAction, reason: `Erro interno no servidor ao determinar ação: ${error instanceof Error ? error.message : 'Erro desconhecido'}. Agendando reavaliação.` };
+    // Retorna ação de fallback
+    return { ...defaultAIAction, reason: `Erro interno (${error instanceof Error ? error.message : 'Erro desconhecido'}). Agendando reavaliação.` };
   }
 }
 

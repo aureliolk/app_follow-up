@@ -293,8 +293,8 @@ export async function initializeNewFollowUp(
     );
 
     // 3. Agendar a Primeira Avaliação DEPOIS de tudo criado
-    const { scheduleNextEvaluation } = await import('./internal/followUpHelpers');
-    await scheduleNextEvaluation(newFollowUp.id, initialEvaluationDelayMs, "Início do FollowUp");
+    const { scheduleNextEvaluation_V2 } = await import('../_lib/scheduler');
+    await scheduleNextEvaluation_V2(newFollowUp.id, initialEvaluationDelayMs, "Início do FollowUp");
 
     return newFollowUp; // Retornar o objeto criado
 
