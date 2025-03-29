@@ -3,9 +3,7 @@ import { prisma } from '@/lib/db';
 import axios from 'axios';
 // IMPORTAR o processador e helpers necessários
 import { lumibotProcessor } from './initializer'; // Importa o processador definido
-import { updateFollowUpStatus } from './internal/followUpHelpers';
-import { determineNextAction } from './ai/functionIa'; // Para reload
-import { executeAIAction } from './manager'; // Para reload
+
 
 // Mapa para armazenar timeouts ativos (mensagens e avaliações)
 export const activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
@@ -34,41 +32,13 @@ export interface ScheduledMessage { // EXPORTAR a interface
   };
 }
 
-// Interface para o processador personalizado (mantida)
-export interface MessageProcessor { // EXPORTAR a interface
-  process: (dataToSend: { followUpId: string; stepIndex: number; message: string; clientId: string; metadata?: any }) => Promise<boolean>;
-}
-
-// Variável para guardar o processador atual (mantida)
-let currentProcessor: MessageProcessor | null = null;
-
-// Função para definir o processador (mantida e exportada)
-export function setMessageProcessor(processor: MessageProcessor): void {
-  if (currentProcessor) {
-    console.warn("Aviso: Tentando redefinir o MessageProcessor. Isso não é usual.");
-  }
-  currentProcessor = processor;
-  console.log("MessageProcessor configurado com sucesso.");
-}
-
-// Função para obter o processador (mantida e exportada)
-export function getMessageProcessor(): MessageProcessor | null {
-  return currentProcessor;
-}
-
-// Função processAndSendMessage (mantida como antes, chama getMessageProcessor)
+// Função processAndSendMessage (MODIFICADA para usar lumibotProcessor diretamente)
 async function processAndSendMessage(messageData: ScheduledMessage): Promise<boolean> {
-  const processor = getMessageProcessor();
-  if (!processor) {
-    console.error(`ERRO CRÍTICO: Nenhum processador de mensagens configurado ao tentar enviar msg ${messageData.messageDbId}.`);
-    await prisma.followUpMessage.update({ where: { id: messageData.messageDbId }, data: { delivered: false, error_sending: 'Erro Interno: Processador de msg não configurado' } }).catch(dbErr => { });
-    return false;
-  }
+  // Usa lumibotProcessor diretamente importado
   try {
-    // Passa os metadados completos para o processador ter acesso a isHSM etc.
-    const success = await processor.process({
+    const success = await lumibotProcessor.process({
       followUpId: messageData.followUpId,
-      stepIndex: messageData.stepIndex,
+      stepIndex: messageData.stepIndex, // Mantido para compatibilidade
       message: messageData.contentToSend,
       clientId: messageData.clientId,
       metadata: { // Passar todos os metadados relevantes
@@ -92,14 +62,23 @@ async function processAndSendMessage(messageData: ScheduledMessage): Promise<boo
 
 // Função scheduleMessage (mantida como antes)
 export async function scheduleMessage(messageData: ScheduledMessage): Promise<string> {
-  // ... (lógica como antes, chama sendMessage no timeout) ...
   // **CHECK INICIAL DE SANIDADE (Manter)**
   if (!messageData) throw new Error("messageData ausente em scheduleMessage");
+  if (!messageData.followUpId) throw new Error("followUpId ausente em messageData");
+  if (!messageData.messageDbId) throw new Error("messageDbId ausente em messageData");
   // ... (outras verificações) ...
+
   try {
     const timeoutId = `${messageData.followUpId}-${messageData.messageDbId}`;
     console.log(`[scheduleMessage] Preparando agendamento para ${timeoutId}`);
-    // ... (logs, cancelamento de timeout existente) ...
+
+    // Cancelar timeout existente para esta mensagem específica, se houver
+    if (activeTimeouts.has(timeoutId)) {
+        console.log(`[scheduleMessage] Cancelando timeout anterior para ${timeoutId}`);
+        clearTimeout(activeTimeouts.get(timeoutId)!);
+        activeTimeouts.delete(timeoutId);
+    }
+
     const delay = messageData.scheduledTime.getTime() - Date.now();
     console.log(`[scheduleMessage] Delay calculado para ${timeoutId}: ${delay}ms`);
 
@@ -107,7 +86,7 @@ export async function scheduleMessage(messageData: ScheduledMessage): Promise<st
       console.log(`[scheduleMessage] Delay <= 0 para ${timeoutId}. Chamando sendMessage imediatamente.`);
       // Adicionar try-catch aqui também para isolar erros
       try {
-        await sendMessage(messageData);
+        await sendMessage(messageData); // Chamada imediata
       } catch (immediateSendError : any ) {
         console.error(`[scheduleMessage] Erro no envio imediato para ${timeoutId}:`, immediateSendError);
         // Registrar erro no BD
@@ -118,22 +97,18 @@ export async function scheduleMessage(messageData: ScheduledMessage): Promise<st
 
     console.log(`[scheduleMessage] Agendando setTimeout para ${timeoutId} com delay ${delay}ms.`);
     const timeout = setTimeout(async () => {
-      // **** LOG DENTRO DO CALLBACK ****
-      console.log(`[setTimeout Callback] INICIANDO para ${timeoutId}. Chamando sendMessage...`);
+      console.log(`[setTimeout Msg Callback] INICIANDO para ${timeoutId}. Chamando sendMessage...`);
       try {
-        await sendMessage(messageData);
-        console.log(`[setTimeout Callback] sendMessage CONCLUÍDO para ${timeoutId}.`);
+        await sendMessage(messageData); // Chamada após o delay
+        console.log(`[setTimeout Msg Callback] sendMessage CONCLUÍDO para ${timeoutId}.`);
       } catch (error: any) {
-        console.error(`[setTimeout Callback] Erro DENTRO da chamada a sendMessage para ${timeoutId}:`, error);
-        // O erro já deve ser tratado dentro de sendMessage, mas logamos aqui também.
-        // Tentar registrar erro no BD como fallback
+        console.error(`[setTimeout Msg Callback] Erro DENTRO da chamada a sendMessage para ${timeoutId}:`, error);
         try {
           await prisma.followUpMessage.update({ where: { id: messageData.messageDbId }, data: { delivered: false, error_sending: `Erro callback timer: ${error.message}` } });
         } catch (dbErr) { }
-
       } finally {
         activeTimeouts.delete(timeoutId);
-        console.log(`[setTimeout Callback] Timeout removido do mapa para ${timeoutId}.`);
+        console.log(`[setTimeout Msg Callback] Timeout removido do mapa para ${timeoutId}.`);
       }
     }, delay);
 
@@ -142,10 +117,17 @@ export async function scheduleMessage(messageData: ScheduledMessage): Promise<st
     console.log(`[scheduleMessage] Timeout ${timeoutId} armazenado com sucesso no mapa.`);
 
     return timeoutId;
-  } catch (error) { /* ... tratamento de erro ... */ throw error; }
+  } catch (error) {
+      console.error(`[scheduleMessage] Erro GERAL ao agendar mensagem ${messageData.messageDbId}:`, error);
+      // Tentar registrar erro no BD
+      if (messageData.messageDbId) {
+        await prisma.followUpMessage.update({ where: { id: messageData.messageDbId }, data: { delivered: false, error_sending: `Erro agendamento: ${error instanceof Error ? error.message : 'Erro desconhecido'}` } }).catch(() => { });
+      }
+      throw error; // Relançar para quem chamou saber que falhou
+  }
 }
 
-// Função sendMessage (mantida, chama processAndSendMessage)
+// Função sendMessage (mantida, chama processAndSendMessage e agenda próxima avaliação)
 async function sendMessage(messageData: ScheduledMessage): Promise<void> {
   const { followUpId, messageDbId, metadata } = messageData;
   let success = false;
@@ -162,13 +144,17 @@ async function sendMessage(messageData: ScheduledMessage): Promise<void> {
       return;
     }
 
-    // Chama o processador configurado
+    // Chama o processador configurado (agora diretamente)
     success = await processAndSendMessage(messageData);
     if (!success) {
-      errorReason = metadata?.error_reason || 'Falha no processador de mensagens.'; // Tenta pegar razão do metadata se o processador a definir
+      // Tentar obter uma razão mais específica do erro do processador, se disponível
+      // (Assumindo que o processador pode adicionar 'error_reason' aos metadados em caso de falha)
+      // Se não houver, usar a razão padrão.
+      const processorErrorReason = messageData.metadata?.error_reason;
+      errorReason = processorErrorReason || 'Falha no processador de mensagens.';
     }
 
-    // Atualiza BD e agenda próxima avaliação se sucesso
+    // Atualiza BD
     await prisma.followUpMessage.update({
       where: { id: messageDbId },
       data: { delivered: success, delivered_at: success ? new Date() : null, error_sending: success ? null : errorReason }
@@ -176,12 +162,15 @@ async function sendMessage(messageData: ScheduledMessage): Promise<void> {
 
     if (!success) {
       console.error(`Falha ao enviar mensagem ${messageDbId}. Follow-up ${followUpId} pausado. Razão: ${errorReason}`);
+      // Importar dinamicamente para evitar ciclo
+      const { updateFollowUpStatus } = await import('./internal/followUpHelpers');
       await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Falha envio msg: ${errorReason}` });
     } else {
       console.log(`Mensagem ${messageDbId} marcada como entregue.`);
-      // Agendar próxima avaliação
-      const defaultNextEvaluationDelay = 60 * 60 * 1000; // 1 hora
-      await scheduleNextEvaluation(followUpId, defaultNextEvaluationDelay, `Avaliação pós envio bem-sucedido`);
+      // >>> REMOVIDO AGENDAMENTO DE AVALIAÇÃO DAQUI <<<
+      // A avaliação agora é agendada por executeAIAction após chamar scheduleMessage
+      // console.log(`Agendando próxima avaliação após envio bem-sucedido...`);
+      // await scheduleNextEvaluation(followUpId, defaultNextEvaluationDelay, `Avaliação pós envio bem-sucedido`);
     }
 
   } catch (error) {
@@ -192,6 +181,8 @@ async function sendMessage(messageData: ScheduledMessage): Promise<void> {
         where: { id: messageDbId },
         data: { delivered: false, error_sending: errorReason }
       });
+      // Importar dinamicamente para evitar ciclo
+      const { updateFollowUpStatus } = await import('./internal/followUpHelpers');
       await updateFollowUpStatus(followUpId, 'paused', { paused_reason: errorReason });
     } catch (dbError) {
       console.error(`Falha ao registrar erro crítico no BD para msg ${messageDbId}:`, dbError);
@@ -199,13 +190,16 @@ async function sendMessage(messageData: ScheduledMessage): Promise<void> {
   }
 }
 
-
-// --- Funções Auxiliares de Envio (Implementar corretamente) ---
+// --- Funções Auxiliares de Envio (Implementação mantida como antes) ---
+// async function enviarHSMLumibot(...) { ... }
+// async function enviarTextoLivreLumibot(...) { ... }
+// (O código dessas funções está correto e pode ser mantido como na sua versão)
+// --- CORREÇÃO: Cole o código dessas duas funções aqui se precisar ---
+// Função auxiliar de envio para Lumibot (HSM)
 async function enviarHSMLumibot(
   accountId: string,
   conversationId: string, // clientId
   token: string,
-  // Receber dados relevantes do passo/template
   stepData: {
       message_content: string;    // Conteúdo base do template
       template_name: string;      // Nome EXATO do HSM aprovado
@@ -217,27 +211,27 @@ async function enviarHSMLumibot(
   const apiUrl = `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
   const headers = { 'Content-Type': 'application/json', 'api_access_token': token };
 
-  // --- Montando o corpo EXATAMENTE como especificado ---
-  const body = {
-      content: stepData.message_content, // Conteúdo base do template do seu BD
-      message_type: "outgoing",         // Fixo
+  // --- Montando o corpo ---
+  const body: any = {
+      content: stepData.message_content,
+      message_type: "outgoing",
       template_params: {
-        name: stepData.template_name,         // Nome EXATO do HSM
-        category: stepData.category || "UTILITY", // Categoria do passo (com fallback)
-        language: "pt_BR",                // Fixo
-        processed_params : {
-          "1": clientName                 // Nome do cliente para substituir {{1}}
-          // Adicionar "2": valor2, etc., se o template tiver mais variáveis
-        }
+        name: stepData.template_name,
+        category: stepData.category || "UTILITY",
+        language: "pt_BR",
       }
     };
+
+  // Adiciona processed_params APENAS se a mensagem contiver {{1}} e clientName for válido
+  if (stepData.message_content.includes('{{1}}') && clientName) {
+    body.template_params.processed_params = { "1": clientName };
+  }
   // --- Fim da montagem do corpo ---
 
   console.log(`[Lumibot Processor] Enviando HSM: ${apiUrl}, Payload:`, JSON.stringify(body));
   try {
       const response = await axios.post(apiUrl, body, { headers });
       console.log(`[Lumibot Processor] Resposta Lumibot (HSM): Status ${response.status}`);
-      // Usar >= 200 e < 300 para cobrir outros status de sucesso como 201, 202
       return { success: response.status >= 200 && response.status < 300, responseData: response.data };
   } catch (err: any) {
       console.error(`[Lumibot Processor] Erro ao enviar HSM (${stepData.template_name}): ${err.message}`, err.response?.data);
@@ -245,22 +239,26 @@ async function enviarHSMLumibot(
   }
 }
 
-async function enviarTextoLivreLumibot(accountId: string, conversationId: string, token: string, content: string): Promise<boolean> {
+// Função auxiliar de envio para Lumibot (Texto Livre)
+async function enviarTextoLivreLumibot(accountId: string, conversationId: string, token: string, content: string): Promise<{ success: boolean, responseData: any }> {
   const apiUrl = `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
   const headers = { 'Content-Type': 'application/json', 'api_access_token': token };
-  const body = { content: content, message_type: "outgoing" }; // outgoing ou text? Confirmar
-  console.log(`Enviando Texto Livre: ${apiUrl}, Payload:`, JSON.stringify(body));
+  const body = { content: content, message_type: "outgoing" }; // Confirmar message_type
+  console.log(`[Lumibot Processor] Enviando Texto Livre: ${apiUrl}, Payload:`, JSON.stringify(body));
   try {
     const response = await axios.post(apiUrl, body, { headers });
-    console.log(`Resposta Lumibot (Texto Livre): Status ${response.status}`);
-    return response.status === 200 || response.status === 201;
+    console.log(`[Lumibot Processor] Resposta Lumibot (Texto Livre): Status ${response.status}`);
+    // Usar >= 200 e < 300 para cobrir outros status de sucesso como 201, 202
+    return { success: response.status >= 200 && response.status < 300, responseData: response.data };
   } catch (err: any) {
-    console.error(`Erro ao enviar Texto Livre: ${err.message}`, err.response?.data);
-    return false;
+    console.error(`[Lumibot Processor] Erro ao enviar Texto Livre: ${err.message}`, err.response?.data);
+    return { success: false, responseData: err.response?.data || { error: err.message } };
   }
 }
+// --- Fim Funções Auxiliares de Envio ---
 
-// --- Função scheduleNextEvaluation (IMPLEMENTAÇÃO COMPLETA AQUI) ---
+
+// --- Função scheduleNextEvaluation (MODIFICADA - Chama executeAIAction) ---
 // Agenda a PRÓXIMA VEZ que a IA deve AVALIAR o follow-up
 export async function scheduleNextEvaluation(
   followUpId: string,
@@ -279,13 +277,10 @@ export async function scheduleNextEvaluation(
       data: { next_evaluation_at: evaluationTime } // Certifique-se que este campo existe no schema FollowUp
     });
 
-    // O agendamento real PODE ser feito por um job externo (melhor para produção)
-    // OU continuar usando setTimeout para desenvolvimento/simplicidade:
-
     // Gerenciar timeouts de avaliação (similar aos de mensagem)
     const evaluationTimeoutId = `eval-${followUpId}`; // ID único para avaliação
     if (activeTimeouts.has(evaluationTimeoutId)) {
-      console.log(`Cancelando avaliação anterior agendada para ${followUpId}`);
+      console.log(`[scheduleNextEvaluation] Cancelando avaliação anterior agendada para ${followUpId}`);
       clearTimeout(activeTimeouts.get(evaluationTimeoutId)!);
       activeTimeouts.delete(evaluationTimeoutId);
     }
@@ -300,22 +295,23 @@ export async function scheduleNextEvaluation(
 
         if (currentFollowUp?.status === 'active') {
           console.log(`[Timer Avaliação] Executando avaliação agendada para FollowUp ${followUpId}`);
-          // Chama a função central de decisão da IA
-          // Importar dinamicamente para evitar ciclos, se necessário, ou garantir importação no topo
+
+          // *** CORREÇÃO AQUI: Usar importação dinâmica ***
           const { determineNextAction } = await import('./ai/functionIa');
           const nextAction = await determineNextAction(followUpId);
           console.log(`[Timer Avaliação] Ação determinada para ${followUpId}:`, nextAction);
 
-          // Chamar a função que executa a ação
-          const { executeAIAction } = await import('../_lib/manager'); // Ou de onde ela estiver
+          // *** CORREÇÃO AQUI: Chamar executeAIAction ***
+          const { executeAIAction } = await import('./manager'); // Ou de onde ela estiver
           await executeAIAction(followUpId, nextAction);
+          // console.log(`[Timer Avaliação] TODO: Implementar executeAIAction para ${nextAction.action_type}`); // << REMOVER ESTE LOG
 
         } else {
           console.log(`[Timer Avaliação] Avaliação agendada para ${followUpId} ignorada (status: ${currentFollowUp?.status})`);
         }
       } catch (error) {
         console.error(`[Timer Avaliação] Erro durante avaliação agendada para ${followUpId}:`, error);
-        // Importar updateFollowUpStatus aqui se necessário
+        // Importar dinamicamente para evitar ciclo
         const { updateFollowUpStatus } = await import('./internal/followUpHelpers');
         await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro na avaliação agendada: ${error instanceof Error ? error.message : 'Erro'}` });
       }
@@ -325,57 +321,49 @@ export async function scheduleNextEvaluation(
     activeTimeouts.set(evaluationTimeoutId, timeout);
     console.log(`Timeout de avaliação ${evaluationTimeoutId} armazenado.`);
 
-
   } catch (error) {
     console.error(`Erro ao AGENDAR avaliação para ${followUpId}:`, error);
-    // Importar updateFollowUpStatus aqui se necessário
+    // Importar dinamicamente para evitar ciclo
     const { updateFollowUpStatus } = await import('./internal/followUpHelpers');
     await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro agendamento avaliação: ${error instanceof Error ? error.message : 'Erro'}` });
   }
 }
 
 
-// --- Função cancelScheduledMessages (DEFINIÇÃO PRECISA ESTAR AQUI) ---
+// --- Função cancelScheduledMessages (MODIFICADA para incluir timers de avaliação) ---
 // Função para cancelar todas as mensagens e avaliações agendadas para um follow-up
 export async function cancelScheduledMessages(followUpId: string): Promise<void> {
   try {
     let cancelledCount = 0;
-    const prefix = `${followUpId}-`;
-    const evalPrefix = `eval-${followUpId}`;
+    const messagePrefix = `${followUpId}-`; // Prefixo para mensagens
+    const evalPrefix = `eval-${followUpId}`; // Prefixo/ID para avaliações
+
+    console.log(`[cancelScheduledMessages] Iniciando cancelamento para ${followUpId}`);
 
     // Iterar sobre TODOS os timeouts ativos
     for (const key of activeTimeouts.keys()) {
       // Verificar se a chave corresponde a uma mensagem OU a uma avaliação deste follow-up
-      if (key.startsWith(prefix) || key === evalPrefix) {
+      if (key.startsWith(messagePrefix) || key === evalPrefix) {
         const timeout = activeTimeouts.get(key);
         if (timeout) {
           clearTimeout(timeout);
           activeTimeouts.delete(key);
           cancelledCount++;
-          console.log(`Timeout cancelado e removido: ${key}`);
+          console.log(`[cancelScheduledMessages] Timeout cancelado e removido: ${key}`);
         }
       }
     }
 
     if (cancelledCount > 0) {
-      console.log(`Canceladas ${cancelledCount} ações (mensagens/avaliações) agendadas para followUp ${followUpId}.`);
+      console.log(`[cancelScheduledMessages] Canceladas ${cancelledCount} ações (mensagens/avaliações) agendadas para followUp ${followUpId}.`);
     } else {
-      console.log(`Nenhuma ação agendada encontrada para cancelar para followUp ${followUpId}.`);
+      console.log(`[cancelScheduledMessages] Nenhuma ação agendada encontrada para cancelar para followUp ${followUpId}.`);
     }
   } catch (error) {
-    console.error("Erro ao cancelar ações agendadas:", error);
+    console.error("[cancelScheduledMessages] Erro ao cancelar ações agendadas:", error);
   }
 }
-
-
-
 // --- Fim da Função cancelScheduledMessages ---
-// NOTE: reloadPendingMessages precisará ser adaptada para o novo fluxo com 'next_evaluation_at'
-export async function reloadPendingMessages(): Promise<void> {
-  console.warn("TODO: Implementar reloadPendingMessages para o novo fluxo baseado em next_evaluation_at");
-  // A lógica antiga que reagendava mensagens individuais não se aplica diretamente.
-  // O ideal é buscar followups ativos com next_evaluation_at no passado e chamar determineNextAction para eles.
-}
 
 
 // --- reloadPendingMessages (Adaptada para avaliações) ---
@@ -391,33 +379,38 @@ export async function reloadPendingEvaluations(): Promise<void> {
       select: { id: true } // Pegar apenas IDs
     });
 
-    console.log(`Recarregando ${pendingFollowUps.length} follow-ups com avaliações pendentes.`);
+    console.log(`[reloadPendingEvaluations] Recarregando ${pendingFollowUps.length} follow-ups com avaliações pendentes.`);
 
     for (const followUp of pendingFollowUps) {
-      console.log(`Disparando avaliação pendente para FollowUp ${followUp.id}`);
+      console.log(`[reloadPendingEvaluations] Disparando avaliação pendente para FollowUp ${followUp.id}`);
       // Chamar a função de decisão e execução imediatamente
+      // Usar importação dinâmica aqui também
+      const { determineNextAction } = await import('./ai/functionIa');
+      const { executeAIAction } = await import('./manager');
+      const { updateFollowUpStatus } = await import('./internal/followUpHelpers');
+
       determineNextAction(followUp.id)
         .then(action => executeAIAction(followUp.id, action))
         .catch(async (err) => {
-          console.error(`Erro ao reprocessar avaliação pendente para ${followUp.id}:`, err);
-          await updateFollowUpStatus(followUp.id, 'paused', { paused_reason: `Erro reprocessamento avaliação: ${err.message}` });
+          console.error(`[reloadPendingEvaluations] Erro ao reprocessar avaliação pendente para ${followUp.id}:`, err);
+          await updateFollowUpStatus(followUp.id, 'paused', { paused_reason: `Erro reprocessamento avaliação: ${err instanceof Error ? err.message : 'Erro'}` });
         });
       // Pequeno delay para não sobrecarregar
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   } catch (error) {
-    console.error("Erro ao recarregar avaliações pendentes:", error);
+    console.error("[reloadPendingEvaluations] Erro ao recarregar avaliações pendentes:", error);
   }
 }
 
-// --- Inicialização do Scheduler ---
+// --- Inicialização do Scheduler (MODIFICADA para não depender de currentProcessor) ---
 function initializeScheduler() {
   if (typeof window === 'undefined') {
     if (!(global as any).__schedulerInitialized) {
       console.log("Inicializando Scheduler...");
       // Define o processador padrão importado do initializer
-      setMessageProcessor(lumibotProcessor);
-      console.log("Processador Lumibot definido no Scheduler.");
+      // setMessageProcessor(lumibotProcessor); // << REMOVIDO - Não usamos mais setMessageProcessor
+      // console.log("Processador Lumibot definido no Scheduler."); // << REMOVIDO
       // Agendar recarregamento de avaliações pendentes
       setTimeout(() => {
         console.log("Verificando avaliações pendentes na inicialização...");
@@ -427,9 +420,13 @@ function initializeScheduler() {
       }, 5000); // Aguarda 5 segundos
       (global as any).__schedulerInitialized = true;
       console.log("Scheduler inicializado.");
+    } else {
+      // console.log("Scheduler já inicializado."); // Log opcional para debug
     }
   }
 }
 
 // Chamar a inicialização do scheduler
 initializeScheduler();
+
+// Exportar funções públicas se necessário (ex: scheduleMessage, cancelScheduledMessages)

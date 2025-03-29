@@ -32,10 +32,10 @@ async function enviarHSMLumibot(
       name: stepData.template_name,         // Nome EXATO do HSM
       category: stepData.category || "UTILITY", // Categoria do passo (com fallback)
       language: "pt_BR",                // Fixo
-      processed_params: {
-        "1": clientName                 // Nome do cliente para substituir {{1}}
-        // Adicionar "2": valor2, etc., se o template tiver mais variáveis
-      }
+      ...(stepData.message_content.includes('{{1}}') && clientName ?
+          { processed_params: { "1": clientName } } :
+          {} // Objeto vazio se não precisar/tiver nome
+      )
     }
   };
   // --- Fim da montagem do corpo ---
