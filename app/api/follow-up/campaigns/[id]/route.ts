@@ -1,88 +1,60 @@
 // app/api/follow-up/campaigns/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+// --- CORREÇÃO AQUI ---
+import {getCampaignDetails } from '../../_lib/initializer'; // Importar a função específica
+// --- FIM DA CORREÇÃO ---
 
-// Função auxiliar para extrair ID do URL
+// Função auxiliar para extrair ID (mantida)
 function extractIdFromUrl(url: string): string {
-  // Criar um objeto URL para facilitar a manipulação
+  // ... (código mantido)
   const urlObj = new URL(url);
-  // Obter o caminho sem query parameters
   const pathname = urlObj.pathname;
-  // Dividir o caminho e pegar o último segmento
   const parts = pathname.split('/');
-  return parts[parts.length - 1]; // Pegar o último segmento da URL
+  return parts[parts.length - 1];
 }
 
-// app/api/follow-up/campaigns/[id]/route.ts - Função GET
+// Função GET (restante do código mantido, mas a chamada agora deve funcionar)
 export async function GET(request: NextRequest) {
-  // Obter o ID da URL usando a função auxiliar
   const id = extractIdFromUrl(request.url);
-  
-  // Verificar workspace ID nos parâmetros da solicitação
   const searchParams = request.nextUrl.searchParams;
   const workspaceId = searchParams.get('workspaceId');
-  
+
   try {
-    // Verificar se a campanha pertence ao workspace (se workspaceId fornecido)
     if (workspaceId) {
       const campaignBelongsToWorkspace = await prisma.workspaceFollowUpCampaign.findFirst({
-        where: { 
-          workspace_id: workspaceId,
-          campaign_id: id
-        }
+         where: { workspace_id: workspaceId, campaign_id: id }
       });
-      
-      // Se não encontrar relação e o workspace for fornecido, retornar erro
       if (!campaignBelongsToWorkspace) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: "Campanha não encontrada neste workspace"
-          }, 
-          { status: 404 }
-        );
+         return NextResponse.json({ success: false, error: "Campanha não encontrada neste workspace" }, { status: 404 });
       }
     }
-    
-    // Importar a função de domínio no início do arquivo
-    const { getCampaignDetails } = await import('../../_lib/initializer');
-    
-    try {
-      // Buscar os detalhes completos da campanha usando a função de domínio
-      const campaignDetails = await getCampaignDetails(id);
-      
-      // Log para depuração
-      console.log(`Campanha ${id}: ${campaignDetails.steps.length} passos ordenados`);
-      
-      return NextResponse.json({
-        success: true,
-        data: campaignDetails
-      });
-    } catch (error) {
-      // Se a função getCampaignDetails lançar erro (ex: campanha não encontrada)
-      console.error("Erro ao buscar detalhes da campanha:", error);
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: error instanceof Error ? error.message : "Campanha não encontrada"
-        }, 
-        { status: 404 }
-      );
-    }
+
+    // A importação corrigida deve fazer esta chamada funcionar
+    const campaignDetails = await getCampaignDetails(id);
+
+    // Verificar se campaignDetails e campaignDetails.steps existem antes de acessar length
+    const stepsLength = campaignDetails?.steps?.length ?? 0;
+    console.log(`Campanha ${id}: ${stepsLength} passos ordenados`);
+
+
+    return NextResponse.json({
+      success: true,
+      data: campaignDetails
+    });
+
   } catch (error) {
-    console.error("Erro ao processar solicitação:", error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: "Erro interno do servidor"
-      }, 
-      { status: 500 }
-    );
+    // Capturar especificamente o erro de "Campanha não encontrada"
+     if (error instanceof Error && error.message === "Campanha não encontrada") {
+         console.error(`Campanha ${id} não encontrada no banco.`);
+         return NextResponse.json({ success: false, error: "Campanha não encontrada" }, { status: 404 });
+     }
+    // Outros erros
+    console.error("Erro ao processar solicitação GET da campanha:", error);
+    return NextResponse.json({ success: false, error: "Erro interno do servidor" }, { status: 500 });
   }
 }
 
-// Endpoint para atualizar uma campanha
-// app/api/follow-up/campaigns/[id]/route.ts - Função PUT
 export async function PUT(request: NextRequest) {
   const id = extractIdFromUrl(request.url);
 
@@ -336,31 +308,6 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
-
-// Função auxiliar para calcular tempo de espera em ms
-function calculateWaitTimeMs(waitTime: string): number {
-  if (!waitTime) return 30 * 60 * 1000; // Padrão: 30 minutos
-
-  // Regex para extrair números e unidades
-  const regex = /(\d+)\s*(min|minutos?|h|horas?|dias?)/i;
-  const match = waitTime.match(regex);
-
-  if (!match) return 30 * 60 * 1000;
-
-  const value = parseInt(match[1]);
-  const unit = match[2].toLowerCase();
-
-  if (unit.startsWith('min')) {
-    return value * 60 * 1000;
-  } else if (unit.startsWith('h')) {
-    return value * 60 * 60 * 1000;
-  } else if (unit.startsWith('d')) {
-    return value * 24 * 60 * 60 * 1000;
-  }
-
-  return 30 * 60 * 1000;
-}
-
 // Endpoint para excluir uma campanha
 export async function DELETE(request: NextRequest) {
   // Obter o ID da URL usando a função auxiliar

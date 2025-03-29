@@ -84,8 +84,7 @@ model FollowUpFunnelStage {
 model FollowUpStep {
   id              String              @id @default(uuid())
   funnel_stage_id String
-  name            String
-  template_name   String
+  template_name   String              @default("")
   wait_time       String
   wait_time_ms    Int
   message_content String
@@ -93,6 +92,7 @@ model FollowUpStep {
   created_at      DateTime            @default(now())
   order           Int                 @default(0)
   category        String
+  is_hsm          Boolean             @default(false)
   funnel_stage    FollowUpFunnelStage @relation(fields: [funnel_stage_id], references: [id])
 
   @@map("follow_up_steps")
@@ -111,8 +111,11 @@ model FollowUp {
   current_stage_id     String?
   waiting_for_response Boolean           @default(false)
   last_response        String?
-  current_step_id      String?
   last_response_at     DateTime?
+  last_client_message_at DateTime?
+  next_evaluation_at DateTime?
+  paused_reason        String?
+  ai_suggestion String?   
   messages             FollowUpMessage[]
   campaign             FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
   ai_analyses          FollowUpAIAnalysis[]
@@ -133,6 +136,10 @@ model FollowUpMessage {
   is_from_client Boolean   @default(false)
   step_id        String?
   follow_up      FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
+  error_sending  String?
+  is_ai_generated Boolean @default(false)
+  template_used String?
+  
 
   @@index([follow_up_id])
   @@map("follow_up_messages")

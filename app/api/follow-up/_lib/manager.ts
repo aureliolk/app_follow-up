@@ -3,448 +3,341 @@
 
 import { prisma } from '@/lib/db';
 import { scheduleMessage, cancelScheduledMessages } from './scheduler';
-import { analyzeClientResponse, decideNextStepWithAI } from '@/app/api/follow-up/_lib/ai/functionIa';
+// CORRIGIDO: Importar determineNextAction em vez de decideNextStepWithAI
+import { analyzeClientResponse, determineNextAction, generateAIResponse, AIAction, personalizeMessageContent } from '@/app/api/follow-up/_lib/ai/functionIa';
 
-// Importar funções internas e tipos
+
+// CORRIGIDO: Importar APENAS as funções necessárias e renomeadas de followUpHelpers
 import {
-  parseTimeString,
-  updateFollowUpStatus,
-  createSystemMessage,
-  getCampaignSteps,
-  processCurrentStep,
-  determineNextStep,
-  processStageAdvancement,
-  processActiveFollowUpResponse,
+  parseTimeString,            // Mantida
+  updateFollowUpStatus,       // Mantida
+  createSystemMessage,        // Mantida
+  getCampaignSteps,           // Mantida
+  // processCurrentStep,      // REMOVIDA (obsoleta no novo fluxo principal)
+  // determineNextStep,       // REMOVIDA (substituída por determineNextAction)
+  processStageAdvancement,    // Mantida (usada por handleClientResponse)
+  // processActiveFollowUpResponse, // REMOVIDA (lógica movida para handleClientResponse)
+  scheduleNextEvaluation,     // RENOMEADA/REFATORADA de scheduleNextStepExecution
+  normalizeStep,              // Adicionada se for usada aqui, senão remover
 } from './internal/followUpHelpers';
 
-// Função principal revisada para processamento de follow-ups
+// *** FASE 4: Função para EXECUTAR a ação decidida pela IA ***
+// (Coloque esta função aqui ou importe de 'actionExecutor.ts')
+export async function executeAIAction(followUpId: string, action: AIAction): Promise<void> {
+  console.log(`Executando Ação IA para ${followUpId}: ${action.action_type} - ${action.reason}`);
+
+  switch (action.action_type) {
+    case 'SEND_MESSAGE': // **** IMPLEMENTAR ESTE CASO ****
+      try {
+        const followUp = await prisma.followUp.findUnique({
+          where: { id: followUpId },
+          include: { campaign: { include: { stages: true } } }
+        });
+        if (!followUp || !followUp.campaign?.idLumibot || !followUp.campaign?.tokenAgentLumibot) {
+          throw new Error("Dados de FollowUp ou Campanha/Lumibot ausentes para SEND_MESSAGE.");
+        }
+        const currentStage = followUp.campaign.stages.find(s => s.id === followUp.current_stage_id);
+        const clientName = followUp.client_id;
+
+        let content = '';
+        let stepMetaData = {
+          id: null as string | null,
+          name: action.template_name || '', // Nome interno
+          category: 'Utility',
+          whatsappName: null as string | null | undefined
+        };
+
+        if (action.content_source === 'template' && action.template_name) {
+          const baseStep = await prisma.followUpStep.findFirst({
+            where: {
+              template_name: action.template_name, // Busca pelo nome interno
+              funnel_stage_id: followUp.current_stage_id || "" // Apenas no estágio atual
+            },
+            include: { funnel_stage: true } // Para pegar nome do estágio
+          });
+          if (!baseStep) throw new Error(`Template base "${action.template_name}" não encontrado no estágio ${currentStage?.name}.`);
+
+          const normalizedBaseStep = normalizeStep(baseStep); // Normaliza para pegar campos corretos
+          content = normalizedBaseStep.message_content;
+          stepMetaData.id = normalizedBaseStep.id; // ID do passo/template usado
+          stepMetaData.category = normalizedBaseStep.category;
+          stepMetaData.whatsappName = normalizedBaseStep.template_name; // Nome HSM
+          stepMetaData.name = normalizedBaseStep.template_name; // Nome interno
+        } else if (action.content_source === 'generate') {
+          console.warn("Ação SEND_MESSAGE com source 'generate' - conteúdo deveria vir da IA. Usando 'reason' como fallback.");
+          content = action.reason;
+        }
+
+        if (!content || content.trim() === '') {
+          throw new Error("Conteúdo final da mensagem está vazio ou inválido.");
+        }
+
+        // Personalizar se aplicável (NÃO HSM)
+        if (action.content_source === 'template' && !action.is_hsm) {
+          console.log(`Personalizando template (não-HSM) "${stepMetaData.name}"...`);
+          content = await personalizeMessageContent(content, followUp.client_id, followUpId, {
+            stage_name: currentStage?.name || 'Desconhecido',
+            template_name: stepMetaData.name
+          });
+          console.log(`Conteúdo personalizado: "${content.substring(0, 50)}..."`);
+        }
+
+
+        // Criar registro da mensagem
+        const messageRecord = await prisma.followUpMessage.create({
+          data: {
+            follow_up_id: followUpId,
+            content: content,
+            is_ai_generated: action.content_source === 'generate',
+            template_used: stepMetaData.name, // Nome interno do template base
+            is_from_client: false,
+            sent_at: new Date(),
+            delivered: false,
+            step_id: stepMetaData.id // Associar ao step_id se usou template
+          }
+        });
+        console.log(`Registro da mensagem ${messageRecord.id} criado no BD.`);
+
+
+        const messageDbIdToSchedule = messageRecord.id; // Garantir que temos o ID
+
+        console.log(stepMetaData.whatsappName)
+        // Agendar o envio
+        await scheduleMessage({
+          followUpId: followUpId,
+          messageDbId: messageDbIdToSchedule,
+          stepIndex: -1,
+          contentToSend: content,
+          scheduledTime: new Date(Date.now() + (action.delay_ms || 100)),
+          clientId: followUp.client_id,
+          accountIdLumibot: followUp.campaign.idLumibot,
+          tokenAgentLumibot: followUp.campaign.tokenAgentLumibot,
+          isAIMessage: action.content_source === 'generate',
+          isHSM: action.is_hsm,
+          templateNameWhatsapp: stepMetaData.whatsappName,
+          templateName: stepMetaData.name,
+          templateCategory: stepMetaData.category,
+          templateParams: { "1": clientName },
+          metadata: { 
+            ai_reason: action.reason
+          }
+        });
+
+        // **** CÁLCULO SIMPLIFICADO DA PRÓXIMA AVALIAÇÃO ****
+        let nextEvalDelayMs = 60 * 60 * 1000; // Default 1 hora
+        let evalReasonPart = "próxima avaliação padrão";
+
+        if (action.content_source === 'template' && stepMetaData.id) {
+            const sentStep = await prisma.followUpStep.findUnique({
+                where: { id: stepMetaData.id },
+                select: { wait_time_ms: true, wait_time: true, template_name: true }
+            });
+            if (sentStep && sentStep.wait_time_ms) {
+                nextEvalDelayMs = sentStep.wait_time_ms; // Usa o tempo definido pelo usuário para ESTE passo
+                evalReasonPart = `aguardando tempo padrão (${sentStep.wait_time}) após passo '${sentStep.template_name}'`;
+                console.log(`Usando delay padrão do passo enviado (${stepMetaData.id}): ${nextEvalDelayMs}ms.`);
+            } else {
+                console.warn(`Não foi possível encontrar wait_time_ms para o passo ${stepMetaData.id}. Usando delay padrão.`);
+            }
+        } else if (action.content_source === 'generate') {
+            nextEvalDelayMs = 5 * 60 * 1000; // Ex: 5 minutos para diálogo
+            evalReasonPart = "verificação rápida após resposta gerada pela IA";
+            console.log(`IA gerou resposta, agendando avaliação curta: ${nextEvalDelayMs}ms.`);
+        }
+
+        await scheduleNextEvaluation(followUpId, nextEvalDelayMs, `IA: ${action.reason}. Agendando ${evalReasonPart}.`);
+        // **** FIM DO CÁLCULO SIMPLIFICADO ****
+
+      } catch (err) {
+        console.error(`Erro ao executar SEND_MESSAGE para ${followUpId}:`, err);
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro ao enviar msg IA: ${err instanceof Error ? err.message : 'Erro'}` });
+        // Agendar reavaliação mesmo em caso de erro
+        await scheduleNextEvaluation(followUpId, 30 * 60 * 1000, `Reavaliação após falha no envio`);
+      }
+      break;
+
+    case 'CHANGE_STAGE': // **** IMPLEMENTAR ESTE CASO ****
+      await processStageAdvancement(followUpId, action.target_stage_id, `IA: ${action.reason}`);
+      // processStageAdvancement já agenda a próxima avaliação
+      break;
+
+    case 'SCHEDULE_EVALUATION': // **** IMPLEMENTAR ESTE CASO ****
+      await scheduleNextEvaluation(followUpId, action.delay_ms, `IA: ${action.reason}`);
+      break;
+
+    // Casos PAUSE, REQUEST_HUMAN_REVIEW, COMPLETE (já estavam ok)
+    case 'PAUSE':
+      await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `IA: ${action.reason}` });
+      await createSystemMessage(followUpId, `Follow-up pausado pela IA. Motivo: ${action.reason}`);
+      break;
+    case 'REQUEST_HUMAN_REVIEW':
+      await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `IA: Revisão Humana - ${action.reason}`, needs_human_review: true }); // Adicionar campo needs_human_review ao schema
+      await createSystemMessage(followUpId, `🚨 Revisão Humana Solicitada pela IA. Motivo: ${action.reason}`);
+      // TODO: Notificar humano
+      break;
+    case 'COMPLETE':
+      await updateFollowUpStatus(followUpId, 'completed', { completed_at: new Date() });
+      await createSystemMessage(followUpId, `Follow-up concluído pela IA. Motivo: ${action.reason}`);
+      break;
+
+    default:
+      console.warn(`Ação IA desconhecida recebida para ${followUpId}:`, action);
+      await scheduleNextEvaluation(followUpId, 60 * 60 * 1000, `Fallback: Ação IA desconhecida`);
+  }
+}
+// --- Fim Função executeAIAction ---
+
+
+// --- Função Principal de Processamento (Revisada) ---
+// Agora chamada principalmente pelo setTimeout de scheduleNextEvaluation
 export async function processFollowUpSteps(followUpId: string): Promise<void> {
   try {
-    // 1. Buscar o follow-up com todos os relacionamentos necessários
+    console.log(`[processFollowUpSteps] Iniciando para ${followUpId}`);
     const followUp = await prisma.followUp.findUnique({
       where: { id: followUpId },
-      include: {
-        campaign: {
-          include: {
-            stages: {
-              orderBy: { order: 'asc' }
-            }
-          }
-        }
-      }
+      // Incluir apenas o necessário para a decisão
+      select: { id: true, status: true, next_evaluation_at: true }
     });
 
-    // 2. Verificar se o follow-up existe e está ativo
     if (!followUp) {
-      throw new Error(`Follow-up não encontrado: ${followUpId}`);
+      console.error(`[processFollowUpSteps] FollowUp ${followUpId} não encontrado.`);
+      return;
     }
 
     if (followUp.status !== 'active') {
-      console.log(`Follow-up ${followUpId} não está ativo (status: ${followUp.status}), operação ignorada`);
+      console.log(`[processFollowUpSteps] FollowUp ${followUpId} não está ativo (status: ${followUp.status}). Processamento ignorado.`);
       return;
     }
 
-    // 3. Buscar todos os estágios da campanha
-    const campaignId = followUp.campaign_id;
+    // Verificação opcional de tempo de avaliação (se houver concorrência)
+    // const agora = Date.now();
+    // if (followUp.next_evaluation_at && new Date(followUp.next_evaluation_at).getTime() > agora) {
+    //   console.log(`[processFollowUpSteps] Avaliação para ${followUpId} ainda não é necessária (agendada para ${followUp.next_evaluation_at}).`);
+    //   return; // Evita processamento prematuro se chamado incorretamente
+    // }
 
-    // Buscar estágios da campanha
-    const stages = followUp.campaign.stages;
+    console.log(`[processFollowUpSteps] Determinando próxima ação para ${followUpId}...`);
+    // Chama a função central de decisão da IA
+    const nextAction = await determineNextAction(followUpId);
 
-    // Buscar passos diretamente pelo funnel_stage_id
-    const stageIds = stages.map(stage => stage.id);
+    // Executa a ação decidida
+    await executeAIAction(followUpId, nextAction);
 
-    // CORREÇÃO: Buscar apenas os passos do estágio atual do follow-up
-    // Isso evita o problema de loop onde ele sempre buscava todos os passos de todos os estágios
-    const steps = await prisma.followUpStep.findMany({
-      where: {
-        // Filtrar apenas pelo estágio atual
-        funnel_stage_id: followUp.current_stage_id || ""
-      },
-      include: { funnel_stage: true },
-      orderBy: [
-        {
-          funnel_stage: {
-            order: 'asc'
-          }
-        },
-        { wait_time_ms: 'asc' }
-      ]
-    });
-
-    // Importar a função de normalização de passos
-    const { normalizeStep } = require('./internal/followUpHelpers');
-
-    // Mapear para o formato esperado
-    const formattedSteps: any = steps.map(normalizeStep);
-
-    // Log de depuração para verificar quais passos estão sendo buscados
-    console.log(`Follow-up ${followUpId} - Buscando passos do estágio: ${followUp.current_stage_id}`);
-    console.log(`Follow-up ${followUpId} - Encontrados ${formattedSteps.length} passos para o estágio atual`);
-
-    // 4. Verificar se existem passos configurados
-    if (!formattedSteps.length) {
-      console.log(`Follow-up ${followUpId} - Campanha não possui passos configurados`);
-
-      // Pausar o follow-up e registrar o motivo usando campos estruturados
-      await updateFollowUpStatus(followUpId, 'paused', {
-        waiting_for_response: false
-      });
-
-      // Criar mensagem de sistema explicando o problema
-      await createSystemMessage(
-        followUpId,
-        "Follow-up pausado: a campanha não possui passos configurados. É necessário configurar os passos na campanha antes de iniciar o follow-up."
-      );
-
-      console.log(`Follow-up ${followUpId} pausado - Campanha precisa ser configurada`);
-      return;
-    }
-
-    // 5. Obter o passo atual
-    // Como current_step foi substituído por current_step_id, precisamos encontrar o índice
-    const currentStepId = followUp.current_step_id;
-    let currentStepIndex = 0;
-
-    if (currentStepId) {
-      // Se temos um ID específico, encontrar o índice
-      const index = formattedSteps.findIndex((step: any) => step.id === currentStepId);
-      if (index >= 0) {
-        currentStepIndex = index;
-      }
-    }
-
-    const currentStep: any = formattedSteps[currentStepIndex];
-
-    // 6. Verificar se o passo atual é válido
-    if (!currentStep) {
-      console.log(`Follow-up ${followUpId} - Passo ${currentStepIndex} não encontrado`);
-
-      // Pausar o follow-up e registrar o motivo usando campos estruturados
-      await updateFollowUpStatus(followUpId, 'paused', {
-        waiting_for_response: false
-      });
-
-      // Criar mensagem de sistema explicando o problema
-      await createSystemMessage(
-        followUpId,
-        `Follow-up pausado: o passo ${currentStepIndex} não foi encontrado na configuração da campanha.`
-      );
-
-      return;
-    }
-
-    // 7. Processar o passo atual
-    await processCurrentStep(followUp, currentStep, currentStepIndex);
-
-    // 8. Determinar e agendar o próximo passo
-    await determineNextStep(followUp, formattedSteps, currentStepIndex);
+    console.log(`[processFollowUpSteps] Processamento concluído para ${followUpId}. Ação executada: ${nextAction.action_type}`);
 
   } catch (error) {
-    console.error(`Erro ao processar follow-up ${followUpId}:`, error);
-    throw error;
+    console.error(`[processFollowUpSteps] Erro ao processar follow-up ${followUpId}:`, error);
+    // Pausar o follow-up em caso de erro inesperado no fluxo principal
+    await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro inesperado no processamento: ${error instanceof Error ? error.message : 'Erro'}` });
   }
 }
 
-// Função para lidar com resposta do cliente e avançar para o próximo estágio
+
+// --- Função handleClientResponse (REVISADA) ---
 export async function handleClientResponse(
   clientId: string,
   message: string,
-  followUpId?: string
+  followUpIdInput?: string
 ): Promise<void> {
   try {
-    console.log('=== DADOS DA RESPOSTA DO CLIENTE ===');
-    console.log({ followUpId, clientId, message });
-    console.log('=== FIM DADOS DA RESPOSTA DO CLIENTE ===');
+    console.log('=== DADOS DA RESPOSTA DO CLIENTE (handleClientResponse) ===');
+    console.log({ followUpIdInput, clientId, message });
 
-    // Buscar follow-ups ativos ou pausados para este cliente
-    const activeFollowUps = await prisma.followUp.findMany({
+    // 1. Buscar FollowUp Ativo/Pausado
+    const activeOrPausedFollowUp = await prisma.followUp.findFirst({
       where: {
         client_id: clientId,
         status: { in: ['active', 'paused'] },
-        ...(followUpId ? { id: followUpId } : {})
+        ...(followUpIdInput ? { id: followUpIdInput } : {})
       },
-      include: {
-        campaign: {
-          include: {
-            stages: { orderBy: { order: 'asc' } }
-          }
-        }
-      }
+      include: { campaign: { include: { stages: { orderBy: { order: 'asc' } } } } },
+      orderBy: { updated_at: 'desc' }
     });
 
-    if (!activeFollowUps.length) {
-      console.log(`Nenhum follow-up ativo ou pausado encontrado para o cliente ${clientId}`);
+    if (!activeOrPausedFollowUp) {
+      console.log(`Nenhum follow-up ativo ou pausado encontrado para ${clientId}.`);
+      // Poderia iniciar um novo follow-up aqui? Ou apenas ignorar.
       return;
     }
+    const followUpId = activeOrPausedFollowUp.id;
+    const followUp = activeOrPausedFollowUp; // Renomear para clareza
 
-    // ADIÇÃO: Analisar a resposta do cliente com IA
-    const aiAnalysis = await analyzeClientResponse(clientId, message, activeFollowUps[0].id);
-    console.log("Análise de IA da resposta do cliente:", aiAnalysis);
+    // 2. Cancelar TODAS as ações futuras agendadas (mensagens E avaliações)
+    await cancelScheduledMessages(followUpId); // Cancela mensagens
+    // Precisamos de uma forma de cancelar os setTimeouts de scheduleNextEvaluation.
+    // Uma abordagem é armazená-los em um mapa similar a activeTimeouts.
+    // Por enquanto, apenas cancelamos mensagens. A avaliação pode rodar, mas a IA decidirá com base na nova resposta.
+    console.log(`Mensagens agendadas canceladas para ${followUpId} devido à resposta do cliente.`);
 
-    // 2. Processar cada follow-up encontrado
-    for (const followUp of activeFollowUps) {
-      // Obter todos os passos da campanha
-      const steps = await getCampaignSteps(followUp);
-
-      if (!steps.length) {
-        console.error(`Nenhum passo encontrado para o follow-up ${followUp.id}`);
-        continue;
+    // 3. Registrar Mensagem do Cliente
+    const clientMessageRecord = await prisma.followUpMessage.create({
+      data: {
+        follow_up_id: followUpId,
+        content: message,
+        is_from_client: true,
+        delivered: true,
+        delivered_at: new Date(),
+        sent_at: new Date(), // Hora que recebemos
+        is_ai_generated: false
       }
+    });
+    console.log(`Mensagem do cliente registrada (DB ID: ${clientMessageRecord.id})`);
 
-      // Obter o passo atual
-      const currentStepIndex = steps.findIndex(step => step.id === followUp.current_step_id) || 0;
-      const currentStep = currentStepIndex < steps.length ? steps[currentStepIndex] : null;
-
-      if (!currentStep) {
-        console.error(`Passo atual (${currentStepIndex}) não encontrado para follow-up ${followUp.id}`);
-        continue;
+    // 4. Atualizar FollowUp com last_response e REATIVAR se estava pausado
+    await prisma.followUp.update({
+      where: { id: followUpId },
+      data: {
+        last_response: message,
+        last_response_at: new Date(),
+        last_client_message_at: new Date(), // Atualiza a janela de 24h
+        waiting_for_response: false,
+        status: 'active', // Garante que esteja ativo após resposta
+        paused_reason: null // Limpa motivo da pausa, se houver
       }
+    });
+    console.log(`FollowUp ${followUpId} atualizado e ativado.`);
 
-      // Registrar a mensagem do cliente
-      const clientMessage = await prisma.followUpMessage.create({
-        data: {
-          follow_up_id: followUp.id,
-          step_id: null,
-          content: message,
-          sent_at: new Date(),
-          delivered: true,
-          delivered_at: new Date(),
-          is_from_client: true
-        }
-      });
 
-      // Atualizar follow-up com a última resposta
-      await prisma.followUp.update({
-        where: { id: followUp.id },
-        data: {
-          last_response: message,
-          last_response_at: new Date()
-        }
-      });
+    // 5. Analisar Resposta com IA
+    const aiAnalysis = await analyzeClientResponse(clientId, message, followUpId);
+    console.log("Análise de IA da resposta:", aiAnalysis);
+    // Registrar análise no BD
+    await prisma.followUpAIAnalysis.create({
+      data: { /* ... dados da análise ... */ follow_up_id: followUpId, message_id: clientMessageRecord.id, sentiment: aiAnalysis.sentiment, intent: aiAnalysis.intent, topics: aiAnalysis.topics, next_action: aiAnalysis.nextAction, suggested_stage: aiAnalysis.suggested_stage }
+    });
+    console.log(`Análise de IA registrada.`);
 
-      // Criar registro de análise na tabela FollowUpAIAnalysis
-      try {
-        const analysisRecord = await prisma.followUpAIAnalysis.create({
-          data: {
-            follow_up_id: followUp.id,
-            message_id: clientMessage.id, // Usando o ID da mensagem que acabamos de criar
-            sentiment: aiAnalysis.sentiment,
-            intent: aiAnalysis.intent,
-            topics: aiAnalysis.topics || [],
-            next_action: aiAnalysis.nextAction,
-            suggested_stage: aiAnalysis.suggestedStage
-          }
-        });
-        console.log(`✅ Análise de IA registrada com ID: ${analysisRecord.id}`);
-      } catch (aiAnalysisError) {
-        console.error(`❌ Erro ao registrar análise de IA:`, aiAnalysisError);
-        // Continuar o fluxo mesmo se não conseguir registrar a análise
-      }
-      
 
-      // MODIFICAÇÃO: Usar a IA para decidir o próximo passo
-      const aiDecision: any = await decideNextStepWithAI(followUp, currentStep, message);
-      console.log(`Decisão da IA para follow-up ${followUp.id}:`, aiDecision);
+    // 6. Determinar e Executar a Próxima Ação
+    // A resposta do cliente é o GATILHO para a IA decidir o que fazer AGORA.
+    console.log(`Determinando ação da IA após resposta do cliente para ${followUpId}...`);
+    const nextAction = await determineNextAction(followUpId); // IA considera a resposta recente e a análise
 
-      // Agir com base na decisão da IA
-      if (aiDecision.action === 'continue') {
-        // Verificar se o follow-up está pausado
-        if (followUp.status === 'paused') {
-          if (followUp.waiting_for_response) {
-            await processStageAdvancement(followUp, steps, currentStep, message);
-          } else {
-            // Verificar mensagens pendentes e retomar fluxo se necessário
-            const pendingMessages = await prisma.followUpMessage.findMany({
-              where: {
-                follow_up_id: followUp.id,
-                delivered: false
-              }
-            });
+    await executeAIAction(followUpId, nextAction);
 
-            if (pendingMessages.length === 0) {
-              await prisma.followUp.update({
-                where: { id: followUp.id },
-                data: {
-                  status: 'active',
-                  waiting_for_response: false
-                }
-              });
+    console.log(`Processamento da resposta do cliente para ${followUpId} concluído.`);
 
-              await processStageAdvancement(followUp, steps, currentStep, message);
-            } else {
-              await prisma.followUp.update({
-                where: { id: followUp.id },
-                data: {
-                  last_response: message,
-                  last_response_at: new Date()
-                }
-              });
-            }
-          }
-        } else {
-          // Follow-up ativo, processar resposta normalmente
-          await processActiveFollowUpResponse(followUp, message);
-        }
-      } else if (aiDecision.action === 'skip' && aiDecision.targetStep !== undefined) {
-        // Pular para um passo específico no mesmo estágio
-        await prisma.followUp.update({
-          where: { id: followUp.id },
-          data: {
-            current_step_id: steps[aiDecision.targetStep]?.id || null,
-            status: 'active',
-            waiting_for_response: false
-          }
-        });
-
-        // Registrar mensagem de sistema explicando a mudança
-        await createSystemMessage(
-          followUp.id,
-          `IA determinou pular para o passo ${aiDecision.targetStep} (${steps[aiDecision.targetStep]?.template_name}). Motivo: ${aiDecision.reason}`
-        );
-
-        // Processar o próximo passo
-        await processFollowUpSteps(followUp.id);
-      } else if (aiDecision.action === 'jump' && aiDecision.targetStage) {
-        // Pular para outro estágio
-        const targetStage = followUp.campaign.stages.find(s =>
-          s.id === aiDecision.targetStage || s.name === aiDecision.targetStage
-        );
-
-        if (targetStage) {
-          // Registrar mensagem de sistema explicando a mudança
-          await createSystemMessage(
-            followUp.id,
-            `IA determinou avançar para o estágio "${targetStage.name}". Motivo: ${aiDecision.reason}`
-          );
-
-          // Buscar o primeiro passo do estágio alvo diretamente do banco
-          // Isso é mais preciso que procurar nos steps locais, que podem estar filtrados
-          const firstStepsInTargetStage = await prisma.followUpStep.findMany({
-            where: { funnel_stage_id: targetStage.id },
-            orderBy: { wait_time_ms: 'asc' },
-            take: 1
-          });
-
-          if (firstStepsInTargetStage && firstStepsInTargetStage.length > 0) {
-            const firstStep = firstStepsInTargetStage[0];
-            console.log(`IA: Avançando para estágio "${targetStage.name}" e passo "${firstStep.name}"`);
-            
-            await prisma.followUp.update({
-              where: { id: followUp.id },
-              data: {
-                current_step_id: firstStep.id,
-                current_stage_id: targetStage.id,
-                status: 'active',
-                waiting_for_response: false
-              }
-            });
-
-            // Processar o passo no novo estágio
-            await processFollowUpSteps(followUp.id);
-          }
-        }
-      } else if (aiDecision.action === 'complete') {
-        // Completar o follow-up
-        await updateFollowUpStatus(followUp.id, 'completed', {
-          completed_at: new Date(),
-          last_response: message,
-          last_response_at: new Date()
-        });
-
-        // Criar mensagem de sistema
-        await createSystemMessage(
-          followUp.id,
-          `Follow-up concluído por recomendação da IA. Motivo: ${aiDecision.reason}`
-        );
-      }
-    }
   } catch (error) {
-    console.error("Erro ao processar resposta do cliente:", error);
-    throw error;
+    console.error("Erro GERAL em handleClientResponse:", error);
   }
 }
 
+
+// --- Funções resumeFollowUp e advanceToNextStep (OBSOLETAS) ---
+// Com o novo paradigma, a retomada e o avanço são gerenciados pela IA
+// através de `determineNextAction` e `executeAIAction`.
+/*
 export async function resumeFollowUp(followUpId: string): Promise<void> {
-  try {
-    const followUp = await prisma.followUp.findUnique({ where: { id: followUpId } });
-    if (!followUp) throw new Error(`Follow-up não encontrado: ${followUpId}`);
-    if (followUp.status !== 'paused') return;
-
-    // Atualizar para status ativo
-    await prisma.followUp.update({
-      where: { id: followUpId },
-      data: {
-        status: 'active',
-        next_message_at: new Date(),
-        waiting_for_response: false
-      }
-    });
-
-    // Registrar mensagem de sistema sobre a retomada
-    await createSystemMessage(
-      followUpId,
-      "Follow-up retomado manualmente."
-    );
-
-    // Continuar o processamento a partir do passo atual
-    await processFollowUpSteps(followUpId);
-  } catch (error) {
-    console.error("Erro ao reiniciar follow-up:", error);
-    throw error;
-  }
+  console.warn("Função resumeFollowUp é obsoleta. Use a API para enviar uma mensagem ou aguarde a próxima avaliação da IA.");
 }
 
-// Função para avançar manualmente para o próximo passo - também usada pelos mecanismos automáticos
 export async function advanceToNextStep(followUpId: string): Promise<void> {
-  try {
-    const followUp = await prisma.followUp.findUnique({
-      where: { id: followUpId },
-      include: {
-        campaign: {
-          include: {
-            stages: { // Usando 'stages' em vez de 'campaign_steps'
-              include: { steps: true } // Incluindo os passos de cada estágio
-            }
-          }
-        }
-      }
-    });
-
-    if (!followUp) throw new Error(`Follow-up não encontrado: ${followUpId}`);
-    if (followUp.status !== 'active' && followUp.status !== 'paused') return;
-
-    // Obter os passos da campanha
-    const steps = await getCampaignSteps(followUp);
-    // Encontrar o índice do passo atual no array de passos
-    const currentStepIndex = steps.findIndex(step => step.id === followUp.current_step_id) || 0;
-    const nextStepIndex = currentStepIndex + 1;
-
-    if (nextStepIndex >= steps.length) {
-      await updateFollowUpStatus(followUpId, 'completed', {});
-      return;
-    }
-
-    // Atualizar status e avançar para o próximo passo
-    await prisma.followUp.update({
-      where: { id: followUpId },
-      data: {
-        current_step_id: steps[nextStepIndex]?.id || null,
-        status: 'active',
-        next_message_at: new Date(),
-        waiting_for_response: false
-      }
-    });
-
-    // Cancelar mensagens pendentes
-    await cancelScheduledMessages(followUpId);
-
-    // Continuar o processamento a partir do novo passo
-    await processFollowUpSteps(followUpId);
-  } catch (error) {
-    console.error("Erro ao avançar follow-up:", error);
-    throw error;
-  }
+   console.warn("Função advanceToNextStep é obsoleta. A IA gerencia o fluxo.");
 }
+*/
 
-// Reexportar parseTimeString que é usado em outros arquivos
-export { parseTimeString }
+
+// Exportar parseTimeString se ainda for usado externamente
+export { parseTimeString };
+
+// --- Fim do arquivo manager.ts ---

@@ -1,68 +1,215 @@
 // app/api/follow-up/_lib/initializer.ts
-// Versão refatorada do inicializador de follow-up
-
 import { prisma } from '@/lib/db';
-import { processFollowUpSteps } from './manager';
-import { setMessageProcessor } from './scheduler';
+// REMOVER import de setMessageProcessor
+// import { setMessageProcessor, MessageProcessor } from './scheduler';
+// Adicionar import da interface MessageProcessor do scheduler
+import type { MessageProcessor } from '../_lib/scheduler'; // Use 'type' para importar apenas o tipo
 import axios from 'axios';
+import { createSystemMessage, updateFollowUpStatus } from './internal/followUpHelpers';
 
-/**
- * Inicializa a configuração do sistema de follow-up
- */
-export function initializeFollowUpSystem() {
-  // Configurar o processador de mensagens para a API Lumibot
-  setMessageProcessor({
-    process: async (message) => {
-      try {
-        // Configurações fixas para a API
-        const accountId = 10;
-        const conversationId = message.clientId || 3;
-        const apiToken = 'Z41o5FJFVEdZJjQaqDz6pYC7';
-        
-        // Fazer a requisição POST para a API usando axios
-        const response = await axios.post(
-          `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`,
-          {
-            'content': message.message,
-            'message_type': 'outgoing'
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'api_access_token': apiToken
-            }
-          }
-        );
-        
-        console.log(`Mensagem enviada com sucesso para cliente ${message.clientId}`);
-        return true;
-      } catch (error) {
-        console.error(`Erro ao enviar mensagem para a API Lumibot:`, error);
-        return false;
+// --- Funções Auxiliares de Envio para Lumibot (Colocadas aqui para encapsulamento) ---
+async function enviarHSMLumibot(
+  accountId: string,
+  conversationId: string, // clientId
+  token: string,
+  // Receber dados relevantes do passo/template
+  stepData: {
+    message_content: string;    // Conteúdo base do template
+    template_name: string;      // Nome EXATO do HSM aprovado
+    category: string;           // Categoria do template
+  },
+  clientName: string // Nome real do cliente para usar em {{1}}
+): Promise<{ success: boolean, responseData: any }> {
+
+  const apiUrl = `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+  const headers = { 'Content-Type': 'application/json', 'api_access_token': token };
+
+  // --- Montando o corpo EXATAMENTE como especificado ---
+  const body = {
+    content: stepData.message_content, // Conteúdo base do template do seu BD
+    message_type: "outgoing",         // Fixo
+    template_params: {
+      name: stepData.template_name,         // Nome EXATO do HSM
+      category: stepData.category || "UTILITY", // Categoria do passo (com fallback)
+      language: "pt_BR",                // Fixo
+      processed_params: {
+        "1": clientName                 // Nome do cliente para substituir {{1}}
+        // Adicionar "2": valor2, etc., se o template tiver mais variáveis
       }
     }
-  });
-  
-  console.log("Sistema de follow-up inicializado com integração da API Lumibot.");
+  };
+  // --- Fim da montagem do corpo ---
+
+  console.log(`[Lumibot Processor] Enviando HSM: ${apiUrl}, Payload:`, JSON.stringify(body));
+  try {
+    const response = await axios.post(apiUrl, body, { headers });
+    console.log(`[Lumibot Processor] Resposta Lumibot (HSM): Status ${response.status}`);
+    // Usar >= 200 e < 300 para cobrir outros status de sucesso como 201, 202
+    return { success: response.status >= 200 && response.status < 300, responseData: response.data };
+  } catch (err: any) {
+    console.error(`[Lumibot Processor] Erro ao enviar HSM (${stepData.template_name}): ${err.message}`, err.response?.data);
+    return { success: false, responseData: err.response?.data || { error: err.message } };
+  }
 }
+
+async function enviarTextoLivreLumibot(accountId: string, conversationId: string, token: string, content: string): Promise<{ success: boolean, responseData: any }> {
+  const apiUrl = `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+  const headers = { 'Content-Type': 'application/json', 'api_access_token': token };
+  const body = { content: content, message_type: "outgoing" }; // Confirmar message_type
+  console.log(`[Lumibot Processor] Enviando Texto Livre: ${apiUrl}, Payload:`, JSON.stringify(body));
+  try {
+    const response = await axios.post(apiUrl, body, { headers });
+    console.log(`[Lumibot Processor] Resposta Lumibot (Texto Livre): Status ${response.status}`);
+    return { success: response.status === 200 || response.status === 201, responseData: response.data };
+  } catch (err: any) {
+    console.error(`[Lumibot Processor] Erro ao enviar Texto Livre: ${err.message}`, err.response?.data);
+    return { success: false, responseData: err.response?.data || { error: err.message } };
+  }
+}
+// --- Fim Funções Auxiliares ---
+
+
+// --- Objeto do Processador (Agora Exportado) ---
+export const lumibotProcessor: MessageProcessor = {
+  process: async (dataToSend: {
+    followUpId: string;
+    stepIndex: number;
+    message: string;   // Conteúdo final a ser enviado (finalMessageContent)
+    clientId: string;  // ID do cliente/conversa
+    metadata?: any;    // Objeto contendo dados extras
+  }) => {
+    const { followUpId, clientId, message, metadata } = dataToSend;
+    // Extrair TODOS os dados relevantes do metadata
+    const {
+      messageDbId, // ID da msg no BD
+      isHSM,
+      templateNameWhatsapp, // Nome HSM (vem do executeAIAction -> scheduleMessage)
+      templateCategory,   // Categoria (vem do executeAIAction -> scheduleMessage)
+    } = metadata || {};
+
+    let success = false;
+    let errorReason = 'Erro desconhecido no processador Lumibot';
+
+    if (!messageDbId) {
+      console.error(`[Processor] Erro Crítico: messageDbId não encontrado nos metadados para FollowUp ${followUpId}.`);
+      return false;
+    }
+
+    try {
+      // **** SUBSTITUIÇÃO DO PLACEHOLDER AQUI ****
+      const followUp = await prisma.followUp.findUnique({
+        where: { id: followUpId },
+        select: {
+          last_client_message_at: true, // Para verificar janela 24h
+          campaign: { // Para obter credenciais Lumibot
+            select: { idLumibot: true, tokenAgentLumibot: true }
+          }
+        }
+      });
+      // **** FIM DA SUBSTITUIÇÃO ****
+
+      if (!followUp) throw new Error(`FollowUp ${followUpId} não encontrado no processador.`);
+      if (!followUp.campaign?.idLumibot || !followUp.campaign?.tokenAgentLumibot) {
+        throw new Error(`Credenciais Lumibot não encontradas na campanha do FollowUp ${followUpId}.`);
+      }
+
+      const effectiveAccountId = followUp.campaign.idLumibot;
+      const effectiveToken = followUp.campaign.tokenAgentLumibot;
+
+      // **** BUSCAR NOME DO CLIENTE ****
+      let actualClientName = clientId; // Fallback para ID
+      try {
+        console.log(`[Processor] Buscando nome do cliente ${clientId} na Lumibot...`);
+        const convApiUrl = `https://app.lumibot.com.br/api/v1/accounts/${effectiveAccountId}/conversations/${clientId}`;
+        const conversation = await axios.get(convApiUrl, { headers: { 'api_access_token': effectiveToken } });
+        if (conversation.data?.meta?.sender?.name) {
+          actualClientName = conversation.data.meta.sender.name;
+          console.log(`[Processor] Nome encontrado: ${actualClientName}`);
+        } else {
+          console.warn(`[Processor] Nome do cliente não encontrado na resposta da Lumibot para ${clientId}. Usando ID.`);
+        }
+      } catch (nameError: any) {
+        console.error(`[Processor] Erro ao buscar nome do cliente ${clientId}: ${nameError.message}. Usando ID.`);
+      }
+      // **** FIM BUSCAR NOME ****
+
+      const agora = Date.now();
+      const lastClientMsgTime = followUp.last_client_message_at ? new Date(followUp.last_client_message_at).getTime() : 0;
+      const isOutside24hWindow = (lastClientMsgTime === 0) || (agora - lastClientMsgTime >= (24 * 60 * 60 * 1000));
+
+      console.log(`[Processor] FollowUp ${followUpId}, Cliente ${clientId}. Janela 24h: ${isOutside24hWindow ? 'FECHADA' : 'ABERTA'}. isHSM: ${isHSM}`);
+
+      let sendMethod: 'HSM' | 'FREE_TEXT' | 'NONE' = 'NONE';
+
+      if (isOutside24hWindow) {
+        if (isHSM === true) { sendMethod = 'HSM'; }
+        else { errorReason = `Falha: Tentativa envio não-HSM > 24h`; console.error(`[Processor] ERRO ENVIO: ${errorReason}`); }
+      } else {
+        if (isHSM === true) { sendMethod = 'HSM'; } else { sendMethod = 'FREE_TEXT'; }
+      }
+
+      let result: { success: boolean, responseData: any };
+
+      if (sendMethod === 'HSM') {
+        // Usar os dados recebidos via metadata
+        if (!templateNameWhatsapp) { // Usa o nome HSM que veio do executeAIAction
+          errorReason = "Falha HSM: Nome do template WhatsApp não fornecido nos metadados.";
+          result = { success: false, responseData: { error: errorReason } };
+        } else {
+            // Passar os dados do template recebidos para a função de envio
+            result = await enviarHSMLumibot(
+                effectiveAccountId,
+                clientId,
+                effectiveToken,
+                { // Objeto com dados do step/template
+                    message_content: message, // Conteúdo base/final vindo do scheduleMessage
+                    template_name: templateNameWhatsapp, // Nome HSM para a API
+                    category: templateCategory || "UTILITY" // Categoria vinda do scheduleMessage
+                },
+                actualClientName // Nome real do cliente
+            );
+            if (!result.success) errorReason = `Falha API Lumibot (HSM): ${JSON.stringify(result.responseData)}`;
+        }
+      } else if (sendMethod === 'FREE_TEXT') {
+        result = await enviarTextoLivreLumibot(effectiveAccountId, clientId, effectiveToken, message);
+        if (!result.success) errorReason = `Falha API Lumibot (Texto Livre): ${JSON.stringify(result.responseData)}`;
+      } else {
+        result = { success: false, responseData: { error: errorReason } };
+      }
+
+      success = result.success;
+      console.log(`[Processor] Resultado final do envio para msg ${messageDbId}: ${success ? 'SUCESSO' : 'FALHA'}. Razão: ${errorReason}`);
+      return success;
+
+    } catch (error) {
+      const messageIdSuffix = metadata?.messageDbId ? `(Msg DB ID: ${metadata.messageDbId})` : '(ID msg BD desconhecido)';
+      errorReason = `Erro CRÍTICO no processador Lumibot ${messageIdSuffix}: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+      console.error(errorReason, error);
+      // Pausar via updateFollowUpStatus é mais seguro aqui do que dentro do catch
+      try {
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: errorReason });
+      } catch (pauseError) {
+        console.error(`Falha ao pausar follow-up ${followUpId} após erro no processador:`, pauseError);
+      }
+      return false; // Indica falha
+    }
+  } // Fim da função process
+};
+// --- Fim Objeto Processador ---
+// --- Funções de Domínio (isCampaignInWorkspace, findActiveCampaignForWorkspace, etc.) ---
+// Mantenha as outras funções que você já tinha aqui, elas são úteis.
 
 /**
  * Verifica se uma campanha pertence a um workspace específico
  */
 export async function isCampaignInWorkspace(
-  campaignId: string, 
+  campaignId: string,
   workspaceId: string
 ): Promise<boolean> {
-  const campaignBelongsToWorkspace = await prisma.workspaceFollowUpCampaign.findUnique({
-    where: {
-      workspace_id_campaign_id: {
-        workspace_id: workspaceId,
-        campaign_id: campaignId
-      }
-    }
+  const count = await prisma.workspaceFollowUpCampaign.count({
+    where: { workspace_id: workspaceId, campaign_id: campaignId }
   });
-  
-  return !!campaignBelongsToWorkspace;
+  return count > 0;
 }
 
 /**
@@ -71,37 +218,27 @@ export async function isCampaignInWorkspace(
 export async function findActiveCampaignForWorkspace(
   workspaceId: string
 ): Promise<string | null> {
-  // Buscar IDs de campanhas associadas ao workspace
   const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
     where: { workspace_id: workspaceId },
     select: { campaign_id: true }
   });
-  
-  if (workspaceCampaigns.length === 0) {
-    return null;
-  }
-  
+  if (workspaceCampaigns.length === 0) return null;
   const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
-  
-  // Buscar uma campanha ativa entre as campanhas do workspace
   const defaultCampaign = await prisma.followUpCampaign.findFirst({
-    where: {
-      id: { in: campaignIds },
-      active: true
-    },
-    orderBy: { created_at: 'desc' }
+    where: { id: { in: campaignIds }, active: true },
+    orderBy: { created_at: 'desc' },
+    select: { id: true }
   });
-  
   return defaultCampaign?.id || null;
 }
 
 /**
- * Busca um follow-up ativo para um cliente e campanha específicos
+ * Busca um follow-up ativo ou pausado para um cliente e campanha específicos
  */
 export async function findActiveFollowUp(
-  clientId: string, 
+  clientId: string,
   campaignId: string
-): Promise<any | null> {
+): Promise<any | null> { // Use um tipo mais específico se tiver
   return await prisma.followUp.findFirst({
     where: {
       client_id: clientId,
@@ -112,211 +249,126 @@ export async function findActiveFollowUp(
 }
 
 /**
- * Inicia um novo follow-up - refatorado para usar campos estruturados
+ * Inicia um novo follow-up (adaptado para o novo paradigma)
  */
 export async function initializeNewFollowUp(
   clientId: string,
   campaignId: string,
-  workspaceId?: string | null,
-  metadata?: any
+  workspaceId?: string | null
 ): Promise<any> {
-  // Usar transação para garantir consistência
-  return await prisma.$transaction(async (tx) => {
-    // 1. Carregar a campanha com seu primeiro estágio
-    const campaign = await tx.followUpCampaign.findUnique({
+  // Remover a transação explícita daqui pode simplificar e resolver.
+  // O Prisma geralmente gerencia transações implícitas para operações sequenciais.
+  // Tentativa SEM transação explícita:
+
+  try {
+    const campaign = await prisma.followUpCampaign.findUnique({
       where: { id: campaignId },
-      include: {
-        stages: {
-          orderBy: {
-            order: 'asc'
-          },
-          take: 1 // Pegar o primeiro estágio
-        }
-      }
+      include: { stages: { orderBy: { order: 'asc' }, take: 1 } }
     });
+    if (!campaign) throw new Error(`Campanha ${campaignId} não encontrada.`);
+    const initialStage = campaign.stages[0];
+    if (!initialStage) throw new Error(`Campanha ${campaignId} não possui estágios.`);
 
-    if (!campaign) {
-      throw new Error("Campanha não encontrada");
-    }
+    const initialEvaluationDelayMs = 5000;
+    const initialEvaluationTime = new Date(Date.now() + initialEvaluationDelayMs);
 
-    // 2. Obter o primeiro estágio do funil
-    const initialStage = campaign.stages.length > 0 ? campaign.stages[0] : null;
-    const initialStageId = initialStage?.id || null;
-    let initialStageName = initialStage?.name || null;
-
-    // 3. Verificar metadados (não são mais armazenados diretamente)
-    // Se precisarmos de funcionalidade similar, podemos adicionar campos específicos
-    // ou armazenar os metadados em mensagens do sistema
-
-    // 4. Criar o novo follow-up com campos estruturados
-    const newFollowUp = await tx.followUp.create({
+    // 1. Criar o FollowUp PRIMEIRO
+    const newFollowUp = await prisma.followUp.create({
       data: {
         campaign_id: campaignId,
         client_id: clientId,
         status: "active",
-        current_step_id: null, // Alterado de current_step para current_step_id
-        current_stage_id: initialStageId,
+        current_stage_id: initialStage.id,
         started_at: new Date(),
-        next_message_at: new Date(), // Inicia imediatamente
+        next_evaluation_at: initialEvaluationTime,
         waiting_for_response: false,
       }
     });
+    console.log(`Novo FollowUp ${newFollowUp.id} criado para cliente ${clientId}. Estágio: ${initialStage.name}.`);
 
-    // 5. Registrar a mensagem inicial de sistema sobre a criação do follow-up
-    if (initialStageId && initialStageName) {
-      await tx.followUpMessage.create({
-        data: {
-          follow_up_id: newFollowUp.id,
-          step_id: null,
-          content: `Follow-up iniciado no estágio "${initialStageName}" (workspace: ${workspaceId || 'nenhum'})`,
-          is_from_client: false,
-          sent_at: new Date(),
-          delivered: true,
-          delivered_at: new Date()
-        }
-      });
-    }
+    // 2. Criar a Mensagem de Sistema DEPOIS, usando o ID confirmado
+    await createSystemMessage(
+      newFollowUp.id, // Usar o ID que sabemos que foi criado
+      `Follow-up iniciado no estágio "${initialStage.name}" (Workspace: ${workspaceId || 'N/A'}). Próxima avaliação agendada.`
+    );
 
-    return newFollowUp;
-  });
-}
+    // 3. Agendar a Primeira Avaliação DEPOIS de tudo criado
+    const { scheduleNextEvaluation } = await import('./internal/followUpHelpers');
+    await scheduleNextEvaluation(newFollowUp.id, initialEvaluationDelayMs, "Início do FollowUp");
 
-/**
- * Busca campanhas de follow-up com contagem de passos
- */
-export async function getCampaignsWithCounts(
-  workspaceId?: string | null,
-  activeOnly: boolean = false
-): Promise<any[]> {
-  // 1. Construir a condição de busca
-  const where: any = activeOnly ? { active: true } : {};
-  
-  // 2. Adicionar filtro por workspace
-  if (workspaceId) {
-    // Buscar IDs de campanhas associadas ao workspace
-    const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
-      where: { workspace_id: workspaceId },
-      select: { campaign_id: true }
-    });
-    
-    if (workspaceCampaigns.length === 0) {
-      return [];
-    }
-    
-    const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
-    where.id = { in: campaignIds };
+    return newFollowUp; // Retornar o objeto criado
+
+  } catch (error) {
+    console.error(`Erro CRÍTICO ao inicializar novo follow-up para cliente ${clientId}:`, error);
+    // É importante relançar o erro aqui para que a rota POST /api/follow-up saiba que falhou
+    throw error;
   }
-  
-  // 3. Buscar campanhas
-  const campaigns = await prisma.followUpCampaign.findMany({
-    where,
-    orderBy: { created_at: 'desc' },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      active: true,
-      created_at: true,
-    }
-  });
-  
-  // 4. Adicionar contagens para cada campanha
-  return await Promise.all(campaigns.map(async (campaign) => {
-    // Buscar estágios da campanha
-    const stages = await prisma.followUpFunnelStage.findMany({
-      where: { campaign_id: campaign.id },
-      select: { id: true }
-    });
-    
-    // Contar passos da campanha através dos estágios
-    const stepsCount = await prisma.followUpStep.count({
-      where: { 
-        funnel_stage_id: { 
-          in: stages.map(stage => stage.id) 
-        } 
-      }
-    });
-    
-    // Contar follow-ups ativos
-    const activeFollowUps = await prisma.followUp.count({
-      where: {
-        campaign_id: campaign.id,
-        status: 'active'
-      }
-    });
-    
-    return {
-      ...campaign,
-      stepsCount,
-      activeFollowUps
-    };
-  }));
 }
 
+
+// **** A FUNÇÃO ESTÁ AQUI ****
 /**
  * Busca os detalhes de uma campanha específica com seus estágios e passos
  */
-export async function getCampaignDetails(
+export async function getCampaignDetails( // <-- JÁ TEM EXPORT
   campaignId: string
 ): Promise<any> {
-  // Buscar a campanha com seus relacionamentos
   const campaign = await prisma.followUpCampaign.findUnique({
     where: { id: campaignId },
     include: {
       stages: {
-        select: {
-          id: true,
-          name: true,
-          order: true
-        },
-        orderBy: {
-          order: 'asc'
+        orderBy: { order: 'asc' },
+        include: { // Incluir passos dentro de cada estágio
+          steps: {
+            orderBy: [{ order: 'asc' }, { wait_time_ms: 'asc' }]
+          }
         }
       }
     }
   });
-  
+
   if (!campaign) {
     throw new Error("Campanha não encontrada");
   }
-  
-  // Buscar as etapas do funil para esta campanha
-  const funnelStages = await prisma.followUpFunnelStage.findMany({
-    where: { campaign_id: campaignId }
+
+  // Formatar a resposta para o formato esperado (incluindo todos os passos achatados)
+  const allStepsFormatted: any[] = [];
+  campaign.stages.forEach(stage => {
+    stage.steps.forEach(step => {
+      allStepsFormatted.push({
+        id: step.id,
+        // Dados do Passo
+        name: step.name,
+        template_name: step.template_name,
+        template_name_whatsapp: step.template_name_whatsapp,
+        wait_time: step.wait_time,
+        wait_time_ms: step.wait_time_ms,
+        message_content: step.message_content,
+        category: step.category,
+        order: step.order,
+        // Dados do Estágio associado
+        stage_id: stage.id,
+        stage_name: stage.name,
+        stage_order: stage.order,
+        // Outros campos que a UI espera
+        message: step.message_content, // Alias comum
+      });
+    });
   });
-  
-  // Buscar os passos da campanha separadamente
-  const steps = await prisma.followUpStep.findMany({
-    where: { 
-      funnel_stage_id: { 
-        in: funnelStages.map(stage => stage.id) 
-      } 
-    },
-    include: { funnel_stage: true }
-  });
-  
-  // Mapear os passos e incluir informações da etapa
-  const mappedSteps = steps.map(step => ({
-    id: step.id,
-    stage_id: step.funnel_stage_id,
-    stage_name: step.funnel_stage.name,
-    template_name: step.template_name,
-    category: step.category,
-    wait_time: step.wait_time,
-    message: step.message_content,
-    stage_order: step.funnel_stage.order,
-    wait_time_ms: step.wait_time_ms
-  }));
-  
-  // Ordenar os passos primeiro pela ordem da etapa e depois pelo tempo de espera
-  const formattedSteps = mappedSteps.sort((a, b) => {
+
+  // Ordenar a lista achatada final pela ordem do estágio e depois pela ordem do passo/tempo
+  allStepsFormatted.sort((a, b) => {
     if (a.stage_order !== b.stage_order) {
       return a.stage_order - b.stage_order;
     }
-    return a.wait_time_ms - b.wait_time_ms;
+    if (a.order !== b.order) { // Usar a ordem do passo se definida
+      return a.order - b.order;
+    }
+    return a.wait_time_ms - b.wait_time_ms; // Fallback para tempo
   });
-  
-  // Estruturar a resposta - incluindo os novos campos
+
+
+  // Estruturar a resposta final
   return {
     id: campaign.id,
     name: campaign.name,
@@ -324,58 +376,15 @@ export async function getCampaignDetails(
     active: campaign.active,
     idLumibot: campaign.idLumibot,
     tokenAgentLumibot: campaign.tokenAgentLumibot,
-    steps: formattedSteps,
-    stages: campaign.stages
+    steps: allStepsFormatted, // Lista achatada e ordenada de todos os passos
+    stages: campaign.stages.map(s => ({ // Lista dos estágios (sem os passos aninhados aqui)
+      id: s.id,
+      name: s.name,
+      order: s.order,
+      description: s.description,
+      requires_response: s.requires_response
+    }))
   };
 }
+// **** FIM DA FUNÇÃO ****
 
-/**
- * Função auxiliar para calcular o tempo de espera em milissegundos
- */
-export function calculateWaitTimeMs(waitTime: string): number {
-  if (!waitTime) return 30 * 60 * 1000; // Padrão: 30 minutos
-  
-  // Regex para extrair números e unidades
-  const regex = /(\d+)\s*(min|minutos?|h|horas?|dias?)/i;
-  const match = waitTime.match(regex);
-  
-  if (!match) {
-    // Formato abreviado: "30m", "2h", "1d"
-    const shortMatch = waitTime.match(/^(\d+)([mhd])$/i);
-    if (shortMatch) {
-      const value = parseInt(shortMatch[1]);
-      const unit = shortMatch[2].toLowerCase();
-      
-      if (unit === 'm') return value * 60 * 1000;
-      if (unit === 'h') return value * 60 * 60 * 1000;
-      if (unit === 'd') return value * 24 * 60 * 60 * 1000;
-    }
-    
-    // Se só tiver números, assume minutos
-    if (/^\d+$/.test(waitTime.trim())) {
-      return parseInt(waitTime.trim()) * 60 * 1000;
-    }
-    
-    return 30 * 60 * 1000; // Default 30 minutos
-  }
-  
-  const value = parseInt(match[1]);
-  const unit = match[2].toLowerCase();
-  
-  if (unit.startsWith('min')) {
-    return value * 60 * 1000;
-  } else if (unit.startsWith('h')) {
-    return value * 60 * 60 * 1000;
-  } else if (unit.startsWith('d')) {
-    return value * 24 * 60 * 60 * 1000;
-  }
-  
-  return 30 * 60 * 1000;
-}
-
-// Executar a inicialização se estivermos no lado do servidor
-if (typeof window === 'undefined') {
-  initializeFollowUpSystem();
-}
-
-export default initializeFollowUpSystem;

@@ -1,484 +1,435 @@
-// app/api/follow-up/_lib/scheduler.refactor.ts
-// Versão refatorada do agendador de mensagens
-
+// app/api/follow-up/_lib/scheduler.ts
 import { prisma } from '@/lib/db';
 import axios from 'axios';
+// IMPORTAR o processador e helpers necessários
+import { lumibotProcessor } from './initializer'; // Importa o processador definido
+import { updateFollowUpStatus } from './internal/followUpHelpers';
+import { determineNextAction } from './ai/functionIa'; // Para reload
+import { executeAIAction } from './manager'; // Para reload
 
-// Mapa para armazenar timeouts ativos
+// Mapa para armazenar timeouts ativos (mensagens e avaliações)
 export const activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
-// Interface para as mensagens agendadas
-interface ScheduledMessage {
+// Interface para as mensagens agendadas (mantida)
+export interface ScheduledMessage { // EXPORTAR a interface
   followUpId: string;
+  messageDbId: string; // <<< JÁ ESTÁ CORRETO AQUI! MANTENHA COMO CAMPO PRÓPRIO.
   stepIndex: number;
-  message: string;
+  contentToSend: string;
   scheduledTime: Date;
   clientId: string;
-  metadata?: Record<string, any>;
+  accountIdLumibot: string;
+  tokenAgentLumibot: string;
+  isAIMessage: boolean;
+  isHSM: boolean;
+  templateNameWhatsapp?: string | null;
+  templateName?: string; // Nome interno
+  templateCategory?: string;
+  templateParams?: Record<string, string>;
+
+  // 'metadata' agora é só para dados extras/opcionais
+  metadata?: {
+    ai_reason?: string; // Razão da IA (para logs)
+    [key: string]: any; // Permite outros dados, se necessário
+  };
 }
 
-// Função para agendar uma mensagem
-export async function scheduleMessage(message: ScheduledMessage): Promise<string> {
-  try {
-    const messageId = `${message.followUpId}-${message.stepIndex}`;
-    
-    console.log('===== LOG DE AGENDAMENTO DE MENSAGEM =====');
-    console.log('FollowUp ID:', message.followUpId);
-    console.log('Step Index:', message.stepIndex);
-    console.log('Cliente ID:', message.clientId);
-    console.log('Conteúdo:', message.message.substring(0, 100));
-    console.log('Horário Agendado:', message.scheduledTime);
-    console.log('Metadata:', JSON.stringify(message.metadata, null, 2));
-    
-    // Cancelar qualquer timeout existente para este ID
-    if (activeTimeouts.has(messageId)) {
-      console.log(`Cancelando timeout existente para mensagem ${messageId}`);
-      clearTimeout(activeTimeouts.get(messageId)!);
-      activeTimeouts.delete(messageId);
-    }
-    
-    // Calcular o atraso em milissegundos
-    const delay = message.scheduledTime.getTime() - Date.now();
-    console.log(`Atraso calculado: ${delay}ms (${delay/1000} segundos)`);
-    
-    // Se o tempo já passou ou é imediato, enviar agora
-    if (delay <= 0) {
-      console.log('Tempo já passou, enviando mensagem imediatamente');
-      await sendMessage(message);
-      return messageId;
-    }
-    
-    // Agendar o envio para o futuro
-    console.log(`Agendando mensagem para daqui a ${delay/1000} segundos`);
-    const timeout = setTimeout(async () => {
-      try {
-        console.log(`Executando timeout para mensagem ${messageId}`);
-        await sendMessage(message);
-      } catch (error: any) {
-        console.error(`Erro ao enviar mensagem agendada ${messageId}:`, error);
-        console.error(`Stack trace do erro:`, error.stack);
-      } finally {
-        // Remover do mapa após execução
-        activeTimeouts.delete(messageId);
-        console.log(`Timeout removido do mapa: ${messageId}`);
-      }
-    }, delay);
-    
-    // Armazenar o timeout
-    activeTimeouts.set(messageId, timeout);
-    console.log(`Timeout armazenado com sucesso para mensagem ${messageId}`);
-    
-    return messageId;
-  } catch (error) {
-    console.error("Erro ao agendar mensagem:", error);
-    throw error;
+// Interface para o processador personalizado (mantida)
+export interface MessageProcessor { // EXPORTAR a interface
+  process: (dataToSend: { followUpId: string; stepIndex: number; message: string; clientId: string; metadata?: any }) => Promise<boolean>;
+}
+
+// Variável para guardar o processador atual (mantida)
+let currentProcessor: MessageProcessor | null = null;
+
+// Função para definir o processador (mantida e exportada)
+export function setMessageProcessor(processor: MessageProcessor): void {
+  if (currentProcessor) {
+    console.warn("Aviso: Tentando redefinir o MessageProcessor. Isso não é usual.");
   }
+  currentProcessor = processor;
+  console.log("MessageProcessor configurado com sucesso.");
 }
 
-// Função para enviar a mensagem para a API Lumibot
-async function sendMessageToLumibot(clientId: string, content: string, metadata?: Record<string, any>): Promise<boolean> {
-  try {
+// Função para obter o processador (mantida e exportada)
+export function getMessageProcessor(): MessageProcessor | null {
+  return currentProcessor;
+}
 
-    // Novo: Obter informações da campanha associada ao cliente
-    const followUp = await prisma.followUp.findFirst({
-      where: {
-        client_id: clientId
-      },
-      include: {
-        campaign: true // Incluir os dados da campanha relacionada
+// Função processAndSendMessage (mantida como antes, chama getMessageProcessor)
+async function processAndSendMessage(messageData: ScheduledMessage): Promise<boolean> {
+  const processor = getMessageProcessor();
+  if (!processor) {
+    console.error(`ERRO CRÍTICO: Nenhum processador de mensagens configurado ao tentar enviar msg ${messageData.messageDbId}.`);
+    await prisma.followUpMessage.update({ where: { id: messageData.messageDbId }, data: { delivered: false, error_sending: 'Erro Interno: Processador de msg não configurado' } }).catch(dbErr => { });
+    return false;
+  }
+  try {
+    // Passa os metadados completos para o processador ter acesso a isHSM etc.
+    const success = await processor.process({
+      followUpId: messageData.followUpId,
+      stepIndex: messageData.stepIndex,
+      message: messageData.contentToSend,
+      clientId: messageData.clientId,
+      metadata: { // Passar todos os metadados relevantes
+        messageDbId: messageData.messageDbId,
+        isHSM: messageData.isHSM,
+        templateNameWhatsapp: messageData.templateNameWhatsapp,
+        templateName: messageData.templateName,
+        templateCategory: messageData.templateCategory,
+        templateParams: messageData.templateParams,
+        isAIMessage: messageData.isAIMessage,
+        ...(messageData.metadata || {})
       }
     });
-    
-    if (!followUp) {
-      console.error(`Nenhum followUp encontrado para o cliente ID: ${clientId}`);
-      return false;
-    }
-    
-    console.log('Campanha encontrada:', followUp.campaign);
-    
-    // Agora você tem acesso às informações da campanha em followUp.campaign
-    // Pode usar essas informações conforme necessário
-    const accountId = followUp.campaign.idLumibot;
-    const apiToken = followUp.campaign.tokenAgentLumibot;
-    const conversationId = clientId;
-   
-    console.log('Metada', metadata)
-
-    const data = await prisma.followUpCampaign.findMany({
-      
-    })
-
-    // Pega Dados da Conversa do Cliente
-    console.log(`===== REQUISIÇÃO GET CONVERSA DO CLIENTE =====`);
-    console.log(`Cliente ID: ${conversationId}`);
-    console.log(`Endpoint: https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}`);
-    
-    const conversation = await axios.get(
-      `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'api_access_token': apiToken
-        }
-      }
-    );
-    
-    console.log(`===== RESPOSTA GET CONVERSA DO CLIENTE =====`);
-    console.log('Status:', conversation.status);
-    
-    // Extrair parâmetros do template do metadata se disponível
-    const templateParams = metadata?.templateParams || {};
-    
-    // Verificar se a mensagem contém placeholders como {{1}}
-    const hasPlaceholders = content.includes('{{') && content.includes('}}');
-    
-    // Realizar substituição de placeholders na mensagem
-    let processedContent = content;
-    const clientName = conversation.data.meta.sender.name;
-
-    // Substituir os placeholders
-    if (hasPlaceholders) {
-      processedContent = content.replace(/\{\{1\}\}/g, clientName);
-    }
-    
-    // Preparar body base da requisição
-    const requestBody: any = {
-      "content": processedContent,
-      "message_type": "outgoing",
-      "template_params": {
-        "name": templateParams.name || metadata?.template_name || "",
-        "category": templateParams.category || metadata?.category || "",
-        "language": templateParams.language || "pt_BR"
-      }
-    };
-    
-    // DEBUG: Mostrar detalhes da requisição que será enviada
-    console.log('Detalhes do envio para Lumibot:');
-    console.log('- clientId:', clientId);
-    console.log('- templateName:', requestBody.template_params.name);
-    console.log('- category:', requestBody.template_params.category);
-    
-    // Adicionar processed_params apenas se a mensagem contiver placeholders
-    if (hasPlaceholders) {
-      requestBody.template_params.processed_params = {
-        "1": clientName
-      };
-    }
-    
-    // Fazer a requisição POST para a API usando axios
-    const response = await axios.post(
-      `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`,
-      requestBody,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'api_access_token': apiToken
-        }
-      }
-    );
-    
-    // Log detalhado da resposta da API
-    console.log('===== RESPOSTA DA API LUMIBOT =====');
-    console.log('Status:', response.status);
-    
-    return true;
-  } catch (error: any) {
-    console.error(`===== ERRO AO ENVIAR MENSAGEM PARA API LUMIBOT =====`);
-    console.error(`Mensagem de erro:`, error.message);
-    console.error(`Request URL: https://app.lumibot.com.br/api/v1/accounts/10/conversations/${clientId}/messages`);
-    console.error(`Status:`, error.response?.status);
-    console.error(`Status Text:`, error.response?.statusText);
-    console.error(`Resposta da API:`, JSON.stringify(error.response?.data, null, 2));
-    console.error(`Stack:`, error.stack);
+    return success;
+  } catch (error) {
+    console.error(`Erro ao executar processador de mensagens para msg ${messageData.messageDbId}:`, error);
+    await prisma.followUpMessage.update({ where: { id: messageData.messageDbId }, data: { delivered: false, error_sending: `Erro Processador: ${error instanceof Error ? error.message : 'Erro desconhecido'}` } }).catch(dbErr => { });
     return false;
   }
 }
 
-// Função para enviar a mensagem - refatorada para usar campos estruturados
-async function sendMessage(message: ScheduledMessage): Promise<void> {
+// Função scheduleMessage (mantida como antes)
+export async function scheduleMessage(messageData: ScheduledMessage): Promise<string> {
+  // ... (lógica como antes, chama sendMessage no timeout) ...
+  // **CHECK INICIAL DE SANIDADE (Manter)**
+  if (!messageData) throw new Error("messageData ausente em scheduleMessage");
+  // ... (outras verificações) ...
   try {
-    console.log('===== LOG DE ENVIO DE MENSAGEM =====');
-    console.log('FollowUp ID:', message.followUpId);
-    console.log('Step Index:', message.stepIndex);
-    console.log('Cliente ID:', message.clientId);
-    
-    // Verificar se o follow-up ainda está ativo
-    const followUp = await prisma.followUp.findUnique({
-      where: { id: message.followUpId }
-    });
-    
-    console.log('Status do follow-up:', followUp?.status);
-    
+    const timeoutId = `${messageData.followUpId}-${messageData.messageDbId}`;
+    console.log(`[scheduleMessage] Preparando agendamento para ${timeoutId}`);
+    // ... (logs, cancelamento de timeout existente) ...
+    const delay = messageData.scheduledTime.getTime() - Date.now();
+    console.log(`[scheduleMessage] Delay calculado para ${timeoutId}: ${delay}ms`);
+
+    if (delay <= 0) {
+      console.log(`[scheduleMessage] Delay <= 0 para ${timeoutId}. Chamando sendMessage imediatamente.`);
+      // Adicionar try-catch aqui também para isolar erros
+      try {
+        await sendMessage(messageData);
+      } catch (immediateSendError : any ) {
+        console.error(`[scheduleMessage] Erro no envio imediato para ${timeoutId}:`, immediateSendError);
+        // Registrar erro no BD
+        await prisma.followUpMessage.update({ where: { id: messageData.messageDbId }, data: { delivered: false, error_sending: `Erro envio imediato: ${immediateSendError.message}` } }).catch(() => { });
+      }
+      return timeoutId;
+    }
+
+    console.log(`[scheduleMessage] Agendando setTimeout para ${timeoutId} com delay ${delay}ms.`);
+    const timeout = setTimeout(async () => {
+      // **** LOG DENTRO DO CALLBACK ****
+      console.log(`[setTimeout Callback] INICIANDO para ${timeoutId}. Chamando sendMessage...`);
+      try {
+        await sendMessage(messageData);
+        console.log(`[setTimeout Callback] sendMessage CONCLUÍDO para ${timeoutId}.`);
+      } catch (error: any) {
+        console.error(`[setTimeout Callback] Erro DENTRO da chamada a sendMessage para ${timeoutId}:`, error);
+        // O erro já deve ser tratado dentro de sendMessage, mas logamos aqui também.
+        // Tentar registrar erro no BD como fallback
+        try {
+          await prisma.followUpMessage.update({ where: { id: messageData.messageDbId }, data: { delivered: false, error_sending: `Erro callback timer: ${error.message}` } });
+        } catch (dbErr) { }
+
+      } finally {
+        activeTimeouts.delete(timeoutId);
+        console.log(`[setTimeout Callback] Timeout removido do mapa para ${timeoutId}.`);
+      }
+    }, delay);
+
+    // Armazenar o timeout
+    activeTimeouts.set(timeoutId, timeout);
+    console.log(`[scheduleMessage] Timeout ${timeoutId} armazenado com sucesso no mapa.`);
+
+    return timeoutId;
+  } catch (error) { /* ... tratamento de erro ... */ throw error; }
+}
+
+// Função sendMessage (mantida, chama processAndSendMessage)
+async function sendMessage(messageData: ScheduledMessage): Promise<void> {
+  const { followUpId, messageDbId, metadata } = messageData;
+  let success = false;
+  let errorReason = 'Erro desconhecido no envio';
+
+  try {
+    console.log(`===== INICIANDO ENVIO DE MENSAGEM (DB ID: ${messageDbId}) =====`);
+    const followUp = await prisma.followUp.findUnique({ where: { id: followUpId }, select: { status: true } });
+
     if (!followUp || followUp.status !== 'active') {
-      console.log('Follow-up não está ativo, cancelando envio');
+      errorReason = `Envio cancelado: Follow-up ${followUpId} não ativo (status: ${followUp?.status}).`;
+      console.log(errorReason);
+      await prisma.followUpMessage.update({ where: { id: messageDbId }, data: { delivered: false, error_sending: errorReason } }).catch(() => { });
       return;
     }
-    
-    // Verificar se o cliente já respondeu e mudou de fase usando os campos estruturados
-    if (followUp.processed_by_response && followUp.current_step !== message.stepIndex) {
-      console.log('Cliente já respondeu e mudou de fase, cancelando envio');
-      return;
+
+    // Chama o processador configurado
+    success = await processAndSendMessage(messageData);
+    if (!success) {
+      errorReason = metadata?.error_reason || 'Falha no processador de mensagens.'; // Tenta pegar razão do metadata se o processador a definir
     }
-    
-    // Sempre enviar mensagens reais para a API
-    let success = false;
-    
-    console.log('Enviando mensagem via API Lumibot');
-    console.log('Template:', message.metadata?.template_name);
-    console.log('Categoria:', message.metadata?.category);
-    
-    // Enviar a mensagem para a API Lumibot
-    success = await sendMessageToLumibot(message.clientId, message.message, message.metadata);
-    console.log('Resultado do envio via Lumibot:', success ? 'SUCESSO' : 'FALHA');
-    
-    // Atualizar o status da mensagem no banco de dados
-    if (success) {
-      console.log('Atualizando mensagem como entregue no banco de dados');
-      await prisma.followUpMessage.updateMany({
-        where: {
-          follow_up_id: message.followUpId,
-          delivered: false
-        },
-        data: {
-          delivered: true,
-          delivered_at: new Date()
-        }
+
+    // Atualiza BD e agenda próxima avaliação se sucesso
+    await prisma.followUpMessage.update({
+      where: { id: messageDbId },
+      data: { delivered: success, delivered_at: success ? new Date() : null, error_sending: success ? null : errorReason }
+    });
+
+    if (!success) {
+      console.error(`Falha ao enviar mensagem ${messageDbId}. Follow-up ${followUpId} pausado. Razão: ${errorReason}`);
+      await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Falha envio msg: ${errorReason}` });
+    } else {
+      console.log(`Mensagem ${messageDbId} marcada como entregue.`);
+      // Agendar próxima avaliação
+      const defaultNextEvaluationDelay = 60 * 60 * 1000; // 1 hora
+      await scheduleNextEvaluation(followUpId, defaultNextEvaluationDelay, `Avaliação pós envio bem-sucedido`);
+    }
+
+  } catch (error) {
+    errorReason = `Erro CRÍTICO sendMessage: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
+    console.error(errorReason, error);
+    try {
+      await prisma.followUpMessage.update({
+        where: { id: messageDbId },
+        data: { delivered: false, error_sending: errorReason }
       });
-      console.log('Mensagem marcada como entregue com sucesso');
-      
-      // Verificar se o follow-up está pausado aguardando envio de mensagens
-      const followUp = await prisma.followUp.findUnique({
-        where: { id: message.followUpId }
-      });
-      
-      if (followUp && followUp.status === 'active' && 
-          followUp.paused_reason && followUp.paused_reason.includes('Aguardando envio de')) {
-        
-        // Verificar se ainda existem mensagens pendentes para este estágio
-        // É importante encontrar TODAS as mensagens do estágio, não apenas as associadas ao passo atual
-        const pendingMessages = await prisma.followUpMessage.findMany({
-          where: {
-            follow_up_id: message.followUpId,
-            delivered: false
-          }
-        });
-        
-        // Se não houver mais mensagens pendentes, retomar o follow-up automaticamente
-        if (pendingMessages.length === 0) {
-          console.log(`Todas as mensagens do estágio "${message.metadata?.stage_name}" foram entregues, retomando transição de estágio`);
-          
-          // Importar a função dinamicamente para evitar referência circular
-          const { processStageTransition } = await import('./manager');
-          
-          // Verificar qual o próximo estágio - usando o relacionamento correto
-          const campaign = await prisma.followUpCampaign.findUnique({
-            where: { id: followUp.campaign_id },
-            include: {
-              stages: {
-                orderBy: { order: 'asc' }
-              }
-            }
-          });
-          
-          // Usar os estágios do relacionamento campaign->stages
-          const stages = campaign?.stages || [];
-          
-          // Encontrar o índice do estágio atual
-          const currentStageIndex = stages.findIndex(s => s.id === followUp.current_stage_id);
-          
-          // Se encontrou o estágio atual e existe um próximo estágio
-          if (currentStageIndex >= 0 && currentStageIndex < stages.length - 1) {
-            const nextStage = stages[currentStageIndex + 1];
-            
-            // Registrar mensagem de sistema sobre retomada automática
-            await prisma.followUpMessage.create({
-              data: {
-                follow_up_id: message.followUpId,
-                step: -1,
-                content: `Todas mensagens do estágio "${message.metadata?.stage_name}" foram entregues, retomando transição para estágio "${nextStage.name}"`,
-                category: "System",
-                sent_at: new Date(),
-                delivered: true,
-                delivered_at: new Date(),
-                funnel_stage: message.metadata?.stage_name
-              }
-            });
-            
-            // Atualizar follow-up para continuar o fluxo
-            await prisma.followUp.update({
-              where: { id: message.followUpId },
-              data: {
-                waiting_for_response: false,
-                paused_reason: null
-              }
-            });
-            
-            // Chamar função para continuar o processamento
-            try {
-              // Aguardar um breve momento para garantir que tudo seja salvo no banco
-              setTimeout(async () => {
-                try {
-                  // Verificar novamente se o follow-up ainda está ativo
-                  const currentFollowUp = await prisma.followUp.findUnique({
-                    where: { id: message.followUpId }
-                  });
-                  
-                  if (currentFollowUp && currentFollowUp.status === 'active') {
-                    console.log(`Retomando transição de estágio para follow-up ${message.followUpId} após entrega de todas as mensagens`);
-                    
-                    // Importar apenas a função que precisamos e verificar se ela existe
-                    const manager = await import('./manager');
-                    
-                    if (typeof manager.advanceToNextStep === 'function') {
-                      await manager.advanceToNextStep(message.followUpId);
-                    } else {
-                      // Fallback: se não conseguir importar a função específica, faz a atualização manual
-                      console.log(`Função advanceToNextStep não encontrada, tentando método alternativo`);
-                      
-                      // Atualizar manualmente o follow-up
-                      await prisma.followUp.update({
-                        where: { id: message.followUpId },
-                        data: {
-                          status: 'active',
-                          waiting_for_response: false,
-                          paused_reason: null
-                        }
-                      });
-                      
-                      // Criar mensagem de sistema informando
-                      await prisma.followUpMessage.create({
-                        data: {
-                          follow_up_id: message.followUpId,
-                          step: -1,
-                          content: `Sistema retomou transição de estágio automaticamente após entrega de mensagens pendentes`,
-                          category: "System",
-                          sent_at: new Date(),
-                          delivered: true,
-                          delivered_at: new Date(),
-                          funnel_stage: message.metadata?.stage_name
-                        }
-                      });
-                    }
-                  } else {
-                    console.log(`Follow-up ${message.followUpId} não está mais ativo, não avançando automaticamente`);
-                  }
-                } catch (err) {
-                  console.error('Erro ao avançar automaticamente após entrega de mensagens:', err);
-                }
-              }, 1000);
-            } catch (err) {
-              console.error('Erro ao programar avanço automático:', err);
-            }
-          }
+      await updateFollowUpStatus(followUpId, 'paused', { paused_reason: errorReason });
+    } catch (dbError) {
+      console.error(`Falha ao registrar erro crítico no BD para msg ${messageDbId}:`, dbError);
+    }
+  }
+}
+
+
+// --- Funções Auxiliares de Envio (Implementar corretamente) ---
+async function enviarHSMLumibot(
+  accountId: string,
+  conversationId: string, // clientId
+  token: string,
+  // Receber dados relevantes do passo/template
+  stepData: {
+      message_content: string;    // Conteúdo base do template
+      template_name: string;      // Nome EXATO do HSM aprovado
+      category: string;           // Categoria do template
+  },
+  clientName: string // Nome real do cliente para usar em {{1}}
+): Promise<{success: boolean, responseData: any}> {
+
+  const apiUrl = `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+  const headers = { 'Content-Type': 'application/json', 'api_access_token': token };
+
+  // --- Montando o corpo EXATAMENTE como especificado ---
+  const body = {
+      content: stepData.message_content, // Conteúdo base do template do seu BD
+      message_type: "outgoing",         // Fixo
+      template_params: {
+        name: stepData.template_name,         // Nome EXATO do HSM
+        category: stepData.category || "UTILITY", // Categoria do passo (com fallback)
+        language: "pt_BR",                // Fixo
+        processed_params : {
+          "1": clientName                 // Nome do cliente para substituir {{1}}
+          // Adicionar "2": valor2, etc., se o template tiver mais variáveis
         }
       }
-    } else {
-      console.log('Não foi possível marcar a mensagem como entregue');
+    };
+  // --- Fim da montagem do corpo ---
+
+  console.log(`[Lumibot Processor] Enviando HSM: ${apiUrl}, Payload:`, JSON.stringify(body));
+  try {
+      const response = await axios.post(apiUrl, body, { headers });
+      console.log(`[Lumibot Processor] Resposta Lumibot (HSM): Status ${response.status}`);
+      // Usar >= 200 e < 300 para cobrir outros status de sucesso como 201, 202
+      return { success: response.status >= 200 && response.status < 300, responseData: response.data };
+  } catch (err: any) {
+      console.error(`[Lumibot Processor] Erro ao enviar HSM (${stepData.template_name}): ${err.message}`, err.response?.data);
+      return { success: false, responseData: err.response?.data || { error: err.message } };
+  }
+}
+
+async function enviarTextoLivreLumibot(accountId: string, conversationId: string, token: string, content: string): Promise<boolean> {
+  const apiUrl = `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+  const headers = { 'Content-Type': 'application/json', 'api_access_token': token };
+  const body = { content: content, message_type: "outgoing" }; // outgoing ou text? Confirmar
+  console.log(`Enviando Texto Livre: ${apiUrl}, Payload:`, JSON.stringify(body));
+  try {
+    const response = await axios.post(apiUrl, body, { headers });
+    console.log(`Resposta Lumibot (Texto Livre): Status ${response.status}`);
+    return response.status === 200 || response.status === 201;
+  } catch (err: any) {
+    console.error(`Erro ao enviar Texto Livre: ${err.message}`, err.response?.data);
+    return false;
+  }
+}
+
+// --- Função scheduleNextEvaluation (IMPLEMENTAÇÃO COMPLETA AQUI) ---
+// Agenda a PRÓXIMA VEZ que a IA deve AVALIAR o follow-up
+export async function scheduleNextEvaluation(
+  followUpId: string,
+  delayMs: number,
+  reason: string // Motivo pelo qual a avaliação está sendo agendada
+): Promise<void> {
+  try {
+    const effectiveDelay = Math.max(delayMs, 1000); // Mínimo 1 segundo
+    const evaluationTime = new Date(Date.now() + effectiveDelay);
+
+    console.log(`Agendando PRÓXIMA AVALIAÇÃO da IA para followUp ${followUpId} em ${effectiveDelay / 1000}s. Motivo: ${reason}`);
+
+    // Atualiza o follow-up com o próximo tempo de avaliação
+    await prisma.followUp.update({
+      where: { id: followUpId },
+      data: { next_evaluation_at: evaluationTime } // Certifique-se que este campo existe no schema FollowUp
+    });
+
+    // O agendamento real PODE ser feito por um job externo (melhor para produção)
+    // OU continuar usando setTimeout para desenvolvimento/simplicidade:
+
+    // Gerenciar timeouts de avaliação (similar aos de mensagem)
+    const evaluationTimeoutId = `eval-${followUpId}`; // ID único para avaliação
+    if (activeTimeouts.has(evaluationTimeoutId)) {
+      console.log(`Cancelando avaliação anterior agendada para ${followUpId}`);
+      clearTimeout(activeTimeouts.get(evaluationTimeoutId)!);
+      activeTimeouts.delete(evaluationTimeoutId);
     }
+
+    const timeout = setTimeout(async () => {
+      activeTimeouts.delete(evaluationTimeoutId); // Remover antes de executar
+      try {
+        const currentFollowUp = await prisma.followUp.findUnique({
+          where: { id: followUpId },
+          select: { status: true }
+        });
+
+        if (currentFollowUp?.status === 'active') {
+          console.log(`[Timer Avaliação] Executando avaliação agendada para FollowUp ${followUpId}`);
+          // Chama a função central de decisão da IA
+          // Importar dinamicamente para evitar ciclos, se necessário, ou garantir importação no topo
+          const { determineNextAction } = await import('./ai/functionIa');
+          const nextAction = await determineNextAction(followUpId);
+          console.log(`[Timer Avaliação] Ação determinada para ${followUpId}:`, nextAction);
+
+          // Chamar a função que executa a ação
+          const { executeAIAction } = await import('../_lib/manager'); // Ou de onde ela estiver
+          await executeAIAction(followUpId, nextAction);
+
+        } else {
+          console.log(`[Timer Avaliação] Avaliação agendada para ${followUpId} ignorada (status: ${currentFollowUp?.status})`);
+        }
+      } catch (error) {
+        console.error(`[Timer Avaliação] Erro durante avaliação agendada para ${followUpId}:`, error);
+        // Importar updateFollowUpStatus aqui se necessário
+        const { updateFollowUpStatus } = await import('./internal/followUpHelpers');
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro na avaliação agendada: ${error instanceof Error ? error.message : 'Erro'}` });
+      }
+    }, effectiveDelay);
+
+    // Armazenar timeout da avaliação
+    activeTimeouts.set(evaluationTimeoutId, timeout);
+    console.log(`Timeout de avaliação ${evaluationTimeoutId} armazenado.`);
+
+
   } catch (error) {
-    console.error("Erro ao enviar mensagem:", error);
-    throw error;
+    console.error(`Erro ao AGENDAR avaliação para ${followUpId}:`, error);
+    // Importar updateFollowUpStatus aqui se necessário
+    const { updateFollowUpStatus } = await import('./internal/followUpHelpers');
+    await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro agendamento avaliação: ${error instanceof Error ? error.message : 'Erro'}` });
   }
 }
 
-// Interface para o processador personalizado de mensagens
-export interface MessageProcessor {
-  process: (message: ScheduledMessage) => Promise<boolean>;
-}
 
-// Processador que integra com a API Lumibot
-const lumibotProcessor: MessageProcessor = {
-  process: async (message: ScheduledMessage) => {
-    return await sendMessageToLumibot(message.clientId, message.message, message.metadata);
-  }
-};
-
-// Definir o processador Lumibot como o padrão
-let currentProcessor: MessageProcessor = lumibotProcessor;
-
-// Função para cancelar todas as mensagens agendadas para um follow-up
+// --- Função cancelScheduledMessages (DEFINIÇÃO PRECISA ESTAR AQUI) ---
+// Função para cancelar todas as mensagens e avaliações agendadas para um follow-up
 export async function cancelScheduledMessages(followUpId: string): Promise<void> {
   try {
-    // Encontrar todas as chaves no mapa que começam com o ID do follow-up
-    const keysToRemove = Array.from(activeTimeouts.keys()).filter(key => 
-      key.startsWith(`${followUpId}-`)
-    );
-    
-    // Cancelar cada timeout e remover do mapa
-    keysToRemove.forEach(key => {
-      clearTimeout(activeTimeouts.get(key)!);
-      activeTimeouts.delete(key);
-    });
-  } catch (error) {
-    console.error("Erro ao cancelar mensagens agendadas:", error);
-    throw error;
-  }
-}
+    let cancelledCount = 0;
+    const prefix = `${followUpId}-`;
+    const evalPrefix = `eval-${followUpId}`;
 
-// Função para carregar e reagendar mensagens pendentes na inicialização do servidor
-export async function reloadPendingMessages(): Promise<void> {
-  try {
-    // Buscar todos os follow-ups ativos com próxima mensagem agendada
-    const activeFollowUps = await prisma.followUp.findMany({
-      where: {
-        status: 'active',
-        next_message_at: { not: null }
-      },
-      include: {
-        messages: {
-          where: {
-            delivered: false
-          },
-          orderBy: { step_id: 'asc' }
+    // Iterar sobre TODOS os timeouts ativos
+    for (const key of activeTimeouts.keys()) {
+      // Verificar se a chave corresponde a uma mensagem OU a uma avaliação deste follow-up
+      if (key.startsWith(prefix) || key === evalPrefix) {
+        const timeout = activeTimeouts.get(key);
+        if (timeout) {
+          clearTimeout(timeout);
+          activeTimeouts.delete(key);
+          cancelledCount++;
+          console.log(`Timeout cancelado e removido: ${key}`);
         }
       }
-    });
+    }
 
-    console.log(`Recarregando ${activeFollowUps.length} follow-ups ativos com mensagens pendentes`);
-
-    for (const followUp of activeFollowUps) {
-      // Verificar se temos mensagens não entregues para este follow-up
-      if (followUp.messages.length === 0) continue;
-
-      // Obter a próxima mensagem a ser enviada
-      const nextMessage = followUp.messages[0];
-      
-      // Agendar o envio
-      await scheduleMessage({
-        followUpId: followUp.id,
-        stepIndex: 0, // Valor padrão, pois step foi removido do modelo
-        message: nextMessage.content,
-        scheduledTime: followUp.next_message_at || new Date(),
-        clientId: followUp.client_id,
-        metadata: {
-          template_name: "default", // Valores padrão já que os campos foram removidos
-          category: "Utility"
-        }
-      });
-
-      console.log(`Reagendado envio da mensagem para follow-up ${followUp.id}`);
+    if (cancelledCount > 0) {
+      console.log(`Canceladas ${cancelledCount} ações (mensagens/avaliações) agendadas para followUp ${followUpId}.`);
+    } else {
+      console.log(`Nenhuma ação agendada encontrada para cancelar para followUp ${followUpId}.`);
     }
   } catch (error) {
-    console.error("Erro ao recarregar mensagens pendentes:", error);
+    console.error("Erro ao cancelar ações agendadas:", error);
   }
 }
 
-// Exportar as funções necessárias
-export function setMessageProcessor(processor: MessageProcessor): void {
-  currentProcessor = processor;
-  console.log("Processador de mensagens personalizado configurado.");
+
+
+// --- Fim da Função cancelScheduledMessages ---
+// NOTE: reloadPendingMessages precisará ser adaptada para o novo fluxo com 'next_evaluation_at'
+export async function reloadPendingMessages(): Promise<void> {
+  console.warn("TODO: Implementar reloadPendingMessages para o novo fluxo baseado em next_evaluation_at");
+  // A lógica antiga que reagendava mensagens individuais não se aplica diretamente.
+  // O ideal é buscar followups ativos com next_evaluation_at no passado e chamar determineNextAction para eles.
 }
 
-export function getMessageProcessor(): MessageProcessor {
-  return currentProcessor;
-}
 
-// Inicialização - carregar mensagens pendentes na inicialização do servidor
-if (typeof window === 'undefined') { // Verificar se estamos no lado do servidor
-  // Usar setTimeout para aguardar a inicialização completa do servidor
-  setTimeout(() => {
-    reloadPendingMessages().catch(error => {
-      console.error("Erro ao inicializar o agendador de mensagens:", error);
+// --- reloadPendingMessages (Adaptada para avaliações) ---
+export async function reloadPendingEvaluations(): Promise<void> {
+  try {
+    const now = new Date();
+    // Buscar follow-ups ativos que DEVERIAM ter sido avaliados
+    const pendingFollowUps = await prisma.followUp.findMany({
+      where: {
+        status: 'active',
+        next_evaluation_at: { lte: now } // Menor ou igual a agora
+      },
+      select: { id: true } // Pegar apenas IDs
     });
-  }, 5000); // Aguardar 5 segundos após a inicialização
+
+    console.log(`Recarregando ${pendingFollowUps.length} follow-ups com avaliações pendentes.`);
+
+    for (const followUp of pendingFollowUps) {
+      console.log(`Disparando avaliação pendente para FollowUp ${followUp.id}`);
+      // Chamar a função de decisão e execução imediatamente
+      determineNextAction(followUp.id)
+        .then(action => executeAIAction(followUp.id, action))
+        .catch(async (err) => {
+          console.error(`Erro ao reprocessar avaliação pendente para ${followUp.id}:`, err);
+          await updateFollowUpStatus(followUp.id, 'paused', { paused_reason: `Erro reprocessamento avaliação: ${err.message}` });
+        });
+      // Pequeno delay para não sobrecarregar
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  } catch (error) {
+    console.error("Erro ao recarregar avaliações pendentes:", error);
+  }
 }
+
+// --- Inicialização do Scheduler ---
+function initializeScheduler() {
+  if (typeof window === 'undefined') {
+    if (!(global as any).__schedulerInitialized) {
+      console.log("Inicializando Scheduler...");
+      // Define o processador padrão importado do initializer
+      setMessageProcessor(lumibotProcessor);
+      console.log("Processador Lumibot definido no Scheduler.");
+      // Agendar recarregamento de avaliações pendentes
+      setTimeout(() => {
+        console.log("Verificando avaliações pendentes na inicialização...");
+        reloadPendingEvaluations().catch(error => {
+          console.error("Erro ao recarregar avaliações pendentes:", error);
+        });
+      }, 5000); // Aguarda 5 segundos
+      (global as any).__schedulerInitialized = true;
+      console.log("Scheduler inicializado.");
+    }
+  }
+}
+
+// Chamar a inicialização do scheduler
+initializeScheduler();

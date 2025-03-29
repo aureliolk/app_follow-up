@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       const effectiveWorkspaceId = tokenWorkspaceId || workspaceId;
 
       // Determinar a campanha a ser usada
-      let targetCampaignId = campaignId;
+      let targetCampaignId : any = campaignId;
       
       if (!targetCampaignId && effectiveWorkspaceId) {
         // Buscar uma campanha ativa para o workspace
@@ -115,7 +115,6 @@ export async function POST(req: NextRequest) {
         clientId, 
         targetCampaignId, 
         effectiveWorkspaceId,
-        metadata
       );
 
       // Iniciar o processamento das etapas de follow-up
@@ -254,14 +253,7 @@ export async function GET(req: NextRequest) {
           
           // Extrair workspace_id dos metadados de forma segura
           let workspace_id = null;
-          if (followUp.metadata) {
-            try {
-              const metadata = JSON.parse(followUp.metadata);
-              workspace_id = metadata.workspace_id;
-            } catch (e) {
-              // Ignorar erros de parsing
-            }
-          }
+         
           
           return {
             ...followUp,

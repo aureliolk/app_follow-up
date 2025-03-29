@@ -1,0 +1,157 @@
+O Novo Paradigma: Follow-up Gerenciado por IA
+
+Imagine a IA não como um executor de tarefas, mas como um vendedor ou assistente virtual inteligente e dedicado a cada cliente. O objetivo dela é mover o cliente pelos estágios definidos (Novo Lead -> Qualificação -> Proposta -> Fechamento, etc.) da forma mais eficiente e personalizada possível.
+
+Componentes Chave:
+
+    Cliente: O estado atual do cliente (dados, histórico, estágio atual).
+
+    Estágios do Funil: Definem os objetivos ou fases da jornada do cliente (ainda são importantes!). Ex: "Qualificar o Lead", "Apresentar Proposta", "Superar Objeções".
+
+    IA (O Gerente): O cérebro que decide a próxima melhor ação.
+
+    Gatilhos (Triggers): Eventos que fazem a IA reavaliar a situação e agir.
+
+    Ações da IA: O que a IA pode fazer (enviar mensagem, esperar, mudar estágio, pedir ajuda humana, etc.).
+
+    Templates/Conteúdo Base: Um "repertório" que a IA pode usar e adaptar (as antigas "etapas" se tornam isso).
+
+Como Funciona (Fluxo Orientado a Eventos e Decisões):
+
+    Gatilho: Novo Cliente Adicionado / Follow-up Iniciado:
+
+        O cliente entra no estágio inicial (ex: "Novo Lead").
+
+        A IA é acionada: evento = 'novo_followup', cliente = X, estagio = 'Novo Lead'.
+
+        Decisão da IA: Analisa dados do cliente (se houver). Qual a melhor primeira ação?
+
+            Usar um template de boas-vindas (personalizeMessageContent)?
+
+            Gerar uma pergunta de qualificação inicial (generateAIResponse)?
+
+            Esperar um pouco se a fonte for específica?
+
+        Ação da IA: Executa a ação decidida (ex: agenda o envio da mensagem de boas-vindas personalizada para "agora").
+
+        Próxima Avaliação: A IA define quando reavaliar a situação se não houver resposta (ex: "Reavaliar em 1 hora"). Armazena isso (ex: next_evaluation_at no registro do FollowUp).
+
+    Gatilho: Cliente Responde (Webhook - Abordagem Passiva):
+
+        Webhook recebe a mensagem (clientId, message).
+
+        Sistema identifica o followUpId ativo para o clientId.
+
+        Mensagem do cliente é salva.
+
+        Análise da IA: analyzeClientResponse processa a mensagem (sentimento, intenção, tópicos).
+
+        A IA é acionada: evento = 'resposta_cliente', cliente = X, estagio = 'Novo Lead', mensagem = "...", analise = {...}.
+
+        Decisão da IA: Com base na análise, estágio atual, histórico e objetivo do estágio:
+
+            Resposta Imediata? (generateAIResponse) Precisa responder à pergunta "Quem é vc?" imediatamente?
+
+            Mudar Estágio? A resposta ("Oi") indica que saiu de "Novo Lead" para "Qualificação"?
+
+            Qual Próxima Mensagem? Precisa enviar uma mensagem específica agora ou agendar uma? Usar template ou gerar? (personalizeMessageContent ou generateAIResponse)
+
+            Esperar? A resposta pede tempo?
+
+            Ajuda Humana? A resposta é complexa demais?
+
+        Ação da IA: Executa a(s) ação(ões) decidida(s) (ex: envia a resposta "Sou o Alex...", atualiza o estágio para "Qualificação", define próxima avaliação para "24 horas").
+
+    Gatilho: Timer de Reavaliação Expirou (Abordagem Ativa):
+
+        O sistema verifica follow-ups cujo next_evaluation_at chegou.
+
+        A IA é acionada: evento = 'timer_expirado', cliente = X, estagio = 'Qualificação', tempo_sem_resposta = '24h'.
+
+        Decisão da IA: Analisa a situação:
+
+            Já enviei quantas mensagens neste estágio?
+
+            Qual foi a última mensagem enviada?
+
+            Qual o sentimento/intenção da última resposta (se houve)?
+
+            Qual o objetivo deste estágio ("Qualificação")?
+
+            Próxima Ação:
+
+                Enviar um lembrete (personalizado)?
+
+                Fazer uma pergunta diferente?
+
+                Oferecer um material/link (como seu vídeo do YT)?
+
+                Mudar para um estágio de "lead frio"?
+
+                Desistir (marcar como canceled)?
+
+        Ação da IA: Executa a ação (ex: agenda envio de template qualificacao_24h personalizado).
+
+        Próxima Avaliação: Define novo next_evaluation_at (ex: "Reavaliar em 48 horas").
+
+Como os Templates (Seus Antigos "Passos") se Encaixam:
+
+    Seus arquivos CSV ou a tabela FollowUpStep se tornam uma biblioteca de conteúdo para a IA.
+
+    Cada "linha" representa um tipo de mensagem associada a um estágio e um propósito (ex: Lembrete 10min, Pergunta Qualificação 1h, Oferta Final 48h).
+
+    A IA, ao decidir enviar uma mensagem, pode:
+
+        Escolher um template relevante da biblioteca (ex: qualificacao_24h).
+
+        Usar personalizeMessageContent para adaptar esse template ao cliente específico.
+
+        Ou ignorar os templates e usar generateAIResponse para criar algo totalmente novo, se a situação pedir.
+
+    O "Tempo de Disparo" dos templates antigos vira uma sugestão para o timer de reavaliação da IA após enviar aquele tipo de mensagem.
+
+Mudanças Necessárias no Sistema:
+
+    Modelo FollowUp:
+
+        Remover current_step_id.
+
+        Manter current_stage_id (essencial).
+
+        Adicionar next_evaluation_at (DateTime?) para o timer da IA.
+
+        Manter status (active, paused, completed, canceled, talvez needs_human_review).
+
+        Manter last_response, last_response_at.
+
+        Adicionar ai_next_action_suggestion (String?, opcional): O que a IA planeja fazer na próxima avaliação.
+
+        Adicionar paused_reason (String?, opcional).
+
+    Modelo FollowUpStep (Templates):
+
+        Pode continuar existindo como biblioteca.
+
+        wait_time / wait_time_ms agora é mais uma dica do que uma regra fixa.
+
+        Opcional: Adicionar um campo purpose (ex: "lembrete_inicial", "pergunta_dor", "prova_social", "ultimato").
+
+    Lógica Central (manager.ts / helpers.ts):
+
+        processFollowUpSteps: Simplificar. Basicamente, verifica se hoje >= next_evaluation_at. Se sim, chama a função de decisão da IA.
+
+        handleClientResponse: Função principal para o gatilho de resposta. Chama analyzeClientResponse, salva, e depois chama a função de decisão da IA.
+
+        Nova Função Central: decideAndExecuteNextAction(followUpId): Esta seria a função chamada pelos gatilhos. Ela buscaria o estado atual, chamaria decideNextStepWithAI (que precisa ser bem mais robusta agora), e então executaria a ação retornada (chamar sendMessage, scheduleMessage, updateFollowUpStatus, setNextEvaluationTimer, etc.).
+
+        decideNextStepWithAI: Precisa de mais contexto (histórico, análise, estágio, objetivo) e retornar um objeto de ação mais detalhado (como nos exemplos { action: "...", ... }).
+
+    Scheduler (scheduler.ts):
+
+        scheduleMessage ainda é útil para mensagens agendadas pela IA (ex: "enviar lembrete em 24h").
+
+        Precisaria de uma forma de agendar a reavaliação (setTimeout que chama decideAndExecuteNextAction). Isso pode ser o scheduleNextStepExecution refatorado, mas em vez de focar no "step index", ele foca no followUpId e no tempo (next_evaluation_at).
+
+Em Resumo:
+
+A IA se torna o gerente do follow-up. Os estágios são os objetivos. Os templates são ferramentas. Os timers e respostas são gatilhos para a IA decidir a próxima melhor ação de forma dinâmica e personalizada.
