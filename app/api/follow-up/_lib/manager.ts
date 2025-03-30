@@ -2,23 +2,19 @@
 // Versão refatorada do gerenciador de follow-up
 
 import { prisma } from '@/lib/db';
-import { scheduleMessage, cancelScheduledMessages } from './scheduler';
+import { scheduleMessage, cancelScheduledMessages, scheduleNextEvaluation_V2 } from './scheduler';
 // CORRIGIDO: Importar determineNextAction em vez de decideNextStepWithAI
 import { analyzeClientResponse, determineNextAction, generateAIResponse, AIAction, personalizeMessageContent } from '@/app/api/follow-up/_lib/ai/functionIa';
 
 
 // CORRIGIDO: Importar APENAS as funções necessárias e renomeadas de followUpHelpers
 import {
-  parseTimeString,            // Mantida
-  updateFollowUpStatus,       // Mantida
-  createSystemMessage,        // Mantida
-  getCampaignSteps,           // Mantida
-  // processCurrentStep,      // REMOVIDA (obsoleta no novo fluxo principal)
-  // determineNextStep,       // REMOVIDA (substituída por determineNextAction)
-  processStageAdvancement,    // Mantida (usada por handleClientResponse)
-  // processActiveFollowUpResponse, // REMOVIDA (lógica movida para handleClientResponse)
-  scheduleNextEvaluation,     // RENOMEADA/REFATORADA de scheduleNextStepExecution
-  normalizeStep,              // Adicionada se for usada aqui, senão remover
+  parseTimeString,
+  updateFollowUpStatus,
+  createSystemMessage,
+  getCampaignSteps,
+  processStageAdvancement,
+  normalizeStep,
 } from './internal/followUpHelpers';
 
 // *** FASE 4: Função para EXECUTAR a ação decidida pela IA ***
@@ -27,162 +23,219 @@ export async function executeAIAction(followUpId: string, action: AIAction): Pro
   console.log(`Executando Ação IA para ${followUpId}: ${action.action_type} - ${action.reason}`);
 
   switch (action.action_type) {
-    case 'SEND_MESSAGE': // **** IMPLEMENTAR ESTE CASO ****
+    case 'SEND_MESSAGE':
       try {
+        // Buscar dados necessários do FollowUp e Campanha
         const followUp = await prisma.followUp.findUnique({
           where: { id: followUpId },
-          include: { campaign: { include: { stages: true } } }
+          include: {
+            campaign: { include: { stages: { include: { steps: true } } } }, // Inclui steps para info do estágio
+            messages: { orderBy: { sent_at: 'desc' }, take: 1, where: { is_from_client: true } } // Pega a última msg do cliente
+          }
         });
+
         if (!followUp || !followUp.campaign?.idLumibot || !followUp.campaign?.tokenAgentLumibot) {
           throw new Error("Dados de FollowUp ou Campanha/Lumibot ausentes para SEND_MESSAGE.");
         }
         const currentStage = followUp.campaign.stages.find(s => s.id === followUp.current_stage_id);
-        const clientName = followUp.client_id;
+        const clientName = followUp.client_id; // Usar ID como fallback inicial (pode ser melhorado buscando nome real)
 
-        let content = '';
+        let contentToSend = '';
+        let messageIsAiGenerated = false;
         let stepMetaData = {
           id: null as string | null,
-          name: action.template_name || '', // Nome interno
+          name: action.template_name || null, // Nome interno do template ou null
           category: 'Utility',
-          whatsappName: null as string | null | undefined
+          whatsappName: null as string | null | undefined,
+          waitTimeMs: 60 * 60 * 1000 // Default 1 hora para próxima avaliação
         };
 
+        // Lógica baseada na fonte do conteúdo
         if (action.content_source === 'template' && action.template_name) {
+          console.log(`Processando envio de template: ${action.template_name}`);
           const baseStep = await prisma.followUpStep.findFirst({
-            where: {
-              template_name: action.template_name, // Busca pelo nome interno
-              funnel_stage_id: followUp.current_stage_id || "" // Apenas no estágio atual
-            },
-            include: { funnel_stage: true } // Para pegar nome do estágio
+            where: { template_name: action.template_name, funnel_stage_id: followUp.current_stage_id || "" },
+            include: { funnel_stage: true }
           });
           if (!baseStep) throw new Error(`Template base "${action.template_name}" não encontrado no estágio ${currentStage?.name}.`);
 
-          const normalizedBaseStep = normalizeStep(baseStep); // Normaliza para pegar campos corretos
-          content = normalizedBaseStep.message_content;
-          stepMetaData.id = normalizedBaseStep.id; // ID do passo/template usado
+          const normalizedBaseStep = normalizeStep(baseStep);
+          contentToSend = normalizedBaseStep.message_content;
+          stepMetaData.id = normalizedBaseStep.id;
           stepMetaData.category = normalizedBaseStep.category;
-          stepMetaData.whatsappName = normalizedBaseStep.template_name; // Nome HSM
+          stepMetaData.whatsappName = normalizedBaseStep.template_name; // Nome HSM se houver
           stepMetaData.name = normalizedBaseStep.template_name; // Nome interno
+          stepMetaData.waitTimeMs = normalizedBaseStep.wait_time_ms; // Usar espera definida no passo
+
+          // Personalizar se for template e NÃO for HSM
+          if (!action.is_hsm) {
+            console.log(`Personalizando template (não-HSM) "${stepMetaData.name}"...`);
+            contentToSend = await personalizeMessageContent(contentToSend, followUp.client_id, followUpId, {
+              stage_name: currentStage?.name || 'Desconhecido',
+              template_name: stepMetaData.name
+            });
+            console.log(`Conteúdo personalizado: "${contentToSend.substring(0, 50)}..."`);
+          }
+
         } else if (action.content_source === 'generate') {
-          console.warn("Ação SEND_MESSAGE com source 'generate' - conteúdo deveria vir da IA. Usando 'reason' como fallback.");
-          content = action.reason;
+          console.log("Gerando resposta da IA para o cliente...");
+          let generatedContent = '';
+          const lastClientMessage = followUp.messages[0]; // Já buscamos a última do cliente
+          if (!lastClientMessage || !lastClientMessage.content) {
+            console.warn(`Não foi possível encontrar a última mensagem do cliente para usar como contexto para generateAIResponse. Usando fallback.`);
+            // Fallback: Usar a 'reason' da IA ou uma mensagem genérica
+            contentToSend = action.reason || "Olá! Recebi sua mensagem. Como posso ajudar?";
+            // Ou talvez chamar generateAIResponse sem a mensagem do cliente? Depende da implementação dela.
+            // Exemplo alternativo:
+            // const stageInfo = { /* ... */ };
+            // contentToSend = await generateAIResponse(followUp.client_id, "", followUpId, stageInfo);
+          } else {
+            const stageInfo = {
+              id: currentStage?.id,
+              name: currentStage?.name,
+              purpose: currentStage?.description
+            };
+            try {
+              // <<< CHAMADA REAL À FUNÇÃO DE GERAÇÃO >>>
+              generatedContent = await generateAIResponse(
+                followUp.client_id,
+                lastClientMessage.content,
+                followUpId,
+                stageInfo
+              );
+
+              console.log(`Conteúdo gerado pela IA: "${generatedContent.substring(0, 100)}..."`);
+            } catch (genError) {
+              console.error("Erro ao chamar generateAIResponse:", genError);
+              generatedContent = action.reason || "Desculpe, não consegui processar sua solicitação agora."; // Usar reason ou outra msg de erro
+            }
+          }
+          contentToSend = generatedContent; // <<< CORREÇÃO CRÍTICA AQUI
+          messageIsAiGenerated = true;
+          stepMetaData.name = "ai_generated_response";
+          stepMetaData.waitTimeMs = 5 * 60 * 1000; // Avaliação curta (5 min) após gerar resposta
+          console.log(`Conteúdo gerado pela IA: "${contentToSend.substring(0, 100)}..."`);
         }
 
-        if (!content || content.trim() === '') {
-          throw new Error("Conteúdo final da mensagem está vazio ou inválido.");
+        // Validação final do conteúdo
+        if (!contentToSend || contentToSend.trim() === '') {
+          if (action.reason) {
+            console.warn("Conteúdo final da mensagem está vazio. Usando 'reason' como último recurso.");
+            contentToSend = action.reason;
+          } else {
+            throw new Error("Conteúdo final da mensagem está vazio ou inválido.");
+          }
         }
 
-        // Personalizar se aplicável (NÃO HSM)
-        if (action.content_source === 'template' && !action.is_hsm) {
-          console.log(`Personalizando template (não-HSM) "${stepMetaData.name}"...`);
-          content = await personalizeMessageContent(content, followUp.client_id, followUpId, {
-            stage_name: currentStage?.name || 'Desconhecido',
-            template_name: stepMetaData.name
-          });
-          console.log(`Conteúdo personalizado: "${content.substring(0, 50)}..."`);
-        }
-
-
-        // Criar registro da mensagem
+        // Criar registro da mensagem no BD
         const messageRecord = await prisma.followUpMessage.create({
           data: {
             follow_up_id: followUpId,
-            content: content,
-            is_ai_generated: action.content_source === 'generate',
-            template_used: stepMetaData.name, // Nome interno do template base
+            content: contentToSend,
+            is_ai_generated: messageIsAiGenerated,
+            template_used: stepMetaData.name,
             is_from_client: false,
             sent_at: new Date(),
             delivered: false,
-            step_id: stepMetaData.id // Associar ao step_id se usou template
+            step_id: stepMetaData.id
           }
         });
         console.log(`Registro da mensagem ${messageRecord.id} criado no BD.`);
 
-
-        const messageDbIdToSchedule = messageRecord.id; // Garantir que temos o ID
-
-        console.log(stepMetaData.whatsappName)
-        // Agendar o envio
+        // Agendar o envio da mensagem
         await scheduleMessage({
           followUpId: followUpId,
-          messageDbId: messageDbIdToSchedule,
+          messageDbId: messageRecord.id,
           stepIndex: -1,
-          contentToSend: content,
-          scheduledTime: new Date(Date.now() + (action.delay_ms || 100)),
+          contentToSend: contentToSend,
+          scheduledTime: new Date(Date.now() + (action.delay_ms || 100)), // Envio quase imediato
           clientId: followUp.client_id,
-          accountIdLumibot: followUp.campaign.idLumibot,
-          tokenAgentLumibot: followUp.campaign.tokenAgentLumibot,
-          isAIMessage: action.content_source === 'generate',
-          isHSM: action.is_hsm,
+          accountIdLumibot: followUp.campaign.idLumibot!,
+          tokenAgentLumibot: followUp.campaign.tokenAgentLumibot!,
+          isAIMessage: messageIsAiGenerated,
+          isHSM: action.is_hsm, // Usar o is_hsm final da decisão da IA (pós-correção)
           templateNameWhatsapp: stepMetaData.whatsappName,
-          templateName: stepMetaData.name,
+          templateName: stepMetaData.name || "",
           templateCategory: stepMetaData.category,
-          templateParams: { "1": clientName },
-          metadata: { 
+          // Não incluir templateParams aqui, deixar para o processador buscar nome
+          metadata: {
             ai_reason: action.reason
           }
         });
 
-        // **** CÁLCULO SIMPLIFICADO DA PRÓXIMA AVALIAÇÃO ****
-        let nextEvalDelayMs = 60 * 60 * 1000; // Default 1 hora
-        let evalReasonPart = "próxima avaliação padrão";
+        // Agendar a próxima avaliação da IA
+        const nextEvalDelayMs = stepMetaData.waitTimeMs;
+        const evalReasonPart = messageIsAiGenerated
+          ? "verificação rápida após resposta gerada pela IA"
+          : `aguardando tempo padrão (${(nextEvalDelayMs / 60000).toFixed(0)} min) após passo '${stepMetaData.name}'`;
 
-        if (action.content_source === 'template' && stepMetaData.id) {
-            const sentStep = await prisma.followUpStep.findUnique({
-                where: { id: stepMetaData.id },
-                select: { wait_time_ms: true, wait_time: true, template_name: true }
-            });
-            if (sentStep && sentStep.wait_time_ms) {
-                nextEvalDelayMs = sentStep.wait_time_ms; // Usa o tempo definido pelo usuário para ESTE passo
-                evalReasonPart = `aguardando tempo padrão (${sentStep.wait_time}) após passo '${sentStep.template_name}'`;
-                console.log(`Usando delay padrão do passo enviado (${stepMetaData.id}): ${nextEvalDelayMs}ms.`);
-            } else {
-                console.warn(`Não foi possível encontrar wait_time_ms para o passo ${stepMetaData.id}. Usando delay padrão.`);
-            }
-        } else if (action.content_source === 'generate') {
-            nextEvalDelayMs = 5 * 60 * 1000; // Ex: 5 minutos para diálogo
-            evalReasonPart = "verificação rápida após resposta gerada pela IA";
-            console.log(`IA gerou resposta, agendando avaliação curta: ${nextEvalDelayMs}ms.`);
-        }
-
-        await scheduleNextEvaluation(followUpId, nextEvalDelayMs, `IA: ${action.reason}. Agendando ${evalReasonPart}.`);
-        // **** FIM DO CÁLCULO SIMPLIFICADO ****
+        // << Certifique-se que o nome da função aqui é o correto (V2 ou normal) >>
+        await scheduleNextEvaluation_V2(followUpId, nextEvalDelayMs, `IA: ${action.reason}. Agendando ${evalReasonPart}.`);
 
       } catch (err) {
         console.error(`Erro ao executar SEND_MESSAGE para ${followUpId}:`, err);
-        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro ao enviar msg IA: ${err instanceof Error ? err.message : 'Erro'}` });
-        // Agendar reavaliação mesmo em caso de erro
-        await scheduleNextEvaluation(followUpId, 30 * 60 * 1000, `Reavaliação após falha no envio`);
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro ao enviar msg IA: ${err instanceof Error ? err.message : 'Erro desconhecido'}` });
+        // << Certifique-se que o nome da função aqui é o correto (V2 ou normal) >>
+        await scheduleNextEvaluation_V2(followUpId, 30 * 60 * 1000, `Reavaliação após falha no envio`);
       }
       break;
 
-    case 'CHANGE_STAGE': // **** IMPLEMENTAR ESTE CASO ****
-      await processStageAdvancement(followUpId, action.target_stage_id, `IA: ${action.reason}`);
-      // processStageAdvancement já agenda a próxima avaliação
+    case 'CHANGE_STAGE':
+      try {
+        await processStageAdvancement(followUpId, action.target_stage_id, `IA: ${action.reason}`);
+        // processStageAdvancement já chama scheduleNextEvaluation_V2 (ou a versão correta)
+      } catch (err) {
+        console.error(`Erro ao executar CHANGE_STAGE para ${followUpId}:`, err);
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro ao mudar estágio: ${err instanceof Error ? err.message : 'Erro'}` });
+      }
       break;
 
-    case 'SCHEDULE_EVALUATION': // **** IMPLEMENTAR ESTE CASO ****
-      await scheduleNextEvaluation(followUpId, action.delay_ms, `IA: ${action.reason}`);
+    case 'SCHEDULE_EVALUATION':
+      try {
+        // << Certifique-se que o nome da função aqui é o correto (V2 ou normal) >>
+        await scheduleNextEvaluation_V2(followUpId, action.delay_ms, `IA: ${action.reason}`);
+      } catch (err) {
+        console.error(`Erro ao executar SCHEDULE_EVALUATION para ${followUpId}:`, err);
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `Erro ao agendar avaliação: ${err instanceof Error ? err.message : 'Erro'}` });
+      }
       break;
 
-    // Casos PAUSE, REQUEST_HUMAN_REVIEW, COMPLETE (já estavam ok)
     case 'PAUSE':
-      await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `IA: ${action.reason}` });
-      await createSystemMessage(followUpId, `Follow-up pausado pela IA. Motivo: ${action.reason}`);
+      try {
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `IA: ${action.reason}` });
+        await createSystemMessage(followUpId, `Follow-up pausado pela IA. Motivo: ${action.reason}`);
+      } catch (err) {
+        console.error(`Erro ao executar PAUSE para ${followUpId}:`, err);
+        // Tentar pausar mesmo assim, se falhou ao criar msg sistema
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `IA: ${action.reason} (falha ao logar msg sistema)` }).catch(() => { });
+      }
       break;
+
     case 'REQUEST_HUMAN_REVIEW':
-      await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `IA: Revisão Humana - ${action.reason}`, needs_human_review: true }); // Adicionar campo needs_human_review ao schema
-      await createSystemMessage(followUpId, `🚨 Revisão Humana Solicitada pela IA. Motivo: ${action.reason}`);
-      // TODO: Notificar humano
+      try {
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `IA: Revisão Humana - ${action.reason}`, needs_human_review: true }); // Adicionar campo needs_human_review ao schema se necessário
+        await createSystemMessage(followUpId, `🚨 Revisão Humana Solicitada pela IA. Motivo: ${action.reason}`);
+        // TODO: Implementar notificação para humano
+      } catch (err) {
+        console.error(`Erro ao executar REQUEST_HUMAN_REVIEW para ${followUpId}:`, err);
+        await updateFollowUpStatus(followUpId, 'paused', { paused_reason: `IA: Revisão Humana - ${action.reason} (falha ao logar msg sistema)`, needs_human_review: true }).catch(() => { });
+      }
       break;
+
     case 'COMPLETE':
-      await updateFollowUpStatus(followUpId, 'completed', { completed_at: new Date() });
-      await createSystemMessage(followUpId, `Follow-up concluído pela IA. Motivo: ${action.reason}`);
+      try {
+        await updateFollowUpStatus(followUpId, 'completed', { completed_at: new Date() });
+        await createSystemMessage(followUpId, `Follow-up concluído pela IA. Motivo: ${action.reason}`);
+      } catch (err) {
+        console.error(`Erro ao executar COMPLETE para ${followUpId}:`, err);
+        await updateFollowUpStatus(followUpId, 'completed', { completed_at: new Date(), paused_reason: `(falha ao logar msg sistema)` }).catch(() => { });
+      }
       break;
 
     default:
       console.warn(`Ação IA desconhecida recebida para ${followUpId}:`, action);
-      await scheduleNextEvaluation(followUpId, 60 * 60 * 1000, `Fallback: Ação IA desconhecida`);
+      // << Certifique-se que o nome da função aqui é o correto (V2 ou normal) >>
+      await scheduleNextEvaluation_V2(followUpId, 60 * 60 * 1000, `Fallback: Ação IA desconhecida`);
   }
 }
 // --- Fim Função executeAIAction ---
@@ -303,7 +356,7 @@ export async function handleClientResponse(
     console.log("Análise de IA da resposta:", aiAnalysis);
     // Registrar análise no BD
     await prisma.followUpAIAnalysis.create({
-      data: { /* ... dados da análise ... */ follow_up_id: followUpId, message_id: clientMessageRecord.id, sentiment: aiAnalysis.sentiment, intent: aiAnalysis.intent, topics: aiAnalysis.topics, next_action: aiAnalysis.nextAction, suggested_stage: aiAnalysis.suggested_stage }
+      data: { /* ... dados da análise ... */ follow_up_id: followUpId, message_id: clientMessageRecord.id, sentiment: aiAnalysis.sentiment, intent: aiAnalysis.intent, topics: aiAnalysis.topics, next_action: aiAnalysis.nextAction || "", suggested_stage: aiAnalysis.suggestedStage }
     });
     console.log(`Análise de IA registrada.`);
 
@@ -321,21 +374,6 @@ export async function handleClientResponse(
     console.error("Erro GERAL em handleClientResponse:", error);
   }
 }
-
-
-// --- Funções resumeFollowUp e advanceToNextStep (OBSOLETAS) ---
-// Com o novo paradigma, a retomada e o avanço são gerenciados pela IA
-// através de `determineNextAction` e `executeAIAction`.
-/*
-export async function resumeFollowUp(followUpId: string): Promise<void> {
-  console.warn("Função resumeFollowUp é obsoleta. Use a API para enviar uma mensagem ou aguarde a próxima avaliação da IA.");
-}
-
-export async function advanceToNextStep(followUpId: string): Promise<void> {
-   console.warn("Função advanceToNextStep é obsoleta. A IA gerencia o fluxo.");
-}
-*/
-
 
 // Exportar parseTimeString se ainda for usado externamente
 export { parseTimeString };
