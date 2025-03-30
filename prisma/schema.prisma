@@ -59,6 +59,15 @@ model FollowUpCampaign {
   active            Boolean               @default(true)
   idLumibot         String?
   tokenAgentLumibot String?
+  ai_prompt_product_name String?   @default("")
+  ai_prompt_target_audience String?  @default("")
+  ai_prompt_pain_point String?  @default("")
+  ai_prompt_main_benefit String?  @default("")
+  ai_prompt_tone_of_voice String? @default("")
+  ai_prompt_extra_instructions String? @default("")
+  ai_prompt_cta_link String? @default("")
+  ai_prompt_cta_text String? @default("")
+
   stages            FollowUpFunnelStage[] @relation("FollowUpCampaignToFollowUpFunnelStage")
   follow_ups        FollowUp[]
 

@@ -2,74 +2,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
-import { getToken } from 'next-auth/jwt';
+import { getToken } from 'next-auth/jwt'; // Certifique-se que getToken está importado se usado
 
-// Função auxiliar para calcular tempo de espera em ms
-function calculateWaitTimeMs(waitTime: string): number {
-  if (!waitTime) return 30 * 60 * 1000; // Padrão: 30 minutos
-
-  // Regex para extrair números e unidades
-  const regex = /(\d+)\s*(min|minutos?|h|horas?|dias?)/i;
-  const match = waitTime.match(regex);
-
-  if (!match) return 30 * 60 * 1000;
-
-  const value = parseInt(match[1]);
-  const unit = match[2].toLowerCase();
-
-  if (unit.startsWith('min')) {
-    return value * 60 * 1000;
-  } else if (unit.startsWith('h')) {
-    return value * 60 * 60 * 1000;
-  } else if (unit.startsWith('d')) {
-    return value * 24 * 60 * 60 * 1000;
-  }
-
-  return 30 * 60 * 1000;
-}
-
+// Função GET (como definida anteriormente, incluindo a seleção dos campos ai_prompt_*)
 export async function GET(req: NextRequest) {
-  // Utilizamos o middleware withApiTokenAuth para verificar tokens de API
-  // e obter o ID do workspace associado ao token
   return withApiTokenAuth(req, async (req, tokenWorkspaceId) => {
     try {
       const searchParams = req.nextUrl.searchParams;
       const activeOnly = searchParams.get('active') === 'true';
 
-      // Priorizar o workspaceId do token, mas permitir override pelo query param
-      // Nota: em ambiente de produção, você pode querer restringir isso por segurança
       const queryWorkspaceId = searchParams.get('workspaceId');
       const workspaceId = queryWorkspaceId || tokenWorkspaceId;
 
-      // Construir where com base nos parâmetros
       const where: any = activeOnly ? { active: true } : {};
 
-      // Lógica para filtrar por workspace, se houver um workspaceId
       if (workspaceId) {
         console.log(`Filtrando campanhas para o workspace: ${workspaceId}`);
-
-        // Buscar IDs de campanhas associadas ao workspace
         const workspaceCampaigns = await prisma.workspaceFollowUpCampaign.findMany({
           where: { workspace_id: workspaceId },
           select: { campaign_id: true }
         });
-
         const campaignIds = workspaceCampaigns.map(wc => wc.campaign_id);
-
-        // Se não houver campanhas associadas a este workspace, retornar array vazio
         if (campaignIds.length === 0) {
-          return NextResponse.json({
-            success: true,
-            data: []
-          });
+          return NextResponse.json({ success: true, data: [] });
         }
-
-        // Adicionar filtro de IDs ao where
         where.id = { in: campaignIds };
       } else {
-        // Verificar se o usuário tem permissão de super admin
-        // Se não tem, não deve ver todas as campanhas
-        // Isso é uma segurança adicional
         const token = await getToken({ req });
         if (!token?.isSuperAdmin) {
           console.warn("Tentativa de acesso a todas as campanhas sem workspaceId e sem ser super admin");
@@ -80,7 +38,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Buscar campanhas
+      // Buscar campanhas, incluindo os novos campos de prompt da IA
       const campaigns = await prisma.followUpCampaign.findMany({
         where: where,
         orderBy: { created_at: 'desc' },
@@ -90,16 +48,23 @@ export async function GET(req: NextRequest) {
           description: true,
           active: true,
           created_at: true,
+          // <<< --- ADICIONAR NOVOS CAMPOS AQUI --- >>>
+          ai_prompt_product_name: true,
+          ai_prompt_target_audience: true,
+          ai_prompt_pain_point: true,
+          ai_prompt_main_benefit: true,
+          ai_prompt_tone_of_voice: true,
+          ai_prompt_extra_instructions: true,
+          ai_prompt_cta_link: true,
+          ai_prompt_cta_text: true,
+          // <<< --- FIM DOS NOVOS CAMPOS --- >>>
         }
       });
 
-      console.log(campaigns)
-
-      let stepsCount = await prisma.followUpFunnelStage
+      console.log(`Campanhas encontradas (${campaigns.length}):`, campaigns.map(c => c.name));
 
       // Adicionar contagem de etapas e follow-ups ativos para cada campanha
       const campaignsWithCounts = await Promise.all(campaigns.map(async (campaign) => {
-        // Obter os steps da campanha usando o relacionamento campaign_steps
         const campaignSteps = await prisma.followUpStep.count({
           where: {
             funnel_stage: {
@@ -107,11 +72,6 @@ export async function GET(req: NextRequest) {
             }
           }
         });
-
-        // Contar o número de etapas
-        let stepsCount = campaignSteps;
-
-        // Contar follow-ups ativos da campanha
         const activeFollowUps = await prisma.followUp.count({
           where: {
             campaign_id: campaign.id,
@@ -119,9 +79,10 @@ export async function GET(req: NextRequest) {
           }
         });
 
+        // O spread operator (...) já inclui os novos campos buscados
         return {
           ...campaign,
-          stepsCount,
+          stepsCount: campaignSteps,
           activeFollowUps
         };
       }));
@@ -145,62 +106,79 @@ export async function GET(req: NextRequest) {
   });
 }
 
-// Endpoint para criar uma nova campanha
+
+// --- FUNÇÃO POST ATUALIZADA ---
 export async function POST(req: NextRequest) {
   return withApiTokenAuth(req, async (req, tokenWorkspaceId) => {
     try {
       const body = await req.json();
-      const { name, description, steps, workspaceId } = body;
+      // Extrair todos os campos possíveis do corpo, incluindo os novos de IA
+      const {
+        name,
+        description,
+        steps, // Manter se a criação de steps ainda for feita aqui (verificar se é o caso)
+        workspaceId,
+        // Novos campos de prompt AI
+        ai_prompt_product_name,
+        ai_prompt_target_audience,
+        ai_prompt_pain_point,
+        ai_prompt_main_benefit,
+        ai_prompt_tone_of_voice,
+        ai_prompt_extra_instructions,
+        ai_prompt_cta_link,
+        ai_prompt_cta_text
+      } = body;
+
+      console.log("Dados recebidos para criar campanha:", body); // Log dos dados recebidos
 
       if (!name) {
         return NextResponse.json(
-          {
-            success: false,
-            error: "Nome da campanha é obrigatório"
-          },
+          { success: false, error: "Nome da campanha é obrigatório" },
           { status: 400 }
         );
       }
 
-      // Use o workspaceId do token se fornecido, caso contrário use o do body
       const effectiveWorkspaceId = tokenWorkspaceId || workspaceId;
 
-      // Verificar se o workspaceId foi fornecido
       if (!effectiveWorkspaceId) {
         return NextResponse.json(
-          {
-            success: false,
-            error: "ID do workspace é obrigatório"
-          },
+          { success: false, error: "ID do workspace é obrigatório" },
           { status: 400 }
         );
       }
 
-      // Verificar se o workspace existe
       const workspace = await prisma.workspace.findUnique({
         where: { id: effectiveWorkspaceId }
       });
 
       if (!workspace) {
         return NextResponse.json(
-          {
-            success: false,
-            error: "Workspace não encontrado"
-          },
+          { success: false, error: "Workspace não encontrado" },
           { status: 404 }
         );
       }
 
-      // Usar transação para garantir que a campanha e a associação com workspace são criadas juntas
+      // Usar transação para criar campanha e associação
       const campaign = await prisma.$transaction(async (tx) => {
-        // 1. Criar a campanha
+        // 1. Criar a campanha com os novos campos de IA
         const newCampaign = await tx.followUpCampaign.create({
           data: {
             name,
-            description,
-            active: true
+            description: description ?? null, // Usar ?? null para garantir que seja null se não fornecido
+            active: true, // Definir como ativa por padrão
+            // Adicionar os novos campos de prompt AI
+            ai_prompt_product_name: ai_prompt_product_name ?? null,
+            ai_prompt_target_audience: ai_prompt_target_audience ?? null,
+            ai_prompt_pain_point: ai_prompt_pain_point ?? null,
+            ai_prompt_main_benefit: ai_prompt_main_benefit ?? null,
+            ai_prompt_tone_of_voice: ai_prompt_tone_of_voice ?? null,
+            ai_prompt_extra_instructions: ai_prompt_extra_instructions ?? null,
+            ai_prompt_cta_link: ai_prompt_cta_link ?? null,
+            ai_prompt_cta_text: ai_prompt_cta_text ?? null,
           }
         });
+
+        console.log(`Campanha criada no DB com ID: ${newCampaign.id}`); // Log de sucesso interno
 
         // 2. Criar associação com o workspace
         await tx.workspaceFollowUpCampaign.create({
@@ -209,66 +187,33 @@ export async function POST(req: NextRequest) {
             campaign_id: newCampaign.id
           }
         });
+        console.log(`Associação com Workspace ${effectiveWorkspaceId} criada.`);
 
-        return newCampaign;
+        return newCampaign; // Retorna a campanha criada (incluirá os novos campos)
       });
 
-      // Se houver steps, criar separadamente usando o relacionamento campaign_steps
-      if (steps && Array.isArray(steps) && steps.length > 0) {
-        for (const step of steps) {
-          try {
-            // Calcular o tempo de espera em milissegundos
-            const waitTimeMs = calculateWaitTimeMs(step.wait_time || '30m');
-      
-            // Verificar se o funnel_stage_id foi fornecido
-            if (!step.stage_id) {
-              console.error("Erro: funnel_stage_id não fornecido para o step");
-              continue; // Pula este passo se o stage_id estiver ausente
-            }
-      
-            // Opcional: Validar se o funnel_stage_id pertence à campanha
-            const stage = await prisma.followUpFunnelStage.findUnique({
-              where: { id: step.stage_id },
-              select: { campaign_id: true }
-            });
-      
-            if (!stage || stage.campaign_id !== campaign.id) {
-              console.error("Erro: funnel_stage_id não pertence à campanha");
-              continue; // Pula este passo se a validação falhar
-            }
-      
-            // Criar o FollowUpStep sem campaign_id
-            await prisma.followUpStep.create({
-              data: {
-                funnel_stage_id: step.stage_id, // Relaciona ao estágio do funil
-                name: step.template_name || 'Step',
-                template_name: step.category || 'Utility',
-                wait_time: step.wait_time || '30m',
-                wait_time_ms: waitTimeMs,
-                message_content: step.message || ''
-              }
-            });
-          } catch (err) {
-            console.error("Erro ao criar step para nova campanha:", err);
-          }
-        }
-      }
 
       return NextResponse.json(
         {
           success: true,
           message: "Campanha criada com sucesso",
-          data: campaign
+          data: campaign // Retorna o objeto completo da campanha criada
         },
         { status: 201 }
       );
 
     } catch (error) {
       console.error("Erro ao criar campanha:", error);
+      // Adicionar mais detalhes ao erro, se possível
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error("Detalhes do erro:", errorMessage, errorStack);
+
       return NextResponse.json(
         {
           success: false,
-          error: "Erro interno do servidor"
+          error: "Erro interno do servidor ao criar campanha",
+          details: errorMessage // Incluir a mensagem de erro real pode ajudar no debug
         },
         { status: 500 }
       );
