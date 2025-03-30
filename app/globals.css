@@ -12,8 +12,8 @@
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 20 100% 48%;
-    --primary-foreground: 30 94% 98%;
+    --primary: 20 100% 48%; /* Laranja: #F54900 */
+    --primary-foreground: 30 94% 98%; /* Branco/Off-white */
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 95.9%;
@@ -24,7 +24,7 @@
     --destructive-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
-    --ring: 20 100% 48%;
+    --ring: 20 100% 48%; /* Laranja para foco */
     --radius: 0.625rem;
 
     /* Cor do header scrollado no tema light (pode ser igual ao card ou background) */
@@ -32,27 +32,29 @@
   }
 
   .dark {
-    /* ... (variáveis dark theme - com adição) ... */
-    --background: 240 10% 3.9%;        /* #0a0a0a */
-    --foreground: 0 0% 98%;            /* Quase branco */
-    --card: 240 10% 11.1%;             /* #111111 - Era 3.9% antes, agora mais claro */
-    --card-foreground: 0 0% 98%;       /* Quase branco */
-    --popover: 240 10% 3.9%;           /* #0a0a0a */
-    --popover-foreground: 0 0% 98%;    /* Quase branco */
-    --primary: 20 100% 48%;            /* Laranja */
-    --primary-foreground: 30 94% 98%;  /* Branco/Off-white */
-    --secondary: 240 3.7% 15.9%;       /* Cinza escuro */
-    --secondary-foreground: 0 0% 98%;  /* Branco */
-    --muted: 240 3.7% 15.9%;           /* Cinza escuro */
-    --muted-foreground: 240 5% 64.9%;  /* Cinza médio */
-    --accent: 240 3.7% 15.9%;          /* Cinza escuro */
-    --accent-foreground: 0 0% 98%;     /* Branco */
-    --destructive: 0 72.2% 50.6%;      /* Vermelho mais vibrante no escuro */
-    --destructive-foreground: 0 0% 98%;/* Branco */
-    --border: 240 3.7% 15.9%;          /* Cinza escuro */
-    --input: 240 3.7% 15.9%;           /* Cinza escuro */
-    --ring: 20 100% 48%;               /* Laranja */
-    --header-background: 240 10% 11.1%; /* #111111 */
+    /* --- NOVOS VALORES PARA O TEMA ESCURO --- */
+    --background: 240 8% 4%;        /* #08090a - Quase preto, levemente azulado */
+    --foreground: 210 20% 98%;      /* #fafbff - Branco suave */
+    --card: 240 6% 9%;              /* #151619 - Cinza escuro para cards */
+    --card-foreground: 210 20% 98%;  /* Branco suave */
+    --popover: 240 6% 9%;            /* #151619 - Igual ao card */
+    --popover-foreground: 210 20% 98%;/* Branco suave */
+    --primary: 20 100% 48%;          /* #F54900 - Laranja (Mantido) */
+    --primary-foreground: 30 94% 98%;/* #fefaf9 - Branco/Off-white (Mantido) */
+    --secondary: 240 5% 14%;         /* #1f2125 - Cinza mais claro para seções */
+    --secondary-foreground: 210 20% 94%;/* #edf0f2 - Branco um pouco mais suave */
+    --muted: 240 5% 14%;             /* #1f2125 - Igual ao secondary */
+    --muted-foreground: 240 5% 64%;  /* #9ba1a6 - Cinza médio */
+    --accent: 240 5% 18%;           /* #2a2c31 - Cinza para hovers */
+    --accent-foreground: 210 20% 98%;/* Branco suave */
+    --destructive: 0 72% 51%;        /* Vermelho (Mantido similar) */
+    --destructive-foreground: 0 0% 98%;/* Branco (Mantido) */
+    --border: 240 4% 20%;           /* #303136 - Borda sutil, mais clara que card/secondary */
+    --input: 240 4% 16%;            /* #242629 - Fundo de input */
+    --ring: 20 100% 48%;             /* #F54900 - Laranja para foco (Mantido) */
+    /* Fundo do header scrollado igual ao card */
+    --header-background: 240 6% 9%; /* #151619 */
+    /* --- FIM DOS NOVOS VALORES --- */
   }
 
   /* Estilos base globais */
@@ -60,35 +62,33 @@
     /* Define a cor da borda padrão usando a variável CSS */
     border-color: hsl(var(--border));
  }
-  
+
   body {
-    /* @apply bg-background text-foreground; <- REMOVIDO */
-    /* O Tailwind aplicará bg-background e text-foreground automaticamente
-       com base nas variáveis CSS :root e .dark */
+    /* O Tailwind aplicará bg-background e text-foreground automaticamente */
     font-feature-settings: "rlig" 1, "calt" 1; /* Mantido */
     background-color: hsl(var(--background));
     color: hsl(var(--foreground)); /* << GARANTE A COR PADRÃO */
-    font-feature-settings: "rlig" 1, "calt" 1;
   }
 
+ /* Garante cor do texto no dark mode */
   .dark body, .dark {
     color: hsl(var(--foreground));
  }
 }
 
+/* ... resto do arquivo (keyframes, .prose, etc.) ... */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Mantendo as animações e estilos .prose que já existiam */
 @keyframes pulse {
   0%, 100% { opacity: 0.3; }
   50% { opacity: 0.8; }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0px); }  
+  0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-10px); }
 }
 

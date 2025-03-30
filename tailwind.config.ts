@@ -2,14 +2,14 @@
 import type { Config } from 'tailwindcss'
 
 const config = {
-  darkMode: "class", // Habilitar modo escuro baseado em classe
+  darkMode: "class",
   content: [
     './pages/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}', // Adicionado src caso existam componentes lá
+    './src/**/*.{ts,tsx}',
   ],
-  prefix: '', // Manter prefixo vazio conforme padrão Shadcn
+  prefix: '',
   theme: {
     container: {
       center: true,
@@ -20,48 +20,52 @@ const config = {
     },
     extend: {
       colors: {
-        border: 'hsl(var(--border))', // Referencia variável CSS
-        input: 'hsl(var(--input))', // Referencia variável CSS
-        ring: 'hsl(var(--ring))', // Referencia variável CSS
-        background: 'hsl(var(--background))', // Referencia variável CSS
-        foreground: 'hsl(var(--foreground))', // Referencia variável CSS
+        // Mantém as definições baseadas em variáveis para flexibilidade
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))', // Usará a variável --ring
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        // Define as cores primárias DIRETAMENTE aqui
         primary: {
-          DEFAULT: 'hsl(var(--primary))', // Referencia variável CSS
-          foreground: 'hsl(var(--primary-foreground))', // Referencia variável CSS
+          // DEFAULT agora tem o valor HSL direto
+          DEFAULT: 'hsl(20, 100%, 48%)', // Laranja (#F54900)
+          // Foreground ainda pode usar a variável se preferir, ou definir direto
+          foreground: 'hsl(var(--primary-foreground))', // Branco/Off-white
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary))', // Referencia variável CSS
-          foreground: 'hsl(var(--secondary-foreground))', // Referencia variável CSS
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
         },
         destructive: {
-          DEFAULT: 'hsl(var(--destructive))', // Referencia variável CSS
-          foreground: 'hsl(var(--destructive-foreground))', // Referencia variável CSS
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
         },
         muted: {
-          DEFAULT: 'hsl(var(--muted))', // Referencia variável CSS
-          foreground: 'hsl(var(--muted-foreground))', // Referencia variável CSS
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
         },
         accent: {
-          DEFAULT: 'hsl(var(--accent))', // Referencia variável CSS
-          foreground: 'hsl(var(--accent-foreground))', // Referencia variável CSS
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
         },
         popover: {
-          DEFAULT: 'hsl(var(--popover))', // Referencia variável CSS
-          foreground: 'hsl(var(--popover-foreground))', // Referencia variável CSS
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
         },
         card: {
-          DEFAULT: 'hsl(var(--card))', // Referencia variável CSS
-          foreground: 'hsl(var(--card-foreground))', // Referencia variável CSS
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
         },
       },
       borderRadius: {
-        lg: 'var(--radius)', // Usa variável CSS do raio
-        md: 'calc(var(--radius) - 2px)', // Usa variável CSS do raio
-        sm: 'calc(var(--radius) - 4px)', // Usa variável CSS do raio
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
       },
       fontFamily: {
-        sans: ['var(--font-geist-sans)'], // Usa variável CSS da fonte
-        mono: ['var(--font-geist-mono)'], // Usa variável CSS da fonte
+        sans: ['var(--font-geist-sans)'],
+        mono: ['var(--font-geist-mono)'],
       },
       keyframes: {
         'accordion-down': {
@@ -79,7 +83,7 @@ const config = {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')], // Plugin padrão do Shadcn
+  plugins: [require('tailwindcss-animate')],
 } satisfies Config
 
 export default config

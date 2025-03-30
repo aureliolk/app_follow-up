@@ -25,19 +25,20 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;  
+  children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-br">
+    // Adicionando className="dark" aqui para ativar o tema escuro por padrão
+    <html lang="pt-br" className="dark">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} >
         <Toaster position="top-right" />
         <SessionProvider>
-        <WorkspaceProvider>
-          <div className="flex flex-col min-h-screen">
-            <Header />
-            <main>{children}</main>
-            <Footer />
-          </div>
+          <WorkspaceProvider>
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main>{children}</main>
+              <Footer />
+            </div>
           </WorkspaceProvider>
         </SessionProvider>
       </body>

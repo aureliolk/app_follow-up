@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+// Image import is kept for potential future use, but not used in current code.
+// import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-// Adicionar Check para lista de features
 import { ArrowRight, MessageSquare, BarChart2, UserPlus, Brain, Check, X } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { cn } from '@/lib/utils';
@@ -13,37 +13,38 @@ export default function LandingPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  // Estado para controlar animações (exemplo simples, ideal seria Intersection Observer)
   const [animateSections, setAnimateSections] = useState(false);
   useEffect(() => {
-    // Ativa animações após um pequeno delay para efeito de entrada
     const timer = setTimeout(() => setAnimateSections(true), 100);
     return () => clearTimeout(timer);
   }, []);
 
   return (
-    // bg-background principal
+    // Base styles using semantic colors
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
 
       {/* Hero Section */}
-      <section className={cn("pt-32 pb-20 px-4", animateSections && "animate-fade-in")}>
+      <section className={cn("pt-32 pb-20 px-4 bg-background", animateSections && "animate-fade-in")}>
         <div className="container mx-auto flex flex-col items-center text-center">
           <h1 className="text-4xl md:text-6xl font-bold mb-6 text-foreground">
             Automatize seus Follow-ups <br />
+            {/* Correct: text-primary for the highlight */}
             <span className="text-primary">Potencializado por IA</span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mb-10">
             Otimize seu relacionamento com clientes através de campanhas inteligentes que respondem e se adaptam automaticamente.
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
+            {/* Correct: bg-primary for main CTA */}
             <Link
               href="/auth/register"
               className="inline-flex items-center justify-center px-8 py-3 bg-primary text-primary-foreground rounded-md text-lg font-medium hover:bg-primary/90 transition-transform transform hover:scale-105 duration-300"
             >
               Comece Agora <ArrowRight className="ml-2 h-5 w-5" />
             </Link>
+            {/* Correct: Outline style using border-border and text-foreground */}
             <Link
-              href="#pricing" // Link para a nova seção de preços
+              href="#pricing"
               className="inline-flex items-center justify-center px-8 py-3 bg-transparent border border-border text-foreground hover:bg-accent hover:text-accent-foreground rounded-md text-lg font-medium transition-colors"
             >
               Ver Planos
@@ -52,23 +53,19 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Animated Visual (com leve ajuste de fundo) */}
-      <section className={cn("py-10 px-4 relative overflow-hidden", animateSections && "animate-fade-in")} style={{ animationDelay: '0.2s' }}>
+      {/* Animated Visual */}
+      <section className={cn("py-10 px-4 relative overflow-hidden bg-background", animateSections && "animate-fade-in")} style={{ animationDelay: '0.2s' }}>
         <div className="container mx-auto flex justify-center">
-           {/* Usa bg-card (que é #111 no dark) */}
           <div className="w-full max-w-4xl h-64 md:h-96 bg-card rounded-xl relative shadow-xl overflow-hidden border border-border">
-             {/* Gradiente mais sutil */}
-             <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-secondary/5 opacity-50 dark:opacity-30"></div>
-            {/* Conteúdo interno */}
             <div className="absolute inset-0 flex items-center justify-center p-8">
-              <div className="text-center bg-background/50 dark:bg-background/70 backdrop-blur-sm p-6 rounded-lg">
+              <div className="text-center bg-background/80 backdrop-blur-sm p-6 rounded-lg">
+                 {/* Correct: text-primary for the Brain icon */}
                 <Brain className="h-16 w-16 text-primary mx-auto mb-4" />
                 <div className="text-2xl font-bold mb-2 text-foreground">Gerenciador Inteligente de Campanhas</div>
                 <div className="text-muted-foreground">Visualize seu fluxo de campanha aqui</div>
               </div>
             </div>
-             {/* Pontos animados */}
-            <div className="absolute inset-0 grid grid-cols-20 grid-rows-10 opacity-10 dark:opacity-5 pointer-events-none">
+            <div className="absolute inset-0 grid grid-cols-20 grid-rows-10 opacity-5 pointer-events-none">
               {Array.from({ length: 200 }).map((_, i) => (
                 <div key={i} className="h-1 w-1 rounded-full bg-foreground opacity-50 animate-pulse" style={{ animationDuration: `${3 + (i % 5)}s`, animationDelay: `${(i % 10) * 0.2}s` }}></div>
               ))}
@@ -77,13 +74,14 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features (fundo secundário) */}
+      {/* Features */}
       <section id="features" className={cn("py-20 px-4 bg-secondary", animateSections && "animate-fade-in")} style={{ animationDelay: '0.4s' }}>
         <div className="container mx-auto">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-16 text-foreground">Recursos Poderosos</h2>
           <div className="grid md:grid-cols-3 gap-8">
-            {/* Cards usam bg-card */}
+            {/* Card 1 */}
             <div className="bg-card p-6 rounded-xl border border-border hover:shadow-lg transition-shadow duration-300 transform hover:-translate-y-1">
+              {/* Correct: bg tint, border tint, and icon color using primary */}
               <div className="h-12 w-12 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center mb-4 border border-primary/20">
                 <MessageSquare className="h-6 w-6 text-primary" />
               </div>
@@ -92,8 +90,8 @@ export default function LandingPage() {
                 Nossa IA adapta mensagens às respostas dos clientes, criando fluxos de comunicação naturais e eficazes.
               </p>
             </div>
-            {/* ... outros cards de features com estilo similar ... */}
-             <div className="bg-card p-6 rounded-xl border border-border hover:shadow-lg transition-shadow duration-300 transform hover:-translate-y-1">
+            {/* Card 2 */}
+            <div className="bg-card p-6 rounded-xl border border-border hover:shadow-lg transition-shadow duration-300 transform hover:-translate-y-1">
               <div className="h-12 w-12 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center mb-4 border border-primary/20">
                 <BarChart2 className="h-6 w-6 text-primary" />
               </div>
@@ -102,6 +100,7 @@ export default function LandingPage() {
                 Acompanhe o desempenho e otimize sua estratégia com insights e métricas detalhadas.
               </p>
             </div>
+            {/* Card 3 */}
             <div className="bg-card p-6 rounded-xl border border-border hover:shadow-lg transition-shadow duration-300 transform hover:-translate-y-1">
               <div className="h-12 w-12 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center mb-4 border border-primary/20">
                 <UserPlus className="h-6 w-6 text-primary" />
@@ -115,12 +114,14 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* How It Works (fundo principal) */}
+      {/* How It Works */}
       <section id="how-it-works" className={cn("py-20 px-4 bg-background", animateSections && "animate-fade-in")} style={{ animationDelay: '0.6s' }}>
         <div className="container mx-auto">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-16 text-foreground">Como Funciona</h2>
           <div className="max-w-3xl mx-auto space-y-12">
+            {/* Step 1 */}
             <div className="flex items-start">
+              {/* Correct: Numbered circle uses bg-primary */}
               <div className="h-10 w-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mr-4 text-primary-foreground">
                 <span className="font-bold">1</span>
               </div>
@@ -131,7 +132,7 @@ export default function LandingPage() {
                 </p>
               </div>
             </div>
-            {/* ... outras etapas ... */}
+            {/* Step 2 */}
              <div className="flex items-start">
               <div className="h-10 w-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mr-4 text-primary-foreground">
                 <span className="font-bold">2</span>
@@ -143,6 +144,7 @@ export default function LandingPage() {
                 </p>
               </div>
             </div>
+            {/* Step 3 */}
             <div className="flex items-start">
               <div className="h-10 w-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mr-4 text-primary-foreground">
                 <span className="font-bold">3</span>
@@ -158,19 +160,22 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Stats (fundo secundário) */}
+      {/* Stats */}
       <section className={cn("py-20 px-4 bg-secondary", animateSections && "animate-fade-in")} style={{ animationDelay: '0.8s' }}>
-        {/* ... conteúdo stats ... */}
          <div className="container mx-auto">
           <div className="grid md:grid-cols-3 gap-8 text-center">
+            {/* Stat 1 */}
             <div>
+              {/* Correct: Stat number uses text-primary */}
               <div className="text-4xl font-bold text-primary mb-2">95%</div>
               <p className="text-muted-foreground">Aumento nas taxas de resposta</p>
             </div>
+            {/* Stat 2 */}
             <div>
               <div className="text-4xl font-bold text-primary mb-2">75%</div>
               <p className="text-muted-foreground">Tempo economizado em follow-ups</p>
             </div>
+            {/* Stat 3 */}
             <div>
               <div className="text-4xl font-bold text-primary mb-2">3x</div>
               <p className="text-muted-foreground">Melhoria na conversão</p>
@@ -179,7 +184,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* NOVA SEÇÃO: Pricing / Planos */}
+      {/* Pricing / Planos */}
       <section id="pricing" className={cn("py-20 px-4 bg-background", animateSections && "animate-fade-in")} style={{ animationDelay: '1.0s' }}>
         <div className="container mx-auto">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 text-foreground">Planos Flexíveis</h2>
@@ -197,6 +202,7 @@ export default function LandingPage() {
                 <span className="text-muted-foreground"> / para sempre</span>
               </div>
               <ul className="space-y-3 text-muted-foreground mb-8 flex-grow">
+                {/* Features included */}
                 <li className="flex items-center gap-2">
                   <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
                   <span>1 Campanha ativa</span>
@@ -209,6 +215,7 @@ export default function LandingPage() {
                   <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
                   <span>1 Usuário</span>
                 </li>
+                 {/* Features excluded */}
                  <li className="flex items-center gap-2 opacity-60">
                   <X className="h-5 w-5 text-red-500 flex-shrink-0" />
                   <span>Análise e Geração IA Básica</span>
@@ -231,8 +238,9 @@ export default function LandingPage() {
             </div>
 
             {/* Card Premium (Destaque) */}
+            {/* Correct: border-primary */}
             <div className="bg-card border-2 border-primary rounded-xl p-8 flex flex-col relative overflow-hidden">
-              {/* Badge de destaque */}
+              {/* Correct: Badge uses bg-primary */}
               <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-bold px-4 py-1 rounded-bl-lg">
                 MAIS POPULAR
               </div>
@@ -243,6 +251,7 @@ export default function LandingPage() {
                 <span className="text-muted-foreground"> / mês</span>
               </div>
               <ul className="space-y-3 text-muted-foreground mb-8 flex-grow">
+                {/* Correct: Check icons use text-primary */}
                 <li className="flex items-center gap-2">
                   <Check className="h-5 w-5 text-primary flex-shrink-0" />
                   <span>Campanhas ilimitadas</span>
@@ -272,8 +281,9 @@ export default function LandingPage() {
                   <span>Suporte Prioritário</span>
                 </li>
               </ul>
+              {/* Correct: Button uses bg-primary */}
               <Link
-                href="/auth/register?plan=premium" // Exemplo de link com plano
+                href="/auth/register?plan=premium"
                 className="w-full inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 transition-colors"
               >
                 Assinar Plano Premium
@@ -283,15 +293,17 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CTA Final (fundo principal) */}
+      {/* CTA Final */}
       <section className={cn("py-20 px-4 bg-background", animateSections && "animate-fade-in")} style={{ animationDelay: '1.2s' }}>
         <div className="container mx-auto max-w-4xl">
+          {/* Correct: Gradient uses primary tints */}
           <div className="bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 dark:from-primary/20 dark:via-card/10 dark:to-primary/20 p-10 rounded-2xl text-center border border-border">
             <h2 className="text-3xl md:text-4xl font-bold mb-6 text-foreground">Transforme seus Follow-ups Hoje</h2>
             <p className="text-xl text-muted-foreground mb-8">
               Comece gratuitamente ou escolha o plano Premium para liberar todo o potencial da IA.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
+               {/* Correct: Button uses bg-primary */}
               <Link
                 href="/auth/register"
                 className="inline-flex items-center justify-center px-8 py-3 bg-primary text-primary-foreground rounded-md text-lg font-medium hover:bg-primary/90 transition-transform transform hover:scale-105 duration-300"

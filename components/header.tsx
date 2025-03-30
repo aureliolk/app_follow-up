@@ -31,23 +31,20 @@ declare module 'next-auth/jwt' {
   }
 // --- Fim da Definição de Tipos ---
 
-// Hook para gerenciar o tema (VERSÃO SIMPLIFICADA)
+// Hook para gerenciar o tema (Mantido como antes)
 function useTheme() {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Começa com light para teste
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
-  // Efeito para carregar o tema inicial do localStorage (CLIENT-SIDE ONLY)
   useEffect(() => {
     const storedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    if (storedTheme) {
-        setTheme(storedTheme);
-    } else {
-        // Se não houver tema salvo, define 'dark' como padrão inicial e salva
-        setTheme('dark');
-        localStorage.setItem('theme', 'dark');
+    // Definir 'dark' como padrão se não houver nada salvo ou se for inválido
+    const initialTheme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'dark';
+    setTheme(initialTheme);
+    if (!storedTheme) {
+        localStorage.setItem('theme', 'dark'); // Salva o padrão se não existir
     }
-  }, []); // Executa apenas uma vez na montagem do cliente
+  }, []);
 
-  // Efeito para aplicar a classe e salvar no localStorage QUANDO o tema MUDAR
   useEffect(() => {
     const root = window.document.documentElement;
     if (theme === 'dark') {
@@ -56,8 +53,8 @@ function useTheme() {
       root.classList.remove('dark');
     }
     localStorage.setItem('theme', theme);
-    console.log("Tema aplicado:", theme); // Log para debug
-  }, [theme]); // Executa sempre que 'theme' mudar
+    console.log("Tema aplicado:", theme);
+  }, [theme]);
 
   const toggleTheme = useCallback(() => {
     setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
@@ -93,15 +90,14 @@ export default function Header() {
 
   const isLoadingSession = status === 'loading';
 
-  // Usa a nova variável CSS diretamente no background quando scrollado/interno
   const headerClasses = cn(
     'fixed top-0 left-0 right-0 z-40 transition-all duration-300 ease-in-out',
     isScrolled || !isLandingPage
-      ? 'bg-[hsl(var(--header-background))] border-b border-border shadow-sm py-3' // Usa a nova variável para fundo
+      ? 'bg-[hsl(var(--header-background))] border-b border-border shadow-sm py-3'
       : 'bg-transparent py-4'
   );
 
-  // Cores dos links ajustadas para usar foreground/muted-foreground
+  // Ajustando cores dos links para contraste
   const linkClasses = cn('text-sm font-medium transition-colors', 'text-muted-foreground hover:text-foreground');
   const activeLinkClasses = 'text-primary font-semibold'; // Laranja e negrito para ativo
 
@@ -112,7 +108,6 @@ export default function Header() {
           {/* Logo */}
           <Link href={session ? '/workspaces' : '/'} className="flex items-center gap-2 flex-shrink-0">
             <img width={30} height={30} src="https://app.lumibot.com.br/brand-assets/thumbnail-lumibot.svg" alt="Logo lumibot" />
-            {/* Força text-foreground */}
             <span className="text-lg font-bold text-foreground">LumibotAI</span>
           </Link>
 
@@ -134,7 +129,7 @@ export default function Header() {
                  <div className="h-8 w-8 bg-muted rounded-full animate-pulse"></div>
               </div>
             ) : session ? (
-              // Navegação Autenticada
+              // Navegação Autenticada (Sem mudanças aqui)
               <>
                 <Link
                   href="/workspaces"
@@ -146,14 +141,14 @@ export default function Header() {
                   Workspaces
                 </Link>
 
-                {/* Dropdown do Usuário */}
+                {/* Dropdown do Usuário (Sem mudanças aqui)*/}
                 <div className="relative group">
                   <button className="flex items-center text-sm text-muted-foreground hover:text-foreground gap-1 p-1 -m-1 rounded-md hover:bg-accent transition-colors">
-                    <UserCircle className="h-6 w-6" /> {/* Ícone um pouco maior */}
+                    <UserCircle className="h-6 w-6" />
                   </button>
-                  {/* Conteúdo do Dropdown */}
                   <div className="absolute right-0 mt-2 w-56 bg-popover border border-border rounded-md shadow-lg overflow-hidden origin-top-right scale-95 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-200 ease-out pointer-events-none group-hover:pointer-events-auto">
-                    <div className="p-1 space-y-1">
+                    {/* ... (conteúdo dropdown mantido) ... */}
+                     <div className="p-1 space-y-1">
                        <div className="px-3 py-2 border-b border-border">
                         <p className="text-sm font-medium text-foreground truncate">{session.user?.name || 'Usuário'}</p>
                         <p className="text-xs text-muted-foreground truncate">{session.user?.email}</p>
@@ -182,7 +177,7 @@ export default function Header() {
                 </div>
               </>
             ) : (
-              // Navegação Não Autenticada (Landing Page)
+              // --- Navegação Não Autenticada (Landing Page - AJUSTADA) ---
               <>
                 <Link href="#features" className={linkClasses}>
                   Recursos
@@ -190,9 +185,18 @@ export default function Header() {
                 <Link href="#how-it-works" className={linkClasses}>
                   Como funciona
                 </Link>
-                <Link href="/auth/login" className={linkClasses}>
+                {/* Botão Entrar - Estilo Outline Laranja */}
+                <Link
+                    href="/auth/login"
+                    className={cn(
+                        linkClasses,
+                        // Aplicando estilo de outline com cor primária
+                        "border border-primary text-primary px-4 py-1.5 rounded-md hover:bg-primary/10"
+                    )}
+                >
                   Entrar
                 </Link>
+                {/* Botão Cadastre-se - Estilo Primário Laranja Sólido */}
                 <Link
                   href="/auth/register"
                   className="inline-flex items-center justify-center px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
@@ -200,10 +204,11 @@ export default function Header() {
                   Cadastre-se
                 </Link>
               </>
+              // --- Fim da Navegação Ajustada ---
             )}
           </div>
 
-          {/* Botão do Menu Mobile */}
+          {/* Botão do Menu Mobile (Sem mudanças) */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="md:hidden text-foreground p-2 -mr-2"
@@ -214,12 +219,11 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Painel do Menu Mobile */}
+      {/* Painel do Menu Mobile (Ajuste nos botões não logados) */}
       {isMobileMenuOpen && !isLoadingSession && (
-        // Usa bg-background e border-border
         <div className="md:hidden absolute top-full left-0 right-0 bg-background border-t border-border shadow-lg">
            <div className="px-4 py-4 space-y-2">
-             {/* Botão de Tema Mobile */}
+             {/* Botão de Tema Mobile (Mantido) */}
              <button
                 onClick={toggleTheme}
                 className="flex items-center gap-3 w-full text-left py-2 text-foreground hover:text-primary transition-colors"
@@ -232,7 +236,9 @@ export default function Header() {
 
             {/* Restante do menu mobile */}
             {session ? (
+              // Menu Logado (Mantido)
               <>
+                {/* ... (código mantido) ... */}
                 <div className="flex items-center gap-2 pt-2 border-b border-border pb-3 mb-3">
                   <UserCircle className="h-6 w-6 text-foreground" />
                   <div>
@@ -268,6 +274,7 @@ export default function Header() {
                 </button>
               </>
             ) : (
+              // --- Menu Não Logado (AJUSTADO) ---
               <>
                 <Link href="#features" className="block py-2 text-foreground hover:text-primary transition-colors">
                   Recursos
@@ -275,9 +282,14 @@ export default function Header() {
                 <Link href="#how-it-works" className="block py-2 text-foreground hover:text-primary transition-colors">
                   Como funciona
                 </Link>
-                <Link href="/auth/login" className="block py-2 text-foreground hover:text-primary transition-colors">
+                {/* Botão Entrar - Estilo Outline Laranja */}
+                 <Link
+                    href="/auth/login"
+                    className="block w-full mt-2 text-center px-4 py-2 border border-primary text-primary rounded-md hover:bg-primary/10 transition-colors"
+                >
                   Entrar
                 </Link>
+                {/* Botão Cadastre-se - Estilo Primário Laranja Sólido */}
                 <Link
                   href="/auth/register"
                   className="block w-full mt-2 text-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
@@ -285,6 +297,7 @@ export default function Header() {
                   Cadastre-se
                 </Link>
               </>
+              // --- Fim Menu Não Logado Ajustado ---
             )}
           </div>
         </div>
