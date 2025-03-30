@@ -1,94 +1,180 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession, signOut, SessionContextValue } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
-import { LogOut, UserCircle, Settings, Home, Layers, MessageSquare, Menu, X } from 'lucide-react';
+import { LogOut, UserCircle, Settings, Layers, Menu, X, Loader2, Sun, Moon } from 'lucide-react';
+import { cn } from '@/lib/utils'; // Importar cn para classes condicionais
+
+// --- Definição de Tipos Estendidos para NextAuth ---
+import 'next-auth';
+
+declare module 'next-auth' {
+  interface User {
+    id: string;
+    isSuperAdmin?: boolean;
+  }
+  interface Session {
+    user: User & {
+      name?: string | null;
+      email?: string | null;
+      image?: string | null;
+    };
+  }
+}
+declare module 'next-auth/jwt' {
+    interface JWT {
+      id?: string;
+      isSuperAdmin?: boolean;
+    }
+  }
+// --- Fim da Definição de Tipos ---
+
+// Hook para gerenciar o tema (VERSÃO SIMPLIFICADA)
+function useTheme() {
+  const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Começa com light para teste
+
+  // Efeito para carregar o tema inicial do localStorage (CLIENT-SIDE ONLY)
+  useEffect(() => {
+    const storedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    if (storedTheme) {
+        setTheme(storedTheme);
+    } else {
+        // Se não houver tema salvo, define 'dark' como padrão inicial e salva
+        setTheme('dark');
+        localStorage.setItem('theme', 'dark');
+    }
+  }, []); // Executa apenas uma vez na montagem do cliente
+
+  // Efeito para aplicar a classe e salvar no localStorage QUANDO o tema MUDAR
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+    console.log("Tema aplicado:", theme); // Log para debug
+  }, [theme]); // Executa sempre que 'theme' mudar
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
+  }, []);
+
+  return { theme, toggleTheme };
+}
+// --- Fim Hook ---
+
 
 export default function Header() {
-  const { data: session } = useSession();
+  const { data: session, status }: SessionContextValue = useSession();
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const isLandingPage = pathname === '/';
 
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 10) {
-        setIsScrolled(true);
-      } else {
-        setIsScrolled(false);
-      }
+      const shouldBeScrolled = !isLandingPage || window.scrollY > 10;
+      setIsScrolled(shouldBeScrolled);
     };
-
+    handleScroll();
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [pathname, isLandingPage]);
 
-  // Close mobile menu when path changes
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
+  useEffect(() => { setIsMobileMenuOpen(false); }, [pathname]);
 
   const isAuthPage = pathname?.startsWith('/auth');
-  const isLandingPage = pathname === '/';
-
-  // Don't show header on auth pages
   if (isAuthPage) return null;
 
+  const isLoadingSession = status === 'loading';
+
+  // Usa a nova variável CSS diretamente no background quando scrollado/interno
+  const headerClasses = cn(
+    'fixed top-0 left-0 right-0 z-40 transition-all duration-300 ease-in-out',
+    isScrolled || !isLandingPage
+      ? 'bg-[hsl(var(--header-background))] border-b border-border shadow-sm py-3' // Usa a nova variável para fundo
+      : 'bg-transparent py-4'
+  );
+
+  // Cores dos links ajustadas para usar foreground/muted-foreground
+  const linkClasses = cn('text-sm font-medium transition-colors', 'text-muted-foreground hover:text-foreground');
+  const activeLinkClasses = 'text-primary font-semibold'; // Laranja e negrito para ativo
+
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${
-        isScrolled || !isLandingPage ? 'bg-[#0a0a0a] shadow-md py-2' : 'bg-transparent py-4'
-      }`}
-    >
+    <header className={headerClasses} >
       <div className="container mx-auto px-4">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center h-14"> {/* Altura fixa */}
           {/* Logo */}
-          <Link href={session ? '/workspaces' : '/'} className="flex items-center">
-            <img width={35} height={35} src="https://app.lumibot.com.br/brand-assets/thumbnail-lumibot.svg" alt="Logo lumibot" />
-            <span className="text-xl ml-2 font-bold text-white">LumibotAI</span>
+          <Link href={session ? '/workspaces' : '/'} className="flex items-center gap-2 flex-shrink-0">
+            <img width={30} height={30} src="https://app.lumibot.com.br/brand-assets/thumbnail-lumibot.svg" alt="Logo lumibot" />
+            {/* Força text-foreground */}
+            <span className="text-lg font-bold text-foreground">LumibotAI</span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
-            {session ? (
-              // Authenticated navigation
+          <div className="hidden md:flex items-center gap-6">
+             {/* Botão de Tema */}
+            <button
+                onClick={toggleTheme}
+                className="p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+                aria-label={`Mudar para tema ${theme === 'light' ? 'escuro' : 'claro'}`}
+            >
+                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+
+            {isLoadingSession ? (
+              // Placeholders
+              <div className="flex items-center gap-6">
+                 <div className="h-5 w-20 bg-muted rounded animate-pulse"></div>
+                 <div className="h-8 w-8 bg-muted rounded-full animate-pulse"></div>
+              </div>
+            ) : session ? (
+              // Navegação Autenticada
               <>
                 <Link
                   href="/workspaces"
-                  className={`text-sm ${
-                    pathname === '/workspaces' ? 'text-[#F54900]' : 'text-gray-400 hover:text-white'
-                  } transition-colors`}
+                  className={cn(
+                    linkClasses,
+                    (pathname === '/workspaces' || pathname?.startsWith('/workspace/')) && activeLinkClasses
+                  )}
                 >
                   Workspaces
                 </Link>
-                
-                {/* User dropdown */}
+
+                {/* Dropdown do Usuário */}
                 <div className="relative group">
-                  <button className="flex items-center text-gray-400 hover:text-white gap-2">
-                    <UserCircle className="h-5 w-5" />
-                    <span>{session.user?.name || session.user?.email}</span>
+                  <button className="flex items-center text-sm text-muted-foreground hover:text-foreground gap-1 p-1 -m-1 rounded-md hover:bg-accent transition-colors">
+                    <UserCircle className="h-6 w-6" /> {/* Ícone um pouco maior */}
                   </button>
-                  <div className="absolute right-0 mt-2 w-48 bg-[#111111] border border-[#333333] rounded-md shadow-lg overflow-hidden origin-top-right scale-0 group-hover:scale-100 transition-transform">
-                    <div className="p-2">
+                  {/* Conteúdo do Dropdown */}
+                  <div className="absolute right-0 mt-2 w-56 bg-popover border border-border rounded-md shadow-lg overflow-hidden origin-top-right scale-95 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-200 ease-out pointer-events-none group-hover:pointer-events-auto">
+                    <div className="p-1 space-y-1">
+                       <div className="px-3 py-2 border-b border-border">
+                        <p className="text-sm font-medium text-foreground truncate">{session.user?.name || 'Usuário'}</p>
+                        <p className="text-xs text-muted-foreground truncate">{session.user?.email}</p>
+                      </div>
                       {session.user?.isSuperAdmin && (
-                        <div className="px-3 py-2 text-xs text-purple-400 border-b border-[#333333] mb-1">
+                        <div className="px-3 pt-2 text-xs font-semibold text-purple-400">
                           Super Admin
                         </div>
                       )}
                       <Link
-                        href="/profile"
-                        className="block px-3 py-2 text-sm text-gray-300 hover:bg-[#222222] rounded-md"
+                        href="/profile" // Ajustar rota
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-popover-foreground hover:bg-accent rounded-md transition-colors"
                       >
-                        <Settings className="h-4 w-4 inline mr-2" />
+                        <Settings className="h-4 w-4" />
                         Configurações
                       </Link>
                       <button
                         onClick={() => signOut({ callbackUrl: '/' })}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-[#222222] rounded-md"
+                        className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-popover-foreground hover:bg-accent rounded-md transition-colors"
                       >
-                        <LogOut className="h-4 w-4 inline mr-2" />
+                        <LogOut className="h-4 w-4" />
                         Sair
                       </button>
                     </div>
@@ -96,29 +182,20 @@ export default function Header() {
                 </div>
               </>
             ) : (
-              // Unauthenticated navigation for landing page
+              // Navegação Não Autenticada (Landing Page)
               <>
-                <Link
-                  href="#features"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
+                <Link href="#features" className={linkClasses}>
                   Recursos
                 </Link>
-                <Link
-                  href="#how-it-works"
-                  className="text-gray-300 hover:text-white transition-colors"
-                >
+                <Link href="#how-it-works" className={linkClasses}>
                   Como funciona
                 </Link>
-                <Link
-                  href="/auth/login"
-                  className="px-4 py-2 bg-[#F54900] hover:bg-[#D93C00] rounded-md transition-colors"
-                >
+                <Link href="/auth/login" className={linkClasses}>
                   Entrar
                 </Link>
                 <Link
                   href="/auth/register"
-                  className="px-4 py-2 border border-[#F54900] text-[#F54900] hover:bg-[#F54900] hover:text-white rounded-md transition-colors"
+                  className="inline-flex items-center justify-center px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
                 >
                   Cadastre-se
                 </Link>
@@ -126,10 +203,10 @@ export default function Header() {
             )}
           </div>
 
-          {/* Mobile menu button */}
+          {/* Botão do Menu Mobile */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden text-white p-2"
+            className="md:hidden text-foreground p-2 -mr-2"
             aria-label={isMobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
           >
             {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -137,66 +214,73 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Mobile menu */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-[#111111] border-t border-[#333333] mt-2">
-          <div className="px-4 py-4 space-y-4">
+      {/* Painel do Menu Mobile */}
+      {isMobileMenuOpen && !isLoadingSession && (
+        // Usa bg-background e border-border
+        <div className="md:hidden absolute top-full left-0 right-0 bg-background border-t border-border shadow-lg">
+           <div className="px-4 py-4 space-y-2">
+             {/* Botão de Tema Mobile */}
+             <button
+                onClick={toggleTheme}
+                className="flex items-center gap-3 w-full text-left py-2 text-foreground hover:text-primary transition-colors"
+                aria-label={`Mudar para tema ${theme === 'light' ? 'escuro' : 'claro'}`}
+            >
+                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                <span>Mudar para tema {theme === 'light' ? 'Escuro' : 'Claro'}</span>
+            </button>
+             <hr className="border-border" />
+
+            {/* Restante do menu mobile */}
             {session ? (
-              // Authenticated mobile navigation
               <>
-                <div className="flex items-center border-b border-[#333333] pb-2 mb-2">
-                  <UserCircle className="h-5 w-5 text-white mr-2" />
-                  <span className="text-white">{session.user?.name || session.user?.email}</span>
+                <div className="flex items-center gap-2 pt-2 border-b border-border pb-3 mb-3">
+                  <UserCircle className="h-6 w-6 text-foreground" />
+                  <div>
+                     <p className="text-sm font-medium text-foreground truncate">{session.user?.name}</p>
+                     <p className="text-xs text-muted-foreground truncate">{session.user?.email}</p>
+                  </div>
                 </div>
-                
+                 {session.user?.isSuperAdmin && (
+                    <div className="px-3 py-1 text-xs font-semibold text-purple-400">
+                        Super Admin
+                    </div>
+                )}
                 <Link
                   href="/workspaces"
-                  className="block py-2 text-white hover:text-[#F54900]"
+                  className="flex items-center gap-3 py-2 text-foreground hover:text-primary transition-colors"
                 >
-                  <Layers className="h-5 w-5 inline mr-2" />
+                  <Layers className="h-5 w-5" />
                   Workspaces
                 </Link>
-                
                 <Link
-                  href="/profile"
-                  className="block py-2 text-white hover:text-[#F54900]"
+                  href="/profile" // Ajustar rota
+                  className="flex items-center gap-3 py-2 text-foreground hover:text-primary transition-colors"
                 >
-                  <Settings className="h-5 w-5 inline mr-2" />
+                  <Settings className="h-5 w-5" />
                   Configurações
                 </Link>
-                
                 <button
                   onClick={() => signOut({ callbackUrl: '/' })}
-                  className="block py-2 text-white hover:text-[#F54900]"
+                  className="flex items-center gap-3 w-full text-left py-2 text-foreground hover:text-primary transition-colors"
                 >
-                  <LogOut className="h-5 w-5 inline mr-2" />
+                  <LogOut className="h-5 w-5" />
                   Sair
                 </button>
               </>
             ) : (
-              // Unauthenticated mobile navigation
               <>
-                <Link
-                  href="#features"
-                  className="block py-2 text-white hover:text-[#F54900]"
-                >
+                <Link href="#features" className="block py-2 text-foreground hover:text-primary transition-colors">
                   Recursos
                 </Link>
-                <Link
-                  href="#how-it-works"
-                  className="block py-2 text-white hover:text-[#F54900]"
-                >
+                <Link href="#how-it-works" className="block py-2 text-foreground hover:text-primary transition-colors">
                   Como funciona
                 </Link>
-                <Link
-                  href="/auth/login"
-                  className="block py-2 text-white hover:text-[#F54900]"
-                >
+                <Link href="/auth/login" className="block py-2 text-foreground hover:text-primary transition-colors">
                   Entrar
                 </Link>
                 <Link
                   href="/auth/register"
-                  className="block py-2 text-white hover:text-[#F54900]"
+                  className="block w-full mt-2 text-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
                 >
                   Cadastre-se
                 </Link>

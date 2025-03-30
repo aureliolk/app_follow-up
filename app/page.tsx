@@ -4,167 +4,153 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, MessageSquare, BarChart2, UserPlus, Brain } from 'lucide-react';
+// Adicionar Check para lista de features
+import { ArrowRight, MessageSquare, BarChart2, UserPlus, Brain, Check, X } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { cn } from '@/lib/utils';
 
 export default function LandingPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [isScrolled, setIsScrolled] = useState(false);
 
+  // Estado para controlar animações (exemplo simples, ideal seria Intersection Observer)
+  const [animateSections, setAnimateSections] = useState(false);
   useEffect(() => {
-    // Redirecionar para workspaces se já estiver autenticado
-    // if (status === 'authenticated') {
-    //   router.push('/workspaces');
-    // }
-
-    const handleScroll = () => {
-      if (window.scrollY > 10) {
-        setIsScrolled(true);
-      } else {
-        setIsScrolled(false);
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [status, router]);
+    // Ativa animações após um pequeno delay para efeito de entrada
+    const timer = setTimeout(() => setAnimateSections(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    // bg-background principal
+    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-4">
+      <section className={cn("pt-32 pb-20 px-4", animateSections && "animate-fade-in")}>
         <div className="container mx-auto flex flex-col items-center text-center">
-          <h1 className="text-4xl md:text-6xl font-bold mb-6">
+          <h1 className="text-4xl md:text-6xl font-bold mb-6 text-foreground">
             Automatize seus Follow-ups <br />
-            <span className="text-[#F54900]">Potencializado por IA</span>
+            <span className="text-primary">Potencializado por IA</span>
           </h1>
-          <p className="text-xl text-gray-400 max-w-2xl mb-10">
-            Otimize seu relacionamento com clientes através de campanhas inteligentes de follow-up que respondem e se adaptam automaticamente. Nunca mais perca uma oportunidade de conexão.
+          <p className="text-xl text-muted-foreground max-w-2xl mb-10">
+            Otimize seu relacionamento com clientes através de campanhas inteligentes que respondem e se adaptam automaticamente.
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
-            <Link 
-              href="/auth/register" 
-              className="px-8 py-3 bg-[#F54900] hover:bg-[#D93C00] rounded-md text-lg font-medium flex items-center justify-center transition-colors"
+            <Link
+              href="/auth/register"
+              className="inline-flex items-center justify-center px-8 py-3 bg-primary text-primary-foreground rounded-md text-lg font-medium hover:bg-primary/90 transition-transform transform hover:scale-105 duration-300"
             >
               Comece Agora <ArrowRight className="ml-2 h-5 w-5" />
             </Link>
-            <Link 
-              href="#how-it-works" 
-              className="px-8 py-3 bg-transparent border border-gray-600 hover:border-gray-400 rounded-md text-lg font-medium transition-colors"
+            <Link
+              href="#pricing" // Link para a nova seção de preços
+              className="inline-flex items-center justify-center px-8 py-3 bg-transparent border border-border text-foreground hover:bg-accent hover:text-accent-foreground rounded-md text-lg font-medium transition-colors"
             >
-              Saiba Mais
+              Ver Planos
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Animated Visual */}
-      <section className="py-10 px-4 relative overflow-hidden">
+      {/* Animated Visual (com leve ajuste de fundo) */}
+      <section className={cn("py-10 px-4 relative overflow-hidden", animateSections && "animate-fade-in")} style={{ animationDelay: '0.2s' }}>
         <div className="container mx-auto flex justify-center">
-          <div className="w-full max-w-4xl h-64 md:h-96 bg-[#111111] rounded-xl relative shadow-xl overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-[#F54900]/20 to-blue-500/10"></div>
-            <div className="absolute top-8 left-8 right-8 bottom-8 bg-[#0a0a0a]/80 rounded-lg flex items-center justify-center">
-              <div className="text-center">
-                <Brain className="h-16 w-16 text-[#F54900] mx-auto mb-4" />
-                <div className="text-2xl font-bold mb-2">Gerenciador Inteligente de Campanhas</div>
-                <div className="text-gray-400">Visualize seu fluxo de campanha aqui</div>
+           {/* Usa bg-card (que é #111 no dark) */}
+          <div className="w-full max-w-4xl h-64 md:h-96 bg-card rounded-xl relative shadow-xl overflow-hidden border border-border">
+             {/* Gradiente mais sutil */}
+             <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-secondary/5 opacity-50 dark:opacity-30"></div>
+            {/* Conteúdo interno */}
+            <div className="absolute inset-0 flex items-center justify-center p-8">
+              <div className="text-center bg-background/50 dark:bg-background/70 backdrop-blur-sm p-6 rounded-lg">
+                <Brain className="h-16 w-16 text-primary mx-auto mb-4" />
+                <div className="text-2xl font-bold mb-2 text-foreground">Gerenciador Inteligente de Campanhas</div>
+                <div className="text-muted-foreground">Visualize seu fluxo de campanha aqui</div>
               </div>
             </div>
-            {/* Animated dots for technological effect */}
-            <div className="absolute inset-0 grid grid-cols-20 grid-rows-10 opacity-30">
+             {/* Pontos animados */}
+            <div className="absolute inset-0 grid grid-cols-20 grid-rows-10 opacity-10 dark:opacity-5 pointer-events-none">
               {Array.from({ length: 200 }).map((_, i) => (
-                <div 
-                  key={i} 
-                  className="h-1 w-1 rounded-full bg-white opacity-50 animate-pulse"
-                  style={{
-                    animationDuration: `${3 + (i % 5)}s`
-                  }}
-                ></div>
+                <div key={i} className="h-1 w-1 rounded-full bg-foreground opacity-50 animate-pulse" style={{ animationDuration: `${3 + (i % 5)}s`, animationDelay: `${(i % 10) * 0.2}s` }}></div>
               ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section id="features" className="py-20 px-4 bg-[#0F0F0F]">
+      {/* Features (fundo secundário) */}
+      <section id="features" className={cn("py-20 px-4 bg-secondary", animateSections && "animate-fade-in")} style={{ animationDelay: '0.4s' }}>
         <div className="container mx-auto">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">Recursos Poderosos</h2>
-          
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-16 text-foreground">Recursos Poderosos</h2>
           <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-[#161616] p-6 rounded-xl hover:transform hover:scale-105 transition-all duration-300">
-              <div className="h-12 w-12 bg-[#F54900]/20 rounded-lg flex items-center justify-center mb-4">
-                <MessageSquare className="h-6 w-6 text-[#F54900]" />
+            {/* Cards usam bg-card */}
+            <div className="bg-card p-6 rounded-xl border border-border hover:shadow-lg transition-shadow duration-300 transform hover:-translate-y-1">
+              <div className="h-12 w-12 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center mb-4 border border-primary/20">
+                <MessageSquare className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-2">Mensagens Inteligentes</h3>
-              <p className="text-gray-400">
-                Mensagens potencializadas por IA que se adaptam às respostas dos clientes, criando fluxos de comunicação naturais e eficazes.
+              <h3 className="text-xl font-bold mb-2 text-card-foreground">Mensagens Inteligentes</h3>
+              <p className="text-muted-foreground">
+                Nossa IA adapta mensagens às respostas dos clientes, criando fluxos de comunicação naturais e eficazes.
               </p>
             </div>
-            
-            <div className="bg-[#161616] p-6 rounded-xl hover:transform hover:scale-105 transition-all duration-300">
-              <div className="h-12 w-12 bg-[#F54900]/20 rounded-lg flex items-center justify-center mb-4">
-                <BarChart2 className="h-6 w-6 text-[#F54900]" />
+            {/* ... outros cards de features com estilo similar ... */}
+             <div className="bg-card p-6 rounded-xl border border-border hover:shadow-lg transition-shadow duration-300 transform hover:-translate-y-1">
+              <div className="h-12 w-12 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center mb-4 border border-primary/20">
+                <BarChart2 className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-2">Dashboard Analítico</h3>
-              <p className="text-gray-400">
-                Insights abrangentes e métricas para acompanhar o desempenho da campanha e otimizar sua estratégia de follow-up.
+              <h3 className="text-xl font-bold mb-2 text-card-foreground">Dashboard Analítico</h3>
+              <p className="text-muted-foreground">
+                Acompanhe o desempenho e otimize sua estratégia com insights e métricas detalhadas.
               </p>
             </div>
-            
-            <div className="bg-[#161616] p-6 rounded-xl hover:transform hover:scale-105 transition-all duration-300">
-              <div className="h-12 w-12 bg-[#F54900]/20 rounded-lg flex items-center justify-center mb-4">
-                <UserPlus className="h-6 w-6 text-[#F54900]" />
+            <div className="bg-card p-6 rounded-xl border border-border hover:shadow-lg transition-shadow duration-300 transform hover:-translate-y-1">
+              <div className="h-12 w-12 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center mb-4 border border-primary/20">
+                <UserPlus className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="text-xl font-bold mb-2">Colaboração Multi-workspace</h3>
-              <p className="text-gray-400">
-                Colabore com sua equipe perfeitamente com gerenciamento avançado de workspaces e permissões baseadas em funções.
+              <h3 className="text-xl font-bold mb-2 text-card-foreground">Colaboração Multi-workspace</h3>
+              <p className="text-muted-foreground">
+                Gerencie múltiplas equipes ou projetos com workspaces isolados e permissões flexíveis.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="py-20 px-4">
+      {/* How It Works (fundo principal) */}
+      <section id="how-it-works" className={cn("py-20 px-4 bg-background", animateSections && "animate-fade-in")} style={{ animationDelay: '0.6s' }}>
         <div className="container mx-auto">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">Como Funciona</h2>
-          
-          <div className="max-w-3xl mx-auto">
-            <div className="flex items-start mb-12">
-              <div className="h-10 w-10 bg-[#F54900] rounded-full flex items-center justify-center flex-shrink-0 mr-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-16 text-foreground">Como Funciona</h2>
+          <div className="max-w-3xl mx-auto space-y-12">
+            <div className="flex items-start">
+              <div className="h-10 w-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mr-4 text-primary-foreground">
                 <span className="font-bold">1</span>
               </div>
               <div>
-                <h3 className="text-xl font-bold mb-2">Configure Sua Campanha</h3>
-                <p className="text-gray-400">
-                  Projete sua sequência de follow-up com modelos e tempo personalizáveis. Crie diferentes funis para várias jornadas de clientes.
+                <h3 className="text-xl font-bold mb-2 text-foreground">Configure Sua Campanha</h3>
+                <p className="text-muted-foreground">
+                  Defina estágios, mensagens e tempos. Crie funis personalizados para diferentes jornadas.
                 </p>
               </div>
             </div>
-            
-            <div className="flex items-start mb-12">
-              <div className="h-10 w-10 bg-[#F54900] rounded-full flex items-center justify-center flex-shrink-0 mr-4">
+            {/* ... outras etapas ... */}
+             <div className="flex items-start">
+              <div className="h-10 w-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mr-4 text-primary-foreground">
                 <span className="font-bold">2</span>
               </div>
               <div>
-                <h3 className="text-xl font-bold mb-2">A IA Assume o Controle</h3>
-                <p className="text-gray-400">
-                  Nosso motor de IA gerencia o tempo e a entrega de mensagens, analisa respostas e determina a próxima melhor ação com base no engajamento do cliente.
+                <h3 className="text-xl font-bold mb-2 text-foreground">A IA Assume o Controle</h3>
+                <p className="text-muted-foreground">
+                  O motor de IA gerencia o fluxo, analisa respostas e decide a próxima melhor ação.
                 </p>
               </div>
             </div>
-            
             <div className="flex items-start">
-              <div className="h-10 w-10 bg-[#F54900] rounded-full flex items-center justify-center flex-shrink-0 mr-4">
+              <div className="h-10 w-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mr-4 text-primary-foreground">
                 <span className="font-bold">3</span>
               </div>
               <div>
-                <h3 className="text-xl font-bold mb-2">Monitore e Otimize</h3>
-                <p className="text-gray-400">
-                  Acompanhe o desempenho da campanha em tempo real e refine sua abordagem com base em análises. Melhore as taxas de conversão com sugestões baseadas em IA.
+                <h3 className="text-xl font-bold mb-2 text-foreground">Monitore e Otimize</h3>
+                <p className="text-muted-foreground">
+                  Acompanhe métricas em tempo real e refine sua abordagem com sugestões da IA.
                 </p>
               </div>
             </div>
@@ -172,44 +158,149 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Testimonials/Stats */}
-      <section className="py-20 px-4 bg-[#0F0F0F]">
-        <div className="container mx-auto">
+      {/* Stats (fundo secundário) */}
+      <section className={cn("py-20 px-4 bg-secondary", animateSections && "animate-fade-in")} style={{ animationDelay: '0.8s' }}>
+        {/* ... conteúdo stats ... */}
+         <div className="container mx-auto">
           <div className="grid md:grid-cols-3 gap-8 text-center">
             <div>
-              <div className="text-4xl font-bold text-[#F54900] mb-2">95%</div>
-              <p className="text-gray-400">Aumento nas taxas de resposta</p>
+              <div className="text-4xl font-bold text-primary mb-2">95%</div>
+              <p className="text-muted-foreground">Aumento nas taxas de resposta</p>
             </div>
             <div>
-              <div className="text-4xl font-bold text-[#F54900] mb-2">75%</div>
-              <p className="text-gray-400">Tempo economizado em follow-ups</p>
+              <div className="text-4xl font-bold text-primary mb-2">75%</div>
+              <p className="text-muted-foreground">Tempo economizado em follow-ups</p>
             </div>
             <div>
-              <div className="text-4xl font-bold text-[#F54900] mb-2">3x</div>
-              <p className="text-gray-400">Melhoria na conversão</p>
+              <div className="text-4xl font-bold text-primary mb-2">3x</div>
+              <p className="text-muted-foreground">Melhoria na conversão</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-20 px-4">
+      {/* NOVA SEÇÃO: Pricing / Planos */}
+      <section id="pricing" className={cn("py-20 px-4 bg-background", animateSections && "animate-fade-in")} style={{ animationDelay: '1.0s' }}>
+        <div className="container mx-auto">
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 text-foreground">Planos Flexíveis</h2>
+          <p className="text-center text-muted-foreground max-w-xl mx-auto mb-12">
+            Escolha o plano que melhor se adapta às suas necessidades, comece gratuitamente ou potencialize seus resultados com o Premium.
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Card Free */}
+            <div className="bg-card border border-border rounded-xl p-8 flex flex-col">
+              <h3 className="text-2xl font-semibold mb-2 text-card-foreground">Gratuito</h3>
+              <p className="text-muted-foreground mb-6">Ideal para começar e testar.</p>
+              <div className="mb-6">
+                <span className="text-4xl font-bold text-card-foreground">R$ 0</span>
+                <span className="text-muted-foreground"> / para sempre</span>
+              </div>
+              <ul className="space-y-3 text-muted-foreground mb-8 flex-grow">
+                <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  <span>1 Campanha ativa</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  <span>Até 20 Follow-ups ativos</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  <span>1 Usuário</span>
+                </li>
+                 <li className="flex items-center gap-2 opacity-60">
+                  <X className="h-5 w-5 text-red-500 flex-shrink-0" />
+                  <span>Análise e Geração IA Básica</span>
+                </li>
+                 <li className="flex items-center gap-2 opacity-60">
+                  <X className="h-5 w-5 text-red-500 flex-shrink-0" />
+                  <span>API & Webhooks</span>
+                </li>
+                 <li className="flex items-center gap-2 opacity-60">
+                  <X className="h-5 w-5 text-red-500 flex-shrink-0" />
+                  <span>Suporte Prioritário</span>
+                </li>
+              </ul>
+              <Link
+                href="/auth/register"
+                className="w-full inline-flex items-center justify-center px-6 py-3 bg-accent text-accent-foreground rounded-md font-medium hover:bg-accent/90 transition-colors"
+              >
+                Comece Gratuitamente
+              </Link>
+            </div>
+
+            {/* Card Premium (Destaque) */}
+            <div className="bg-card border-2 border-primary rounded-xl p-8 flex flex-col relative overflow-hidden">
+              {/* Badge de destaque */}
+              <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-bold px-4 py-1 rounded-bl-lg">
+                MAIS POPULAR
+              </div>
+              <h3 className="text-2xl font-semibold mb-2 text-card-foreground">Premium</h3>
+              <p className="text-muted-foreground mb-6">Para equipes e crescimento acelerado.</p>
+              <div className="mb-6">
+                <span className="text-4xl font-bold text-card-foreground">R$ 49</span>
+                <span className="text-muted-foreground"> / mês</span>
+              </div>
+              <ul className="space-y-3 text-muted-foreground mb-8 flex-grow">
+                <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span>Campanhas ilimitadas</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span>Follow-ups ilimitados</span>
+                </li>
+                 <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span>Membros da equipe</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span>IA Avançada (Análise, Geração, Decisão)</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span>Acesso à API & Webhooks</span>
+                </li>
+                 <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span>Analytics Avançados</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span>Suporte Prioritário</span>
+                </li>
+              </ul>
+              <Link
+                href="/auth/register?plan=premium" // Exemplo de link com plano
+                className="w-full inline-flex items-center justify-center px-6 py-3 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 transition-colors"
+              >
+                Assinar Plano Premium
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Final (fundo principal) */}
+      <section className={cn("py-20 px-4 bg-background", animateSections && "animate-fade-in")} style={{ animationDelay: '1.2s' }}>
         <div className="container mx-auto max-w-4xl">
-          <div className="bg-gradient-to-r from-[#F54900]/20 to-[#111111] p-10 rounded-2xl text-center">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">Pronto para Transformar seu Processo de Follow-up?</h2>
-            <p className="text-xl text-gray-400 mb-8">
-              Junte-se a milhares de empresas que já usam o FollowUpAI para aumentar engajamento e conversões.
+          <div className="bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 dark:from-primary/20 dark:via-card/10 dark:to-primary/20 p-10 rounded-2xl text-center border border-border">
+            <h2 className="text-3xl md:text-4xl font-bold mb-6 text-foreground">Transforme seus Follow-ups Hoje</h2>
+            <p className="text-xl text-muted-foreground mb-8">
+              Comece gratuitamente ou escolha o plano Premium para liberar todo o potencial da IA.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link 
-                href="/auth/register" 
-                className="px-8 py-3 bg-[#F54900] hover:bg-[#D93C00] rounded-md text-lg font-medium flex items-center justify-center"
+              <Link
+                href="/auth/register"
+                className="inline-flex items-center justify-center px-8 py-3 bg-primary text-primary-foreground rounded-md text-lg font-medium hover:bg-primary/90 transition-transform transform hover:scale-105 duration-300"
               >
                 Comece Gratuitamente <ArrowRight className="ml-2 h-5 w-5" />
               </Link>
-              <Link 
-                href="/auth/login" 
-                className="px-8 py-3 bg-transparent border border-[#F54900] text-[#F54900] hover:bg-[#F54900] hover:text-white rounded-md text-lg font-medium transition-colors"
+              <Link
+                href="/auth/login"
+                className="inline-flex items-center justify-center px-8 py-3 bg-transparent border border-border text-foreground hover:bg-accent hover:text-accent-foreground rounded-md text-lg font-medium transition-colors"
               >
                 Entrar
               </Link>
@@ -218,22 +309,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-
-      {/* Add some global styles for animations */}
-      <style jsx global>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 0.8; }
-        }
-        
-        .animate-pulse {
-          animation: pulse 3s infinite;
-        }
-        
-        html {
-          scroll-behavior: smooth;
-        }
-      `}</style>
     </div>
   );
 }
