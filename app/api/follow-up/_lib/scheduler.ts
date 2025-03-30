@@ -116,7 +116,7 @@ export async function scheduleMessage(messageData: ScheduledMessage): Promise<st
       }
     }, delay);
     activeTimeouts.set(timeoutId, timeout);
-    console.log(`[scheduleMessage] Timeout ${timeoutId} armazenado com sucesso no mapa.`);
+    console.log(`[scheduleMessage] Timeout ${timeoutId} armazenado. Mapa atual:`, Array.from(activeTimeouts.keys())); // LOG DETALHADO DO MAPA
     return timeoutId;
   } catch (error) {
     console.error(`[scheduleMessage] Erro GERAL ao agendar mensagem ${messageData.messageDbId}:`, error);
@@ -338,7 +338,7 @@ export async function scheduleNextEvaluation(
 
     activeTimeouts.set(evaluationTimeoutId, timeout);
     console.log(`[scheduleNextEvaluation] Timeout ${evaluationTimeoutId} STORED.`);
-
+    
   } catch (error) {
     console.error(`[scheduleNextEvaluation] Erro GERAL ao AGENDAR avaliação para ${followUpId}:`, error);
     try {
@@ -418,7 +418,7 @@ export async function scheduleNextEvaluation_V2( // <<< RENOMEADA
     }, effectiveDelay);
 
     activeTimeouts.set(evaluationTimeoutId, timeout);
-    console.log(`[scheduleNextEvaluation_V2] Timeout ${evaluationTimeoutId} STORED.`); // Log com nome atualizado
+    console.log(`[scheduleNextEvaluation_V2] Timeout ${evaluationTimeoutId} STORED. Mapa atual:`, Array.from(activeTimeouts.keys())); // LOG DETALHADO DO MAPA
 
   } catch (error) {
     console.error(`[scheduleNextEvaluation_V2] Erro GERAL ao AGENDAR avaliação:`, error); // Log com nome atualizado
@@ -437,6 +437,7 @@ export async function cancelScheduledMessages(followUpId: string): Promise<void>
     const messagePrefix = `${followUpId}-`;
     const evalPrefix = `eval-${followUpId}`;
     console.log(`[cancelScheduledMessages] Iniciando cancelamento para ${followUpId}`);
+    console.log(`[cancelScheduledMessages] Timers ATIVOS ANTES DO LOOP:`, Array.from(activeTimeouts.keys())); // LOG ANTES
     for (const key of activeTimeouts.keys()) {
       if (key.startsWith(messagePrefix) || key === evalPrefix) {
         const timeout = activeTimeouts.get(key);
@@ -444,7 +445,7 @@ export async function cancelScheduledMessages(followUpId: string): Promise<void>
           clearTimeout(timeout);
           activeTimeouts.delete(key);
           cancelledCount++;
-          console.log(`[cancelScheduledMessages] Timeout cancelado e removido: ${key}`);
+          console.log(`[cancelScheduledMessages] Timeout cancelado e removido: ${key}. Mapa atual:`, Array.from(activeTimeouts.keys())); // LOG DURANTE
         }
       }
     }
@@ -453,6 +454,7 @@ export async function cancelScheduledMessages(followUpId: string): Promise<void>
     } else {
       console.log(`[cancelScheduledMessages] Nenhuma ação agendada encontrada para cancelar para followUp ${followUpId}.`);
     }
+    console.log(`[cancelScheduledMessages] Timers ATIVOS APÓS O LOOP:`, Array.from(activeTimeouts.keys())); // LOG DEPOIS
   } catch (error) {
     console.error("[cancelScheduledMessages] Erro ao cancelar ações agendadas:", error);
   }

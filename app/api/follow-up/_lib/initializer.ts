@@ -26,7 +26,7 @@ async function enviarHSMLumibot(
 
   // --- Montando o corpo EXATAMENTE como especificado ---
   const body = {
-    content: stepData.message_content, // Conteúdo base do template do seu BD
+    content: stepData.message_content.replace("{{1}}", clientName), // Conteúdo base do template do seu BD
     message_type: "outgoing",         // Fixo
     template_params: {
       name: stepData.template_name,         // Nome EXATO do HSM
@@ -39,7 +39,6 @@ async function enviarHSMLumibot(
     }
   };
   // --- Fim da montagem do corpo ---
-
   console.log(`[Lumibot Processor] Enviando HSM: ${apiUrl}, Payload:`, JSON.stringify(body));
   try {
     const response = await axios.post(apiUrl, body, { headers });
@@ -338,9 +337,7 @@ export async function getCampaignDetails( // <-- JÁ TEM EXPORT
       allStepsFormatted.push({
         id: step.id,
         // Dados do Passo
-        name: step.name,
         template_name: step.template_name,
-        template_name_whatsapp: step.template_name_whatsapp,
         wait_time: step.wait_time,
         wait_time_ms: step.wait_time_ms,
         message_content: step.message_content,
