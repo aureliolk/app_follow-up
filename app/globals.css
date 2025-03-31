@@ -178,11 +178,3 @@ html {
   padding: 0.75rem; border: 1px solid hsl(var(--border));
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
