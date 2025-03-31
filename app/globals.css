@@ -1,11 +1,15 @@
 /* app/globals.css */
-@import "tailwindcss"; /* Mantém a importação do Tailwind */
-/* @import "./styles/theme.css"; -> REMOVIDO ou comentado */
-@import "tw-animate-css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@import "tw-animate-css"; /* Mantém esta */
 
+/* O bloco @theme foi removido */
+
+/* Camada Base: Define valores das variáveis e estilos globais */
 @layer base {
   :root {
-    /* ... (variáveis light theme - sem mudança aqui) ... */
+    /* Variáveis CSS com os VALORES HSL para o tema CLARO */
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
@@ -13,7 +17,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
     --primary: 20 100% 48%; /* Laranja: #F54900 */
-    --primary-foreground: 30 94% 98%; /* Branco/Off-white */
+    --primary-foreground: 30 94% 98%;
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 95.9%;
@@ -24,59 +28,57 @@
     --destructive-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
-    --ring: 20 100% 48%; /* Laranja para foco */
-    --radius: 0.625rem;
-
-    /* Cor do header scrollado no tema light (pode ser igual ao card ou background) */
+    --ring: 20 100% 48%;
+    --radius: 0.625rem; /* Valor base do raio */
     --header-background: 0 0% 100%;
   }
 
   .dark {
-    /* --- NOVOS VALORES PARA O TEMA ESCURO --- */
-    --background: 240 8% 4%;        /* #08090a - Quase preto, levemente azulado */
-    --foreground: 210 20% 98%;      /* #fafbff - Branco suave */
-    --card: 240 6% 9%;              /* #151619 - Cinza escuro para cards */
-    --card-foreground: 210 20% 98%;  /* Branco suave */
-    --popover: 240 6% 9%;            /* #151619 - Igual ao card */
-    --popover-foreground: 210 20% 98%;/* Branco suave */
-    --primary: 20 100% 48%;          /* #F54900 - Laranja (Mantido) */
-    --primary-foreground: 30 94% 98%;/* #fefaf9 - Branco/Off-white (Mantido) */
-    --secondary: 240 5% 14%;         /* #1f2125 - Cinza mais claro para seções */
-    --secondary-foreground: 210 20% 94%;/* #edf0f2 - Branco um pouco mais suave */
-    --muted: 240 5% 14%;             /* #1f2125 - Igual ao secondary */
-    --muted-foreground: 240 5% 64%;  /* #9ba1a6 - Cinza médio */
-    --accent: 240 5% 18%;           /* #2a2c31 - Cinza para hovers */
-    --accent-foreground: 210 20% 98%;/* Branco suave */
-    --destructive: 0 72% 51%;        /* Vermelho (Mantido similar) */
-    --destructive-foreground: 0 0% 98%;/* Branco (Mantido) */
-    --border: 240 4% 20%;           /* #303136 - Borda sutil, mais clara que card/secondary */
-    --input: 240 4% 16%;            /* #242629 - Fundo de input */
-    --ring: 20 100% 48%;             /* #F54900 - Laranja para foco (Mantido) */
-    /* Fundo do header scrollado igual ao card */
-    --header-background: 240 6% 9%; /* #151619 */
-    /* --- FIM DOS NOVOS VALORES --- */
+    /* Variáveis CSS com os VALORES HSL para o tema ESCURO */
+    --background: 240 8% 4%;
+    --foreground: 210 20% 98%;
+    --card: 240 6% 9%;
+    --card-foreground: 210 20% 98%;
+    --popover: 240 6% 9%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 20 100% 48%; /* Mantido Laranja */
+    --primary-foreground: 30 94% 98%; /* Mantido */
+    --secondary: 240 5% 14%;
+    --secondary-foreground: 210 20% 94%;
+    --muted: 240 5% 14%;
+    --muted-foreground: 240 5% 64%;
+    --accent: 240 5% 18%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 4% 20%;
+    --input: 240 4% 16%;
+    --ring: 20 100% 48%; /* Mantido Laranja */
+    --header-background: 240 6% 9%;
+    /* --radius: 0.625rem; continua o mesmo do :root */
   }
 
   /* Estilos base globais */
   * {
-    /* Define a cor da borda padrão usando a variável CSS */
+    /* Usa a variável CSS para a cor da borda */
     border-color: hsl(var(--border));
- }
-
-  body {
-    /* O Tailwind aplicará bg-background e text-foreground automaticamente */
-    font-feature-settings: "rlig" 1, "calt" 1; /* Mantido */
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground)); /* << GARANTE A COR PADRÃO */
   }
 
- /* Garante cor do texto no dark mode */
+  body {
+    /* Aplica cor de fundo e texto padrão usando variáveis */
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Garante a cor do texto no dark mode se necessário (embora 'body' deva cobrir) */
   .dark body, .dark {
     color: hsl(var(--foreground));
- }
+  }
 }
 
-/* ... resto do arquivo (keyframes, .prose, etc.) ... */
+/* Keyframes e outras classes customizadas (como .prose) */
+/* ... (mantido como estava) ... */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -105,7 +107,7 @@
 
 .animate-fade-in {
   animation: fade-in 0.6s ease-out forwards;
-  opacity: 0; /* Começa invisível */
+  opacity: 0;
 }
 
 .animate-slide-in {
@@ -120,140 +122,59 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Estilos para melhorar a visualização do markdown */
+/* Estilos para .prose (mantidos como estavam) */
 .prose {
-  color: hsl(var(--foreground)); /* Usa variável CSS */
+  color: hsl(var(--foreground));
   line-height: 1.6;
 }
-
 .prose h1 {
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin-top: 1.5rem;
-  margin-bottom: 1rem;
-  color: hsl(var(--foreground));
-  border-bottom: 1px solid hsl(var(--border));
-  padding-bottom: 0.5rem;
+  font-size: 1.8rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 1rem; color: hsl(var(--foreground)); border-bottom: 1px solid hsl(var(--border)); padding-bottom: 0.5rem;
 }
-
 .prose h2 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin-top: 1.25rem;
-  margin-bottom: 0.75rem;
-  color: hsl(var(--foreground));
+  font-size: 1.5rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.75rem; color: hsl(var(--foreground));
 }
-
 .prose h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
-  color: hsl(var(--foreground));
+  font-size: 1.25rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: hsl(var(--foreground));
 }
-
 .prose h4 {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin-top: 0.75rem;
-  margin-bottom: 0.5rem;
-  color: hsl(var(--foreground));
+  font-size: 1.125rem; font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.5rem; color: hsl(var(--foreground));
 }
-
 .prose p {
   margin-bottom: 1rem;
 }
-
-.prose ul,
-.prose ol {
-  padding-left: 1.5rem;
-  margin-bottom: 1rem;
+.prose ul, .prose ol {
+  padding-left: 1.5rem; margin-bottom: 1rem;
 }
-
-.prose ul {
-  list-style-type: disc;
-}
-
-.prose ol {
-  list-style-type: decimal;
-}
-
-.prose li {
-  margin-bottom: 0.25rem;
-}
-
+.prose ul { list-style-type: disc; }
+.prose ol { list-style-type: decimal; }
+.prose li { margin-bottom: 0.25rem; }
 .prose a {
-  color: hsl(var(--primary));
-  text-decoration: none;
+  color: hsl(var(--primary)); text-decoration: none;
 }
-
-.prose a:hover {
-  text-decoration: underline;
-}
-
-.prose strong {
-  font-weight: 700;
-  color: hsl(var(--foreground));
-}
-
-.prose em {
-  font-style: italic;
-}
-
+.prose a:hover { text-decoration: underline; }
+.prose strong { font-weight: 700; color: hsl(var(--foreground)); }
+.prose em { font-style: italic; }
 .prose blockquote {
-  border-left: 4px solid hsl(var(--border));
-  padding-left: 1rem;
-  font-style: italic;
-  margin: 1rem 0;
-  color: hsl(var(--muted-foreground));
+  border-left: 4px solid hsl(var(--border)); padding-left: 1rem; font-style: italic; margin: 1rem 0; color: hsl(var(--muted-foreground));
 }
-
 .prose code {
-  background-color: hsl(var(--secondary));
-  padding: 0.125rem 0.25rem;
-  border-radius: 0.25rem;
-  font-family: theme('fontFamily.mono');
-  font-size: 0.875rem;
-  color: hsl(var(--secondary-foreground));
+  background-color: hsl(var(--secondary)); padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-family: theme('fontFamily.mono'); font-size: 0.875rem; color: hsl(var(--secondary-foreground));
 }
-
 .prose pre {
-  background-color: hsl(var(--secondary));
-  padding: 1rem;
-  border-radius: 0.375rem;
-  overflow-x: auto;
-  margin: 1rem 0;
+  background-color: hsl(var(--secondary)); padding: 1rem; border-radius: 0.375rem; overflow-x: auto; margin: 1rem 0;
 }
-
 .prose pre code {
-  background-color: transparent;
-  padding: 0;
-  font-size: 0.875rem;
-  color: hsl(var(--secondary-foreground));
+  background-color: transparent; padding: 0; font-size: 0.875rem; color: hsl(var(--secondary-foreground));
 }
-
 .prose hr {
-  border: 0;
-  border-top: 1px solid hsl(var(--border));
-  margin: 1.5rem 0;
+  border: 0; border-top: 1px solid hsl(var(--border)); margin: 1.5rem 0;
 }
-
 .prose table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
+  width: 100%; border-collapse: collapse; margin: 1rem 0;
 }
-
 .prose table th {
-  background-color: hsl(var(--secondary));
-  font-weight: 600;
-  text-align: left;
-  padding: 0.75rem;
-  border: 1px solid hsl(var(--border));
-  color: hsl(var(--foreground));
+  background-color: hsl(var(--secondary)); font-weight: 600; text-align: left; padding: 0.75rem; border: 1px solid hsl(var(--border)); color: hsl(var(--foreground));
 }
-
 .prose table td {
-  padding: 0.75rem;
-  border: 1px solid hsl(var(--border));
+  padding: 0.75rem; border: 1px solid hsl(var(--border));
 }

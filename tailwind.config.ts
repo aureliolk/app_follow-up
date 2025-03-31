@@ -4,10 +4,8 @@ import type { Config } from 'tailwindcss'
 const config = {
   darkMode: "class",
   content: [
-    './pages/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
   ],
   prefix: '',
   theme: {
@@ -19,34 +17,31 @@ const config = {
       },
     },
     extend: {
+      // Definir as cores aqui, referenciando as variáveis CSS
       colors: {
-        // Mantém as definições baseadas em variáveis para flexibilidade
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))', // Usará a variável --ring
+        ring: 'hsl(var(--ring))',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
-        // Define as cores primárias DIRETAMENTE aqui
         primary: {
-          // DEFAULT agora tem o valor HSL direto
-          DEFAULT: 'hsl(20, 100%, 48%)', // Laranja (#F54900)
-          // Foreground ainda pode usar a variável se preferir, ou definir direto
-          foreground: 'hsl(var(--primary-foreground))', // Branco/Off-white
+          DEFAULT: 'hsl(var(--primary))', // <-- MODO V3
+          foreground: 'hsl(var(--primary-foreground))',
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
+          DEFAULT: 'hsl(var(--secondary))', // <-- MODO V3
           foreground: 'hsl(var(--secondary-foreground))',
         },
         destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
+          DEFAULT: 'hsl(var(--destructive))', // <-- MODO V3
           foreground: 'hsl(var(--destructive-foreground))',
         },
         muted: {
-          DEFAULT: 'hsl(var(--muted))',
+          DEFAULT: 'hsl(var(--muted))', // <-- MODO V3
           foreground: 'hsl(var(--muted-foreground))',
         },
         accent: {
-          DEFAULT: 'hsl(var(--accent))',
+          DEFAULT: 'hsl(var(--accent))', // <-- MODO V3
           foreground: 'hsl(var(--accent-foreground))',
         },
         popover: {
