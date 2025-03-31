@@ -1,0 +1,336 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["follow_up_schema", "products_schema", "prompts_schema", "public", "workspace_schema"]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  url         String
+  price       Float
+  description String?
+  brand       String?
+  gender      String?
+  image       String?
+  categories  Json
+  variations  Json
+  active      Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  @@map("products")
+  @@schema("products_schema")
+}
+
+model Prompt {
+  id            String         @id @default(uuid())
+  account_id    String
+  created_at    DateTime       @default(now())
+  is_current    Boolean?       @default(false)
+  instruction   String
+  promptContent PromptContent?
+
+  @@map("prompts")
+  @@schema("prompts_schema")
+}
+
+model PromptContent {
+  id              String  @id @default(uuid())
+  prompt_id       String  @unique
+  prompt_created  String?
+  prompt_removed  String?
+  prompt_complete String?
+  prompt          Prompt  @relation(fields: [prompt_id], references: [id])
+
+  @@map("prompt_contents")
+  @@schema("prompts_schema")
+}
+
+model FollowUpCampaign {
+  id                String                @id @default(uuid())
+  name              String
+  description       String?
+  created_at        DateTime              @default(now())
+  active            Boolean               @default(true)
+  idLumibot         String?
+  tokenAgentLumibot String?
+  ai_prompt_product_name String?   @default("")
+  ai_prompt_target_audience String?  @default("")
+  ai_prompt_pain_point String?  @default("")
+  ai_prompt_main_benefit String?  @default("")
+  ai_prompt_tone_of_voice String? @default("")
+  ai_prompt_extra_instructions String? @default("")
+  ai_prompt_cta_link String? @default("")
+  ai_prompt_cta_text String? @default("")
+
+  stages            FollowUpFunnelStage[] @relation("FollowUpCampaignToFollowUpFunnelStage")
+  follow_ups        FollowUp[]
+
+  @@map("follow_up_campaigns")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpFunnelStage {
+  id                String           @id @default(uuid())
+  name              String
+  order             Int              @default(0)
+  created_at        DateTime         @default(now())
+  campaign_id       String           @default("")
+  requires_response Boolean          @default(false)
+  description       String
+  campaign          FollowUpCampaign @relation("FollowUpCampaignToFollowUpFunnelStage", fields: [campaign_id], references: [id])
+  steps             FollowUpStep[]
+
+  @@map("follow_up_funnel_stages")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpStep {
+  id              String              @id @default(uuid())
+  funnel_stage_id String
+  template_name   String              @default("")
+  wait_time       String
+  wait_time_ms    Int
+  message_content String
+  status          String              @default("created")
+  created_at      DateTime            @default(now())
+  order           Int                 @default(0)
+  category        String
+  is_hsm          Boolean             @default(false)
+  funnel_stage    FollowUpFunnelStage @relation(fields: [funnel_stage_id], references: [id])
+
+  @@map("follow_up_steps")
+  @@schema("follow_up_schema")
+}
+
+model FollowUp {
+  id                   String            @id @default(uuid())
+  campaign_id          String
+  client_id            String
+  status               String            @default("active")
+  started_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+  next_message_at      DateTime?
+  completed_at         DateTime?
+  current_stage_id     String?
+  waiting_for_response Boolean           @default(false)
+  last_response        String?
+  last_response_at     DateTime?
+  last_client_message_at DateTime?
+  next_evaluation_at DateTime?
+  paused_reason        String?
+  ai_suggestion String?   
+  messages             FollowUpMessage[]
+  campaign             FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
+  ai_analyses          FollowUpAIAnalysis[]
+  
+  @@index([client_id])
+  @@index([status])
+  @@map("follow_ups")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpMessage {
+  id             String    @id @default(uuid())
+  follow_up_id   String
+  content        String
+  sent_at        DateTime  @default(now())
+  delivered      Boolean   @default(false)
+  delivered_at   DateTime?
+  is_from_client Boolean   @default(false)
+  step_id        String?
+  follow_up      FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
+  error_sending  String?
+  is_ai_generated Boolean @default(false)
+  template_used String?
+  
+
+  @@index([follow_up_id])
+  @@map("follow_up_messages")
+  @@schema("follow_up_schema")
+}
+
+model FollowUpAIAnalysis {
+  id             String    @id @default(uuid())
+  follow_up_id   String
+  message_id     String?
+  sentiment      String
+  intent         String
+  topics         String[]
+  next_action    String
+  suggested_stage String?
+  created_at     DateTime  @default(now())
+  follow_up      FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
+
+  @@index([follow_up_id])
+  @@map("follow_up_ai_analyses")
+  @@schema("follow_up_schema")
+}
+
+model User {
+  id                String                @id @default(uuid())
+  name              String?
+  email             String                @unique
+  email_verified    DateTime?
+  image             String?
+  password          String?
+  created_at        DateTime              @default(now())
+  updated_at        DateTime              @updatedAt
+  is_super_admin    Boolean               @default(false)
+  accounts          Account[]
+  sessions          Session[]
+  created_tokens    WorkspaceApiToken[]
+  invitations       WorkspaceInvitation[]
+  workspace_members WorkspaceMember[]
+  created_webhooks  WorkspaceWebhook[]
+  owned_workspaces  Workspace[]           @relation("WorkspaceOwner")
+
+  @@map("users")
+  @@schema("workspace_schema")
+}
+
+model Account {
+  id                  String  @id @default(uuid())
+  user_id             String
+  type                String
+  provider            String
+  provider_account_id String
+  refresh_token       String?
+  access_token        String?
+  expires_at          Int?
+  token_type          String?
+  scope               String?
+  id_token            String?
+  session_state       String?
+  user                User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([provider, provider_account_id])
+  @@map("accounts")
+  @@schema("workspace_schema")
+}
+
+model Session {
+  id            String   @id @default(uuid())
+  session_token String   @unique
+  user_id       String
+  expires       DateTime
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+  @@schema("workspace_schema")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+  @@schema("workspace_schema")
+}
+
+model Workspace {
+  id                  String                      @id @default(uuid())
+  name                String
+  slug                String                      @unique
+  owner_id            String
+  created_at          DateTime                    @default(now())
+  updated_at          DateTime                    @updatedAt
+  api_tokens          WorkspaceApiToken[]
+  follow_up_campaigns WorkspaceFollowUpCampaign[]
+  invitations         WorkspaceInvitation[]
+  members             WorkspaceMember[]
+  webhooks            WorkspaceWebhook[]
+  owner               User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
+
+  @@map("workspaces")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceMember {
+  id           String    @id @default(uuid())
+  workspace_id String
+  user_id      String
+  role         String
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, user_id])
+  @@map("workspace_members")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceInvitation {
+  id           String    @id @default(uuid())
+  workspace_id String
+  email        String
+  role         String
+  token        String    @unique
+  expires_at   DateTime
+  created_at   DateTime  @default(now())
+  invited_by   String
+  inviter      User      @relation(fields: [invited_by], references: [id])
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, email])
+  @@map("workspace_invitations")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceFollowUpCampaign {
+  id           String    @id @default(uuid())
+  workspace_id String
+  campaign_id  String
+  created_at   DateTime  @default(now())
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, campaign_id])
+  @@map("workspace_follow_up_campaigns")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceApiToken {
+  id           String    @id @default(uuid())
+  workspace_id String
+  name         String
+  token        String    @unique
+  created_at   DateTime  @default(now())
+  expires_at   DateTime?
+  last_used_at DateTime?
+  revoked      Boolean   @default(false)
+  created_by   String
+  creator      User      @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id])
+  @@map("workspace_api_tokens")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceWebhook {
+  id           String    @id @default(uuid())
+  workspace_id String
+  name         String
+  url          String
+  secret       String
+  events       String[]
+  active       Boolean   @default(true)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  last_used_at DateTime?
+  created_by   String
+  creator      User      @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id])
+  @@map("workspace_webhooks")
+  @@schema("workspace_schema")
+}
