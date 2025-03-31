@@ -53,26 +53,14 @@ export default function LandingPage() {
       </section>
 
       {/* Animated Visual (com leve ajuste de fundo) */}
-      <section className={cn("py-10 px-4 relative overflow-hidden", animateSections && "animate-fade-in")} style={{ animationDelay: '0.2s' }}>
-        <div className="container mx-auto flex justify-center">
-           {/* Usa bg-card (que é #111 no dark) */}
-          <div className="w-full max-w-4xl h-64 md:h-96 bg-card rounded-xl relative shadow-xl overflow-hidden border border-border">
-             {/* Gradiente mais sutil */}
-             <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-secondary/5 opacity-50 dark:opacity-30"></div>
-            {/* Conteúdo interno */}
-            <div className="absolute inset-0 flex items-center justify-center p-8">
-              <div className="text-center bg-background/50 dark:bg-background/70 backdrop-blur-sm p-6 rounded-lg">
+      <section className={cn("py-20 px-4 bg-background", animateSections && "animate-fade-in")} style={{ animationDelay: '1.2s' }}>
+        <div className="container mx-auto max-w-4xl">
+          <div className="bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 dark:from-primary/20 dark:via-card/10 dark:to-primary/20 p-10 rounded-2xl text-center border border-border">
+          <div className="text-center p-6 rounded-lg">
                 <Brain className="h-16 w-16 text-primary mx-auto mb-4" />
                 <div className="text-2xl font-bold mb-2 text-foreground">Gerenciador Inteligente de Campanhas</div>
                 <div className="text-muted-foreground">Visualize seu fluxo de campanha aqui</div>
               </div>
-            </div>
-             {/* Pontos animados */}
-            <div className="absolute inset-0 grid grid-cols-20 grid-rows-10 opacity-10 dark:opacity-5 pointer-events-none">
-              {Array.from({ length: 200 }).map((_, i) => (
-                <div key={i} className="h-1 w-1 rounded-full bg-foreground opacity-50 animate-pulse" style={{ animationDuration: `${3 + (i % 5)}s`, animationDelay: `${(i % 10) * 0.2}s` }}></div>
-              ))}
-            </div>
           </div>
         </div>
       </section>

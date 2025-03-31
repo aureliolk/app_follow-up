@@ -20,102 +20,117 @@ export default function WorkspaceLayout({
     }
   }, [workspace, isLoading, router]);
 
+  // Verificar qual página está ativa
+  const isActive = (path: string) => {
+    return pathname?.includes(path);
+  };
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0a0a0a]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#F54900]" />
+      <div className="flex items-center justify-center h-screen bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   if (!workspace) return null;
 
-  // Verificar qual página está ativa
-  const isActive = (path: string) => {
-    return pathname?.includes(path);
-  };
-
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-white">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#0a0a0a] shadow-md">
-        <div className="p-4 border-b border-[#333333]">
-          <h2 className="font-bold text-lg truncate">{workspace.name}</h2>
+    <div className="flex h-screen bg-background text-foreground">
+      {/* Sidebar - com espaçamento melhorado */}
+      <aside className="w-64 bg-[#111] border-r border-[#222]">
+        {/* Logo área */}
+        <div className="flex items-center px-4 py-5">
+          <div className="flex items-center">
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-white mr-2 text-lg font-bold">
+              L
+            </div>
+            <span className="text-xl font-semibold text-white">LumibotAI</span>
+          </div>
         </div>
-        <nav className="px-3 py-4">
-          <ul className="space-y-2">
+        
+        {/* Menu de Navegação */}
+        <nav className="py-6">
+          <ul className="space-y-1.5">
             <li>
               <Link
                 href={`/workspace/${workspace.slug}`}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                className={`flex items-center px-4 py-3 ${
                   pathname === `/workspace/${workspace.slug}` 
-                    ? 'bg-[#F54900] text-white' 
-                    : 'hover:bg-[#1a1a1a] text-gray-300'
+                    ? 'bg-primary text-white font-medium' 
+                    : 'text-gray-400 hover:bg-[#1a1a1a] hover:text-gray-200'
                 }`}
               >
-                <Home className="h-5 w-5" />
+                <Home className="h-5 w-5 mr-3" />
                 <span>Dashboard</span>
               </Link>
             </li>
             <li>
               <Link
                 href={`/workspace/${workspace.slug}/members`}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                className={`flex items-center px-4 py-3 ${
                   isActive('/members') 
-                    ? 'bg-[#F54900] text-white' 
-                    : 'hover:bg-[#1a1a1a] text-gray-300'
+                    ? 'bg-primary text-white font-medium' 
+                    : 'text-gray-400 hover:bg-[#1a1a1a] hover:text-gray-200'
                 }`}
               >
-                <Users className="h-5 w-5" />
+                <Users className="h-5 w-5 mr-3" />
                 <span>Membros</span>
               </Link>
             </li>
             <li>
               <Link
                 href={`/workspace/${workspace.slug}/followup`}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                className={`flex items-center px-4 py-3 ${
                   isActive('/followup') 
-                    ? 'bg-[#F54900] text-white' 
-                    : 'hover:bg-[#1a1a1a] text-gray-300'
+                    ? 'bg-primary text-white font-medium' 
+                    : 'text-gray-400 hover:bg-[#1a1a1a] hover:text-gray-200'
                 }`}
               >
-                <MessageSquare className="h-5 w-5" />
+                <MessageSquare className="h-5 w-5 mr-3" />
                 <span>Follow-up</span>
               </Link>
             </li>
             <li>
               <Link
                 href={`/workspace/${workspace.slug}/campaigns`}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                className={`flex items-center px-4 py-3 ${
                   isActive('/campaigns') 
-                    ? 'bg-[#F54900] text-white' 
-                    : 'hover:bg-[#1a1a1a] text-gray-300'
+                    ? 'bg-primary text-white font-medium' 
+                    : 'text-gray-400 hover:bg-[#1a1a1a] hover:text-gray-200'
                 }`}
               >
-                <CheckSquare className="h-5 w-5" />
+                <CheckSquare className="h-5 w-5 mr-3" />
                 <span>Campanhas</span>
               </Link>
             </li>
             <li>
               <Link
                 href={`/workspace/${workspace.slug}/settings`}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                className={`flex items-center px-4 py-3 ${
                   isActive('/settings') 
-                    ? 'bg-[#F54900] text-white' 
-                    : 'hover:bg-[#1a1a1a] text-gray-300'
+                    ? 'bg-primary text-white font-medium' 
+                    : 'text-gray-400 hover:bg-[#1a1a1a] hover:text-gray-200'
                 }`}
               >
-                <Settings className="h-5 w-5" />
+                <Settings className="h-5 w-5 mr-3" />
                 <span>Configurações</span>
               </Link>
             </li>
-            <li className="pt-4 mt-4 border-t border-[#333333]">
+          </ul>
+          
+          {/* Separador */}
+          <div className="mx-4 my-6 border-t border-[#333]"></div>
+          
+          {/* Documentação API */}
+          <ul>
+            <li>
               <Link
                 href="/api/docs"
                 target="_blank"
-                className="flex items-center gap-2 px-4 py-2 rounded-md transition-colors hover:bg-[#1a1a1a] text-gray-300"
+                className="flex items-center px-4 py-3 text-gray-400 hover:bg-[#1a1a1a] hover:text-gray-200"
               >
-                <BookOpen className="h-5 w-5" />
+                <BookOpen className="h-5 w-5 mr-3" />
                 <span>Documentação API</span>
               </Link>
             </li>
@@ -124,7 +139,7 @@ export default function WorkspaceLayout({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto bg-[#0a0a0a] p-6">
+      <main className="flex-1 overflow-auto bg-[#0f1218] p-6">
         {children}
       </main>
     </div>

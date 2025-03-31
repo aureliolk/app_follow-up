@@ -4,7 +4,8 @@ import { ArrowUpRight, Users, BarChart2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { followUpService } from '@/app/follow-up/_services/followUpService';
-import { LoadingSpinner, PageContainer } from '@/components/ui';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function WorkspaceDashboard() {
   const { workspace, isLoading } = useWorkspace();
@@ -37,103 +38,113 @@ export default function WorkspaceDashboard() {
   }, [workspace]);
 
   if (isLoading) {
-    return <LoadingSpinner message="Carregando workspace..." />;
+    return (
+      <div className="flex items-center justify-center h-full">
+        <LoadingSpinner message="Carregando workspace..." />
+      </div>
+    );
   }
 
   if (!workspace) return null;
 
   return (
-    <PageContainer title={`Bem-vindo ao ${workspace.name}`}>
+    <div className="container mx-auto">
+      <h1 className="text-3xl font-bold mb-6 text-foreground">
+        Bem-vindo ao {workspace.name}
+      </h1>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Card Follow-ups Ativos */}
-        <div className="bg-[#111111] border border-[#333333] rounded-lg p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-white">Follow-ups Ativos</h2>
-            <BarChart2 className="text-[#F54900] h-5 w-5" />
-          </div>
-          
-          {loadingData ? (
-            <LoadingSpinner size="small" message="" />
-          ) : followUps.length > 0 ? (
-            <div>
-              <p className="text-2xl font-bold text-white mb-2">{followUps.length}</p>
-              <Link 
-                href="/follow-up" 
-                className="text-[#F54900] text-sm flex items-center hover:underline"
-              >
-                Ver todos <ArrowUpRight className="ml-1 h-3 w-3" />
-              </Link>
-            </div>
-          ) : (
-            <p className="text-gray-400 text-sm">Nenhum follow-up ativo.</p>
-          )}
-        </div>
+        <Card className="border-border">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-lg font-medium">Follow-ups Ativos</CardTitle>
+            <BarChart2 className="text-primary h-5 w-5" />
+          </CardHeader>
+          <CardContent>
+            {loadingData ? (
+              <LoadingSpinner size="small" message="" />
+            ) : followUps.length > 0 ? (
+              <div>
+                <p className="text-2xl font-bold text-foreground mb-2">{followUps.length}</p>
+                <Link 
+                  href="/follow-up" 
+                  className="text-primary text-sm flex items-center hover:underline"
+                >
+                  Ver todos <ArrowUpRight className="ml-1 h-3 w-3" />
+                </Link>
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">Nenhum follow-up ativo.</p>
+            )}
+          </CardContent>
+        </Card>
         
         {/* Card Campanhas */}
-        <div className="bg-[#111111] border border-[#333333] rounded-lg p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-white">Campanhas</h2>
-            <BarChart2 className="text-[#F54900] h-5 w-5" />
-          </div>
-          
-          {loadingData ? (
-            <LoadingSpinner size="small" message="" />
-          ) : campaigns.length > 0 ? (
-            <div>
-              <p className="text-2xl font-bold text-white mb-2">{campaigns.length}</p>
-              <Link 
-                href="/follow-up/campaigns" 
-                className="text-[#F54900] text-sm flex items-center hover:underline"
-              >
-                Gerenciar campanhas <ArrowUpRight className="ml-1 h-3 w-3" />
-              </Link>
-            </div>
-          ) : (
-            <div>
-              <p className="text-gray-400 text-sm mb-3">Nenhuma campanha encontrada.</p>
-              <Link 
-                href="/follow-up/campaigns" 
-                className="text-[#F54900] text-sm flex items-center hover:underline"
-              >
-                Criar campanha <ArrowUpRight className="ml-1 h-3 w-3" />
-              </Link>
-            </div>
-          )}
-        </div>
+        <Card className="border-border">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-lg font-medium">Campanhas</CardTitle>
+            <BarChart2 className="text-primary h-5 w-5" />
+          </CardHeader>
+          <CardContent>
+            {loadingData ? (
+              <LoadingSpinner size="small" message="" />
+            ) : campaigns.length > 0 ? (
+              <div>
+                <p className="text-2xl font-bold text-foreground mb-2">{campaigns.length}</p>
+                <Link 
+                  href="/follow-up/campaigns" 
+                  className="text-primary text-sm flex items-center hover:underline"
+                >
+                  Gerenciar campanhas <ArrowUpRight className="ml-1 h-3 w-3" />
+                </Link>
+              </div>
+            ) : (
+              <div>
+                <p className="text-muted-foreground text-sm mb-3">Nenhuma campanha encontrada.</p>
+                <Link 
+                  href="/follow-up/campaigns" 
+                  className="text-primary text-sm flex items-center hover:underline"
+                >
+                  Criar campanha <ArrowUpRight className="ml-1 h-3 w-3" />
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
         
         {/* Card Equipe */}
-        <div className="bg-[#111111] border border-[#333333] rounded-lg p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-white">Equipe</h2>
-            <Users className="text-[#F54900] h-5 w-5" />
-          </div>
-          
-          {workspace._count?.members ? (
-            <div>
-              <p className="text-2xl font-bold text-white mb-2">
-                {workspace._count.members} {workspace._count.members === 1 ? 'membro' : 'membros'}
-              </p>
-              <Link 
-                href={`/workspace/${workspace.slug}/members`} 
-                className="text-[#F54900] text-sm flex items-center hover:underline"
-              >
-                Gerenciar membros <ArrowUpRight className="ml-1 h-3 w-3" />
-              </Link>
-            </div>
-          ) : (
-            <div>
-              <p className="text-gray-400 text-sm mb-3">Apenas você no workspace.</p>
-              <Link 
-                href={`/workspace/${workspace.slug}/members`} 
-                className="text-[#F54900] text-sm flex items-center hover:underline"
-              >
-                Convidar membros <ArrowUpRight className="ml-1 h-3 w-3" />
-              </Link>
-            </div>
-          )}
-        </div>
+        <Card className="border-border">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-lg font-medium">Equipe</CardTitle>
+            <Users className="text-primary h-5 w-5" />
+          </CardHeader>
+          <CardContent>
+            {workspace._count?.members ? (
+              <div>
+                <p className="text-2xl font-bold text-foreground mb-2">
+                  {workspace._count.members} {workspace._count.members === 1 ? 'membro' : 'membros'}
+                </p>
+                <Link 
+                  href={`/workspace/${workspace.slug}/members`} 
+                  className="text-primary text-sm flex items-center hover:underline"
+                >
+                  Gerenciar membros <ArrowUpRight className="ml-1 h-3 w-3" />
+                </Link>
+              </div>
+            ) : (
+              <div>
+                <p className="text-muted-foreground text-sm mb-3">Apenas você no workspace.</p>
+                <Link 
+                  href={`/workspace/${workspace.slug}/members`} 
+                  className="text-primary text-sm flex items-center hover:underline"
+                >
+                  Convidar membros <ArrowUpRight className="ml-1 h-3 w-3" />
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
-    </PageContainer>
+    </div>
   );
 }

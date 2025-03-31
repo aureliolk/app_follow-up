@@ -4,10 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/context/workspace-context';
 import { useSession } from 'next-auth/react';
-import { Plus, ArrowRight, Edit, Trash2 } from 'lucide-react';
+import { Plus, ArrowRight, Edit, Trash2, Loader2, Users } from 'lucide-react';
 import Link from 'next/link';
+
+// Importando Componentes Shadcn UI
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import PageContainer from '@/components/ui/PageContainer';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 
 export default function WorkspacesList() {
@@ -18,64 +22,64 @@ export default function WorkspacesList() {
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
-
   const [editingWorkspace, setEditingWorkspace] = useState<{ id: string, name: string } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
-  // Check if the user is a super admin
   const isSuperAdmin = session?.user?.isSuperAdmin;
 
-  // Redirect to login if not authenticated
-  if (status === 'unauthenticated') {
-    router.push('/auth/login');
-    return null;
-  }
-
-  // Redirecionar para a única workspace quando o usuário tem apenas uma
+  // Redirecionamento
   useEffect(() => {
-    if (!isLoading && workspaces.length === 1 && status === 'authenticated') {
-      // Redirecionar para a única workspace
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+    } else if (status === 'authenticated' && !isLoading && workspaces.length === 1 && !isSuperAdmin) {
       router.push(`/workspace/${workspaces[0].slug}`);
     }
-  }, [workspaces, isLoading, status, router]);
+  }, [status, router, isLoading, workspaces, isSuperAdmin]);
+
+  // Debug logs para ajudar a identificar problemas
+  console.log("Debug workspaces:", {
+    workspaces,
+    isLoading,
+    status,
+    isSuperAdmin,
+    workspacesLength: workspaces?.length
+  });
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newWorkspaceName.trim()) return;
-
     setIsCreating(true);
     setError('');
-
     try {
       const workspace = await createWorkspace(newWorkspaceName);
       setNewWorkspaceName('');
       router.push(`/workspace/${workspace.slug}`);
     } catch (err: any) {
-      setError(err.message || 'Failed to create workspace');
+      setError(err.message || 'Falha ao criar workspace');
     } finally {
       setIsCreating(false);
     }
   };
 
   const handleDeleteWorkspace = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este workspace? Esta ação não pode ser desfeita.')) {
-      return;
-    }
-
+    if (!confirm('Tem certeza que deseja excluir este workspace? Esta ação não pode ser desfeita.')) return;
+    setIsDeleting(id);
+    setError('');
     try {
       await deleteWorkspace(id);
     } catch (err: any) {
       setError(err.message || 'Falha ao excluir workspace');
+    } finally {
+      setIsDeleting(null);
     }
   };
 
   const handleUpdateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingWorkspace || !editingWorkspace.name.trim()) return;
-
     setIsEditing(true);
     setError('');
-
     try {
       await updateWorkspace(editingWorkspace.id, { name: editingWorkspace.name });
       setEditingWorkspace(null);
@@ -86,138 +90,173 @@ export default function WorkspacesList() {
     }
   };
 
+  // Estado de Carregamento Principal
+  if (status === 'loading' || (status === 'authenticated' && isLoading)) {
+    return (
+      <div className="container mx-auto px-4 py-20 max-w-7xl">
+        <LoadingSpinner message="Carregando workspaces..." />
+      </div>
+    );
+  }
+
+  // Se não autenticado (após carregar)
+  if (status === 'unauthenticated') {
+    return null; // Redirecionamento no useEffect cuida disso
+  }
+
   return (
-    <PageContainer 
-      title={isSuperAdmin ? 'Todos os Workspaces' : 'Seus Workspaces'}
-      adminBadge={isSuperAdmin}
-      adminMessage="Modo de Administração do Sistema"
-    >
+    <div className="bg-background min-h-screen pt-20">
+      <div className="container mx-auto px-4 max-w-7xl py-8">
+        {isSuperAdmin && (
+          <div className="mb-6 bg-purple-900/20 border border-purple-500/30 rounded-lg p-3 text-purple-200 text-sm">
+            <strong>Modo Administrador:</strong> Visualizando todos os workspaces do sistema
+          </div>
+        )}
+
+        <h1 className="text-3xl font-bold mb-6 text-foreground">
+          {isSuperAdmin ? 'Gerenciamento de Workspaces' : 'Seus Workspaces'}
+        </h1>
 
         <ErrorMessage message={error} onDismiss={() => setError('')} />
 
         {/* Formulário para criar workspace */}
-        <div className="bg-[#111111] border border-[#333333] rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">Criar Novo Workspace</h2>
-          <form onSubmit={handleCreateWorkspace} className="flex gap-4">
-            <input
-              type="text"
-              value={newWorkspaceName}
-              onChange={(e) => setNewWorkspaceName(e.target.value)}
-              placeholder="Nome do workspace"
-              className="flex-grow bg-[#0a0a0a] border border-[#333333] text-white rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#F54900]"
-              required
-            />
-            <button
-              type="submit"
-              disabled={isCreating}
-              className="bg-[#F54900] text-white rounded-md px-6 py-2 flex items-center justify-center hover:bg-[#D93C00] disabled:opacity-50 transition-colors"
-            >
-              {isCreating ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-t-2 border-b-2 border-white mr-2"></div>
-              ) : (
-                <Plus className="h-4 w-4 mr-2" />
-              )}
-              Criar
-            </button>
-          </form>
-        </div>
+        <Card className="mb-8 border-border bg-card">
+          <CardHeader>
+            <CardTitle className="text-card-foreground">Criar Novo Workspace</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreateWorkspace} className="flex flex-col sm:flex-row gap-4">
+              <Input
+                type="text"
+                value={newWorkspaceName}
+                onChange={(e) => setNewWorkspaceName(e.target.value)}
+                placeholder="Nome do novo workspace"
+                className="flex-grow bg-input border-input text-foreground placeholder:text-muted-foreground"
+                required
+                disabled={isCreating}
+              />
+              <Button
+                type="submit"
+                disabled={isCreating || !newWorkspaceName.trim()}
+                className="w-full sm:w-auto"
+              >
+                {isCreating ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Plus className="h-4 w-4 mr-2" />
+                )}
+                Criar
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
 
         {/* Lista de workspaces */}
-        <div className="bg-[#111111] border border-[#333333] rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">
-            {isSuperAdmin ? 'Todos os Workspaces do Sistema' : 'Seus Workspaces'}
-          </h2>
+        <h2 className="text-xl font-semibold mb-4 text-foreground">
+          {isSuperAdmin ? 'Todos os Workspaces' : 'Selecione um Workspace'}
+        </h2>
 
-          {isLoading ? (
-            <LoadingSpinner message="Carregando workspaces..." />
-          ) : workspaces.length === 0 ? (
-            <p className="text-gray-400 italic py-6 text-center">Nenhum workspace encontrado. Crie um para começar.</p>
-          ) : (
-            <div className="space-y-4">
-              {workspaces.map((workspace) => (
-                <div key={workspace.id} className="border border-[#333333] rounded-lg p-4 hover:bg-[#1a1a1a] transition-colors">
+        {!workspaces || workspaces.length === 0 ? (
+          <Card className="border-border bg-card text-center py-8">
+            <CardContent>
+              <p className="text-muted-foreground italic">
+                Nenhum workspace encontrado. Crie um acima para começar.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {workspaces.map((workspace) => (
+              <Card key={workspace.id} className="border-border bg-card hover:bg-accent/50 transition-colors">
+                <CardContent className="p-4">
                   {editingWorkspace?.id === workspace.id ? (
-                    <form onSubmit={handleUpdateWorkspace} className="flex gap-2">
-                      <input
+                    <form onSubmit={handleUpdateWorkspace} className="flex flex-col sm:flex-row items-center gap-2">
+                      <Input
                         type="text"
                         value={editingWorkspace.name}
                         onChange={(e) => setEditingWorkspace({ ...editingWorkspace, name: e.target.value })}
-                        className="flex-grow bg-[#0a0a0a] border border-[#333333] text-white rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-[#F54900]"
+                        className="flex-grow bg-input border-input text-foreground placeholder:text-muted-foreground"
                         required
-                      />
-                      <button
-                        type="submit"
                         disabled={isEditing}
-                        className="bg-green-600 text-white rounded-md px-3 py-1 text-sm hover:bg-green-700 disabled:opacity-50"
-                      >
-                        Salvar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingWorkspace(null)}
-                        className="bg-[#333333] text-white rounded-md px-3 py-1 text-sm hover:bg-[#444444]"
-                      >
-                        Cancelar
-                      </button>
+                        autoFocus
+                      />
+                      <div className="flex gap-2 mt-2 sm:mt-0 flex-shrink-0">
+                        <Button
+                          type="submit"
+                          size="sm"
+                          variant="secondary"
+                          disabled={isEditing || !editingWorkspace.name.trim()}
+                        >
+                          {isEditing && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                          Salvar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingWorkspace(null)}
+                          disabled={isEditing}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
                     </form>
                   ) : (
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-lg font-medium">{workspace.name}</h3>
-                          {/* Display extra information for super admins */}
-                          {isSuperAdmin && workspace.owner && (
-                            <p className="text-sm text-gray-400">
-                              Proprietário: {workspace.owner.name || workspace.owner.email}
-                              {/* Show a badge if the workspace owner is also super admin */}
-                              {workspace.owner.id === session?.user?.id && (
-                                <span className="ml-2 px-1.5 py-0.5 bg-purple-900/50 text-purple-200 text-xs rounded">Você</span>
-                              )}
-                            </p>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex-grow min-w-0">
+                        <h3 className="text-lg font-medium text-card-foreground truncate">{workspace.name}</h3>
+                        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3"/>
+                            {(workspace._count?.members ?? 1)} Membro(s)
+                          </span>
+                          {workspace.owner && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate">Proprietário: {workspace.owner.name || workspace.owner.email}</span>
+                            </>
                           )}
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <button
-                            onClick={() => setEditingWorkspace({ id: workspace.id, name: workspace.name })}
-                            className="text-gray-400 hover:text-white transition-colors"
-                            title="Editar workspace"
-                          >
-                            <Edit className="h-5 w-5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteWorkspace(workspace.id)}
-                            className="text-red-500 hover:text-red-400 transition-colors"
-                            title="Excluir workspace"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                          <Link
-                            href={`/workspace/${workspace.slug}`}
-                            className="flex items-center gap-1 text-[#F54900] hover:text-[#FF6922] transition-colors"
-                          >
-                            Entrar <ArrowRight className="h-4 w-4" />
-                          </Link>
+                          {workspace.owner?.id === session?.user?.id && (
+                            <span className="ml-1 px-1.5 py-0.5 bg-purple-900/50 text-purple-300 text-[10px] rounded">Você</span>
+                          )}
+                          <span>• Criado em: {new Date(workspace.created_at || workspace.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
-
-                      {/* Display additional stats for super admin */}
-                      {isSuperAdmin && workspace._count && (
-                        <div className="mt-2 text-xs text-gray-400 flex gap-4">
-                          <span className="bg-[#222222] px-2 py-1 rounded">
-                            {workspace._count.members} membro{workspace._count.members !== 1 ? 's' : ''}
-                          </span>
-                          <span className="bg-[#222222] px-2 py-1 rounded">
-                            Criado em: {new Date(workspace.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditingWorkspace({ id: workspace.id, name: workspace.name })}
+                          className="text-muted-foreground hover:text-foreground h-8 w-8"
+                          title="Editar"
+                          disabled={isDeleting === workspace.id}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteWorkspace(workspace.id)}
+                          className="text-destructive hover:text-destructive/80 h-8 w-8"
+                          title="Excluir"
+                          disabled={isDeleting === workspace.id}
+                        >
+                          {isDeleting === workspace.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                        </Button>
+                        <Button asChild variant="link" className="text-primary hover:text-primary/90 px-1">
+                          <Link href={`/workspace/${workspace.slug}`}>
+                            Entrar <ArrowRight className="ml-1 h-4 w-4" />
+                          </Link>
+                        </Button>
+                      </div>
                     </div>
                   )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </PageContainer>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
