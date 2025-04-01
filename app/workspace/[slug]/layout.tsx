@@ -284,7 +284,6 @@ export default function WorkspaceLayout({
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Header específico do Workspace */}
           <WorkspaceHeader />
-
           {/* Área de conteúdo principal rolável */}
           <main className="flex-1 overflow-auto bg-muted/30">
             {/* Padding aplicado aqui para o conteúdo */}
@@ -292,11 +291,9 @@ export default function WorkspaceLayout({
               {children}
             </div>
           </main>
-
           {/* Footer específico do Workspace (opcional) */}
           <WorkspaceFooter />
         </div>
-        {/* <<< FIM DA NOVA ESTRUTURA >>> */}
       </div>
     </TooltipProvider>
   );

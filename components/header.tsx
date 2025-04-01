@@ -73,9 +73,7 @@ export default function Header() {
   const { theme, toggleTheme } = useTheme();
   const isLandingPage = pathname === '/';
 
-  if (pathname?.startsWith('/workspace/')) {
-    return null;
-  }
+  
 
   useEffect(() => {
     const handleScroll = () => {
@@ -104,6 +102,10 @@ export default function Header() {
   // Ajustando cores dos links para contraste
   const linkClasses = cn('text-sm font-medium transition-colors', 'text-muted-foreground hover:text-foreground');
   const activeLinkClasses = 'text-primary font-semibold'; // Laranja e negrito para ativo
+
+  if (pathname?.startsWith('/workspace/')) {
+    return null;
+  }
 
   return (
     <header className={headerClasses} >
