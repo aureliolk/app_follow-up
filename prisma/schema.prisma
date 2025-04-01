@@ -257,6 +257,9 @@ model Workspace {
   ai_model_preference   String?                
   webhook_ingress_secret String? @unique       
 
+  lumibot_account_id String?  @default("") // ID da Conta Lumibot associada
+  lumibot_api_token  String? @default("") // Token de API do Agente/Inbox Lumibot (CONSIDERAR CRIPTOGRAFIA em produção)
+
   @@map("workspaces")
   @@schema("workspace_schema")
 }

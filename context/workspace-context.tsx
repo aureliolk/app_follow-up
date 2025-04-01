@@ -22,6 +22,8 @@ type Workspace = {
   _count?: {
     members: number;
   };
+  lumibot_account_id?: string
+  lumibot_api_token?: string
 };
 
 type WorkspaceContextType = {
