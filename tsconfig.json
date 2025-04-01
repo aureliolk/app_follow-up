@@ -1,27 +1,49 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "target": "ES2022", // Mais moderno para Node 20
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
-    "noEmit": true,
+    // "noEmit": true, // <<< REMOVER ou definir como false
     "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext", // <<< ALTERAR para NodeNext
+    "moduleResolution": "NodeNext", // <<< ALTERAR para NodeNext
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "incremental": true,
+    "incremental": true, // OK para Next.js
     "plugins": [
       {
         "name": "next"
       }
     ],
+    "baseUrl": ".", // <<< Adicionar baseUrl para paths funcionarem
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": [
+        "./*"
+      ] // Manter para Next.js, mas não usar no worker diretamente
+    },
+    "outDir": "./dist" // <<< Adicionar outDir (útil para compilação)
+    ,
+    "noEmit": true
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "ts-node": { // <<< Adicionar/Confirmar esta seção para ts-node
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts", // <<< Garante que lib/workers/messageProcessor.ts está incluído
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ] // <<< Excluir o outDir
 }

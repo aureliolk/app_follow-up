@@ -2,6 +2,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { Conversation } from '@prisma/client';
+import { messageProcessingQueue } from '@/lib/queues/messageProcessingQueue';
 
 export async function POST(req: NextRequest) {
   console.log('Webhook Lumibot/Chatwoot Recebido');
@@ -49,14 +51,14 @@ export async function POST(req: NextRequest) {
     const conversationMetadata = body.conversation?.meta ? { ...body.conversation.meta } : null;
 
     const messageMetadata = {
-        content_attributes: body.content_attributes,
-        additional_attributes: body.additional_attributes,
+      content_attributes: body.content_attributes,
+      additional_attributes: body.additional_attributes,
     };
 
     // Validação mínima
     if (!clientPhone || !channelConversationId || !messageContent) {
-        console.error('Webhook Ingress: Dados essenciais ausentes no payload (phone, conversationId, content).');
-        return NextResponse.json({ success: false, error: 'Payload inválido ou incompleto' }, { status: 400 });
+      console.error('Webhook Ingress: Dados essenciais ausentes no payload (phone, conversationId, content).');
+      return NextResponse.json({ success: false, error: 'Payload inválido ou incompleto' }, { status: 400 });
     }
 
     // 5. Encontrar ou Criar Cliente
@@ -86,33 +88,56 @@ export async function POST(req: NextRequest) {
     console.log(`Webhook Ingress: Cliente ${client.id} encontrado/criado.`);
 
     // 6. Encontrar ou Criar Conversa
-    const conversation = await prisma.conversation.upsert({
+    let conversation: Conversation; // Usar tipo Conversation do Prisma Client
+
+    // Validação crucial ANTES da busca
+    if (!channelConversationId) {
+      console.error(`Webhook Ingress: channel_conversation_id está nulo ou indefinido. Payload:`, body);
+      // Decidir o que fazer: retornar erro ou talvez criar uma conversa sem esse ID?
+      // Por segurança, retornar erro é melhor inicialmente.
+      return NextResponse.json({ success: false, error: 'ID da conversa do canal ausente no payload' }, { status: 400 });
+    }
+
+    // Tenta encontrar a conversa existente usando a combinação
+    const existingConversation = await prisma.conversation.findFirst({
       where: {
-         // Precisamos de um índice único confiável. Usar ID externo da conversa + workspace é bom
-         // Se não tiver índice: findFirst + create
-        workspace_id_channel_conversation_id: { // Supondo que você crie esse índice
-            workspace_id: workspaceId,
-            channel_conversation_id: channelConversationId,
-        }
-      },
-      update: { // O que atualizar se a conversa já existe
-        status: 'ACTIVE', // Reabre a conversa se estava fechada/pausada? Decida a lógica.
-        last_message_at: messageTimestamp, // Atualiza o timestamp da última atividade
-        updated_at: new Date(),
-        // Poderia atualizar metadata aqui também se necessário
-      },
-      create: { // O que criar se for nova
         workspace_id: workspaceId,
-        client_id: client.id,
-        channel: normalizedChannel,
-        channel_conversation_id: channelConversationId,
-        status: 'ACTIVE',
-        is_ai_active: true, // Começa ativa por padrão
-        last_message_at: messageTimestamp,
-        metadata: conversationMetadata,
-      },
+        channel_conversation_id: channelConversationId, // Busca normal pelos campos
+      }
     });
-    console.log(`Webhook Ingress: Conversa ${conversation.id} encontrada/criada.`);
+
+    if (existingConversation) {
+      // Atualiza a conversa existente
+      console.log(`Webhook Ingress: Conversa ${existingConversation.id} encontrada. Atualizando.`);
+      conversation = await prisma.conversation.update({
+        where: {
+          id: existingConversation.id // Atualiza usando o ID encontrado
+        },
+        data: {
+          status: 'ACTIVE', // Lógica de reabertura
+          last_message_at: messageTimestamp,
+          updated_at: new Date(),
+          // Atualizar metadata se necessário
+          // metadata: conversationMetadata,
+        }
+      });
+    } else {
+      // Cria uma nova conversa
+      console.log(`Webhook Ingress: Conversa não encontrada. Criando nova.`);
+      conversation = await prisma.conversation.create({
+        data: {
+          workspace_id: workspaceId,
+          client_id: client.id,
+          channel: normalizedChannel,
+          channel_conversation_id: channelConversationId, // Já validamos que não é nulo
+          status: 'ACTIVE',
+          is_ai_active: true,
+          last_message_at: messageTimestamp,
+          metadata: conversationMetadata,
+        }
+      });
+      console.log(`Webhook Ingress: Nova conversa ${conversation.id} criada.`);
+    }
 
     // 7. Salvar Mensagem Recebida
     const newMessage = await prisma.message.create({
@@ -127,31 +152,35 @@ export async function POST(req: NextRequest) {
     });
     console.log(`Webhook Ingress: Mensagem ${newMessage.id} salva.`);
 
-    // 8. (Opcional, mas bom) Atualizar last_message_at na conversa explicitamente se o upsert não o fez
-    //    Isso garante que o campo está sempre atualizado, mesmo que a conversa já existisse.
-    if (conversation.last_message_at !== messageTimestamp) {
-        await prisma.conversation.update({
-            where: { id: conversation.id },
-            data: { last_message_at: messageTimestamp }
-        });
-         console.log(`Webhook Ingress: Timestamp da conversa ${conversation.id} atualizado.`);
+    // 8. Atualizar last_message_at
+    if (!existingConversation || existingConversation.last_message_at?.getTime() !== messageTimestamp.getTime()) { // Comparar getTime()
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { last_message_at: messageTimestamp }
+      });
+      console.log(`Webhook Ingress: Timestamp da conversa ${conversation.id} atualizado.`);
     }
 
-    // --- PONTO DE PARADA TEMPORÁRIO ---
-    // Aqui é onde, no futuro, você chamaria a fila do Redis/BullMQ
-    // para processar a mensagem com a IA após o buffer.
-    // Exemplo conceitual (NÃO IMPLEMENTAR AGORA):
-    // await messageQueue.add('processIncomingMessage', {
-    //   conversationId: conversation.id,
-    //   messageId: newMessage.id,
-    //   workspaceId: workspaceId,
-    //   // ... outros dados necessários para a IA e resposta
-    // });
-    console.log(`Webhook Ingress: Mensagem ${newMessage.id} para conversa ${conversation.id} armazenada. Processamento da IA deferido.`);
-
-
+    // --- NOVO PASSO: Adicionar Job à Fila ---
+    try {
+      const jobData = {
+        conversationId: conversation.id,
+        clientId: client.id, // Pode ser útil para buscar histórico
+        newMessageId: newMessage.id, // ID da mensagem que disparou
+        workspaceId: workspaceId,
+        receivedTimestamp: Date.now() // Para a lógica de buffer
+      };
+      // Nome do job pode ser mais específico se houver diferentes tipos de processamento
+      await messageProcessingQueue.add('processIncomingMessage', jobData);
+      console.log(`Webhook Ingress: Job adicionado à fila para processar mensagem ${newMessage.id} da conversa ${conversation.id}`);
+    } catch (queueError) {
+      console.error(`Webhook Ingress: Falha ao adicionar job à fila BullMQ:`, queueError);
+      // Considerar o que fazer aqui: retornar 500? Logar criticamente?
+      // Por ora, vamos logar e continuar para retornar 200 ao webhook,
+      // mas isso significa que a mensagem pode não ser processada pela IA.
+    }
     // 9. Responder com Sucesso
-    return NextResponse.json({ success: true, message: 'Mensagem recebida' }, { status: 200 });
+    return NextResponse.json({ success: true, message: 'Mensagem recebida e enfileirada' }, { status: 200 });
 
   } catch (error) {
     console.error('Webhook Ingress: Erro inesperado:', error);
