@@ -30,35 +30,44 @@ export async function POST(req: NextRequest) {
     const messageType = body.message_type; // 'incoming', 'outgoing', etc.
     const senderType = body.sender_type; // 'Contact', 'Agent'
 
-    // 4. Ignorar mensagens que não são do cliente
-    if (eventType !== 'message_created' || messageType !== 'incoming' || senderType !== 'Contact') {
-      console.log(`Webhook Ingress: Ignorando evento (${eventType}) / tipo (${messageType}) / remetente (${senderType}) não relevante.`);
+    // <<< CORREÇÃO AQUI >>>
+    // Acessar a primeira mensagem do array e pegar o tipo do remetente dela
+    const firstMessage = body.conversation?.messages?.[0];
+    const messageSenderType = firstMessage?.sender_type; // 'Contact', 'User', 'Agent' etc. (Conforme Chatwoot)
+    // <<< FIM DA CORREÇÃO >>>
+
+    // 4. Ignorar mensagens que não são do cliente (usando messageSenderType)
+    if (eventType !== 'message_created' || messageType !== 'incoming' || messageSenderType !== 'Contact') {
+      console.log(`Webhook Ingress: Ignorando evento (${eventType}) / tipo (${messageType}) / remetente da msg (${messageSenderType}) não relevante.`);
       return NextResponse.json({ success: true, message: 'Evento não relevante ignorado' }, { status: 200 });
     }
 
-    const messageContent = body.content;
-    const messageTimestamp = new Date(body.created_at); // Chatwoot usa ISO string ou epoch? Ajustar se necessário
-    const channelMessageId = body.source_id || body.id?.toString(); // ID da mensagem no canal
+    // Extrair o restante dos dados usando 'firstMessage' quando apropriado
+    const messageContent = firstMessage?.content; // Usar a mensagem específica
+    // Usar o timestamp da MENSAGEM, não do evento webhook geral
+    const messageTimestamp = firstMessage?.created_at ? new Date(firstMessage.created_at * 1000) : new Date(); // Chatwoot usa epoch seconds
+    const channelMessageId = firstMessage?.source_id || firstMessage?.id?.toString();
 
-    const clientExternalId = body.sender?.id?.toString();
-    const clientName = body.sender?.name;
-    const clientPhone = body.sender?.phone_number;
-    const clientMetadata = body.sender ? { ...body.sender } : null; // Guarda o objeto sender inteiro
+    // Dados do cliente podem vir do objeto sender no nível raiz OU dentro da mensagem
+    const clientExternalId = body.sender?.id?.toString() || firstMessage?.sender?.id?.toString();
+    const clientName = body.sender?.name || firstMessage?.sender?.name;
+    const clientPhone = body.sender?.phone_number || firstMessage?.sender?.phone_number;
+    const clientMetadata = body.sender || firstMessage?.sender || null;
 
-    const channel = body.conversation?.channel; // Ex: "Channel::Whatsapp"
-    const normalizedChannel = channel?.split('::')[1]?.toUpperCase() || 'UNKNOWN'; // Extrai "WHATSAPP"
+    const channel = body.conversation?.channel;
+    const normalizedChannel = channel?.split('::')[1]?.toUpperCase() || 'UNKNOWN';
     const channelConversationId = body.conversation?.id?.toString();
-    const conversationMetadata = body.conversation?.meta ? { ...body.conversation.meta } : null;
+    const conversationMetadata = body.conversation?.meta || null;
 
     const messageMetadata = {
-      content_attributes: body.content_attributes,
-      additional_attributes: body.additional_attributes,
+        content_attributes: firstMessage?.content_attributes || {},
+        additional_attributes: firstMessage?.additional_attributes || {},
     };
 
-    // Validação mínima
+    // Validação mínima (usando dados extraídos corretamente)
     if (!clientPhone || !channelConversationId || !messageContent) {
-      console.error('Webhook Ingress: Dados essenciais ausentes no payload (phone, conversationId, content).');
-      return NextResponse.json({ success: false, error: 'Payload inválido ou incompleto' }, { status: 400 });
+        console.error('Webhook Ingress: Dados essenciais ausentes após extração (phone, conversationId, content).', { clientPhone, channelConversationId, messageContent });
+        return NextResponse.json({ success: false, error: 'Payload inválido ou incompleto após extração' }, { status: 400 });
     }
 
     // 5. Encontrar ou Criar Cliente
