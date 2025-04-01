@@ -639,49 +639,7 @@ export const followUpService = {
     }
   },
 
-  // Função para atualizar uma campanha
-  async updateCampaign(campaignId: string, formData: any, workspaceId?: string): Promise<any> {
-    try {
-      const wsId = workspaceId || getActiveWorkspaceId();
-      
-      // Preparar os dados - garantir que steps tem o formato correto
-      const preparedData = { ...formData, workspaceId: wsId };
-
-      // Se os steps forem fornecidos como array, serializá-los
-      if (preparedData.steps && Array.isArray(preparedData.steps)) {
-        // Garantir que cada step tenha todos os campos necessários no formato padrão
-        const formattedSteps = preparedData.steps.map(step => ({
-          // Usar apenas campos do schema.prisma
-          id: step.id || undefined,
-          stage_id: step.stage_id || '',
-          stage_name: step.stage_name || '',
-          template_name: step.template_name || '',
-          wait_time: step.wait_time || '30m',
-          message: step.message || '',
-          category: step.category || 'Utility',
-          auto_respond: step.auto_respond !== undefined ? step.auto_respond : true
-        }));
-
-        // Atribuir os steps formatados
-        preparedData.steps = formattedSteps;
-      }
-
-      console.log('Enviando dados formatados para atualização:', JSON.stringify(preparedData, null, 2));
-
-      const response = await axios.put(`/api/follow-up/campaigns/${campaignId}`, preparedData);
-
-      if (!response.data.success) {
-        throw new Error(response.data.error || 'Failed to update campaign');
-      }
-
-      this.clearCampaignCache(campaignId);
-
-      return response.data;
-    } catch (error) {
-      console.error('Error updating campaign:', error);
-      throw error;
-    }
-  },
+  
 
   // Função para criar um novo passo
   async createStep(data: any, workspaceId?: string): Promise<any> {
@@ -747,6 +705,35 @@ export const followUpService = {
     }
   },
 
+  // Função para atualizar uma campanha
+  async updateCampaign(campaignId: string, formData: any, workspaceId?: string): Promise<any> {
+    try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      if (!wsId) {
+        throw new Error('Workspace ID é necessário para atualizar uma campanha');
+      }
+      
+      // Adicionar workspaceId aos dados
+      const campaignData = {
+        ...formData,
+        workspaceId: wsId
+      };
+      
+      console.log('Enviando dados formatados para atualização:', JSON.stringify(campaignData, null, 2));
+      const response = await axios.put(`/api/follow-up/campaigns/${campaignId}`, campaignData);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to update campaign');
+      }
+      
+      this.clearCampaignCache(campaignId);
+      return response.data.data;
+    } catch (error) {
+      console.error('Error updating campaign:', error);
+      throw error;
+    }
+  },
+
   // NOVA FUNÇÃO: Excluir uma campanha
   async deleteCampaign(campaignId: string, workspaceId?: string): Promise<boolean> {
     try {
@@ -784,7 +771,7 @@ export const followUpService = {
          throw new Error('Erro desconhecido ao excluir campanha');
       }
     }
-  }
+  },
 
   
 };

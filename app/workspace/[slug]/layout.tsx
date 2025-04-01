@@ -294,7 +294,7 @@ export default function WorkspaceLayout({
           </main>
 
           {/* Footer específico do Workspace (opcional) */}
-          {/* <WorkspaceFooter /> */}
+          <WorkspaceFooter />
         </div>
         {/* <<< FIM DA NOVA ESTRUTURA >>> */}
       </div>

@@ -70,6 +70,7 @@ model FollowUpCampaign {
 
   stages            FollowUpFunnelStage[] @relation("FollowUpCampaignToFollowUpFunnelStage")
   follow_ups        FollowUp[]
+  workspaces        WorkspaceFollowUpCampaign[] // Adicionada relação com a tabela de junção
 
   @@map("follow_up_campaigns")
   @@schema("follow_up_schema")
@@ -291,6 +292,7 @@ model WorkspaceFollowUpCampaign {
   campaign_id  String
   created_at   DateTime  @default(now())
   workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  campaign     FollowUpCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade) // Adicionada relação com a campanha
 
   @@unique([workspace_id, campaign_id])
   @@map("workspace_follow_up_campaigns")

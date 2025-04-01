@@ -1,30 +1,58 @@
 // app/workspace/[slug]/campaigns/components/CampaignList.tsx
+'use client';
+
+import {  useCallback, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge"; // Importar Badge
+import { Badge } from "@/components/ui/badge";
 import { Edit, Trash2, Loader2 } from 'lucide-react';
-import { format } from 'date-fns'; // Para formatar datas
-import { ptBR } from 'date-fns/locale'; // Para datas em português
-
-// Reutilizar o tipo Campaign da página
-type Campaign = {
-    id: string;
-    name: string;
-    description?: string | null;
-    active: boolean;
-    created_at: string;
-    stepsCount?: number;
-    activeFollowUps?: number;
-};
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { useFollowUp } from '@/context/follow-up-context'; // Import useFollowUp Hook
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import ErrorMessage from '@/components/ui/ErrorMessage';
+import type { Campaign } from '@/app/types'; // Import Campaign type
+import { useWorkspace } from '@/context/workspace-context';
 
 interface CampaignListProps {
-  campaigns: Campaign[];
   onEdit: (campaign: Campaign) => void;
   onDelete: (campaignId: string) => void;
-  deletingId: string | null; // ID da campanha que está sendo excluída
+  deletingId: string | null;
 }
 
-export default function CampaignList({ campaigns, onEdit, onDelete, deletingId }: CampaignListProps) {
+export default function CampaignList({ onEdit, onDelete, deletingId }: CampaignListProps) {
+  const { campaigns, loadingCampaigns, campaignsError, fetchCampaigns } = useFollowUp(); // Use context
+  const { workspace } = useWorkspace();
+    const workspaceId =  workspace?.id;
+
+    console.log("Workspace ID", workspaceId)
+
+    useEffect(() => {
+        if (workspaceId) {
+            fetchCampaigns(workspaceId);
+        }
+
+        console.log("Get Campaings xxx", campaigns)
+    }, [fetchCampaigns, workspaceId]);
+
+
+  if (loadingCampaigns) {
+    return (
+      <div className="text-center py-10 border border-dashed border-border rounded-lg">
+        <LoadingSpinner message="Carregando campanhas..." />
+      </div>
+    );
+  }
+
+  if (campaignsError) {
+    return (
+      <div className="text-center py-10 border border-dashed border-border rounded-lg">
+        <ErrorMessage message={`Erro ao carregar campanhas: ${campaignsError}`} />
+      </div>
+    );
+  }
+
+
   if (campaigns.length === 0) {
     return (
       <div className="text-center py-10 border border-dashed border-border rounded-lg">
@@ -71,7 +99,7 @@ export default function CampaignList({ campaigns, onEdit, onDelete, deletingId }
                     onClick={() => onEdit(campaign)}
                     className="h-8 w-8 text-muted-foreground hover:text-primary"
                     title="Editar"
-                    disabled={!!deletingId} // Desabilita se alguma estiver sendo deletada
+                    disabled={!!deletingId}
                   >
                     <Edit className="h-4 w-4" />
                   </Button>
@@ -81,7 +109,7 @@ export default function CampaignList({ campaigns, onEdit, onDelete, deletingId }
                     onClick={() => onDelete(campaign.id)}
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
                     title="Excluir"
-                    disabled={deletingId === campaign.id} // Desabilita só esta enquanto deleta
+                    disabled={deletingId === campaign.id}
                   >
                     {deletingId === campaign.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

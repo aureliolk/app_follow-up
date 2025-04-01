@@ -190,7 +190,6 @@ export default function WorkspaceCampaignsPage() {
         <LoadingSpinner message="Carregando campanhas..." />
       ) : (
         <CampaignList
-          campaigns={campaigns}
           onEdit={handleOpenEditModal}
           onDelete={handleDeleteCampaign}
           deletingId={isDeleting} // Passa o ID que está sendo deletado
