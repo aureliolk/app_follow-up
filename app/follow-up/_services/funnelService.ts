@@ -11,7 +11,7 @@ import {
   FunnelStageUpdate,
   mapStepToApi,
   mapApiToStep
-} from '../_types/schema';
+} from '@/app/types';
 
 export const useFunnelStages = () => {
   const [stages, setStages] = useState<FunnelStage[]>([]);

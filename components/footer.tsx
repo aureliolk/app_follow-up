@@ -8,6 +8,10 @@ import { usePathname } from 'next/navigation';
 export default function Footer() {
   const pathname = usePathname();
 
+  if (pathname?.startsWith('/workspace/')) {
+    return null;
+  }
+
   // Não mostra footer nas páginas de autenticação
   const isAuthPage = pathname?.startsWith('/auth');
   if (isAuthPage) return null;

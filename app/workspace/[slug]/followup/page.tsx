@@ -14,29 +14,29 @@ export default function WorkspaceFollowUp() {
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    async function loadFollowUpData() {
-      if (!workspace) return;
+  // useEffect(() => {
+  //   async function loadFollowUpData() {
+  //     if (!workspace) return;
       
-      try {
-        setLoadingData(true);
+  //     try {
+  //       setLoadingData(true);
         
-        // Carregar follow-ups do workspace
-        const workspaceFollowUps = await followUpService.getFollowUps(undefined, workspace.id);
-        setFollowUps(workspaceFollowUps);
+  //       // Carregar follow-ups do workspace
+  //       const workspaceFollowUps = await followUpService.getFollowUps(undefined, workspace.id);
+  //       setFollowUps(workspaceFollowUps);
         
-        // Carregar campanhas do workspace
-        const workspaceCampaigns = await followUpService.getCampaigns(workspace.id);
-        setCampaigns(workspaceCampaigns);
-      } catch (error) {
-        console.error('Erro ao carregar dados de follow-up:', error);
-      } finally {
-        setLoadingData(false);
-      }
-    }
+  //       // Carregar campanhas do workspace
+  //       const workspaceCampaigns = await followUpService.getCampaigns(workspace.id);
+  //       setCampaigns(workspaceCampaigns);
+  //     } catch (error) {
+  //       console.error('Erro ao carregar dados de follow-up:', error);
+  //     } finally {
+  //       setLoadingData(false);
+  //     }
+  //   }
     
-    loadFollowUpData();
-  }, [workspace]);
+  //   loadFollowUpData();
+  // }, [workspace]);
 
   // Função para navegar para página de criação de novos follow-ups
   const handleNewFollowUp = () => {

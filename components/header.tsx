@@ -32,7 +32,7 @@ declare module 'next-auth/jwt' {
 // --- Fim da Definição de Tipos ---
 
 // Hook para gerenciar o tema (Mantido como antes)
-function useTheme() {
+export function useTheme() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   useEffect(() => {
@@ -72,6 +72,10 @@ export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const isLandingPage = pathname === '/';
+
+  if (pathname?.startsWith('/workspace/')) {
+    return null;
+  }
 
   useEffect(() => {
     const handleScroll = () => {

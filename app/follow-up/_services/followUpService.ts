@@ -1,6 +1,6 @@
 // app/follow-up/_services/followUpService.ts
 import axios from 'axios';
-import { FollowUp, Campaign, CampaignStep, FunnelStage, FunnelStep } from '../_types';
+import { FollowUp, Campaign, CampaignStep, FunnelStage, FunnelStep } from '@/app/types';
 
 // Cache simples para campanhas
 const campaignStepsCache: Record<string, { data: any[], timestamp: number }> = {};
@@ -745,7 +745,48 @@ export const followUpService = {
       console.error('Error creating campaign:', error);
       throw error;
     }
+  },
+
+  // NOVA FUNÇÃO: Excluir uma campanha
+  async deleteCampaign(campaignId: string, workspaceId?: string): Promise<boolean> {
+    try {
+      const wsId = workspaceId || getActiveWorkspaceId();
+      if (!wsId) {
+        throw new Error('Workspace ID é necessário para excluir uma campanha');
+      }
+
+      console.log(`Tentando excluir campanha ${campaignId} do workspace ${wsId}`);
+
+      // A API espera o workspaceId como query param ou no body, dependendo da implementação
+      // Vamos passar como query param por segurança
+      const response = await axios.delete(`/api/follow-up/campaigns/${campaignId}`, {
+        params: { workspaceId: wsId }
+        // ou data: { workspaceId: wsId } se a API esperar no body
+      });
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Falha ao excluir campanha');
+      }
+
+      // Limpar cache se necessário (depende da implementação do getCampaigns)
+      // this.clearCampaignCache(); // Descomentar se tiver cache
+
+      console.log(`Campanha ${campaignId} excluída com sucesso.`);
+      return true;
+    } catch (error) {
+      console.error(`Erro ao excluir campanha ${campaignId}:`, error);
+      // Lançar o erro para que a UI possa tratá-lo
+      if (axios.isAxiosError(error) && error.response) {
+         throw new Error(error.response.data?.error || error.response.data?.message || 'Erro na API ao excluir campanha');
+      } else if (error instanceof Error) {
+         throw error;
+      } else {
+         throw new Error('Erro desconhecido ao excluir campanha');
+      }
+    }
   }
+
+  
 };
 
 export default followUpService;
