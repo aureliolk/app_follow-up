@@ -1,87 +1,130 @@
+// app/workspace/[slug]/settings/page.tsx
 'use client';
 import { useState } from 'react';
 import { useWorkspace } from '@/context/workspace-context';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ApiTokenManager from './components/ApiTokenManager';
-import WebhookManager from './components/WebhookManager';
+// import WebhookManager from './components/WebhookManager'; // <<< REMOVER IMPORT
+import LumibotSettingsForm from './components/LumibotSettingsForm';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import ErrorMessage from '@/components/ui/ErrorMessage';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'; // <<< IMPORTAR Card*
+import { Input } from '@/components/ui/input'; // <<< IMPORTAR Input/Label se for usar no Geral
+import { Label } from '@/components/ui/label';
+import IngressWebhookDisplay from './components/IngressWebhookDisplay';
+import AISettingsForm from './components/AISettingsForm';
 
 export default function WorkspaceSettingsPage() {
   const { workspace, isLoading } = useWorkspace();
-  const [activeTab, setActiveTab] = useState("general");
-  
+  const lumibotInstructions = (
+    <>
+        <p><strong>Como usar esta URL na Lumibot/Chatwoot:</strong></p>
+        <ol className="list-decimal list-inside space-y-1 pl-2">
+            <li>Acesse as configurações do seu Inbox (Caixa de Entrada) no Chatwoot.</li>
+            <li>Vá para a seção "Configurações" {">"} "Webhooks".</li>
+            <li>Clique em "Adicionar novo webhook".</li>
+            <li>Cole a URL acima no campo "URL do Webhook".</li>
+            <li>Marque os eventos que deseja receber (essencialmente "Mensagem criada" - `message_created`).</li>
+            <li>Salve o webhook.</li>
+        </ol>
+        <p className="mt-2">As mensagens recebidas neste inbox serão agora encaminhadas para este workspace.</p>
+    </>
+);
+
   if (isLoading) {
-    return <div className="text-center py-10">Carregando...</div>;
+    return <LoadingSpinner message="Carregando configurações..." />;
   }
-  
+
   if (!workspace) {
-    return <div className="text-center py-10">Workspace não encontrado</div>;
+    return <ErrorMessage message="Workspace não encontrado ou acesso negado." />;
   }
-  
+
   return (
     <div className="container mx-auto py-6">
-      <h1 className="text-2xl font-bold mb-6">Configurações do Workspace</h1>
-      
-      <Tabs defaultValue="general" onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-8">
-          <TabsTrigger value="general" className="px-4 py-2">Geral</TabsTrigger>
-          <TabsTrigger value="api" className="px-4 py-2">API</TabsTrigger>
-          <TabsTrigger value="webhooks" className="px-4 py-2">Webhooks</TabsTrigger>
-          <TabsTrigger value="notifications" className="px-4 py-2">Notificações</TabsTrigger>
+      <h1 className="text-2xl font-bold mb-6 text-foreground">Configurações do Workspace: {workspace.name}</h1>
+
+      {/* Ajustar grid-cols conforme o número de abas */}
+      <Tabs defaultValue="general" className="w-full">
+        <TabsList className="mb-8 grid w-full grid-cols-2 md:grid-cols-4 bg-card border border-border">
+          <TabsTrigger value="general">Geral</TabsTrigger>
+          <TabsTrigger value="ai">IA</TabsTrigger>
+          <TabsTrigger value="api">API</TabsTrigger>
+          <TabsTrigger value="integrations">Integrações</TabsTrigger>
+          <TabsTrigger value="notifications">Notificações</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="general" className="space-y-6">
-          <div className="bg-[#161616] rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Informações Gerais</h2>
-            <div className="grid gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Nome do Workspace</label>
-                <input 
-                  type="text" 
-                  value={workspace.name} 
-                  disabled 
-                  className="w-full px-3 py-2 bg-[#111111] border border-[#333333] rounded-md text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Slug</label>
-                <input 
-                  type="text" 
-                  value={workspace.slug} 
-                  disabled 
-                  className="w-full px-3 py-2 bg-[#111111] border border-[#333333] rounded-md text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Data de Criação</label>
-                <input 
-                  type="text" 
-                  value={new Date(workspace.created_at).toLocaleString()} 
-                  disabled 
-                  className="w-full px-3 py-2 bg-[#111111] border border-[#333333] rounded-md text-white"
-                />
-              </div>
-            </div>
-          </div>
+           <Card className="border-border bg-card">
+             <CardHeader>
+                <CardTitle className="text-card-foreground">Informações Gerais</CardTitle>
+             </CardHeader>
+             <CardContent className="grid gap-4">
+               <div>
+                  <Label htmlFor="wsName" className="block text-sm font-medium text-muted-foreground mb-1">Nome do Workspace</Label>
+                  <Input
+                    id="wsName"
+                    type="text"
+                    value={workspace.name}
+                    disabled
+                    className="bg-input border-input text-foreground"
+                  />
+                </div>
+                 <div>
+                   <Label htmlFor="wsSlug" className="block text-sm font-medium text-muted-foreground mb-1">Slug</Label>
+                   <Input
+                     id="wsSlug"
+                     type="text"
+                     value={workspace.slug}
+                     disabled
+                     className="bg-input border-input text-foreground"
+                   />
+                 </div>
+                 <div>
+                   <Label htmlFor="wsCreatedAt" className="block text-sm font-medium text-muted-foreground mb-1">Data de Criação</Label>
+                   <Input
+                     id="wsCreatedAt"
+                     type="text"
+                     value={new Date(workspace.created_at || workspace.createdAt).toLocaleString()}
+                     disabled
+                     className="bg-input border-input text-foreground"
+                   />
+                 </div>
+             </CardContent>
+           </Card>
         </TabsContent>
-        
+
+        <TabsContent value="ai" className="space-y-6">
+          <AISettingsForm /> {/* <<< RENDERIZAR FORMULÁRIO DE IA */}
+        </TabsContent>
+
         <TabsContent value="api" className="space-y-6">
           <ApiTokenManager workspaceId={workspace.id} />
         </TabsContent>
-        
-        <TabsContent value="webhooks" className="space-y-6">
-          <WebhookManager workspaceId={workspace.id} />
+
+        <TabsContent value="integrations" className="space-y-6">
+           <LumibotSettingsForm />
+           {/* <<< ADICIONAREMOS A URL AQUI >>> */}
+           <IngressWebhookDisplay
+             channelName="Lumibot / Chatwoot"
+             pathSegment="lumibot"
+             instructions={lumibotInstructions}
+           />
         </TabsContent>
-        
+
         <TabsContent value="notifications" className="space-y-6">
-          <div className="bg-[#161616] rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Configurações de Notificações</h2>
-            <p className="text-gray-400 mb-4">
-              Configure como e quando você deseja receber notificações relacionadas a este workspace.
-            </p>
-            <div className="bg-yellow-900/20 border border-yellow-700 text-yellow-200 p-4 rounded-md">
-              Configurações de notificação estarão disponíveis em breve.
-            </div>
-          </div>
+           <Card className="border-border bg-card">
+             <CardHeader>
+               <CardTitle className="text-card-foreground">Configurações de Notificações</CardTitle>
+                <CardDescription>
+                  Configure como e quando você deseja receber notificações.
+                </CardDescription>
+             </CardHeader>
+             <CardContent>
+                <div className="bg-yellow-900/20 border border-yellow-700 text-yellow-200 p-4 rounded-md">
+                 Em breve...
+                </div>
+             </CardContent>
+           </Card>
         </TabsContent>
       </Tabs>
     </div>
