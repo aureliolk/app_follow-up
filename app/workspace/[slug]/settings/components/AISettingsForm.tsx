@@ -4,15 +4,14 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useWorkspace } from '@/context/workspace-context';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea'; // Usar Textarea para prompt longo
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Para modelo (opcional)
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Info } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import axios from 'axios';
 
-// Modelos de IA disponíveis (exemplo)
 const AVAILABLE_MODELS = [
     { value: 'gpt-4o', label: 'OpenAI GPT-4o (Recomendado)' },
     { value: 'gpt-3.5-turbo', label: 'OpenAI GPT-3.5 Turbo' },
@@ -20,7 +19,7 @@ const AVAILABLE_MODELS = [
 ];
 
 export default function AISettingsForm() {
-  const { workspace, isLoading: workspaceLoading, refreshWorkspaces } = useWorkspace();
+  const { workspace, isLoading: workspaceLoading, updateWorkspace, refreshWorkspaces } = useWorkspace(); // <<< Usar updateWorkspace do contexto
 
   const [systemPrompt, setSystemPrompt] = useState('');
   const [modelPreference, setModelPreference] = useState('');
@@ -29,8 +28,10 @@ export default function AISettingsForm() {
 
   useEffect(() => {
     if (workspace) {
+      console.log("AISettingsForm useEffect: Setting state from workspace", workspace);
       setSystemPrompt(workspace.ai_default_system_prompt || '');
-      setModelPreference(workspace.ai_model_preference || AVAILABLE_MODELS[0].value); // Define um padrão se não houver preferência
+      // Define o valor inicial do select. Se não houver preferência salva, usa o primeiro da lista.
+      setModelPreference(workspace.ai_model_preference || AVAILABLE_MODELS[0].value);
     }
   }, [workspace]);
 
@@ -42,44 +43,61 @@ export default function AISettingsForm() {
     setError(null);
 
     const dataToUpdate: { ai_default_system_prompt?: string | null; ai_model_preference?: string | null } = {};
+    let changed = false;
 
-    // Verifica se houve alteração no prompt
-    if (systemPrompt !== (workspace.ai_default_system_prompt || '')) {
-      dataToUpdate.ai_default_system_prompt = systemPrompt.trim() === '' ? null : systemPrompt; // Envia null se vazio
+    // <<< LÓGICA DE COMPARAÇÃO AJUSTADA >>>
+    const currentPrompt = workspace.ai_default_system_prompt || '';
+    const currentModel = workspace.ai_model_preference || AVAILABLE_MODELS[0].value;
+
+    console.log("AISettingsForm handleSubmit: Comparing values");
+    console.log("  Current Prompt:", `"${currentPrompt}"`);
+    console.log("  New Prompt:", `"${systemPrompt}"`);
+    console.log("  Current Model:", `"${currentModel}"`);
+    console.log("  New Model:", `"${modelPreference}"`);
+
+    // Verifica se o prompt mudou (considerando null/undefined como string vazia para comparação)
+    if (systemPrompt.trim() !== currentPrompt.trim()) {
+      dataToUpdate.ai_default_system_prompt = systemPrompt.trim() === '' ? null : systemPrompt.trim();
+      changed = true;
+      console.log("  -> Prompt changed. Adding to update.");
     }
 
-    // Verifica se houve alteração no modelo
-    if (modelPreference !== (workspace.ai_model_preference || AVAILABLE_MODELS[0].value)) {
+    // Verifica se o modelo mudou
+    if (modelPreference !== currentModel) {
       dataToUpdate.ai_model_preference = modelPreference;
+      changed = true;
+      console.log("  -> Model changed. Adding to update.");
     }
 
-    // Se nada mudou, informa o usuário
-    if (Object.keys(dataToUpdate).length === 0) {
+    if (!changed) {
       toast.success('Nenhuma alteração detectada.');
       setIsSaving(false);
+      console.log("AISettingsForm handleSubmit: No changes detected.");
       return;
     }
 
-    try {
-      const response = await axios.patch(`/api/workspaces/${workspace.id}`, dataToUpdate);
+    console.log("AISettingsForm handleSubmit: Sending update payload:", dataToUpdate);
 
-      if (response.status === 200) {
-        toast.success('Configurações de IA salvas com sucesso!');
-        await refreshWorkspaces(); // Atualiza o contexto
-      } else {
-        throw new Error(response.data.message || 'Falha ao salvar configurações de IA');
-      }
+    try {
+      // <<< USAR updateWorkspace DO CONTEXTO >>>
+      // A função do contexto já lida com a chamada API e o refresh
+      await updateWorkspace(workspace.id, dataToUpdate);
+      toast.success('Configurações de IA salvas com sucesso!');
+      // Não precisamos chamar refreshWorkspaces explicitamente aqui, pois updateWorkspace já deve fazer isso.
+      console.log("AISettingsForm handleSubmit: Update successful via context.");
     } catch (err: any) {
-      console.error("Erro ao salvar configurações de IA:", err);
-      const message = err.response?.data?.message || err.message || 'Ocorreu um erro.';
-      setError(message);
-      toast.error(`Erro: ${message}`);
+      console.error("AISettingsForm handleSubmit: Erro ao salvar configurações de IA via contexto:", err);
+      // O erro já deve ser tratado e exibido pelo contexto, mas podemos adicionar um log extra
+      const message = err.message || 'Ocorreu um erro ao salvar.';
+      setError(message); // Pode mostrar erro localmente também
+      toast.error(`Erro ao salvar: ${message}`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (workspaceLoading) {
+  // ... (restante do JSX do formulário permanece o mesmo) ...
+   if (workspaceLoading && !workspace) { // Mostrar loading apenas se o workspace ainda não carregou
     return <p className="text-muted-foreground">Carregando dados do workspace...</p>;
   }
 
@@ -106,11 +124,12 @@ export default function AISettingsForm() {
             </Label>
             <Select
                 name="ai_model_preference"
-                value={modelPreference}
-                onValueChange={(value) => setModelPreference(value)}
+                value={modelPreference} // Usa o estado local
+                onValueChange={(value) => setModelPreference(value)} // Atualiza o estado local
                 disabled={isSaving}
             >
               <SelectTrigger className="w-full md:w-1/2 bg-input border-input">
+                {/* Garante que o placeholder só aparece se não houver valor */}
                 <SelectValue placeholder="Selecione um modelo..." />
               </SelectTrigger>
               <SelectContent>
@@ -151,7 +170,7 @@ export default function AISettingsForm() {
 
         </CardContent>
         <CardFooter className="border-t border-border pt-4">
-          <Button type="submit" disabled={isSaving}>
+          <Button type="submit" disabled={isSaving || workspaceLoading}>
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             {isSaving ? 'Salvando...' : 'Salvar Configurações de IA'}
           </Button>

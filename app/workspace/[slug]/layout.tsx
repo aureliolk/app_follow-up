@@ -13,16 +13,17 @@ import {
 } from '@/components/ui/tooltip'; // Importe Tooltip do Shadcn
 import { Button } from '@/components/ui/button'; // Importe Button do Shadcn
 import {
-  LayoutDashboard, // Ícone alternativo para Dashboard
+  LayoutDashboard, 
   Users,
   Settings,
   CheckSquare,
   MessageSquare,
   BookOpen,
-  ChevronsLeft, // Ícone para colapsar
-  ChevronsRight, // Ícone para expandir
+  ChevronsLeft, 
+  ChevronsRight,
   Loader2,
-  Folders, // Ícone para Workspaces (exemplo)
+  Folders,
+  Contact, 
 } from 'lucide-react';
 import WorkspaceHeader from './components/WorkspaceHeader'; // <<< Importar
 import WorkspaceFooter from './components/WorkspaceFooter'; // <<< Importar (opcional)
@@ -51,9 +52,10 @@ export default function WorkspaceLayout({
   // Definição dos itens de navegação
   const navItems: NavItem[] = [
     { href: '', label: 'Dashboard', icon: LayoutDashboard, matchExact: true },
-    { href: '/members', label: 'Membros', icon: Users },
+    { href: '/clients', label: 'Clientes', icon: Contact },
     { href: '/followup', label: 'Follow-up', icon: MessageSquare },
     { href: '/campaigns', label: 'Campanhas', icon: CheckSquare },
+    { href: '/members', label: 'Membros', icon: Users },
     { href: '/settings', label: 'Configurações', icon: Settings },
   ];
 

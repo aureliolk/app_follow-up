@@ -12,7 +12,8 @@ import Footer from "@/components/footer";
 // import Header from "@/components/header";
 // import Footer from "@/components/footer";
 import { WorkspaceProvider } from '@/context/workspace-context';
-import {FollowUpProvider} from '@/context/follow-up-context';
+import { FollowUpProvider } from '@/context/follow-up-context';
+import { ClientProvider } from '@/context/client-context';
 
 // Configuração das fontes (copie do seu projeto antigo ou ajuste)
 const geistSans = Geist({
@@ -46,13 +47,15 @@ export default function RootLayout({
         <SessionProvider>
           <WorkspaceProvider>
             <FollowUpProvider>
-            <div className="flex flex-col min-h-screen">
-              {/* Adicionar Header aqui depois */}
-              <Header />
-              <main className="flex-grow">{children}</main> {/* Adicionado flex-grow */}
-              {/* Adicionar Footer aqui depois */}
-              <Footer />
-            </div>
+              <ClientProvider>
+                <div className="flex flex-col min-h-screen">
+                  {/* Adicionar Header aqui depois */}
+                  <Header />
+                  <main className="flex-grow">{children}</main> {/* Adicionado flex-grow */}
+                  {/* Adicionar Footer aqui depois */}
+                  <Footer />
+                </div>
+              </ClientProvider>
             </FollowUpProvider>
           </WorkspaceProvider>
         </SessionProvider>

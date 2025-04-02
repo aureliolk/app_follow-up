@@ -141,3 +141,28 @@ auto_respond?: boolean;    // Se responde automaticamente
 // Exemplo:
 // export interface Member { ... }
 // export interface Invitation { ... }
+
+/ Adicionado/Atualizado: Tipo Client baseado no Prisma (ajuste se necessário)
+export interface Client {
+  id: string;
+  workspace_id: string;
+  external_id?: string | null;
+  phone_number?: string | null;
+  name?: string | null;
+  channel?: string | null;
+  created_at: string | Date; // Pode ser string ou Date dependendo da API/contexto
+  updated_at: string | Date;
+  metadata?: any | null; // Manter 'any' ou definir uma estrutura se conhecida
+  // Relações (opcionais aqui, geralmente não enviadas em forms)
+  // conversations?: any[];
+  // workspace?: any;
+}
+
+// Adicionado: Tipo para o formulário de Cliente
+export type ClientFormData = {
+  name: string | null; // Nome é importante para a UI
+  phone_number: string | null; // Telefone também
+  external_id?: string | null; // Opcional no form?
+  channel?: string | null; // Opcional no form?
+  // Metadata não será editável via form simples
+};
