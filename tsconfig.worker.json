@@ -1,0 +1,34 @@
+// tsconfig.worker.json
+{
+    "extends": "./tsconfig.json", // Herda configurações base
+    "compilerOptions": {
+      "module": "NodeNext", // Ou "CommonJS" se preferir CJS para o worker
+      "moduleResolution": "NodeNext", // Correspondente ao module
+      "outDir": "./dist",      // Pasta de saída para o JS compilado
+      "rootDir": "./lib",      // Pasta raiz dos fontes do worker
+      "noEmit": false,         // PRECISA emitir JS
+      "isolatedModules": false,// Worker não é estritamente um módulo isolado
+      "declaration": false,    // Geralmente não precisa de .d.ts para o worker
+      "skipLibCheck": true
+      // Remova ou ajuste outras opções herdadas que não se aplicam
+      // "jsx": "preserve", // Remover se não usar JSX no worker
+    },
+    "include": [
+      "lib/workers/**/*.ts", // Inclui apenas os arquivos do worker
+      "lib/db.ts",           // Inclui dependências necessárias
+      "lib/redis.ts",
+      "lib/ai/*.ts",
+      "lib/channel/*.ts",
+      "lib/queues/*.ts"
+      // Adicione outros arquivos .ts em lib/ que são importados pelo worker
+    ],
+    "exclude": [
+      "node_modules",
+      ".next",
+      "app", // Exclui o código da aplicação Next.js
+      "components",
+      "context",
+      "pages" // Se existir
+      // Adicione outras pastas que não fazem parte do worker
+    ]
+  }

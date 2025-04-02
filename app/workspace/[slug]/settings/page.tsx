@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import IngressWebhookDisplay from './components/IngressWebhookDisplay';
-import AISettingsForm from './components/AISettingsForm';
 
 export default function WorkspaceSettingsPage() {
   const { workspace, isLoading } = useWorkspace();
@@ -54,7 +53,6 @@ export default function WorkspaceSettingsPage() {
        >
         <TabsList className="mb-8 grid w-full grid-cols-2 md:grid-cols-5 bg-card border border-border"> {/* Ajustado grid-cols para 5 */}
           <TabsTrigger value="general">Geral</TabsTrigger>
-          <TabsTrigger value="ai">IA</TabsTrigger>
           <TabsTrigger value="api">API</TabsTrigger>
           <TabsTrigger value="integrations">Integrações</TabsTrigger>
           <TabsTrigger value="notifications">Notificações</TabsTrigger>
@@ -82,10 +80,6 @@ export default function WorkspaceSettingsPage() {
                  </div>
              </CardContent>
            </Card>
-        </TabsContent>
-
-        <TabsContent value="ai" className="space-y-6">
-          <AISettingsForm />
         </TabsContent>
 
         <TabsContent value="api" className="space-y-6">

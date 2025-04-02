@@ -23,7 +23,8 @@ import {
   ChevronsRight,
   Loader2,
   Folders,
-  Contact, 
+  Contact,
+  BrainCog,
 } from 'lucide-react';
 import WorkspaceHeader from './components/WorkspaceHeader'; // <<< Importar
 import WorkspaceFooter from './components/WorkspaceFooter'; // <<< Importar (opcional)
@@ -56,6 +57,7 @@ export default function WorkspaceLayout({
     { href: '/followup', label: 'Follow-up', icon: MessageSquare },
     { href: '/campaigns', label: 'Campanhas', icon: CheckSquare },
     { href: '/members', label: 'Membros', icon: Users },
+    { href: '/ia', label: 'IA', icon: BrainCog },
     { href: '/settings', label: 'Configurações', icon: Settings },
   ];
 
