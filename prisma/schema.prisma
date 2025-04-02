@@ -253,6 +253,8 @@ model Workspace {
   clients             Client[]                    @relation("WorkspaceToClient")
   conversations       Conversation[]              @relation("WorkspaceToConversation")
 
+  ai_follow_up_rules WorkspaceAiFollowUpRule[]
+
   ai_default_system_prompt String?                @db.Text
   ai_model_preference   String?                
   webhook_ingress_secret String? @unique       
@@ -344,6 +346,26 @@ model WorkspaceWebhook {
 
   @@index([workspace_id])
   @@map("workspace_webhooks")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceAiFollowUpRule {
+  id                  String   @id @default(uuid())
+  workspace_id        String
+  workspace           Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  // Armazenamos como BigInt para precisão, mas converteremos para/de string na API/UI
+  delay_milliseconds  BigInt
+  message_content     String   @db.Text
+
+  // Opcional: Para ordenar regras se houver múltiplas futuramente
+  // order               Int      @default(0)
+
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@index([workspace_id, created_at]) // Índice para buscar por workspace ordenado
+  @@map("workspace_ai_follow_up_rules")
   @@schema("workspace_schema")
 }
 

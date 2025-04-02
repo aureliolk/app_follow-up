@@ -10,7 +10,7 @@ const connectionOptions: RedisOptions = {
 };
 const redisInstance = new Redis(connectionOptions);
 
-export const redisConnection: Redis = redisInstance;
+export const redisConnection: Redis = redisInstance
 
 redisConnection.on('connect', () => console.log('🔌 Conectado ao Redis'));
 redisConnection.on('error', (err: Error) => console.error('❌ Erro de conexão Redis:', err));
