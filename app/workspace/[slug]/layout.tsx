@@ -62,14 +62,7 @@ export default function WorkspaceLayout({
     // Adicione outros links secundários se necessário
   ];
 
-   // Lógica de redirecionamento (melhorada)
-  useEffect(() => {
-    if (!isLoading && !workspace && pathname?.startsWith('/workspace/')) {
-       console.warn("Workspace não carregado, redirecionando para /workspaces");
-       router.push('/workspaces');
-    }
-  }, [workspace, isLoading, router, pathname]);
-
+ 
   // Função para verificar link ativo (mais precisa)
   const isActive = (item: NavItem) => {
     if (!pathname || !slug) return false;

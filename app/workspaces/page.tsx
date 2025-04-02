@@ -219,7 +219,7 @@ export default function WorkspacesList() {
                           {workspace.owner?.id === session?.user?.id && (
                             <span className="ml-1 px-1.5 py-0.5 bg-purple-900/50 text-purple-300 text-[10px] rounded">Você</span>
                           )}
-                          <span>• Criado em: {new Date(workspace.created_at || workspace.createdAt).toLocaleDateString()}</span>
+                          <span>• Criado em: {new Date(workspace.created_at || workspace.created_at).toLocaleDateString()}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">

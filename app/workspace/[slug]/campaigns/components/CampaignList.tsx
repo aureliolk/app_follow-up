@@ -1,7 +1,7 @@
 // app/workspace/[slug]/campaigns/components/CampaignList.tsx
 'use client';
 
-import {  useCallback, useEffect } from 'react';
+// Removido useEffect e useCallback se não forem mais necessários
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,31 +11,25 @@ import { ptBR } from 'date-fns/locale';
 import { useFollowUp } from '@/context/follow-up-context'; // Import useFollowUp Hook
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
-import type { Campaign } from '@/app/types'; // Import Campaign type
-import { useWorkspace } from '@/context/workspace-context';
+import type { Campaign } from '@/app/types';
 
 interface CampaignListProps {
   onEdit: (campaign: Campaign) => void;
   onDelete: (campaignId: string) => void;
   deletingId: string | null;
+  // Não precisa mais receber `campaigns` via props se usar contexto
 }
 
 export default function CampaignList({ onEdit, onDelete, deletingId }: CampaignListProps) {
-  const { campaigns, loadingCampaigns, campaignsError, fetchCampaigns } = useFollowUp(); // Use context
-  const { workspace } = useWorkspace();
-    const workspaceId =  workspace?.id;
+  // Acessa o estado diretamente do contexto
+  const { campaigns, loadingCampaigns, campaignsError } = useFollowUp();
 
-    console.log("Workspace ID", workspaceId)
+  // Log para depuração do estado recebido pelo componente
+  console.log("CampaignList Render: Loading:", loadingCampaigns, "Error:", campaignsError, "Count:", campaigns?.length ?? 0);
 
-    useEffect(() => {
-        if (workspaceId) {
-            fetchCampaigns(workspaceId);
-        }
+  // --- REMOVIDO O useEffect que chamava fetchCampaigns ---
 
-        console.log("Get Campaings xxx", campaigns)
-    }, [fetchCampaigns, workspaceId]);
-
-
+  // Lógica de renderização baseada no estado do contexto
   if (loadingCampaigns) {
     return (
       <div className="text-center py-10 border border-dashed border-border rounded-lg">
@@ -52,8 +46,8 @@ export default function CampaignList({ onEdit, onDelete, deletingId }: CampaignL
     );
   }
 
-
-  if (campaigns.length === 0) {
+  // Verifica se a lista está vazia *depois* de verificar loading e erro
+  if (!campaigns || campaigns.length === 0) {
     return (
       <div className="text-center py-10 border border-dashed border-border rounded-lg">
         <p className="text-muted-foreground">Nenhuma campanha encontrada.</p>
@@ -62,6 +56,7 @@ export default function CampaignList({ onEdit, onDelete, deletingId }: CampaignL
     );
   }
 
+  // Renderiza a tabela se houver campanhas e não houver loading/erro
   return (
     <div className="border rounded-lg overflow-hidden bg-card">
       <Table>
@@ -70,8 +65,6 @@ export default function CampaignList({ onEdit, onDelete, deletingId }: CampaignL
             <TableHead className="w-[250px]">Nome</TableHead>
             <TableHead>Descrição</TableHead>
             <TableHead className="text-center">Status</TableHead>
-            {/* <TableHead className="text-center">Etapas</TableHead> */}
-            {/* <TableHead className="text-center">Follow-ups</TableHead> */}
             <TableHead>Criada em</TableHead>
             <TableHead className="text-right w-[100px]">Ações</TableHead>
           </TableRow>
@@ -82,12 +75,10 @@ export default function CampaignList({ onEdit, onDelete, deletingId }: CampaignL
               <TableCell className="font-medium text-foreground">{campaign.name}</TableCell>
               <TableCell className="text-muted-foreground text-sm truncate max-w-xs">{campaign.description || '-'}</TableCell>
               <TableCell className="text-center">
-                <Badge variant={campaign.active ? "default" : "secondary"} className={campaign.active ? 'bg-green-700/20 text-green-400 border-green-700/40' : 'bg-red-700/20 text-red-400 border-red-700/40'}>
+                 <Badge variant={campaign.active ? "default" : "secondary"} className={campaign.active ? 'bg-green-700/20 text-green-400 border-green-700/40' : 'bg-red-700/20 text-red-400 border-red-700/40'}>
                   {campaign.active ? 'Ativa' : 'Inativa'}
                 </Badge>
               </TableCell>
-               {/* <TableCell className="text-center text-muted-foreground">{campaign.stepsCount ?? '-'}</TableCell> */}
-               {/* <TableCell className="text-center text-muted-foreground">{campaign.activeFollowUps ?? '-'}</TableCell> */}
               <TableCell className="text-muted-foreground text-sm">
                 {format(new Date(campaign.created_at), 'dd/MM/yyyy', { locale: ptBR })}
               </TableCell>
