@@ -2,16 +2,16 @@
 'use client';
 
 // Removido useEffect e useCallback se não forem mais necessários
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/apps/next-app/components/ui/table";
-import { Button } from "@/apps/next-app/components/ui/button";
-import { Badge } from "@/apps/next-app/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../../../../../apps/next-app/components/ui/table";
+import { Button } from "../../../../../../../apps/next-app/components/ui/button";
+import { Badge } from "../../../../../../../apps/next-app/components/ui/badge";
 import { Edit, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useFollowUp } from '@/apps/next-app/context/follow-up-context'; // Import useFollowUp Hook
-import LoadingSpinner from '@/apps/next-app/components/ui/LoadingSpinner';
-import ErrorMessage from '@/apps/next-app/components/ui/ErrorMessage';
-import type { Campaign } from '@/apps/next-app/app/types';
+import { useFollowUp } from '../../../../../../../apps/next-app/context/follow-up-context'; // Import useFollowUp Hook
+import LoadingSpinner from '../../../../../../../apps/next-app/components/ui/LoadingSpinner';
+import ErrorMessage from '../../../../../../../apps/next-app/components/ui/ErrorMessage';
+import type { Campaign } from '../../../../../../../apps/next-app/app/types';
 
 interface CampaignListProps {
   onEdit: (campaign: Campaign) => void;

@@ -1,16 +1,16 @@
 // app/workspace/[slug]/clients/components/ClientList.tsx
 'use client';
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/apps/next-app/components/ui/table";
-import { Button } from "@/apps/next-app/components/ui/button";
-import { Badge } from "@/apps/next-app/components/ui/badge"; // Pode ser útil para Canal
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../../../../../apps/next-app/components/ui/table";
+import { Button } from "../../../../../../../apps/next-app/components/ui/button";
+import { Badge } from "../../../../../../../apps/next-app/components/ui/badge"; // Pode ser útil para Canal
 import { Edit, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useClient } from '@/apps/next-app/context/client-context'; // <<< Usar hook do Cliente
-import LoadingSpinner from '@/apps/next-app/components/ui/LoadingSpinner';
-import ErrorMessage from '@/apps/next-app/components/ui/ErrorMessage';
-import type { Client } from '@/apps/next-app/app/types';
+import { useClient } from '../../../../../../../apps/next-app/context/client-context'; // <<< Usar hook do Cliente
+import LoadingSpinner from '../../../../../../../apps/next-app/components/ui/LoadingSpinner';
+import ErrorMessage from '../../../../../../../apps/next-app/components/ui/ErrorMessage';
+import type { Client } from '../../../../../../../apps/next-app/app/types';
 
 interface ClientListProps {
   onEdit: (client: Client) => void;

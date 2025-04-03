@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSession, signOut, SessionContextValue } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 import { LogOut, UserCircle, Settings, Layers, Menu, X, Loader2, Sun, Moon } from 'lucide-react';
-import { cn } from '@/packages/shared-lib/src/utils'; // Importar cn para classes condicionais
+import { cn } from '../../../packages/shared-lib/src/utils'; // Importar cn para classes condicionais
 
 // --- Definição de Tipos Estendidos para NextAuth ---
 import 'next-auth';

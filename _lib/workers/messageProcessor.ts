@@ -4,7 +4,7 @@ import { redisConnection } from '@/packages/shared-lib/src/redis';             /
 import { prisma } from '@/packages/shared-lib/src/db';                         // <-- 
 import { generateChatCompletion } from '@/packages/shared-lib/src/ai/chatService'; // <-- 
 import { enviarTextoLivreLumibot } from '@/packages/shared-lib/src/channel/lumibotSender'; // <-- 
-import { inactiveFollowUpQueue } from '@/lib/queues/inactiveFollowUpQueue'; // <-- 
+import { inactiveFollowUpQueue } from '@/apps/workers/src/queues/inactiveFollowUpQueue'; // <-- 
 import { Conversation, Message, Prisma, Workspace, MessageSenderType, ConversationStatus } from '@prisma/client'; // Importar tipos e Enums
 import { CoreMessage } from 'ai'; // Tipo para Vercel AI SDK
 

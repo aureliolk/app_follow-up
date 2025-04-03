@@ -1,11 +1,11 @@
 // app/api/workspaces/[id]/ai-followups/[ruleId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/packages/shared-lib/src/db';
+import { prisma } from '../../../../../../../../packages/shared-lib/src/db';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options';
-import { checkPermission } from '@/packages/shared-lib/src/permissions';
-import { parseDelayStringToMs } from '@/packages/shared-lib/src/timeUtils';
+import { authOptions } from '../../../../../../../../packages/shared-lib/src/auth/auth-options';
+import { checkPermission } from '../../../../../../../../packages/shared-lib/src/permissions';
+import { parseDelayStringToMs } from '../../../../../../../../packages/shared-lib/src/timeUtils';
 
 // Schema Zod para validação da atualização
 const updateRuleSchema = z.object({

@@ -1,4 +1,4 @@
-import { prisma } from '@/packages/shared-lib/src/db.js';
+import { prisma } from '../../../packages/shared-lib/src/db';
 
 type Role = 'ADMIN' | 'MEMBER' | 'VIEWER';
 

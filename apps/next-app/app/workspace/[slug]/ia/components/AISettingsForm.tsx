@@ -2,12 +2,12 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
-import { Button } from '@/apps/next-app/components/ui/button';
-import { Textarea } from '@/apps/next-app/components/ui/textarea';
-import { Label } from '@/apps/next-app/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/apps/next-app/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/apps/next-app/components/ui/select";
+import { useWorkspace } from '../../../../../../../apps/next-app/context/workspace-context';
+import { Button } from '../../../../../../../apps/next-app/components/ui/button';
+import { Textarea } from '../../../../../../../apps/next-app/components/ui/textarea';
+import { Label } from '../../../../../../../apps/next-app/components/ui/label';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../../../../../../apps/next-app/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../../../../../apps/next-app/components/ui/select";
 import { Loader2, Info } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import axios from 'axios';

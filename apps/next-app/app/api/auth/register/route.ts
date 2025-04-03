@@ -1,7 +1,7 @@
-import { hash } from 'bcrypt';
+import { hash } from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/packages/shared-lib/src/db';
+import { prisma } from '../../../../../../packages/shared-lib/src/db';
 
 const userSchema = z.object({
   name: z.string().min(1, 'Name is required'),

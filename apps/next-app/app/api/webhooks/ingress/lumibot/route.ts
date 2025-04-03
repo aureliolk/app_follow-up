@@ -1,9 +1,9 @@
 // app/api/webhooks/ingress/lumibot/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/packages/shared-lib/src/db';
+import { prisma } from '../../../../../../../packages/shared-lib/src/db';
 import { Conversation } from '@prisma/client';
-import { messageProcessingQueue } from '@/lib/queues/messageProcessingQueue';
+import { messageProcessingQueue } from '../../../../../../../apps/workers/src/queues/messageProcessingQueue';
 
 export async function POST(req: NextRequest) {
   console.log('Webhook Lumibot/Chatwoot Recebido');

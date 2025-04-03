@@ -2,11 +2,11 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
-import { Button } from '@/apps/next-app/components/ui/button';
-import { Input } from '@/apps/next-app/components/ui/input';
-import { Label } from '@/apps/next-app/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/apps/next-app/components/ui/card';
+import { useWorkspace } from '../../../../../../../apps/next-app/context/workspace-context';
+import { Button } from '../../../../../../../apps/next-app/components/ui/button';
+import { Input } from '../../../../../../../apps/next-app/components/ui/input';
+import { Label } from '../../../../../../../apps/next-app/components/ui/label';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../../../../../../apps/next-app/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import axios from 'axios'; // Usaremos axios para a chamada PATCH

@@ -1,15 +1,15 @@
 // app/workspace/[slug]/campaigns/components/CampaignFormModal.tsx
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/apps/next-app/components/ui/dialog";
-import { Button } from "@/apps/next-app/components/ui/button";
-import { Input } from "@/apps/next-app/components/ui/input";
-import { Label } from "@/apps/next-app/components/ui/label";
-import { Textarea } from "@/apps/next-app/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "../../../../../../../apps/next-app/components/ui/dialog";
+import { Button } from "../../../../../../../apps/next-app/components/ui/button";
+import { Input } from "../../../../../../../apps/next-app/components/ui/input";
+import { Label } from "../../../../../../../apps/next-app/components/ui/label";
+import { Textarea } from "../../../../../../../apps/next-app/components/ui/textarea";
 import { Loader2 } from 'lucide-react';
-import { Switch } from "@/apps/next-app/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/apps/next-app/components/ui/select";
-import type { Campaign, CampaignFormData } from '@/apps/next-app/app/types'; // Importar tipos centralizados
-import { useFollowUp } from '@/apps/next-app/context/follow-up-context'; // <<< Importar o Hook do Contexto
+import { Switch } from "../../../../../../../apps/next-app/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../../../../../apps/next-app/components/ui/select";
+import type { Campaign, CampaignFormData } from '../../../../../../../apps/next-app/app/types'; // Importar tipos centralizados
+import { useFollowUp } from '../../../../../../../apps/next-app/context/follow-up-context'; // <<< Importar o Hook do Contexto
 import { toast } from 'react-hot-toast'; // <<< Para feedback ao usuário
 
 interface CampaignFormModalProps {

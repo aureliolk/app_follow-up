@@ -7,10 +7,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 // Importar componentes Shadcn UI (se usados no projeto antigo, se não, manter inputs normais)
-import { Input } from "@/apps/next-app/components/ui/input";
-import { Button } from "@/apps/next-app/components/ui/button";
-import { Label } from "@/apps/next-app/components/ui/label"; // Shadcn label (opcional, mas bom para consistência)
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/apps/next-app/components/ui/card"; // Usar Card para estrutura
+import { Input } from "../../../components/ui/input";
+import { Button } from "../../../components/ui/button";
+import { Label } from "../../../components/ui/label"; // Shadcn label (opcional, mas bom para consistência)
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card"; // Usar Card para estrutura
 
 function LoginForm() {
   const router = useRouter();

@@ -1,10 +1,10 @@
 'use client';
 
 import { usePathname, useParams } from 'next/navigation';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
+import { useWorkspace } from '../../../../context/workspace-context';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
-import { Button } from '@/apps/next-app/components/ui/button';
+import { Button } from '../../../../components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,11 +12,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/apps/next-app/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/apps/next-app/components/ui/avatar'; // Assumindo que você tem/quer Avatar
+} from '../../../../components/ui/dropdown-menu';
+import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar'; // Assumindo que você tem/quer Avatar
 import { Sun, Moon, LogOut, Settings, ChevronRight, Home } from 'lucide-react';
-import { cn } from '@/packages/shared-lib/src/utils';
-import { useTheme } from '@/apps/next-app/components/header'; // Reutilizar o hook de tema do header global
+import { cn } from '../../../../../../packages/shared-lib/src/utils';
+import { useTheme } from '../../../../components/header'; // Reutilizar o hook de tema do header global
 
 export default function WorkspaceHeader() {
   const { workspace } = useWorkspace(); // Pegar nome do workspace

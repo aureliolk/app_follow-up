@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
+import { useWorkspace } from '../../context/workspace-context';
 import { useSession } from 'next-auth/react';
 import { Plus, ArrowRight, Edit, Trash2, Loader2, Users } from 'lucide-react';
 import Link from 'next/link';
 
 // Importando Componentes Shadcn UI
-import { Button } from '@/apps/next-app/components/ui/button';
-import { Input } from '@/apps/next-app/components/ui/input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/apps/next-app/components/ui/card';
-import LoadingSpinner from '@/apps/next-app/components/ui/LoadingSpinner';
-import ErrorMessage from '@/apps/next-app/components/ui/ErrorMessage';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../components/ui/card';
+import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import ErrorMessage from '../../components/ui/ErrorMessage';
 
 export default function WorkspacesList() {
   const { data: session, status } = useSession();

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/packages/shared-lib/src/db';
-import { withAuth, getCurrentUserId } from '@/packages/shared-lib/src/auth/auth-utils';
+import { prisma } from '../../../../../../../../packages/shared-lib/src/db';
+import { withAuth, getCurrentUserId } from '../../../../../../../../packages/shared-lib/src/auth/auth-utils';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options';
+import { authOptions } from '../../../../../../../../packages/shared-lib/src/auth/auth-options';
 
 // Função auxiliar para obter a sessão atual
 async function getSession() {

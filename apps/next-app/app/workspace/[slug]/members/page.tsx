@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
+import { useWorkspace } from '../../../../../../apps/next-app/context/workspace-context';
 import { Loader2, UserPlus, Trash2, Mail, Shield, Users, Eye } from 'lucide-react';
 
 type Member = {

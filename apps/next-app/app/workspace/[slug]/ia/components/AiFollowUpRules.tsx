@@ -4,19 +4,19 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
 import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
-} from '@/apps/next-app/components/ui/card';
-import { Button } from '@/apps/next-app/components/ui/button';
-import { Input } from '@/apps/next-app/components/ui/input';
-import { Textarea } from '@/apps/next-app/components/ui/textarea';
-import { Label } from '@/apps/next-app/components/ui/label';
+} from '../../../../../../../apps/next-app/components/ui/card';
+import { Button } from '../../../../../../../apps/next-app/components/ui/button';
+import { Input } from '../../../../../../../apps/next-app/components/ui/input';
+import { Textarea } from '../../../../../../../apps/next-app/components/ui/textarea';
+import { Label } from '../../../../../../../apps/next-app/components/ui/label';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
-} from '@/apps/next-app/components/ui/dialog';
+} from '../../../../../../../apps/next-app/components/ui/dialog';
 import { Loader2, Plus, Edit2, Trash2, Clock, AlertCircle } from 'lucide-react';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context'; // <<< USA O CONTEXTO
+import { useWorkspace } from '../../../../../../../apps/next-app/context/workspace-context'; // <<< USA O CONTEXTO
 import { toast } from 'react-hot-toast';
-import { cn } from '@/packages/shared-lib/src/utils';
-import { formatMsToDelayString } from '@/packages/shared-lib/src/timeUtils'; // <<< Importa formatador
+import { cn } from '../../../../../../../packages/shared-lib/src/utils';
+import { formatMsToDelayString } from '../../../../../../../packages/shared-lib/src/timeUtils'; // <<< Importa formatador
 
 // Interface para a regra - Alinhada com o que a API/Contexto vai fornecer
 interface WorkspaceAiFollowUpRule {

@@ -1,8 +1,8 @@
 import { getServerSession } from 'next-auth/next';
 import { NextResponse } from 'next/server';
-import { prisma } from '@/packages/shared-lib/src/db';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options';
-import { checkPermission } from '@/packages/shared-lib/src/permissions';
+import { prisma } from '../../../../../../../packages/shared-lib/src/db';
+import { authOptions } from '../../../../../../../packages/shared-lib/src/auth/auth-options';
+import { checkPermission } from '../../../../../../../packages/shared-lib/src/permissions';
 
 // Get workspace members and invitations
 export async function GET(req: Request, props: { params: Promise<{ id: string }> }) {

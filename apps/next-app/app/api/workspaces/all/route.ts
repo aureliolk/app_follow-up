@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth/next';
 import { NextResponse } from 'next/server';
-import { prisma } from '@/packages/shared-lib/src/db';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options';
+import { prisma } from '../../../../../../packages/shared-lib/src/db';
+import { authOptions } from '../../../../../../packages/shared-lib/src/auth/auth-options';
 
 // Get all workspaces for super admin
 export async function GET() {

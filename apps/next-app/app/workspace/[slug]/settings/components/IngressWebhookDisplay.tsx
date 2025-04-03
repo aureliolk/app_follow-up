@@ -2,11 +2,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
-import { Input } from '@/apps/next-app/components/ui/input';
-import { Label } from '@/apps/next-app/components/ui/label';
-import { Button } from '@/apps/next-app/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/apps/next-app/components/ui/card';
+import { useWorkspace } from '../../../../../../../apps/next-app/context/workspace-context';
+import { Input } from '../../../../../../../apps/next-app/components/ui/input';
+import { Label } from '../../../../../../../apps/next-app/components/ui/label';
+import { Button } from '../../../../../../../apps/next-app/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../../../../apps/next-app/components/ui/card';
 import { Copy, Check } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 

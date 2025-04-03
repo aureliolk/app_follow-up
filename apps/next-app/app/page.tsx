@@ -7,8 +7,8 @@ import { useRouter } from 'next/navigation';
 // Adicionar Check para lista de features
 import { ArrowRight, MessageSquare, BarChart2, UserPlus, Brain, Check, X } from 'lucide-react';
 import { useSession } from 'next-auth/react';
-import { cn } from '@/packages/shared-lib/src/utils';
-import { Button } from '@/apps/next-app/components/ui/button'; // <<< ADICIONADO
+import { cn } from '../../../packages/shared-lib/src/utils';
+import { Button } from '../../../apps/next-app/components/ui/button'; // <<< ADICIONADO
 
 export default function LandingPage() {
   const { data: session, status } = useSession();

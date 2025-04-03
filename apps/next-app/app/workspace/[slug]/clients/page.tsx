@@ -2,16 +2,16 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
+import { useWorkspace } from '../../../../../../apps/next-app/context/workspace-context';
 import { Loader2, PlusCircle, Users } from 'lucide-react'; // Ícone Users para o botão
-import { Button } from '@/apps/next-app/components/ui/button';
+import { Button } from '../../../../../../apps/next-app/components/ui/button';
 import ClientList from './components/ClientList';
 import ClientFormModal from './components/ClientFormModal';
-import ErrorMessage from '@/apps/next-app/components/ui/ErrorMessage';
-import LoadingSpinner from '@/apps/next-app/components/ui/LoadingSpinner';
+import ErrorMessage from '../../../../../../apps/next-app/components/ui/ErrorMessage';
+import LoadingSpinner from '../../../../../../apps/next-app/components/ui/LoadingSpinner';
 import { toast } from 'react-hot-toast';
-import type { Client } from '@/apps/next-app/app/types';
-import { useClient } from '@/apps/next-app/context/client-context'; // <<< Usar hook do Cliente
+import type { Client } from '../../../../../../apps/next-app/app/types';
+import { useClient } from '../../../../../../apps/next-app/context/client-context'; // <<< Usar hook do Cliente
 
 export default function WorkspaceClientsPage() {
   const { workspace, isLoading: workspaceLoading } = useWorkspace();

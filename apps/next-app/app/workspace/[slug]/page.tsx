@@ -1,11 +1,11 @@
 'use client';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
+import { useWorkspace } from '../../../context/workspace-context';
 import { ArrowUpRight, Users, BarChart2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { followUpService } from '@/apps/next-app/app/follow-up/_services/followUpService';
-import LoadingSpinner from '@/apps/next-app/components/ui/LoadingSpinner';
-import { Card, CardContent, CardHeader, CardTitle } from '@/apps/next-app/components/ui/card';
+import { followUpService } from '../../../app/follow-up/_services/followUpService';
+import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 
 export default function WorkspaceDashboard() {
   const { workspace, isLoading } = useWorkspace();

@@ -1,9 +1,9 @@
 // app/api/clients/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/packages/shared-lib/src/db';
+import { prisma } from '../../../../../../packages/shared-lib/src/db';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options';
-import { checkPermission } from '@/packages/shared-lib/src/permissions';
+import { authOptions } from '../../../../../../packages/shared-lib/src/auth/auth-options';
+import { checkPermission } from '../../../../../../packages/shared-lib/src/permissions';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 

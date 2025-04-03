@@ -1,8 +1,8 @@
 'use client';
 
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
+import { useWorkspace } from '../../../../../../apps/next-app/context/workspace-context';
 import { useEffect, useState } from 'react';
-import { followUpService } from '@/apps/next-app/app/follow-up/_services/followUpService';
+import { followUpService } from '../../../../../../apps/next-app/app/follow-up/_services/followUpService';
 import { Loader2, ArrowUpRight, Filter, PlusCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';

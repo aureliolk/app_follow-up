@@ -2,9 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { z } from 'zod';
-import { prisma } from '@/packages/shared-lib/src/db';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options';
-import { checkPermission } from '@/packages/shared-lib/src/permissions'; // Importar verificação de permissão
+import { prisma } from '../../../../../../../packages/shared-lib/src/db';
+import { authOptions } from '../../../../../../../packages/shared-lib/src/auth/auth-options';
+import { checkPermission } from '../../../../../../../packages/shared-lib/src/permissions'; // Importar verificação de permissão
 
 // Esquema Zod para validação dos dados de atualização (opcional, mas recomendado)
 // Ajuste os campos conforme o que você permite atualizar

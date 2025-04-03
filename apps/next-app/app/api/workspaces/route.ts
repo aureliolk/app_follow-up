@@ -1,8 +1,8 @@
 import { getServerSession } from 'next-auth/next';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/packages/shared-lib/src/db';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options';
+import { prisma } from '../../../../../packages/shared-lib/src/db';
+import { authOptions } from '../../../../../packages/shared-lib/src/auth/auth-options';
 
 // Create a workspace
 export async function POST(req: Request) {

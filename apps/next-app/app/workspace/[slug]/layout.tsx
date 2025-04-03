@@ -3,15 +3,15 @@
 import { useState, useEffect } from 'react';
 import { useRouter, usePathname, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
-import { cn } from '@/packages/shared-lib/src/utils'; // Certifique-se que seu utils está correto
+import { useWorkspace } from '../../../context/workspace-context';
+import { cn } from '../../../../../packages/shared-lib/src/utils'; // Certifique-se que seu utils está correto
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/apps/next-app/components/ui/tooltip'; // Importe Tooltip do Shadcn
-import { Button } from '@/apps/next-app/components/ui/button'; // Importe Button do Shadcn
+} from '../../../components/ui/tooltip'; // Importe Tooltip do Shadcn
+import { Button } from '../../../components/ui/button'; // Importe Button do Shadcn
 import {
   LayoutDashboard, 
   Users,

@@ -2,17 +2,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
-// import { followUpService } from '@/app/follow-up/_services/followUpService'; // <<< REMOVER importação direta do service
+import { useWorkspace } from '../../../../../../apps/next-app/context/workspace-context';
+// import { followUpService } from '../../../../../../app/follow-up/_services/followUpService'; // <<< REMOVER importação direta do service
 import { Loader2, PlusCircle, Trash2 } from 'lucide-react';
-import { Button } from '@/apps/next-app/components/ui/button';
+import { Button } from '../../../../../../apps/next-app/components/ui/button';
 import CampaignList from './components/CampaignList';
 import CampaignFormModal from './components/CampaignFormModal';
-import ErrorMessage from '@/apps/next-app/components/ui/ErrorMessage';
-import LoadingSpinner from '@/apps/next-app/components/ui/LoadingSpinner';
+import ErrorMessage from '../../../../../../apps/next-app/components/ui/ErrorMessage';
+import LoadingSpinner from '../../../../../../apps/next-app/components/ui/LoadingSpinner';
 import { toast } from 'react-hot-toast';
-import type { Campaign } from '@/apps/next-app/app/types'; // <<< Usar tipo centralizado
-import { useFollowUp } from '@/apps/next-app/context/follow-up-context'; // <<< Importar hook do contexto
+import type { Campaign } from '../../../../../../apps/next-app/app/types'; // <<< Usar tipo centralizado
+import { useFollowUp } from '../../../../../../apps/next-app/context/follow-up-context'; // <<< Importar hook do contexto
 
 // Tipos Campaign e CampaignFormData não são mais necessários aqui, pois vêm de @/app/types
 

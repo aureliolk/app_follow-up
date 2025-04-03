@@ -1,15 +1,15 @@
 // app/workspace/[slug]/settings/page.tsx
 'use client';
 import { useState } from 'react'; // <<< Adicionar useState
-import { useWorkspace } from '@/apps/next-app/context/workspace-context';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/apps/next-app/components/ui/tabs';
+import { useWorkspace } from '../../../../../../apps/next-app/context/workspace-context';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../../../apps/next-app/components/ui/tabs';
 import ApiTokenManager from './components/ApiTokenManager';
 import LumibotSettingsForm from './components/LumibotSettingsForm';
-import LoadingSpinner from '@/apps/next-app/components/ui/LoadingSpinner';
-import ErrorMessage from '@/apps/next-app/components/ui/ErrorMessage';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/apps/next-app/components/ui/card';
-import { Input } from '@/apps/next-app/components/ui/input';
-import { Label } from '@/apps/next-app/components/ui/label';
+import LoadingSpinner from '../../../../../../apps/next-app/components/ui/LoadingSpinner';
+import ErrorMessage from '../../../../../../apps/next-app/components/ui/ErrorMessage';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../../../apps/next-app/components/ui/card';
+import { Input } from '../../../../../../apps/next-app/components/ui/input';
+import { Label } from '../../../../../../apps/next-app/components/ui/label';
 import IngressWebhookDisplay from './components/IngressWebhookDisplay';
 
 export default function WorkspaceSettingsPage() {

@@ -1,11 +1,10 @@
 // lib/workers/messageProcessor.ts
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/packages/shared-lib/src/redis';             // <-- 
-import { prisma } from '@/packages/shared-lib/src/db';                         // <-- 
-import { generateChatCompletion } from '@/packages/shared-lib/src/ai/chatService'; // <-- 
-import { enviarTextoLivreLumibot } from '@/packages/shared-lib/src/channel/lumibotSender'; // <-- 
-import { inactiveFollowUpQueue } from '@/lib/queues/inactiveFollowUpQueue'; // <-- 
-import { Conversation, Message, Prisma, Workspace, MessageSenderType, ConversationStatus } from '@prisma/client'; // Importar tipos e Enums
+import { redisConnection } from '../../../../packages/shared-lib/src/redis';             // <-- 
+import { prisma } from '../../../../packages/shared-lib/src/db';                         // <-- 
+import { generateChatCompletion } from '../../../../packages/shared-lib/src/ai/chatService'; // <-- 
+import { enviarTextoLivreLumibot } from '../../../../packages/shared-lib/src/channel/lumibotSender'; // <-- 
+import { MessageSenderType } from '@prisma/client'; // Importar tipos e Enums
 import { CoreMessage } from 'ai'; // Tipo para Vercel AI SDK
 
 const QUEUE_NAME = 'message-processing';
@@ -194,47 +193,6 @@ async function processJob(job: Job<JobData>) {
          console.error(`[MsgProcessor ${jobId}] Dados ausentes para envio via Lumibot (AccountID: ${!!lumibot_account_id}, Token: ${!!lumibot_api_token}, ChannelConvID: ${!!conversation.channel_conversation_id}).`);
          // Poderia lançar erro aqui se o envio for obrigatório:
          // throw new Error("Dados necessários para envio via Lumibot ausentes.");
-      }
-
-      // --- 9. Agendar Job de Inatividade (SOMENTE se o envio foi bem-sucedido) ---
-      if (sendSuccess) {
-          console.log(`[MsgProcessor ${jobId}] Envio foi OK. Verificando regras de inatividade...`);
-          const firstRule = conversation.workspace.ai_follow_up_rules?.[0];
-
-          if (firstRule?.delay_milliseconds) {
-              const delayMs = Number(firstRule.delay_milliseconds); // Converter BigInt para Number
-              const jobIdentifier = `inactive_${conversationId}`; // ID Fixo por conversa
-
-              if (delayMs > 0) {
-                  console.log(`[MsgProcessor ${jobId}] Agendando job de inatividade '${jobIdentifier}' com delay ${delayMs}ms (Regra ID: ${firstRule.id}). Timestamp base: ${newAiMessageTimestamp.toISOString()}`);
-                  try {
-                      await inactiveFollowUpQueue.add(
-                          'checkConversationInactivity', // Nome do job type
-                          { // Dados do job
-                              conversationId: conversationId,
-                              aiMessageTimestamp: newAiMessageTimestamp.toISOString(), // Timestamp da MENSAGEM DA IA que acabou de ser enviada
-                              workspaceId: workspaceId, // Passa o workspaceId
-                          },
-                          { // Opções
-                              jobId: jobIdentifier, // ID fixo para sobrescrever/remover
-                              delay: delayMs,
-                              removeOnComplete: true,
-                              removeOnFail: 5000 // Manter falhas por um tempo
-                          }
-                      );
-                      console.log(`[MsgProcessor ${jobId}] Job '${jobIdentifier}' agendado/sobrescrito na fila inactiveFollowUpQueue.`);
-                  } catch (scheduleError) {
-                       console.error(`[MsgProcessor ${jobId}] ERRO ao agendar job de inatividade para Conv ${conversationId}:`, scheduleError);
-                       // Não falhar o job principal por isso, mas logar.
-                  }
-              } else {
-                 console.warn(`[MsgProcessor ${jobId}] Regra ${firstRule.id} tem delay inválido (${delayMs}ms). Nenhum job agendado.`);
-              }
-          } else {
-              console.log(`[MsgProcessor ${jobId}] Nenhuma regra de follow-up por inatividade encontrada/válida para o workspace ${workspaceId}. Nenhum job agendado.`);
-          }
-      } else {
-           console.log(`[MsgProcessor ${jobId}] Envio da IA via Lumibot falhou ou foi pulado. Nenhum job de inatividade será agendado.`);
       }
 
     } else {

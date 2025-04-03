@@ -1,12 +1,12 @@
 // app/workspace/[slug]/clients/components/ClientFormModal.tsx
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/apps/next-app/components/ui/dialog";
-import { Button } from "@/apps/next-app/components/ui/button";
-import { Input } from "@/apps/next-app/components/ui/input";
-import { Label } from "@/apps/next-app/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "../../../../../../../apps/next-app/components/ui/dialog";
+import { Button } from "../../../../../../../apps/next-app/components/ui/button";
+import { Input } from "../../../../../../../apps/next-app/components/ui/input";
+import { Label } from "../../../../../../../apps/next-app/components/ui/label";
 import { Loader2 } from 'lucide-react';
-import type { Client, ClientFormData } from '@/apps/next-app/app/types';
-import { useClient } from '@/apps/next-app/context/client-context'; // <<< Usar hook do Cliente
+import type { Client, ClientFormData } from '../../../../../../../apps/next-app/app/types';
+import { useClient } from '../../../../../../../apps/next-app/context/client-context'; // <<< Usar hook do Cliente
 import { toast } from 'react-hot-toast';
 
 interface ClientFormModalProps {

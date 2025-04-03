@@ -1,11 +1,11 @@
 // app/api/workspaces/[id]/ai-followups/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/packages/shared-lib/src/db';
+import { prisma } from '../../../../../../../packages/shared-lib/src/db';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options';
-import { checkPermission } from '@/packages/shared-lib/src/permissions';
-import { parseDelayStringToMs } from '@/packages/shared-lib/src/timeUtils'; // Importa a função utilitária
+import { authOptions } from '../../../../../../../packages/shared-lib/src/auth/auth-options';
+import { checkPermission } from '../../../../../../../packages/shared-lib/src/permissions';
+import { parseDelayStringToMs } from '../../../../../../../packages/shared-lib/src/timeUtils'; // Importa a função utilitária
 
 // Schema Zod para validação da criação
 const createRuleSchema = z.object({

@@ -113,23 +113,30 @@ model FollowUp {
   id                   String            @id @default(uuid())
   campaign_id          String
   client_id            String
+  // Manter status existente, usaremos 'ACTIVE', 'COMPLETED', 'CANCELLED', e adicionaremos 'CONVERTED' via API
   status               String            @default("active")
   started_at           DateTime          @default(now())
   updated_at           DateTime          @updatedAt
-  next_message_at      DateTime?
+  next_message_at      DateTime?         // Pode ser usado pela IA ou removido se confuso
   completed_at         DateTime?
-  current_stage_id     String?
-  waiting_for_response Boolean           @default(false)
-  last_response        String?
-  last_response_at     DateTime?
-  last_client_message_at DateTime?
-  next_evaluation_at DateTime?
+  current_stage_id     String?           // Mantém para organização visual (opcional)
+  waiting_for_response Boolean           @default(false) // Lógica de inatividade antiga, pode ser removida/ignorada
+  last_response        String?           // Lógica de inatividade antiga
+  last_response_at     DateTime?         // Lógica de inatividade antiga
+  last_client_message_at DateTime?       // Mantém, útil para IA
+  next_evaluation_at DateTime?         // Lógica de inatividade antiga
   paused_reason        String?
-  ai_suggestion String?   
+  ai_suggestion String?
+
+  // --- NOVOS CAMPOS PARA SEQUÊNCIA ---
+  current_sequence_step_order Int?     @default(0) // Rastreia a ordem do último passo da *sequência* enviado (0 = nenhum ainda)
+  next_sequence_message_at  DateTime?            // Quando a próxima mensagem *da sequência* está agendada
+
+  // --- RELAÇÕES EXISTENTES ---
   messages             FollowUpMessage[]
   campaign             FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
   ai_analyses          FollowUpAIAnalysis[]
-  
+
   @@index([client_id])
   @@index([status])
   @@map("follow_ups")

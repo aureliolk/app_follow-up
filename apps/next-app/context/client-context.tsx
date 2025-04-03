@@ -3,8 +3,8 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import axios from 'axios';
-import { useWorkspace } from '@/apps/next-app/context/workspace-context'; // Para obter workspaceId padrão
-import type { Client, ClientFormData } from '@/apps/next-app/app/types'; // Importar tipos
+import { useWorkspace } from '../context/workspace-context'; // Para obter workspaceId padrão
+import type { Client, ClientFormData } from '../app/types'; // Importar tipos
 
 // Tipo para o valor do Contexto
 interface ClientContextType {

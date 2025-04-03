@@ -1,8 +1,8 @@
 // lib/workers/inactiveFollowUpProcessor.ts
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/packages/shared-lib/src/redis'; // <---  no final
-import { prisma } from '@/packages/shared-lib/src/db';             // <---  no final
-import { enviarTextoLivreLumibot } from '@/packages/shared-lib/src/channel/lumibotSender'; // <--- .js no final
+import { redisConnection } from '../../../packages/shared-lib/src/redis'; // <---  no final
+import { prisma } from '../../../packages/shared-lib/src/db';             // <---  no final
+import { enviarTextoLivreLumibot } from '../../../packages/shared-lib/src/channel/lumibotSender'; // <--- .js no final
 // Importar Enums e Tipos do Prisma Client
 import { ConversationStatus, MessageSenderType } from '@prisma/client';
 

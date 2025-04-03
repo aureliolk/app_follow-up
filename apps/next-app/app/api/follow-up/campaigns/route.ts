@@ -1,9 +1,9 @@
 // app/api/follow-up/campaigns/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/packages/shared-lib/src/db'; // Ajuste o caminho se necessário
+import { prisma } from '../../../../../../packages/shared-lib/src/db'; // Ajuste o caminho se necessário
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/packages/shared-lib/src/auth/auth-options'; // Ajuste o caminho se necessário
-import { checkPermission } from '@/packages/shared-lib/src/permissions'; // Ajuste o caminho se necessário
+import { authOptions } from '../../../../../../packages/shared-lib/src/auth/auth-options'; // Ajuste o caminho se necessário
+import { checkPermission } from '../../../../../../packages/shared-lib/src/permissions'; // Ajuste o caminho se necessário
 import { z } from 'zod'; // Importar Zod para validação no POST
 
 // --- Função GET: Buscar campanhas por workspace ---
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
         const newCampaign = await prisma.$transaction(async (tx) => {
             // 1. Criar a campanha em si
             const createdCampaign = await tx.followUpCampaign.create({
-                data: validatedData // Usa os dados validados
+                data: validatedData, // Usa os dados validados
             });
             console.log(`API POST Campaigns: Campanha criada (ID: ${createdCampaign.id})`);
 

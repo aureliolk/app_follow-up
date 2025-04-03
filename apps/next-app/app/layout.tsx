@@ -5,15 +5,15 @@ import { Geist, Geist_Mono } from "next/font/google";
 // Importar Toaster se for usar react-hot-toast
 // import { Toaster } from 'react-hot-toast';
 import "./globals.css"; // Importar o CSS global (agora configurado para v3)
-import SessionProvider from "@/apps/next-app/components/session-provider"; // Importar o Provider
-import Header from "@/apps/next-app/components/header";
-import Footer from "@/apps/next-app/components/footer";
+import SessionProvider from "../components/session-provider"; // Importar o Provider
+import Header from "../components/header";
+import Footer from "../components/footer";
 // Importar Header/Footer depois, se já copiados
 // import Header from "@/components/header";
 // import Footer from "@/components/footer";
-import { WorkspaceProvider } from '@/apps/next-app/context/workspace-context';
-import { FollowUpProvider } from '@/apps/next-app/context/follow-up-context';
-import { ClientProvider } from '@/apps/next-app/context/client-context';
+import { WorkspaceProvider } from '../context/workspace-context';
+import { FollowUpProvider } from '../context/follow-up-context';
+import { ClientProvider } from '../context/client-context';
 
 // Configuração das fontes (copie do seu projeto antigo ou ajuste)
 const geistSans = Geist({
