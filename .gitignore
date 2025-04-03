@@ -1,44 +1,90 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Veja https://help.github.com/articles/ignoring-files/ para mais sobre ignorar arquivos.
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# === Dependências ===
+# Ignora node_modules em qualquer nível (raiz, apps/*, packages/*)
+node_modules/
 
-# testing
-/coverage
+# Ignora o store do pnpm se por acaso for criado dentro do projeto (geralmente fica fora)
+.pnpm-store/
 
-# next.js
-/.next/
-/out/
+# === Arquivos de Build e Saída ===
+# Saída de compilação comum (TypeScript, etc.)
+dist/
+build/
 
-# production
-/build
+# Saída específica do Next.js
+.next/
+out/
 
-# misc
-.DS_Store
-*.pem
+# Saída específica de pacotes (redundante se os acima funcionarem, mas explícito)
+apps/*/.next/
+apps/*/out/
+apps/*/dist/
+packages/*/dist/
 
-# debug
+# === Logs ===
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# === Variáveis de Ambiente ===
+# Ignora todos os arquivos .env, exceto o de exemplo
+.env
+.env.*
+!.env.example
+!.env.ci # Muitas vezes commita-se o .env.ci para pipelines
 
-# vercel
-.vercel
+# === Arquivos de Runtime ===
+pids
+*.pid
+*.seed
+*.pid.lock
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# === Cobertura de Testes ===
+lib-cov
+coverage
+*.lcov
+.nyc_output
 
-# dist
-/dist
+# === Arquivos de Ferramentas de Build ===
+.grunt
+
+# === Dependências de Bower (se usado) ===
+bower_components
+
+# === Configuração node-waf ===
+.lock-wscript
+
+# === Addons Nativos Compilados ===
+# (Ex: build do bcrypt, etc.)
+build/Release
+
+# === Diretórios e Arquivos de IDE ===
+.idea
+.vscode/*
+# Não ignore configurações úteis do VSCode se compartilhadas pela equipe
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-project
+*.sublime-workspace
+
+# === Arquivos Opcionais do Terraform ===
+terraform.tfstate*
+
+# === Arquivos de Sistema Operacional ===
+.DS_Store
+Thumbs.db
+
+# === Opcional: Arquivos de outros gerenciadores (caso misture, improvável) ===
+# package-lock.json
+# yarn.lock
+# .yarn/cache
+# .yarn/unplugged
+# .yarn/build-state.yml
+# .yarn/install-state.gz
+# .pnp.*
