@@ -53,6 +53,7 @@ export default function WorkspaceLayout({
   // Definição dos itens de navegação
   const navItems: NavItem[] = [
     { href: '', label: 'Dashboard', icon: LayoutDashboard, matchExact: true },
+    { href: '/conversations', label: 'Conversas', icon: MessageSquare },
     { href: '/clients', label: 'Clientes', icon: Contact },
     { href: '/followup', label: 'Follow-up', icon: MessageSquare },
     { href: '/campaigns', label: 'Campanhas', icon: CheckSquare },
@@ -282,9 +283,9 @@ export default function WorkspaceLayout({
           {/* Header específico do Workspace */}
           <WorkspaceHeader />
           {/* Área de conteúdo principal rolável */}
-          <main className="flex-1 overflow-auto bg-muted/30">
+          <main className="flex-1 overflow-y-auto bg-muted/30">
             {/* Padding aplicado aqui para o conteúdo */}
-            <div className="p-6 h-full">
+            <div className="p-4 md:p-6 h-full">
               {children}
             </div>
           </main>

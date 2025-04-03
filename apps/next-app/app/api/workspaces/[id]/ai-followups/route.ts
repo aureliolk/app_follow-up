@@ -16,15 +16,15 @@ const createRuleSchema = z.object({
 // --- GET: Listar regras de acompanhamento do workspace ---
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
-
-    const workspaceId = params.id;
+    const awaitedParams = await params;
+    const workspaceId = awaitedParams.id;
     const userId = session.user.id;
 
     // Verificar permissão (VIEWER é suficiente para listar)
