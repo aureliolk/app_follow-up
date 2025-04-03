@@ -128,13 +128,16 @@ model FollowUp {
   paused_reason        String?
   ai_suggestion String?
 
+  workspace_id         String
+  workspace            Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
   // --- NOVOS CAMPOS PARA SEQUÊNCIA ---
   current_sequence_step_order Int?     @default(0) // Rastreia a ordem do último passo da *sequência* enviado (0 = nenhum ainda)
   next_sequence_message_at  DateTime?            // Quando a próxima mensagem *da sequência* está agendada
 
   // --- RELAÇÕES EXISTENTES ---
   messages             FollowUpMessage[]
-  campaign             FollowUpCampaign  @relation(fields: [campaign_id], references: [id])
+  campaign             FollowUpCampaign?  @relation(fields: [campaign_id], references: [id])
   ai_analyses          FollowUpAIAnalysis[]
 
   @@index([client_id])
@@ -252,6 +255,7 @@ model Workspace {
   updated_at          DateTime                    @updatedAt
   api_tokens          WorkspaceApiToken[]
   follow_up_campaigns WorkspaceFollowUpCampaign[]
+  follow_ups          FollowUp[]                  // <<< ADICIONAR/CORRIGIR ESTA LINHA
   invitations         WorkspaceInvitation[]
   members             WorkspaceMember[]
   webhooks            WorkspaceWebhook[]
@@ -473,4 +477,16 @@ enum MessageSenderType {
   AI     // Mensagem gerada pela IA do sistema
   SYSTEM // Mensagem interna do sistema (ex: "IA pausada", "Conversa iniciada")
   @@schema("conversation_schema")
+}
+
+// Adicione esta definição de enum (idealmente perto do modelo FollowUp)
+enum FollowUpStatus {
+  ACTIVE    // Sequência em andamento
+  PAUSED    // Pausado manualmente ou por alguma condição
+  COMPLETED // Todos os passos da sequência foram enviados
+  CONVERTED // O cliente converteu (parou a sequência)
+  CANCELLED // A sequência foi cancelada manualmente
+  FAILED    // Ocorreu um erro irrecuperável (opcional)
+
+  @@schema("follow_up_schema") // Certifique-se de colocar no schema correto!
 }

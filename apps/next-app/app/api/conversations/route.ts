@@ -1,100 +1,94 @@
 // apps/next-app/app/api/conversations/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '../../../../../packages/shared-lib/src/db'; // Ajuste o import se necessário
+import { prisma } from '../../../../../packages/shared-lib/src/db';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../../../../packages/shared-lib/src/auth/auth-options'; // Ajuste o import se necessário
-import { checkPermission } from '../../../../../packages/shared-lib/src/permissions'; // Ajuste o import se necessário
-import { Prisma } from '@prisma/client';
+import { authOptions } from '../../../../../packages/shared-lib/src/auth/auth-options';
+import { checkPermission } from '../../../../../packages/shared-lib/src/permissions';
+import type { ClientConversation } from '../../../../../apps/next-app/app/types'; // Importar tipo
 
 export async function GET(req: NextRequest) {
+  console.log("API GET /api/conversations: Request received.");
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
+      console.warn("API GET Conversations: Unauthorized - Invalid session.");
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
     const userId = session.user.id;
 
-    const { searchParams } = new URL(req.url);
-    const workspaceId = searchParams.get('workspaceId');
+    const url = new URL(req.url);
+    const workspaceId = url.searchParams.get('workspaceId');
+    console.log(`API GET Conversations: Fetching for workspaceId: ${workspaceId}`);
 
     if (!workspaceId) {
+      console.error("API GET Conversations: Error - workspaceId is required.");
       return NextResponse.json({ success: false, error: 'ID do Workspace é obrigatório' }, { status: 400 });
     }
 
-    // Verificar permissão de visualização no workspace
+    // Check permission (VIEWER is sufficient to list conversations)
     const hasAccess = await checkPermission(workspaceId, userId, 'VIEWER');
     if (!hasAccess) {
-      return NextResponse.json({ success: false, error: 'Acesso negado a este workspace' }, { status: 403 });
+      console.warn(`API GET Conversations: Permission denied for User ${userId} on Workspace ${workspaceId}`);
+      return NextResponse.json({ success: false, error: 'Permissão negada para acessar este workspace' }, { status: 403 });
     }
+    console.log(`API GET Conversations: User ${userId} has VIEWER permission on Workspace ${workspaceId}`);
 
-    // Buscar conversas, ordenando pelas mais recentes, incluindo dados do cliente e última mensagem
     const conversations = await prisma.conversation.findMany({
-      where: {
-        workspace_id: workspaceId,
-      },
-      orderBy: {
-        last_message_at: 'desc', // Ordena pela última atividade
-      },
-      select: {
-        id: true,
-        status: true,
-        last_message_at: true,
-        updated_at: true, // Para desempate se last_message_at for igual
-        is_ai_active: true,
-        client: { // Inclui dados básicos do cliente
+      where: { workspace_id: workspaceId },
+      include: {
+        client: { // Include client data
           select: {
             id: true,
             name: true,
             phone_number: true,
           },
         },
-        messages: { // Pega apenas a última mensagem para o snippet
+        messages: { // Include the very last message for snippet/timestamp
+          select: {
+            content: true,
+            timestamp: true,
+            sender_type: true,
+          },
           orderBy: {
             timestamp: 'desc',
           },
           take: 1,
-          select: {
-            content: true,
-            sender_type: true,
-          },
         },
-        // Opcional: Incluir status do FollowUp associado (query mais complexa)
-        // _count: { select: { followUps: { where: { status: 'ACTIVE' } } } } // Exemplo simples
-        // Ou buscar followups separadamente se necessário
       },
-       // Adicionar paginação se a lista puder ficar muito grande
-       // take: 50,
-       // skip: ...
+      orderBy: {
+        // Order by the last message timestamp primarily, then by creation date
+        last_message_at: 'desc', // Nulls last might be preferable: { sort: 'desc', nulls: 'last' } if Prisma supports
+      },
     });
 
-    // Formatar os dados para a UI
-    const formattedConversations = conversations.map(conv => {
-         const lastMessage = conv.messages[0];
-         let snippet = lastMessage?.content || 'Nenhuma mensagem ainda';
-         if (lastMessage?.sender_type === 'AI' || lastMessage?.sender_type === 'SYSTEM') {
-             snippet = `Você: ${snippet}`; // Ou `IA: ...` / `Sistema: ...`
-         }
-         // Limita o tamanho do snippet
-         if (snippet.length > 50) {
-            snippet = snippet.substring(0, 47) + '...';
-         }
+    // Format data for the frontend ClientConversation type
+    const formattedData: ClientConversation[] = conversations.map(convo => ({
+      id: convo.id,
+      workspace_id: convo.workspace_id,
+      client_id: convo.client_id,
+      channel: convo.channel,
+      channel_conversation_id: convo.channel_conversation_id,
+      status: convo.status,
+      is_ai_active: convo.is_ai_active,
+      last_message_at: convo.last_message_at, // Keep original for sorting if needed
+      created_at: convo.created_at,
+      updated_at: convo.updated_at,
+      metadata: convo.metadata,
+      client: convo.client, // Client object is already selected correctly
+      last_message: convo.messages[0] ? { // Get the single message returned
+        content: convo.messages[0].content,
+        timestamp: convo.messages[0].timestamp,
+        sender_type: convo.messages[0].sender_type,
+      } : null,
+      // You might calculate unread_count here if needed
+    }));
 
-         return {
-            id: conv.id,
-            status: conv.status,
-            lastActivity: conv.last_message_at ? new Date(conv.last_message_at).toLocaleString('pt-BR', { timeStyle: 'short', dateStyle: 'short'}) : '',
-            client: conv.client,
-            lastMessageSnippet: snippet,
-            isAiActive: conv.is_ai_active,
-            // Adicionar followUpStatus aqui se buscar na query
-         }
-    });
 
-
-    return NextResponse.json({ success: true, data: formattedConversations });
+    console.log(`API GET Conversations: Found ${formattedData.length} conversations for workspace ${workspaceId}.`);
+    return NextResponse.json({ success: true, data: formattedData });
 
   } catch (error) {
-    console.error('API GET /api/conversations Error:', error);
+    console.error('API GET Conversations: Internal error:', error);
     return NextResponse.json({ success: false, error: 'Erro interno ao buscar conversas' }, { status: 500 });
   }
 }

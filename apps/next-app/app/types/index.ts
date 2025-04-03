@@ -77,17 +77,6 @@ export interface Campaign {
   // steps?: any[]; // Evitar 'any' se possível. Talvez usar CampaignStep[] ou FunnelStep[]?
 }
 
-// Tipo derivado para o formulário de Campanha
-export type CampaignFormData = Omit<Campaign,
-  'id' |
-  'created_at' |
-  'stepsCount' |
-  'activeFollowUps'
-  // Adicione aqui outros campos que NÃO devem ser editáveis no formulário
-  // 'idLumibot' | // Exemplo: se não for editável
-  // 'tokenAgentLumibot' // Exemplo: se não for editável
->;
-
 
 // --- Outros Tipos Fornecidos ---
 export interface FunnelStage {
@@ -142,7 +131,6 @@ auto_respond?: boolean;    // Se responde automaticamente
 // export interface Member { ... }
 // export interface Invitation { ... }
 
-/ Adicionado/Atualizado: Tipo Client baseado no Prisma (ajuste se necessário)
 export interface Client {
   id: string;
   workspace_id: string;
@@ -166,3 +154,84 @@ export type ClientFormData = {
   channel?: string | null; // Opcional no form?
   // Metadata não será editável via form simples
 };
+
+
+// Representa uma mensagem no histórico da conversa
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_type: 'CLIENT' | 'AI' | 'SYSTEM'; // Do Prisma Enum
+  content: string;
+  timestamp: string | Date; // Vem como string da API, converter para Date se necessário
+  channel_message_id?: string | null;
+  metadata?: any | null;
+}
+
+// Representa uma conversa como vinda da API de listagem (/api/conversations)
+export interface ClientConversation {
+  id: string; // Conversation ID
+  workspace_id: string;
+  client_id: string;
+  channel?: string | null;
+  channel_conversation_id?: string | null;
+  status: string; // Ex: 'ACTIVE', 'CLOSED' (do Prisma Enum ConversationStatus)
+  is_ai_active: boolean;
+  last_message_at: string | Date | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+  metadata?: any | null;
+  client: { // Dados do cliente incluídos
+    id: string;
+    name?: string | null;
+    phone_number?: string | null;
+  };
+  last_message?: { // Última mensagem incluída
+    content: string;
+    timestamp: string | Date;
+    sender_type: 'CLIENT' | 'AI' | 'SYSTEM';
+  } | null;
+  // Campos adicionais que a API pode agregar (opcional)
+  unread_count?: number;
+}
+
+// --- Tipo Campaign Atualizado (com FormData) ---
+export interface Campaign {
+  id: string;
+  name: string;
+  description?: string | null;
+  createdAt: string | Date; // Vem como string/Date da API
+  active: boolean;
+
+  // Campos de IA
+  ai_prompt_product_name?: string | null;
+  ai_prompt_target_audience?: string | null;
+  ai_prompt_pain_point?: string | null;
+  ai_prompt_main_benefit?: string | null;
+  ai_prompt_tone_of_voice?: string | null;
+  ai_prompt_extra_instructions?: string | null;
+  ai_prompt_cta_link?: string | null;
+  ai_prompt_cta_text?: string | null;
+
+  // Campos Lumibot (se aplicável)
+  idLumibot?: string | null;
+  tokenAgentLumibot?: string | null;
+
+  // Campos agregados (geralmente não no form)
+  stepsCount?: number;
+  activeFollowUps?: number;
+
+  // Relações (não no form)
+  // stages?: FunnelStage[];
+  // steps?: CampaignStep[] | FunnelStep[]; // Carregado separadamente
+}
+
+// --- DEFINIÇÃO DE CampaignFormData ---
+// Cria um tipo baseado em Campaign, omitindo campos não editáveis no formulário.
+export type CampaignFormData = Omit<Campaign,
+  'id' |                // Gerado pelo banco
+  'created_at' |        // Gerado pelo banco
+  'stepsCount' |        // Calculado/Agregado
+  'activeFollowUps'    // Calculado/Agregado
+  // Adicione outros campos aqui se eles NÃO forem editáveis no modal
+  // Exemplo: 'idLumibot' | 'tokenAgentLumibot' (se não forem editáveis)
+>;

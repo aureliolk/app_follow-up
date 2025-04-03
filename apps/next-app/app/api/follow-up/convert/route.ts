@@ -5,130 +5,79 @@ import { prisma } from '../../../../../../packages/shared-lib/src/db';
 import { checkPermission } from '../../../../../../packages/shared-lib/src/permissions';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../../../packages/shared-lib/src/auth/auth-options';
-import { Prisma } from '@prisma/client'; // Importar para tipos de erro
+import { FollowUpStatus } from '@prisma/client'; // Importe o Enum
 
-// Schema para validar o corpo da requisição
+// Esquema de validação
 const convertFollowUpSchema = z.object({
-  followUpId: z.string().uuid("ID de Follow-up inválido."),
+  followUpId: z.string().uuid("ID do FollowUp inválido"),
+  workspaceId: z.string().uuid("ID do Workspace inválido"), // Para verificação de permissão
 });
 
-// Definir o status de conversão (use um Enum se preferir)
-const CONVERTED_STATUS = "CONVERTED"; // << Mude se usar outro nome para o status finalizado com sucesso
-
 export async function POST(req: NextRequest) {
-  console.log(`[API /convert] Recebida requisição para marcar FollowUp como convertido.`);
-
+  console.log("API POST /api/follow-up/convert: Request received");
   try {
-    // 1. Autenticação
+    // 1. Autenticação e Autorização
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      console.warn("[API /convert] Acesso não autorizado (sem sessão).");
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
     const userId = session.user.id;
 
-    // 2. Validação do Input
+    // 2. Validar Corpo
     const body = await req.json();
     const validation = convertFollowUpSchema.safeParse(body);
-
     if (!validation.success) {
-      console.warn("[API /convert] Dados inválidos:", validation.error.errors);
       return NextResponse.json({ success: false, error: 'Dados inválidos', details: validation.error.errors }, { status: 400 });
     }
-    const { followUpId } = validation.data;
-    console.log(`[API /convert] Tentando converter FollowUp ID: ${followUpId}`);
+    const { followUpId, workspaceId } = validation.data;
 
-    // 3. Buscar FollowUp e Workspace ID para Autorização
-    const followUp = await prisma.followUp.findUnique({
-      where: { id: followUpId },
-      select: {
-        id: true,
-        status: true, // Para verificar se já está finalizado
-        campaign: {   // Navega até a campanha
-          select: {
-            workspaces: { // Navega até a tabela de junção
-              select: {
-                workspace_id: true // Pega o ID do workspace associado
-              },
-              take: 1 // Assume 1 workspace por campanha neste contexto
-            }
-          }
-        }
-      }
-    });
-
-    if (!followUp) {
-      console.warn(`[API /convert] FollowUp ${followUpId} não encontrado.`);
-      return NextResponse.json({ success: false, error: 'Follow-up não encontrado' }, { status: 404 });
-    }
-
-    const workspaceId = followUp.campaign?.workspaces?.[0]?.workspace_id;
-    if (!workspaceId) {
-      // Isso indica um problema de integridade de dados ou configuração
-      console.error(`[API /convert] Não foi possível determinar o Workspace ID para FollowUp ${followUpId} através da Campanha.`);
-      return NextResponse.json({ success: false, error: 'Erro interno: Workspace não associado ao follow-up.' }, { status: 500 });
-    }
-    console.log(`[API /convert] FollowUp ${followUpId} pertence ao Workspace ${workspaceId}. Verificando permissão...`);
-
-    // 4. Autorização (Permissão no Workspace)
-    // Definir qual role mínima pode marcar como convertido (MEMBER parece razoável)
-    const requiredRole = 'MEMBER';
-    const hasPermission = await checkPermission(workspaceId, userId, requiredRole);
+    // 3. Verificar Permissão (Ex: MEMBER pode converter?)
+    const hasPermission = await checkPermission(workspaceId, userId, 'MEMBER');
     if (!hasPermission) {
-      console.warn(`[API /convert] Usuário ${userId} não tem permissão (${requiredRole}) no Workspace ${workspaceId}.`);
-      return NextResponse.json({ success: false, error: 'Permissão negada para modificar este follow-up.' }, { status: 403 });
-    }
-    console.log(`[API /convert] Usuário ${userId} tem permissão.`);
-
-    // 5. Verificar Status Atual (Evitar update desnecessário)
-    const terminalStatuses = [CONVERTED_STATUS, 'COMPLETED', 'CANCELLED', 'FAILED']; // Status que indicam fim
-    if (terminalStatuses.includes(followUp.status.toUpperCase())) {
-        console.log(`[API /convert] FollowUp ${followUpId} já está em um estado terminal (${followUp.status}). Nenhuma ação necessária.`);
-        return NextResponse.json({ success: true, message: `Follow-up já estava finalizado como ${followUp.status}.` });
+      return NextResponse.json({ success: false, error: 'Permissão negada para esta ação' }, { status: 403 });
     }
 
-    // 6. Atualizar o FollowUp
-    console.log(`[API /convert] Atualizando status do FollowUp ${followUpId} para ${CONVERTED_STATUS}.`);
-    const updatedFollowUp = await prisma.followUp.update({
-      where: { id: followUpId },
-      data: {
-        status: CONVERTED_STATUS,
-        next_sequence_message_at: null, // Limpa agendamento futuro (importante!)
-        // Opcional: Adicionar completed_at se fizer sentido para CONVERTED
-        // completed_at: new Date(),
+    // 4. Encontrar e Atualizar o FollowUp
+    const updatedFollowUp = await prisma.followUp.updateMany({ // updateMany para incluir workspaceId no where
+      where: {
+        id: followUpId,
+        workspace_id: workspaceId, // Garante que pertence ao workspace correto
+        status: FollowUpStatus.ACTIVE, // Só pode converter um follow-up ativo
       },
-      select: { id: true, status: true } // Retorna apenas o necessário
-    });
-
-    console.log(`[API /convert] FollowUp ${updatedFollowUp.id} atualizado com sucesso para ${updatedFollowUp.status}.`);
-
-    // 7. Resposta de Sucesso
-    return NextResponse.json({
-      success: true,
-      message: 'Follow-up marcado como convertido com sucesso.',
       data: {
-        id: updatedFollowUp.id,
-        status: updatedFollowUp.status,
-      }
+        status: FollowUpStatus.CONVERTED, // Usa o Enum
+        next_sequence_message_at: null, // Limpa o próximo agendamento
+        completed_at: new Date(), // Marca a data de conclusão
+        updated_at: new Date(),
+      },
     });
 
-  } catch (error) {
-    console.error('[API /convert] Erro inesperado:', error);
-    // Tratamento genérico de erro
-    let statusCode = 500;
-    let errorMessage = 'Erro interno do servidor ao processar a requisição.';
-
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // Erros conhecidos do Prisma (ex: registro não encontrado P2025, embora já checado)
-       if (error.code === 'P2025') {
-         statusCode = 404;
-         errorMessage = 'Follow-up não encontrado durante a atualização.';
-       }
-    } else if (error instanceof z.ZodError) { // Caso a validação falhe de outra forma
-        statusCode = 400;
-        errorMessage = 'Erro de validação nos dados fornecidos.';
+    // Verificar se algum registro foi atualizado
+    if (updatedFollowUp.count === 0) {
+        console.warn(`API POST /api/follow-up/convert: FollowUp ${followUpId} não encontrado, não pertence ao workspace ${workspaceId} ou não estava ativo.`);
+        // Verificar se já está convertido para dar uma msg melhor?
+        const existing = await prisma.followUp.findUnique({ where: { id: followUpId }, select: { status: true }});
+        if (existing?.status === FollowUpStatus.CONVERTED) {
+             return NextResponse.json({ success: false, error: 'Sequência já está marcada como convertida.' }, { status: 409 });
+        }
+        return NextResponse.json({ success: false, error: 'Sequência ativa não encontrada ou não pertence a este workspace.' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: false, error: errorMessage }, { status: statusCode });
+    console.log(`API POST /api/follow-up/convert: FollowUp ${followUpId} marked as CONVERTED.`);
+
+    // Opcional: Remover jobs pendentes da fila (embora o worker vá ignorar pelo status)
+    // try {
+    //   await sequenceStepQueue.remove(`seq_${followUpId}_*`); // Padrão para remover jobs relacionados
+    //   console.log(`API POST /api/follow-up/convert: Pending jobs for FollowUp ${followUpId} removed from queue.`);
+    // } catch (removeError) {
+    //   console.error(`API POST /api/follow-up/convert: Failed to remove jobs for FollowUp ${followUpId}:`, removeError);
+    // }
+
+    // 5. Retornar Sucesso
+    return NextResponse.json({ success: true, message: "Sequência marcada como convertida." });
+
+  } catch (error: any) {
+    console.error('API POST /api/follow-up/convert: Internal Server Error:', error);
+    return NextResponse.json({ success: false, error: 'Erro interno do servidor.' }, { status: 500 });
   }
 }
