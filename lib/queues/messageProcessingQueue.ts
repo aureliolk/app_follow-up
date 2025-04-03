@@ -1,6 +1,6 @@
 // lib/queues/messageProcessingQueue.ts
 import { Queue } from 'bullmq';
-import { redisConnection } from '@/lib/redis'; // Importa a conexão
+import { redisConnection } from '@/packages/shared-lib/src/redis';
 
 const QUEUE_NAME = 'message-processing';
 

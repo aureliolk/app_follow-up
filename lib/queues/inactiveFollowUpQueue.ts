@@ -1,6 +1,6 @@
 // Exemplo em lib/queues/inactiveFollowUpQueue.ts
 import { Queue } from 'bullmq';
-import { redisConnection } from '@/lib/redis';
+import { redisConnection } from '@/packages/shared-lib/src/redis';
 
 const INACTIVE_QUEUE_NAME = 'inactive-follow-up';
 

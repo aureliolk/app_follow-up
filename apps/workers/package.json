@@ -1,0 +1,21 @@
+{
+    "name": "workers",
+    "version": "0.1.0",
+    "private": true,
+    "type": "commonjs", 
+    "scripts": {
+      "compile": "tsc -p tsconfig.json", 
+      "start:message": "node dist/src/messageProcessor.js", 
+      "start:inactive": "node dist/src/inactiveFollowUpProcessor.js",
+      "dev:message": "ts-node src/messageProcessor.ts", 
+      "dev:inactive": "ts-node src/inactiveFollowUpProcessor.ts" 
+    },
+    "dependencies": {
+      
+      "bullmq": "^5.45.2",
+      "ioredis": "^5.6.0",
+      "@meuprojeto/shared-lib": "workspace:*"
+    },
+    "devDependencies": {
+    }
+  }
