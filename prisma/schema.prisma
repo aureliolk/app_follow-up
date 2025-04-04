@@ -111,7 +111,7 @@ model FollowUpStep {
 
 model FollowUp {
   id                   String            @id @default(uuid())
-  campaign_id          String
+  campaign_id          String?
   client_id            String
   // Manter status existente, usaremos 'ACTIVE', 'COMPLETED', 'CANCELLED', e adicionaremos 'CONVERTED' via API
   status               String            @default("active")
@@ -130,6 +130,8 @@ model FollowUp {
 
   workspace_id         String
   workspace            Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  client               Client            @relation("ClientToFollowUp", fields: [client_id], references: [id], onDelete: Cascade)
 
   // --- NOVOS CAMPOS PARA SEQUÊNCIA ---
   current_sequence_step_order Int?     @default(0) // Rastreia a ordem do último passo da *sequência* enviado (0 = nenhum ainda)
@@ -389,6 +391,8 @@ model Client {
   phone_number String?  // Número de telefone (ex: body.sender.phone_number) - Pode ser o identificador principal
   name         String?  // Nome do contato (ex: body.sender.name)
   channel      String?  // Canal de origem (ex: "WHATSAPP", "CHATWOOT", etc. - derivado de body.conversation.channel)
+
+  follow_ups   FollowUp[] @relation("ClientToFollowUp")
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt

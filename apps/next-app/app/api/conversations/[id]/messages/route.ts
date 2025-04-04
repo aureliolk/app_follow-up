@@ -79,9 +79,10 @@ const sendMessageSchema = z.object({
 
 export async function POST(
 req: NextRequest,
-{ params }: { params: { id: string } } // 'id' é o conversationId
+{ params }: { params: Promise<{ id: string }> }
 ) {
-const conversationId = params.id;
+const awaitedParams = await params;
+const conversationId = awaitedParams.id;
 console.log(`API POST /api/conversations/${conversationId}/messages: Request received - Send Manual Message`);
 try {
   // 1. Autenticação e Autorização

@@ -7,10 +7,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 // Importar componentes Shadcn UI
-import { Input } from "@/apps/next-app/components/ui/input";
-import { Button } from "@/apps/next-app/components/ui/button";
-import { Label } from "@/apps/next-app/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/apps/next-app/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
 function RegisterForm() {
   const router = useRouter();

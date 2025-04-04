@@ -1,7 +1,7 @@
 // lib/auth/auth-utils.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { prisma } from '@/packages/shared-lib/src/db';
+import { prisma } from '../db';
 
 // Middleware utility for checking authentication in API routes
 export async function withAuth(
