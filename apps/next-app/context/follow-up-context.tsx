@@ -1,30 +1,35 @@
 // apps/next-app/context/follow-up-context.tsx
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, ReactNode, useMemo } from 'react';
-import axios, { AxiosError } from 'axios';
+import React, {
+    createContext,
+    useContext,
+    useState,
+    useCallback,
+    ReactNode,
+    useMemo, // Import useMemo
+    useEffect
+} from 'react';
+import axios, { AxiosError } from 'axios'; // Import AxiosError for better type checking
 import { useWorkspace } from '@/context/workspace-context';
 import type {
     Campaign,
     FollowUp,
     Message,
-    ClientConversation, // Assumindo que este tipo existe para a lista
-    CampaignFormData, // Assumindo que este tipo existe para forms
-} from '@/app/types';
+    ClientConversation,
+    CampaignFormData,
+} from '@/app/types'; // Import all necessary types
 import { toast } from 'react-hot-toast';
 
 // --- Helper Function ---
 const getActiveWorkspaceId = (workspaceCtx: any, providedId?: string): string | null => {
-    // Prioridade: ID fornecido explicitamente
     if (providedId) return providedId;
-    // Próximo: ID do workspace ativo no contexto
     if (workspaceCtx?.workspace?.id) return workspaceCtx.workspace.id;
-    // Fallback: ID armazenado na sessão do navegador
     if (typeof window !== 'undefined') {
         const storedId = sessionStorage.getItem('activeWorkspaceId');
         if (storedId) return storedId;
     }
-    console.warn("FollowUpContext: Não foi possível determinar o ID do workspace ativo.");
+    console.warn("[FollowUpContext] Could not determine active Workspace ID.");
     return null;
 };
 
@@ -34,42 +39,50 @@ interface FollowUpContextType {
     campaigns: Campaign[];
     loadingCampaigns: boolean;
     campaignsError: string | null;
-    selectedCampaign: Campaign | null; // Para edição/detalhes da campanha
-    loadingSelectedCampaign: boolean;
+    startFollowUpSequence: any
+    // selectedCampaign: Campaign | null; // Removed - managed via page/modal state if needed for editing
+    // loadingSelectedCampaign: boolean; // Removed
     fetchCampaigns: (workspaceId?: string) => Promise<Campaign[]>;
-    fetchCampaign: (campaignId: string, workspaceId?: string) => Promise<Campaign | null>; // Pode retornar null
+    // fetchCampaign: (campaignId: string, workspaceId?: string) => Promise<Campaign | null>; // Removed - fetch list and find
     createCampaign: (data: CampaignFormData, workspaceId?: string) => Promise<Campaign>;
     updateCampaign: (campaignId: string, data: Partial<CampaignFormData>, workspaceId?: string) => Promise<Campaign>;
     deleteCampaign: (campaignId: string, workspaceId?: string) => Promise<void>;
     clearCampaignsError: () => void;
 
-    // FollowUp List State & Actions (Lista geral, não detalhes individuais por agora)
-    followUps: FollowUp[]; // Lista filtrável de follow-ups
+    // FollowUp List State & Actions (General list, might not be used directly by conversation UI)
+    followUps: FollowUp[];
     loadingFollowUps: boolean;
     followUpsError: string | null;
     fetchFollowUps: (status?: string, workspaceId?: string) => Promise<FollowUp[]>;
     clearFollowUpsError: () => void;
 
     // Selected Conversation State & Actions
+    selectedConversation: ClientConversation | null; // Holds the currently viewed conversation object
+    loadingSelectedConversation: boolean; // Loading state for conversation details/messages
     selectedConversationMessages: Message[];
-    loadingSelectedConversationMessages: boolean;
-    selectedConversationError: string | null;
+    loadingSelectedConversationMessages: boolean; // Specific loading for messages
+    selectedConversationError: string | null; // Error related to selected conversation/messages
+    selectConversation: (conversation: ClientConversation | null) => void; // Action to set the selected conversation
     fetchConversationMessages: (conversationId: string) => Promise<Message[]>;
     clearMessagesError: () => void;
-    addMessageOptimistically: (message: Message) => void; // Para UI em tempo real (ou após envio)
-    updateMessageStatus: (tempId: string, finalMessage: Message | null, error?: string) => void; // Para atualizar status de envio
+    addMessageOptimistically: (message: Message) => void;
+    updateMessageStatus: (tempId: string, finalMessage: Message | null, error?: string) => void;
 
-    // Specific Action Loaders & Actions
+    // Action States & Handlers (Boolean flags for loading specific actions)
     isStartingSequence: boolean;
+    isPausingFollowUp: boolean; // Renamed for clarity
+    isResumingFollowUp: boolean; // Renamed for clarity
     isConvertingFollowUp: boolean;
     isCancellingFollowUp: boolean;
     isSendingMessage: boolean;
-    startFollowUpSequence: (clientId: string, workspaceId?: string /* , optional campaignId? */) => Promise<{ followUpId: string }>;
+    // startFollowUpSequence: (clientId: string, workspaceId?: string) => Promise<{ followUpId: string }>; // Keep if manual start is needed elsewhere
+    pauseFollowUp: (followUpId: string, workspaceId?: string) => Promise<void>;
+    resumeFollowUp: (followUpId: string, workspaceId?: string) => Promise<void>;
     convertFollowUp: (followUpId: string, workspaceId?: string) => Promise<void>;
     cancelFollowUp: (followUpId: string, workspaceId?: string) => Promise<void>;
-    sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<Message>; // Retorna a mensagem criada
+    sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<Message>;
 
-    // Cache Management (simple)
+    // Cache Management
     clearMessageCache: (conversationId: string) => void;
 }
 
@@ -78,188 +91,182 @@ const FollowUpContext = createContext<FollowUpContextType | undefined>(undefined
 
 // --- Provider Component ---
 export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const workspaceContext = useWorkspace(); // Obter workspace do contexto pai
+    const workspaceContext = useWorkspace();
 
-    // Campaign States
+    // States
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [loadingCampaigns, setLoadingCampaigns] = useState(false);
     const [campaignsError, setCampaignsError] = useState<string | null>(null);
-    const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-    const [loadingSelectedCampaign, setLoadingSelectedCampaign] = useState(false);
-
-    // FollowUp List States
     const [followUps, setFollowUps] = useState<FollowUp[]>([]);
     const [loadingFollowUps, setLoadingFollowUps] = useState(false);
     const [followUpsError, setFollowUpsError] = useState<string | null>(null);
-
-    // Selected Conversation States
+    const [selectedConversation, setSelectedConversation] = useState<ClientConversation | null>(null);
+    const [loadingSelectedConversation, setLoadingSelectedConversation] = useState(false); // General loading for selected conv details
     const [selectedConversationMessages, setSelectedConversationMessages] = useState<Message[]>([]);
     const [loadingSelectedConversationMessages, setLoadingSelectedConversationMessages] = useState(false);
     const [selectedConversationError, setSelectedConversationError] = useState<string | null>(null);
-
-    // Action Loading States
-    const [isStartingSequence, setIsStartingSequence] = useState(false);
+    const [isStartingSequence, setIsStartingSequence] = useState(false); // Keep if needed
+    const [isPausingFollowUp, setIsPausingFollowUp] = useState(false);
+    const [isResumingFollowUp, setIsResumingFollowUp] = useState(false);
     const [isConvertingFollowUp, setIsConvertingFollowUp] = useState(false);
     const [isCancellingFollowUp, setIsCancellingFollowUp] = useState(false);
     const [isSendingMessage, setIsSendingMessage] = useState(false);
-
-    // Simple Cache
     const [messageCache, setMessageCache] = useState<Record<string, Message[]>>({});
 
-    // --- Error Clear Functions ---
+    // --- Error/Cache Clear Functions ---
     const clearCampaignsError = useCallback(() => setCampaignsError(null), []);
     const clearFollowUpsError = useCallback(() => setFollowUpsError(null), []);
     const clearMessagesError = useCallback(() => setSelectedConversationError(null), []);
+    const clearMessageCache = useCallback((conversationId: string) => {
+        setMessageCache(prev => {
+            const newCache = { ...prev };
+            delete newCache[conversationId];
+            return newCache;
+        });
+    }, []);
 
     // --- API Call Utility ---
     const handleApiCall = useCallback(async <T,>(
         apiCall: () => Promise<T>,
         setLoading: React.Dispatch<React.SetStateAction<boolean>>,
-        setError: React.Dispatch<React.SetStateAction<string | null>>,
+        setErrorState: React.Dispatch<React.SetStateAction<string | null>> | null, // Allow null for errors handled elsewhere
         loadingMessage: string | null = 'Processando...',
         successMessage?: string,
     ): Promise<T> => {
-        if(loadingMessage) toast.loading(loadingMessage, { id: 'api-call-toast' });
+        const toastId = loadingMessage ? toast.loading(loadingMessage) : undefined;
         setLoading(true);
-        setError(null);
+        if (setErrorState) setErrorState(null);
         try {
             const result = await apiCall();
-            if(loadingMessage) toast.dismiss('api-call-toast');
+            if (toastId) toast.dismiss(toastId);
             if (successMessage) toast.success(successMessage);
             return result;
         } catch (error) {
-             if(loadingMessage) toast.dismiss('api-call-toast');
+            if (toastId) toast.dismiss(toastId);
             const message = error instanceof AxiosError
                 ? error.response?.data?.error || error.response?.data?.message || error.message
                 : (error instanceof Error ? error.message : 'Ocorreu um erro desconhecido.');
             console.error(`API Call Error (${loadingMessage || 'Task'}):`, error);
-            setError(message);
-            toast.error(message);
-            throw new Error(message); // Re-throw para o chamador tratar se necessário
+            if (setErrorState) setErrorState(message); // Set error state if provided
+            toast.error(message); // Always show toast error
+            throw new Error(message);
         } finally {
             setLoading(false);
         }
-    }, []); // Memoize a função utilitária
+    }, []);
 
     // --- Campaign Actions ---
     const fetchCampaigns = useCallback(async (workspaceId?: string): Promise<Campaign[]> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) return []; // Retorna vazio se não houver workspace
+        if (!wsId) {
+            setCampaignsError("Workspace ID não encontrado para buscar campanhas.");
+            setCampaigns([]); // Limpa a lista
+            return []; // Retorna array vazio
+        }
 
         return handleApiCall(
             async () => {
+                console.log(`FollowUpContext: Fetching campaigns for ws ${wsId}`);
                 const response = await axios.get<{ success: boolean, data?: Campaign[], error?: string }>(
                     `/api/follow-up/campaigns?workspaceId=${wsId}`
                 );
-                if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao buscar campanhas');
-                setCampaigns(response.data.data);
-                return response.data.data;
+                if (!response.data.success || !response.data.data) {
+                    throw new Error(response.data.error || 'Falha ao buscar campanhas');
+                }
+                const fetchedCampaigns = response.data.data;
+                setCampaigns(fetchedCampaigns); // Atualiza o estado
+                console.log(`FollowUpContext: Fetched ${fetchedCampaigns.length} campaigns.`);
+                return fetchedCampaigns; // Retorna os dados buscados
             },
             setLoadingCampaigns,
             setCampaignsError,
-            null // Não mostrar toast de loading para busca inicial
+            null // Não mostrar toast de loading para busca de lista
         );
-    }, [workspaceContext, handleApiCall]);
-
-    const fetchCampaign = useCallback(async (campaignId: string, workspaceId?: string): Promise<Campaign | null> => {
-         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-         if (!wsId) return null;
-         // TODO: Add Caching if needed
-        return handleApiCall(
-            async () => {
-                const response = await axios.get<{ success: boolean, data?: Campaign, error?: string }>(
-                    `/api/follow-up/campaigns/${campaignId}?workspaceId=${wsId}`
-                );
-                 if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao buscar campanha');
-                 setSelectedCampaign(response.data.data); // Atualiza o estado da campanha selecionada
-                 return response.data.data;
-            },
-            setLoadingSelectedCampaign,
-            setCampaignsError, // Pode usar o mesmo erro de campanha
-            null // 'Carregando campanha...'
-        );
-    }, [workspaceContext, handleApiCall]);
-
+    }, [workspaceContext, handleApiCall]); // Dependências
     const createCampaign = useCallback(async (data: CampaignFormData, workspaceId?: string): Promise<Campaign> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) throw new Error('Workspace ID é necessário para criar campanha.');
 
         return handleApiCall(
             async () => {
+                 console.log(`FollowUpContext: Creating campaign in ws ${wsId}`);
                 const response = await axios.post<{ success: boolean, data: Campaign, error?: string }>(
                     '/api/follow-up/campaigns',
-                    { ...data, workspaceId: wsId } // Garante que o wsId está no corpo
+                    { ...data, workspaceId: wsId } // Envia dados + wsId
                 );
-                 if (!response.data.success) throw new Error(response.data.error || 'Falha ao criar campanha');
+                 if (!response.data.success || !response.data.data) {
+                    throw new Error(response.data.error || 'Falha ao criar campanha');
+                 }
                  const newCampaign = response.data.data;
-                 setCampaigns(prev => [newCampaign, ...prev]); // Adiciona à lista local
-                 return newCampaign;
+                 setCampaigns(prev => [newCampaign, ...prev]); // Adiciona à lista localmente
+                 return newCampaign; // Retorna a campanha criada
             },
-            setLoadingCampaigns, // Pode usar o loading geral ou um específico
+            setLoadingCampaigns, // Pode usar loading geral
             setCampaignsError,
-            'Criando campanha...',
-            'Campanha criada com sucesso!'
+            'Criando campanha...', // Mensagem de loading
+            'Campanha criada com sucesso!' // Mensagem de sucesso
         );
-    }, [workspaceContext, handleApiCall]);
-
+    }, [workspaceContext, handleApiCall]); // Dependências
     const updateCampaign = useCallback(async (campaignId: string, data: Partial<CampaignFormData>, workspaceId?: string): Promise<Campaign> => {
-         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-         if (!wsId) throw new Error('Workspace ID é necessário para atualizar campanha.');
+        const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
+        if (!wsId) throw new Error('Workspace ID é necessário para atualizar campanha.');
 
         return handleApiCall(
             async () => {
+                console.log(`FollowUpContext: Updating campaign ${campaignId} in ws ${wsId}`);
                 const response = await axios.put<{ success: boolean, data: Campaign, error?: string }>(
                     `/api/follow-up/campaigns/${campaignId}`,
-                    { ...data, workspaceId: wsId } // Garante wsId no corpo
+                    { ...data, workspaceId: wsId } // Envia dados + wsId
                 );
-                 if (!response.data.success) throw new Error(response.data.error || 'Falha ao atualizar campanha');
-                 const updatedCampaign = response.data.data;
-                 // Atualiza lista e selecionada
-                 setCampaigns(prev => prev.map(c => c.id === campaignId ? updatedCampaign : c));
-                 if (selectedCampaign?.id === campaignId) {
-                     setSelectedCampaign(updatedCampaign);
+                 if (!response.data.success || !response.data.data) {
+                     throw new Error(response.data.error || 'Falha ao atualizar campanha');
                  }
-                 return updatedCampaign;
+                 const updatedCampaign = response.data.data;
+                 setCampaigns(prev => prev.map(c => c.id === campaignId ? updatedCampaign : c)); // Atualiza na lista
+                 // Se você reintroduzir selectedCampaign, atualize aqui também
+                 // if (selectedCampaign?.id === campaignId) { setSelectedCampaign(updatedCampaign); }
+                 return updatedCampaign; // Retorna a campanha atualizada
             },
-            setLoadingCampaigns, // Ou específico
+            setLoadingCampaigns, // Pode usar loading geral
             setCampaignsError,
             'Atualizando campanha...',
             'Campanha atualizada com sucesso!'
         );
-    }, [workspaceContext, handleApiCall, selectedCampaign]);
+    }, [workspaceContext, handleApiCall /*, selectedCampaign */ ]);
+    
+    const deleteCampaign = useCallback(async (campaignId: string, workspaceId?: string): Promise<void> => {
+        const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
+        if (!wsId) throw new Error('Workspace ID é necessário para excluir campanha.');
 
-     const deleteCampaign = useCallback(async (campaignId: string, workspaceId?: string): Promise<void> => {
-         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-         if (!wsId) throw new Error('Workspace ID é necessário para excluir campanha.');
-
-         await handleApiCall(
-             async () => {
+        // Note que esta função é Promise<void>, então não precisa retornar valor explicitamente
+        await handleApiCall<void>( // Especifica <void> para o tipo genérico T
+            async () => {
+                 console.log(`FollowUpContext: Deleting campaign ${campaignId} from ws ${wsId}`);
                  const response = await axios.delete<{ success: boolean, message?: string, error?: string }>(
-                     `/api/follow-up/campaigns/${campaignId}?workspaceId=${wsId}` // Passa como query param
+                     `/api/follow-up/campaigns/${campaignId}?workspaceId=${wsId}`
                  );
-                 if (!response.data.success) throw new Error(response.data.error || 'Falha ao excluir campanha');
-                 // Remove da lista
-                 setCampaigns(prev => prev.filter(c => c.id !== campaignId));
-                 if (selectedCampaign?.id === campaignId) {
-                    setSelectedCampaign(null);
+                 if (!response.data.success) {
+                     throw new Error(response.data.error || 'Falha ao excluir campanha');
                  }
-             },
-             setLoadingCampaigns, // Ou específico
-             setCampaignsError,
-             'Excluindo campanha...',
-             'Campanha excluída com sucesso!'
-         );
-     }, [workspaceContext, handleApiCall, selectedCampaign]);
+                 setCampaigns(prev => prev.filter(c => c.id !== campaignId)); // Remove da lista
+                  // if (selectedCampaign?.id === campaignId) { setSelectedCampaign(null); }
+            },
+            setLoadingCampaigns,
+            setCampaignsError,
+            'Excluindo campanha...',
+            'Campanha excluída com sucesso!'
+        );
+        // Nenhum return explícito é necessário aqui pois a função retorna Promise<void>
+    }, [workspaceContext, handleApiCall /*, selectedCampaign */]);
 
 
     // --- FollowUp List Actions ---
     const fetchFollowUps = useCallback(async (status?: string, workspaceId?: string): Promise<FollowUp[]> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) return [];
-
         return handleApiCall(
             async () => {
-                let url = `/api/follow-up?workspaceId=${wsId}`;
+                let url = `/api/follow-up?workspaceId=${wsId}`; // Adjust API endpoint if needed
                 if (status) url += `&status=${status}`;
                 const response = await axios.get<{ success: boolean, data?: FollowUp[], error?: string }>(url);
                 if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao buscar follow-ups');
@@ -268,15 +275,26 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
             },
             setLoadingFollowUps,
             setFollowUpsError,
-            null // Não mostrar toast de loading
+            null // No loading toast for list fetch
         );
     }, [workspaceContext, handleApiCall]);
 
     // --- Selected Conversation Actions ---
+    const selectConversation = useCallback((conversation: ClientConversation | null) => {
+        setSelectedConversation(conversation);
+        setSelectedConversationMessages([]);
+        setSelectedConversationError(null);
+        if (conversation?.id) {
+            fetchConversationMessages(conversation.id); // Fetch messages for the newly selected convo
+        } else {
+            setLoadingSelectedConversationMessages(false);
+        }
+    }, [/* fetchConversationMessages dependency added via useEffect below */]); // `fetchConversationMessages` will be defined below
+
     const fetchConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
         if (messageCache[conversationId]) {
-             setSelectedConversationMessages(messageCache[conversationId]);
-             return messageCache[conversationId];
+            setSelectedConversationMessages(messageCache[conversationId]);
+            return messageCache[conversationId];
         }
         return handleApiCall(
             async () => {
@@ -284,163 +302,177 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
                     `/api/conversations/${conversationId}/messages`
                 );
                 if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao buscar mensagens');
-                setSelectedConversationMessages(response.data.data);
-                setMessageCache(prev => ({ ...prev, [conversationId]: response.data.data! }));
-                return response.data.data;
+                const fetchedMessages = response.data.data;
+                setSelectedConversationMessages(fetchedMessages);
+                setMessageCache(prev => ({ ...prev, [conversationId]: fetchedMessages }));
+                return fetchedMessages;
             },
-            setLoadingSelectedConversationMessages,
-            setSelectedConversationError,
-            null // Não mostrar toast de loading
+            setLoadingSelectedConversationMessages, // Use specific loading state
+            setSelectedConversationError, // Use specific error state
+            null
         );
     }, [messageCache, handleApiCall]);
 
-     const clearMessageCache = useCallback((conversationId: string) => {
-        setMessageCache(prev => {
-          const newCache = { ...prev };
-          delete newCache[conversationId];
-          console.log(`FollowUpContext: Cache cleared for conv ${conversationId}`);
-          return newCache;
-        });
-     }, []);
+    // Effect to link selectConversation and fetchConversationMessages
+     useEffect(() => {
+        // This empty effect ensures fetchConversationMessages is available when selectConversation is defined
+     }, [fetchConversationMessages]);
 
-     const addMessageOptimistically = useCallback((message: Message) => {
-         setSelectedConversationMessages(prev => [...prev, message]);
-     }, []);
+    const addMessageOptimistically = useCallback((message: Message) => {
+        setSelectedConversationMessages(prev => [...prev, message]);
+    }, []);
 
     const updateMessageStatus = useCallback((tempId: string, finalMessage: Message | null, error?: string) => {
         setSelectedConversationMessages(prev => prev.map(msg => {
             if (msg.id === tempId) {
-                if (finalMessage) {
-                    // Substitui a mensagem temporária pela final
-                    return finalMessage;
-                } else {
-                    // Marca como falha
-                    return { ...msg, metadata: { ...msg.metadata, status: 'failed', error: error || 'Erro desconhecido' } };
-                }
+                return finalMessage ? finalMessage : { ...msg, metadata: { ...msg.metadata, status: 'failed', error: error || 'Erro' } };
             }
             return msg;
         }));
     }, []);
 
+    // --- FollowUp Status/Action ---
 
-    // --- FollowUp Status Actions ---
-     const startFollowUpSequence = useCallback(async (clientId: string, workspaceId?: string): Promise<{ followUpId: string }> => {
+    // Kept for potential manual triggering elsewhere, ensure API exists if used
+    const startFollowUpSequence = useCallback(async (clientId: string, workspaceId?: string): Promise<{ followUpId: string }> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) throw new Error('Workspace ID não encontrado para iniciar sequência.');
-
+        if (!wsId) throw new Error('Workspace ID não encontrado para iniciar.');
         return handleApiCall(
             async () => {
-                const response = await axios.post<{ success: boolean, data?: { followUpId: string }, error?: string }>(
-                    '/api/follow-up',
-                    { clientId, workspaceId: wsId }
-                );
-                 if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao iniciar sequência.');
-                 // Opcional: Refetch follow-ups list or update locally
-                 // fetchFollowUps(undefined, wsId);
-                 return response.data.data;
+                // Ensure POST /api/follow-up exists and handles this logic if you keep this function
+                const response = await axios.post<{ success: boolean, data?: { followUpId: string }, error?: string }>('/api/follow-up', { clientId, workspaceId: wsId });
+                if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao iniciar.');
+                // Consider refetching conversations or followups
+                return response.data.data;
             },
-            setIsStartingSequence, // Usa loading específico
-            setFollowUpsError, // Pode usar erro geral de follow-ups
+            setIsStartingSequence,
+            setFollowUpsError,
             'Iniciando sequência...',
             'Sequência iniciada!'
         );
-    }, [workspaceContext, handleApiCall /*, fetchFollowUps*/]);
+    }, [workspaceContext, handleApiCall]);
+
+    const pauseFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
+        const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
+        if (!wsId) throw new Error('Workspace ID não encontrado para pausar.');
+        await handleApiCall(
+            async () => {
+                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/${followUpId}/pause`, { workspaceId: wsId });
+                if (!response.data.success) throw new Error(response.data.error || 'Falha ao pausar.');
+                // Update local state or trigger refetch of conversations
+                setSelectedConversation(prev => prev ? { ...prev, activeFollowUp: prev.activeFollowUp ? { ...prev.activeFollowUp, status: 'PAUSED' } : null } : null);
+            },
+            setIsPausingFollowUp,
+            setFollowUpsError,
+            'Pausando sequência...',
+            'Sequência pausada!'
+        );
+    }, [workspaceContext, handleApiCall]);
+
+    const resumeFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
+        const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
+        if (!wsId) throw new Error('Workspace ID não encontrado para retomar.');
+        await handleApiCall(
+            async () => {
+                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/${followUpId}/resume`, { workspaceId: wsId });
+                if (!response.data.success) throw new Error(response.data.error || 'Falha ao retomar.');
+                 // Update local state or trigger refetch of conversations
+                 setSelectedConversation(prev => prev ? { ...prev, activeFollowUp: prev.activeFollowUp ? { ...prev.activeFollowUp, status: 'ACTIVE' } : null } : null);
+            },
+            setIsResumingFollowUp,
+            setFollowUpsError,
+            'Retomando sequência...',
+            'Sequência retomada!'
+        );
+    }, [workspaceContext, handleApiCall]);
 
     const convertFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) throw new Error('Workspace ID não encontrado para converter.');
-
         await handleApiCall(
             async () => {
-                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(
-                    '/api/follow-up/convert',
-                    { followUpId, workspaceId: wsId }
-                );
-                 if (!response.data.success) throw new Error(response.data.error || 'Falha ao marcar como convertido.');
-                 // Opcional: Refetch ou update local
-                 // fetchFollowUps(undefined, wsId);
+                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/convert`, { followUpId, workspaceId: wsId });
+                if (!response.data.success) throw new Error(response.data.error || 'Falha ao converter.');
+                 // Clear selected conversation if it was this one, or trigger list refetch
+                 if (selectedConversation?.activeFollowUp?.id === followUpId) {
+                    selectConversation(null); // Deselects, page should refetch list
+                 }
+                 // TODO: Consider triggering fetchConversations from the page component after this succeeds.
             },
-            setIsConvertingFollowUp, // Loading específico
+            setIsConvertingFollowUp,
             setFollowUpsError,
             'Marcando como convertido...',
             'Marcado como convertido!'
         );
-    }, [workspaceContext, handleApiCall /*, fetchFollowUps*/]);
+    }, [workspaceContext, handleApiCall, selectedConversation, selectConversation]);
 
     const cancelFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) throw new Error('Workspace ID não encontrado para cancelar.');
-
-         await handleApiCall(
+        await handleApiCall(
             async () => {
-                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(
-                    '/api/follow-up/cancel',
-                    { followUpId, workspaceId: wsId }
-                );
-                 if (!response.data.success) throw new Error(response.data.error || 'Falha ao cancelar sequência.');
-                 // Opcional: Refetch ou update local
-                 // fetchFollowUps(undefined, wsId);
+                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/cancel`, { followUpId, workspaceId: wsId });
+                if (!response.data.success) throw new Error(response.data.error || 'Falha ao cancelar.');
+                 // Clear selected conversation or trigger list refetch
+                 if (selectedConversation?.activeFollowUp?.id === followUpId) {
+                     selectConversation(null);
+                 }
+                // TODO: Consider triggering fetchConversations from the page component.
             },
-            setIsCancellingFollowUp, // Loading específico
+            setIsCancellingFollowUp,
             setFollowUpsError,
             'Cancelando sequência...',
             'Sequência cancelada!'
-         );
-    }, [workspaceContext, handleApiCall /*, fetchFollowUps*/]);
+        );
+    }, [workspaceContext, handleApiCall, selectedConversation, selectConversation]);
 
     // --- Manual Message Action ---
     const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string): Promise<Message> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) throw new Error('Workspace ID não encontrado para enviar mensagem.');
-
+        if (!wsId) throw new Error('Workspace ID não encontrado para enviar.');
+        // Note: success message is handled optimistically by the caller using updateMessageStatus
         return handleApiCall(
             async () => {
-                 const response = await axios.post<{ success: boolean, data?: Message, error?: string }>(
-                     `/api/conversations/${conversationId}/messages`,
-                     { content }
-                 );
-                 if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao enviar mensagem.');
-                 const sentMessage = response.data.data;
-                 // Adiciona à lista local (ou espera WebSocket)
-                 setSelectedConversationMessages(prev => [...prev, sentMessage]);
-                 clearMessageCache(conversationId); // Invalida cache
-                 return sentMessage;
+                const response = await axios.post<{ success: boolean, data?: Message, error?: string }>(`/api/conversations/${conversationId}/messages`, { content });
+                if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao enviar.');
+                // No need to update local state here, caller uses updateMessageStatus
+                return response.data.data;
             },
-            setIsSendingMessage, // Loading específico
-            setSelectedConversationError, // Erro específico da conversa
-            'Enviando mensagem...',
-            'Mensagem enviada!' // Sucesso implícito pela atualização
+            setIsSendingMessage,
+            setSelectedConversationError,
+            'Enviando...', // Loading message
+            undefined // No success message here, handled by caller
         );
-    }, [workspaceContext, handleApiCall, clearMessageCache]);
-
+    }, [workspaceContext, handleApiCall]);
 
     // --- Context Value ---
     const contextValue: FollowUpContextType = useMemo(() => ({
         // Campaign
         campaigns, loadingCampaigns, campaignsError,
-        selectedCampaign, loadingSelectedCampaign,
-        fetchCampaigns, fetchCampaign, createCampaign, updateCampaign, deleteCampaign, clearCampaignsError,
+        fetchCampaigns, createCampaign, updateCampaign, deleteCampaign, clearCampaignsError,
         // FollowUp List
         followUps, loadingFollowUps, followUpsError,
         fetchFollowUps, clearFollowUpsError,
         // Selected Conversation
+        selectedConversation, loadingSelectedConversation,
         selectedConversationMessages, loadingSelectedConversationMessages, selectedConversationError,
-        fetchConversationMessages, clearMessagesError, addMessageOptimistically, updateMessageStatus,
+        selectConversation, fetchConversationMessages, clearMessagesError, addMessageOptimistically, updateMessageStatus,
         // Action States & Functions
-        isStartingSequence, isConvertingFollowUp, isCancellingFollowUp, isSendingMessage,
-        startFollowUpSequence, convertFollowUp, cancelFollowUp, sendManualMessage,
+        isStartingSequence, isPausingFollowUp, isResumingFollowUp, isConvertingFollowUp, isCancellingFollowUp, isSendingMessage,
+        startFollowUpSequence, pauseFollowUp, resumeFollowUp, convertFollowUp, cancelFollowUp, sendManualMessage,
         // Cache
         clearMessageCache,
+        // Removido selectedCampaign/loadingSelectedCampaign se não forem mais usados
     }), [
-        // Dependências dos estados e funções memoizadas
-        campaigns, loadingCampaigns, campaignsError, selectedCampaign, loadingSelectedCampaign,
+        // List all state variables and memoized functions here
+        campaigns, loadingCampaigns, campaignsError,
         followUps, loadingFollowUps, followUpsError,
-        selectedConversationMessages, loadingSelectedConversationMessages, selectedConversationError,
-        isStartingSequence, isConvertingFollowUp, isCancellingFollowUp, isSendingMessage,
-        fetchCampaigns, fetchCampaign, createCampaign, updateCampaign, deleteCampaign, clearCampaignsError,
+        selectedConversation, loadingSelectedConversation, selectedConversationMessages, loadingSelectedConversationMessages, selectedConversationError,
+        isStartingSequence, isPausingFollowUp, isResumingFollowUp, isConvertingFollowUp, isCancellingFollowUp, isSendingMessage,
+        fetchCampaigns, createCampaign, updateCampaign, deleteCampaign, clearCampaignsError,
         fetchFollowUps, clearFollowUpsError,
-        fetchConversationMessages, clearMessagesError, addMessageOptimistically, updateMessageStatus,
-        startFollowUpSequence, convertFollowUp, cancelFollowUp, sendManualMessage,
+        selectConversation, fetchConversationMessages, clearMessagesError, addMessageOptimistically, updateMessageStatus,
+        startFollowUpSequence, pauseFollowUp, resumeFollowUp, convertFollowUp, cancelFollowUp, sendManualMessage,
         clearMessageCache
     ]);
 
@@ -455,7 +487,7 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
 export const useFollowUp = (): FollowUpContextType => {
     const context = useContext(FollowUpContext);
     if (context === undefined) {
-        throw new Error('useFollowUp deve ser usado dentro de um FollowUpProvider');
+        throw new Error('useFollowUp must be used within a FollowUpProvider');
     }
     return context;
 };

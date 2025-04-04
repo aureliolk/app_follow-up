@@ -4,116 +4,114 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useWorkspace } from '@/context/workspace-context';
+import { useFollowUp } from '@/context/follow-up-context';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import ConversationList from './components/ConversationList';
 import ConversationDetail from './components/ConversationDetail';
-import type { ClientConversation } from '@/app/types'; // Importa o tipo de conversa para a lista
+import type { ClientConversation } from '@/app/types';
 
 export default function ConversationsPage() {
   const { workspace, isLoading: workspaceLoading, error: workspaceError } = useWorkspace();
+  const { selectedConversation, selectConversation } = useFollowUp(); // Obtém do contexto
   const [conversations, setConversations] = useState<ClientConversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<ClientConversation | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Inicia como true para carregamento inicial
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // --- CORREÇÃO NO useCallback ---
   const fetchConversations = useCallback(async (wsId: string) => {
-    // Só define loading true se já não estiver carregando o workspace
-    if (!workspaceLoading) {
-        setIsLoading(true);
-    }
-    setError(null); // Limpa erro anterior
-    console.log(`[ConversationsPage] Buscando conversas para workspace: ${wsId}`);
+    if (!workspaceLoading) { setIsLoading(true); }
+    setError(null);
+    console.log(`[ConversationsPage] Fetching conversations for workspace: ${wsId}`);
     try {
       const response = await axios.get<{ success: boolean, data?: ClientConversation[], error?: string }>(
-        '/api/conversations', // Rota da API
-        { params: { workspaceId: wsId } }
+        '/api/conversations', { params: { workspaceId: wsId } }
       );
 
       if (!response.data.success || !response.data.data) {
         throw new Error(response.data.error || 'Falha ao carregar conversas da API.');
       }
-      console.log(`[ConversationsPage] ${response.data.data.length} conversas carregadas.`);
-      setConversations(response.data.data);
+      const fetchedConversations = response.data.data;
+      console.log(`[ConversationsPage] ${fetchedConversations.length} conversas carregadas.`);
+      setConversations(fetchedConversations);
+
+      // A lógica de seleção acontece aqui, mas não depende de estar no useCallback
+      const currentSelectedId = selectedConversation?.id; // Pega o ID atual *antes* de chamar selectConversation
+      if (!currentSelectedId && fetchedConversations.length > 0) {
+          console.log("[ConversationsPage] Auto-selecting first conversation:", fetchedConversations[0].id);
+          selectConversation(fetchedConversations[0]);
+      } else if (currentSelectedId) {
+          const updatedSelected = fetchedConversations.find(c => c.id === currentSelectedId);
+          if (!updatedSelected) {
+              console.log("[ConversationsPage] Previously selected conversation not found in new list, deselecting.");
+              selectConversation(null); // Desmarca se não existe mais
+          } else if (JSON.stringify(updatedSelected) !== JSON.stringify(selectedConversation)) {
+               // Opcional: Atualiza se os dados mudaram (evita loop se os dados forem idênticos)
+               console.log("[ConversationsPage] Updating selected conversation data:", updatedSelected.id);
+               selectConversation(updatedSelected);
+          }
+      }
 
     } catch (err: any) {
-      console.error("[ConversationsPage] Erro ao buscar conversas:", err);
-      const message = err.response?.data?.error || err.message || 'Erro ao buscar conversas.';
-      setError(message);
-      setConversations([]); // Limpa em caso de erro
+        console.error("[ConversationsPage] Erro ao buscar conversas:", err);
+        const message = err.response?.data?.error || err.message || 'Erro ao buscar conversas.';
+        setError(message);
+        setConversations([]);
+        selectConversation(null); // Desmarca em caso de erro
     } finally {
-       // Só termina o loading se o workspace também já carregou
-      if (!workspaceLoading) {
-         setIsLoading(false);
-      }
+        if (!workspaceLoading) { setIsLoading(false); }
     }
-  }, [workspaceLoading]); // Depende do workspaceLoading para evitar race condition
+  // <<< REMOVER selectedConversation e selectConversation das dependências >>>
+  // A função ainda os acessa do escopo, mas sua referência ficará estável.
+  }, [workspaceLoading, workspace?.id]); // Depende do workspaceId (do contexto pai) e seu loading
 
+  // --- CORREÇÃO NO useEffect ---
   useEffect(() => {
-    // Se workspace estiver pronto e tiver ID, busca as conversas
-    if (workspace?.id && !workspaceLoading) {
-        fetchConversations(workspace.id);
+    const wsId = workspace?.id; // Pega o ID atual do workspace
+
+    if (wsId && !workspaceLoading) {
+        console.log(`[ConversationsPage] useEffect triggered: Fetching for wsId ${wsId}`);
+        fetchConversations(wsId);
     } else if (!workspaceLoading && !workspace) {
-         // Se terminou de carregar workspace e não encontrou, para o loading da página e mostra erro
+         console.log("[ConversationsPage] useEffect triggered: Workspace not available.");
          setIsLoading(false);
          setError(workspaceError || 'Workspace não disponível ou acesso negado.');
-         setConversations([]); // Garante que a lista está vazia
+         setConversations([]);
+         selectConversation(null);
     } else if (workspaceLoading) {
-        // Se o workspace ainda está carregando, mantém o loading da página ativo
+        console.log("[ConversationsPage] useEffect triggered: Workspace is loading.");
         setIsLoading(true);
-        setConversations([]); // Limpa conversas enquanto workspace carrega
+        setConversations([]);
+        selectConversation(null);
     }
-     // Cleanup: Pode cancelar requisições axios se necessário
-    // return () => { controller?.abort(); };
-  }, [workspace?.id, workspaceLoading, workspaceError, fetchConversations]);
+    // <<< A dependência principal é o workspace.id (ou workspace inteiro) e seu loading >>>
+    // fetchConversations agora é estável e não precisa estar aqui se for chamado apenas com base no workspace.id
+  }, [workspace?.id, workspaceLoading, workspaceError, selectConversation, fetchConversations]); // Mantenha fetchConversations e selectConversation aqui se precisar garantir que a versão mais recente deles seja usada caso MUDEM (o que não deve acontecer com a correção no useCallback)
 
-  const handleSelectConversation = (conversation: ClientConversation) => {
-    console.log("[ConversationsPage] Conversa selecionada:", conversation.id);
-    setSelectedConversation(conversation);
-  };
 
-  // --- Renderização Condicional ---
-  // Mostra loading se a página ou o workspace estiverem carregando
-  if (isLoading || workspaceLoading) {
-    return (
-        <div className="flex justify-center items-center h-[calc(100vh-var(--header-height,10rem))] p-6">
-             <LoadingSpinner message="Carregando dados..." />
-        </div>
-    );
-  }
-
-  // Mostra erro da página ou do workspace
+  // --- Renderização (Mantida) ---
+  if (isLoading || workspaceLoading) { return <LoadingSpinner message="Carregando..." /> }
   const displayError = error || workspaceError;
-  if (displayError) {
-      return (
-          <div className="p-6">
-              <ErrorMessage message={displayError} onDismiss={() => setError(null)} />
-          </div>
-      );
-  }
+  if (displayError) { return <ErrorMessage message={displayError} /> }
 
-  // Renderização principal (Layout de 2 colunas)
   return (
-    <div className="flex h-full"> {/* Ajusta altura descontando header e footer do workspace */}
-      {/* Coluna Esquerda - Lista */}
-      <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background"> {/* Fundo ligeiramente diferente */}
+    <div className="flex h-full">
+      {/* Coluna Esquerda */}
+      <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background">
         <ConversationList
           conversations={conversations}
-          onSelectConversation={handleSelectConversation}
+          onSelectConversation={selectConversation}
           selectedConversationId={selectedConversation?.id}
         />
-         {/* Mostra mensagem se a lista estiver vazia APÓS o loading */}
          {!isLoading && conversations.length === 0 && !error && (
-             <div className="p-4 text-center text-sm text-muted-foreground">
-                Nenhuma conversa encontrada neste workspace.
+            <div className="p-4 text-center text-sm text-muted-foreground">
+                Nenhuma conversa encontrada.
              </div>
          )}
       </div>
-
-      {/* Coluna Direita - Detalhes */}
+      {/* Coluna Direita */}
       <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-background">
-        {/* Passa a conversa selecionada */}
-        <ConversationDetail conversation={selectedConversation} />
+        <ConversationDetail />
       </div>
     </div>
   );

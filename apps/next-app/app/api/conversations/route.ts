@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../../packages/shared-lib/src/auth/auth-options';
 import { checkPermission } from '../../../../../packages/shared-lib/src/permissions';
 import type { ClientConversation } from '../../../../../apps/next-app/app/types'; // Importar tipo
+import { ConversationStatus, FollowUpStatus } from '@prisma/client';
 
 export async function GET(req: NextRequest) {
   console.log("API GET /api/conversations: Request received.");
@@ -34,30 +35,36 @@ export async function GET(req: NextRequest) {
     console.log(`API GET Conversations: User ${userId} has VIEWER permission on Workspace ${workspaceId}`);
 
     const conversations = await prisma.conversation.findMany({
-      where: { workspace_id: workspaceId },
+      where: {
+        workspace_id: workspaceId,
+        // Filtro inicial simples: Apenas conversas com status ACTIVE
+        // Você pode refinar isso depois para incluir conversas PAUSED
+        // ou basear no status do FollowUp associado, se preferir
+        status: ConversationStatus.ACTIVE
+      },
       include: {
-        client: { // Include client data
+        client: {
           select: {
-            id: true,
-            name: true,
-            phone_number: true,
-          },
+            id: true, name: true, phone_number: true,
+            // Inclui o FollowUp ativo (ou pausado) associado ao cliente NESTE workspace
+            follow_ups: {
+              where: {
+                workspace_id: workspaceId, // Redundante mas seguro
+                status: { in: [FollowUpStatus.ACTIVE, FollowUpStatus.PAUSED] } // Busca Ativo ou Pausado
+              },
+              select: { id: true, status: true },
+              take: 1 // Pega apenas um (deve haver só um ativo/pausado)
+            }
+          }
         },
-        messages: { // Include the very last message for snippet/timestamp
-          select: {
-            content: true,
-            timestamp: true,
-            sender_type: true,
-          },
-          orderBy: {
-            timestamp: 'desc',
-          },
+        messages: { // Última mensagem
+          select: { content: true, timestamp: true, sender_type: true },
+          orderBy: { timestamp: 'desc' },
           take: 1,
         },
       },
       orderBy: {
-        // Order by the last message timestamp primarily, then by creation date
-        last_message_at: 'desc', // Nulls last might be preferable: { sort: 'desc', nulls: 'last' } if Prisma supports
+        last_message_at: { sort: 'desc', nulls: 'last' }, // Ordena por última msg, nulls por último
       },
     });
 
@@ -70,21 +77,29 @@ export async function GET(req: NextRequest) {
       channel_conversation_id: convo.channel_conversation_id,
       status: convo.status,
       is_ai_active: convo.is_ai_active,
-      last_message_at: convo.last_message_at, // Keep original for sorting if needed
+      last_message_at: convo.last_message_at,
       created_at: convo.created_at,
       updated_at: convo.updated_at,
       metadata: convo.metadata,
-      client: convo.client, // Client object is already selected correctly
-      last_message: convo.messages[0] ? { // Get the single message returned
+      client: { // Dados básicos do cliente
+        id: convo.client.id,
+        name: convo.client.name,
+        phone_number: convo.client.phone_number,
+      },
+      last_message: convo.messages[0] ? {
         content: convo.messages[0].content,
         timestamp: convo.messages[0].timestamp,
         sender_type: convo.messages[0].sender_type,
       } : null,
-      // You might calculate unread_count here if needed
+      // Adiciona o follow-up ativo/pausado encontrado
+      activeFollowUp: convo.client.follow_ups[0] ? {
+        id: convo.client.follow_ups[0].id,
+        status: convo.client.follow_ups[0].status // Passa o status encontrado
+      } : null,
     }));
 
 
-    console.log(`API GET Conversations: Found ${formattedData.length} conversations for workspace ${workspaceId}.`);
+    console.log(`API GET Conversations: Found ${formattedData.length} relevant conversations for workspace ${workspaceId}.`);
     return NextResponse.json({ success: true, data: formattedData });
 
   } catch (error) {

@@ -76,7 +76,7 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
     // 2. Verificar Status do FollowUp
     // Usar string diretamente se não tiver o Enum importado corretamente
-    if (followUp.status !== 'ACTIVE') {
+    if (followUp.status !== 'ACTIVE' && followUp.status !== FollowUpStatus.ACTIVE) { // Checa string e Enum
       console.log(`[SequenceWorker ${jobId}] FollowUp ${followUpId} não está ativo (Status: ${followUp.status}). Job ignorado.`);
       return { status: 'skipped', reason: `FollowUp não ativo (${followUp.status})` };
     }

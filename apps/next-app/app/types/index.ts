@@ -22,6 +22,8 @@ export interface FollowUp {
   id: string;
   campaign_id: string;
   client_id: string;
+  workspace_id: string;
+
   // current_step: number; // O schema usa current_stage_id
   current_stage_id?: string | null;
   current_stage_name?: string; // Adicionado para conveniência na UI
@@ -30,6 +32,7 @@ export interface FollowUp {
   updated_at: string; // Idealmente Date
   next_message_at: string | null; // Idealmente Date | null
   completed_at: string | null; // Idealmente Date | null
+  current_sequence_step_order?: number | null;
   // is_responsive: boolean; // O schema usa waiting_for_response
   waiting_for_response?: boolean;
   last_response?: string | null;
@@ -39,8 +42,8 @@ export interface FollowUp {
   paused_reason?: string | null;
   ai_suggestion?: string | null;
   campaign?: { // Relação parcial para exibição
-      id: string;
-      name: string;
+    id: string;
+    name: string;
   };
   messages: FollowUpMessage[];
   // metadata?: string | Record<string, any>; // O schema não tem metadata diretamente em FollowUp
@@ -80,50 +83,50 @@ export interface Campaign {
 
 // --- Outros Tipos Fornecidos ---
 export interface FunnelStage {
-id: string;
-name: string;
-description?: string | null; // Ajustado para null
-order: number;
-campaign_id?: string; // Adicionado do schema (opcional aqui, pois pode vir da campanha pai)
-requires_response?: boolean; // Adicionado do schema
-created_at?: string; // Adicionado do schema
-// Relações (evitar em tipos simples se possível, carregar sob demanda)
-// campaign?: Campaign;
-// steps?: FunnelStep[];
+  id: string;
+  name: string;
+  description?: string | null; // Ajustado para null
+  order: number;
+  campaign_id?: string; // Adicionado do schema (opcional aqui, pois pode vir da campanha pai)
+  requires_response?: boolean; // Adicionado do schema
+  created_at?: string; // Adicionado do schema
+  // Relações (evitar em tipos simples se possível, carregar sob demanda)
+  // campaign?: Campaign;
+  // steps?: FunnelStep[];
 }
 
 export interface FunnelStep {
-id: string;
-funnel_stage_id: string; // Mantido do schema
-template_name: string;
-wait_time: string; // Formato "1d", "2h", "30m" etc.
-// message_content: string; // O schema chama de message_content
-message: string; // Nome usado no CampaignStep, vamos padronizar? Usando 'message' por enquanto.
-order?: number; // Adicionado do schema
-category?: string; // Adicionado do schema
-is_hsm?: boolean; // Adicionado do schema
-status?: string; // Adicionado do schema
-created_at?: string; // Adicionado do schema
+  id: string;
+  funnel_stage_id: string; // Mantido do schema
+  template_name: string;
+  wait_time: string; // Formato "1d", "2h", "30m" etc.
+  // message_content: string; // O schema chama de message_content
+  message: string; // Nome usado no CampaignStep, vamos padronizar? Usando 'message' por enquanto.
+  order?: number; // Adicionado do schema
+  category?: string; // Adicionado do schema
+  is_hsm?: boolean; // Adicionado do schema
+  status?: string; // Adicionado do schema
+  created_at?: string; // Adicionado do schema
 
-// Campos do tipo CampaignStep que parecem sobrepor (escolher um padrão)
-stage_name?: string; // Pode ser derivado do stage_id
-stage_id?: string; // Redundante com funnel_stage_id?
-auto_respond?: boolean; // Não presente no schema FollowUpStep
+  // Campos do tipo CampaignStep que parecem sobrepor (escolher um padrão)
+  stage_name?: string; // Pode ser derivado do stage_id
+  stage_id?: string; // Redundante com funnel_stage_id?
+  auto_respond?: boolean; // Não presente no schema FollowUpStep
 }
 
 
 // Este tipo parece redundante com FunnelStep ou uma view específica.
 // Se for usado, precisa ser bem definido.
 export interface CampaignStep {
-id: string;
-stage_name: string;        // Nome do estágio
-wait_time: string;         // Tempo de espera (formato "1d", "2h", "30m")
-template_name: string;     // Nome do template
-message: string;           // Conteúdo da mensagem
-stage_id?: string;         // ID do estágio de funil relacionado
-stage_order?: number;      // Ordem no estágio
-category?: string;         // Categoria da mensagem
-auto_respond?: boolean;    // Se responde automaticamente
+  id: string;
+  stage_name: string;        // Nome do estágio
+  wait_time: string;         // Tempo de espera (formato "1d", "2h", "30m")
+  template_name: string;     // Nome do template
+  message: string;           // Conteúdo da mensagem
+  stage_id?: string;         // ID do estágio de funil relacionado
+  stage_order?: number;      // Ordem no estágio
+  category?: string;         // Categoria da mensagem
+  auto_respond?: boolean;    // Se responde automaticamente
 }
 
 // Adicionar tipos relacionados a Workspace/Membros/Auth se necessário aqui também
@@ -225,6 +228,43 @@ export interface Campaign {
   // steps?: CampaignStep[] | FunnelStep[]; // Carregado separadamente
 }
 
+// --- ATUALIZE ClientConversation ---
+export interface ClientConversation {
+  id: string; // Conversation ID
+  workspace_id: string;
+  client_id: string;
+  channel?: string | null;
+  channel_conversation_id?: string | null;
+  status: string; // Ex: 'ACTIVE', 'CLOSED' (do Prisma Enum ConversationStatus)
+  is_ai_active: boolean;
+  last_message_at: string | Date | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+  metadata?: any | null;
+  client: { // Dados do cliente incluídos
+    id: string;
+    name?: string | null;
+    phone_number?: string | null;
+    // Não inclua follow_ups aqui para evitar redundância com activeFollowUp
+  };
+  last_message?: { // Última mensagem incluída
+    content: string;
+    timestamp: string | Date;
+    sender_type: 'CLIENT' | 'AI' | 'SYSTEM';
+  } | null;
+
+  // <<< CAMPO ADICIONADO >>>
+  // Guarda o ID e status do follow-up ativo/pausado encontrado pela API
+  activeFollowUp: {
+    id: string;
+    status: string; // Ou FollowUpStatus se usar Enum
+  } | null;
+
+  // Campos opcionais
+  unread_count?: number;
+}
+
+
 // --- DEFINIÇÃO DE CampaignFormData ---
 // Cria um tipo baseado em Campaign, omitindo campos não editáveis no formulário.
 export type CampaignFormData = Omit<Campaign,
@@ -232,6 +272,8 @@ export type CampaignFormData = Omit<Campaign,
   'created_at' |        // Gerado pelo banco
   'stepsCount' |        // Calculado/Agregado
   'activeFollowUps'    // Calculado/Agregado
-  // Adicione outros campos aqui se eles NÃO forem editáveis no modal
-  // Exemplo: 'idLumibot' | 'tokenAgentLumibot' (se não forem editáveis)
+// Adicione outros campos aqui se eles NÃO forem editáveis no modal
+// Exemplo: 'idLumibot' | 'tokenAgentLumibot' (se não forem editáveis)
 >;
+
+
