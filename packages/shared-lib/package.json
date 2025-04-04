@@ -24,7 +24,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/node-fetch": "^2.6.12",
     "next-auth": "^4.24.11",

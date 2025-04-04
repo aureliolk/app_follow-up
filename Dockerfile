@@ -1,78 +1,57 @@
-# Use imagem Debian-based para melhor compatibilidade com módulos nativos
-FROM node:18-slim AS base
-
-# Instala dependências essenciais (incluindo Python e compiladores)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-    openssl \
-    libssl-dev \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
+# Stage 1: Base Node image
+FROM node:20-alpine AS base
+# Install pnpm
+RUN npm install -g pnpm
 WORKDIR /app
 
-# Estágio de instalação de dependências
+# Stage 2: Install all dependencies
 FROM base AS deps
-WORKDIR /app
-COPY package*.json ./
-COPY prisma ./prisma/
-RUN npm ci --include=dev
-
-# Estágio de build
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Copy the entire source code first
 COPY . .
+# Install dependencies using pnpm, considering the workspace structure
+RUN pnpm install --frozen-lockfile
 
-# --- Passos de Build Separados ---
-RUN echo ">>> Generating Prisma Client..." && \
-    npx prisma generate && \
-    echo ">>> Prisma Client Generated."
+# Stage 3: Build the application (includes Prisma generate)
+FROM deps AS builder
+# Generate Prisma Client (needs full source and deps from 'deps' stage)
+RUN pnpm exec prisma generate
+# Build the application
+RUN pnpm run build
 
-# 1. Compilar o Worker explicitamente
-RUN echo ">>> Compiling Worker (tsc --project tsconfig.worker.json)..." && \
-    # Garanta que typescript está em devDependencies e tsconfig.worker.json existe
-    npm run --if-present compile:worker || npx tsc --project tsconfig.worker.json && \
-    echo ">>> Worker Compilation Attempted." && \
-    echo ">>> Listing /app contents AFTER tsc:" && \
-    ls -la /app && \
-    echo ">>> Listing /app/dist contents AFTER tsc:" && \
-    ls -la /app/dist || echo "--- /app/dist NOT FOUND after tsc ---"
-
-# 2. Construir a aplicação Next.js
-ENV NODE_ENV=production
-RUN echo ">>> Building Next.js Application (next build)..." && \
-    npm run build:next || npx next build && \
-    echo ">>> Next.js Build Completed."
-# --- Fim Passos de Build Separados ---
-
-# --- Opcional: Remover devDependencies ---
-# RUN npm prune --production
-
-# Estágio de produção final
+# Stage 4: Production image (previously Stage 5)
 FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+RUN npm install -g pnpm # pnpm needed to run start command
 
-# Copiar apenas o necessário do estágio de build
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy necessary files from the builder stage
+# --- Monorepo Structure Adjustments --- 
+# Copy the main application's build artifacts
+COPY --from=builder /app/apps/next-app/.next ./.next
+COPY --from=builder /app/apps/next-app/public ./public
+# Copy the main application's package.json (contains the start script)
+COPY --from=builder /app/apps/next-app/package.json ./package.json
+# Copy root workspace files needed by pnpm
+COPY --from=builder /app/pnpm-lock.yaml ./
+COPY --from=builder /app/pnpm-workspace.yaml* ./ 
+# Copy node_modules (already includes Prisma client from the build stage)
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+# Copy Prisma schema and migrations for runtime deployment
 COPY --from=builder /app/prisma ./prisma
-# Copiar a pasta dist - O erro acontecia aqui se ela não existisse no builder
-COPY --from=builder /app/dist ./dist
 
-# Adicionar usuário não-root
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs && \
-    chown -R nextjs:nodejs /app
+# Change ownership of necessary files for the non-root user
+RUN chown -R nextjs:nodejs /app/.next
+# Consider chowning node_modules if your app needs to write there at runtime
+# RUN chown -R nextjs:nodejs /app/node_modules
 
 USER nextjs
 
 EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-CMD ["npm", "start"]
+CMD ["pnpm", "run", "start"] 
