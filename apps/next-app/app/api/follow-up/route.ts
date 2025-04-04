@@ -1,11 +1,19 @@
 // apps/next-app/app/api/follow-up/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '../../../../../packages/shared-lib/src/db';
+import { prisma } from '@meuprojeto/shared-lib/src/db';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../../../../../packages/shared-lib/src/auth/auth-options';
-import { checkPermission } from '../../../../../packages/shared-lib/src/permissions';
-import { sequenceStepQueue } from '../../../../../apps/workers/src/queues/sequenceStepQueue';
+import { authOptions } from '@meuprojeto/shared-lib/src/auth/auth-options';
+import { checkPermission } from '@meuprojeto/shared-lib/src/permissions';
+// Usando uma importação dinâmica para o sequenceStepQueue já que é difícil acessar entre apps
+// Alternativamente, mova essa lógica para uma função no shared-lib
+import { Queue } from 'bullmq';
+const sequenceStepQueue = new Queue('sequence-step', {
+  connection: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: Number(process.env.REDIS_PORT) || 6379,
+  }
+});
 // Importe Prisma e o Enum se você o definiu no schema
 import { FollowUpStatus, Prisma } from '@prisma/client';
 

@@ -1,19 +1,18 @@
 {
-  "extends": "../../tsconfig.base.json", // Estende uma base comum se tiver
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
     "sourceMap": true,
     "noEmit": false,
-    "module": "CommonJS", // Consistente com seus scripts 'start:*'
-    "resolveJsonModule": true, // Mantém se você importar JSON
-    "esModuleInterop": true // Mantém
-    // Garantir que 'paths' funcione para encontrar shared-lib/dist
+    "module": "CommonJS",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "paths": {
+      "@/*": ["../../*"],
+      "@meuprojeto/shared-lib/*": ["../../packages/shared-lib/*"]
+    }
   },
-   // Referência ao projeto shared-lib (recomendado se usar composite:true)
-  // "references": [
-  //   { "path": "../../packages/shared-lib" }
-  // ],
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

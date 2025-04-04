@@ -1,42 +1,34 @@
-// packages/shared-lib/tsconfig.build.json (Versão Isolada)
+// packages/shared-lib/tsconfig.build.json
 {
-  // "extends": "../../tsconfig.base.json", // REMOVER A HERANÇA
   "compilerOptions": {
-    // --- Opções Essenciais para o Build ---
-    "outDir": "./dist",                 // Pasta de saída
-    "rootDir": "./src",                 // Pasta raiz do código fonte
-    "declaration": true,                // Gerar arquivos .d.ts
-    "declarationMap": true,             // Gerar source maps para .d.ts
-    "sourceMap": true,                  // Gerar source maps para .js
-    "noEmit": false,                    // TEM que ser false para gerar output
-    "emitDeclarationOnly": false,       // Garante que JS também seja emitido
-
-    // --- Opções de Módulo e Resolução ---
-    "module": "CommonJS",               // Output CJS para compatibilidade com `node dist/...`
-    "moduleResolution": "Node",         // Resolução padrão do Node para encontrar node_modules
-    "esModuleInterop": true,            // Permite imports default de módulos CJS
-    "resolveJsonModule": true,          // Permite importar JSON
-
-    // --- Opções de Tipo e Rigor (Similares à base) ---
-    "target": "ES2017",                 // Target do JS gerado
-    "lib": ["esnext"],                  // Bibliotecas de tipo básicas para Node/backend
-    "strict": true,                     // Habilita verificações estritas
-    "skipLibCheck": true,               // Pula verificação de tipos em .d.ts de libs (pode acelerar)
-    "forceConsistentCasingInFileNames": true, // Boa prática
-
-    // --- Opções a serem EVITADAS/ajustadas ---
-     "isolatedModules": false,           // Definir como false, pode atrapalhar sem um bundler
-    // "baseUrl": ".",                   // REMOVER - Não necessário para build de lib
-    // "paths": {},                      // REMOVER - Não necessário para build de lib
-    "incremental": false                // Desabilitar incremental para build limpo (opcional)
+    // ... (outras opções existentes como outDir, rootDir, module, etc.) ...
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noEmit": false,
+    "emitDeclarationOnly": false, // Garante que JS também seja emitido
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "target": "ES2017",
+    "lib": ["esnext"],
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": false, // Já ajustado
+    // Adicione a linha "types" abaixo:
+    "types": [
+      "node",           // Inclui tipos do Node.js (geralmente necessário para libs backend)
+      "next-auth"       // Força o carregamento dos tipos do next-auth
+    ]
   },
-  // Incluir a pasta src E o arquivo de definição global do NextAuth
-  // Verifique se o caminho relativo para next-auth.d.ts está correto
-  "include": ["src/**/*", "../../next-auth.d.ts"], // Ajuste '../../' se necessário
+  // O include já está correto, buscando o next-auth.d.ts
+  "include": ["src/**/*", "../../next-auth.d.ts"],
   "exclude": [
       "node_modules",
       "dist",
-      "**/*.test.ts", // Excluir arquivos de teste
-      "**/*.spec.ts"  // Excluir arquivos de teste
+      "**/*.test.ts",
+      "**/*.spec.ts"
   ]
 }

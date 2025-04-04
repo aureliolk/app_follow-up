@@ -1,5 +1,5 @@
-import { prisma } from "@/packages/shared-lib/src/db";
-import { withAuth } from "@/packages/shared-lib/src/auth/auth-utils";
+import { prisma } from "@meuprojeto/shared-lib/src/db";
+import { withAuth } from "@meuprojeto/shared-lib/src/auth/auth-utils";
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, createHmac } from "crypto";
 import { getToken } from "next-auth/jwt";

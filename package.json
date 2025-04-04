@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "compile:worker": "tsc --project tsconfig.worker.json && node scripts/resolve-aliases.mjs",
-    "start": "next start",
+    "start": "pnpm --filter next-app start",
+    "start:message": "pnpm --filter workers run start:message",
+    "start:sequence": "pnpm --filter workers run start:sequence",
     "lint": "next lint",
     "build:shared": "pnpm --filter @meuprojeto/shared-lib build", 
     "build:workers": "pnpm --filter workers build",

@@ -7,7 +7,8 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ['image/avif', 'image/webp'], // Exemplo para otimização
-  }
+  },
+  transpilePackages: ['@meuprojeto/shared-lib']
 };
 
 export default nextConfig;

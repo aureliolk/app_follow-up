@@ -1,11 +1,11 @@
 // apps/workers/src/workers/sequenceStepProcessor.ts
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/packages/shared-lib/src/redis';
-import { prisma } from '@/packages/shared-lib/src/db';
-import { enviarTextoLivreLumibot } from '@/packages/shared-lib/src/channel/lumibotSender';
-import { sequenceStepQueue } from '@/apps/workers/src/queues/sequenceStepQueue';
+import { redisConnection } from '@meuprojeto/shared-lib/src/redis';
+import { prisma } from '@meuprojeto/shared-lib/src/db';
+import { enviarTextoLivreLumibot } from '@meuprojeto/shared-lib/src/channel/lumibotSender';
+import { sequenceStepQueue } from '../queues/sequenceStepQueue';
 import { FollowUpStatus, Prisma } from '@prisma/client'; // Importe Prisma para tipos
-import { formatMsToDelayString, parseDelayStringToMs } from '@/packages/shared-lib/src/timeUtils'; // Importar utils
+import { formatMsToDelayString, parseDelayStringToMs } from '@meuprojeto/shared-lib/src/timeUtils'; // Importar utils
 
 const QUEUE_NAME = 'sequence-step';
 
@@ -91,7 +91,7 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
      console.log(`[SequenceWorker ${jobId}] Dados do Workspace (ID: ${workspaceData.id}) carregados.`);
 
     // 4. Encontrar a regra ATUAL (stepRuleId) dentro das regras do workspace
-    const currentRule = workspaceData.ai_follow_up_rules.find(rule => rule.id === stepRuleId);
+    const currentRule = workspaceData.ai_follow_up_rules.find((rule: { id: string }) => rule.id === stepRuleId);
     if (!currentRule) {
         console.error(`[SequenceWorker ${jobId}] Regra de passo ${stepRuleId} não encontrada nas regras do workspace ${workspaceData.id}.`);
         throw new Error(`Regra ${stepRuleId} não encontrada para o workspace.`);
@@ -149,7 +149,7 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
       console.log(`[SequenceWorker ${jobId}] Mensagem enviada com sucesso.`);
 
       // Encontrar a PRÓXIMA regra na sequência
-      const currentRuleIndex = workspaceData.ai_follow_up_rules.findIndex(rule => rule.id === stepRuleId);
+      const currentRuleIndex = workspaceData.ai_follow_up_rules.findIndex((rule: { id: string }) => rule.id === stepRuleId);
       const nextRule = workspaceData.ai_follow_up_rules[currentRuleIndex + 1];
 
       if (nextRule) {
@@ -175,7 +175,7 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
     // 10. Atualizar o FollowUp no Banco
     const updateData: Prisma.FollowUpUpdateInput = {
-      current_sequence_step_order: workspaceData.ai_follow_up_rules.findIndex(r => r.id === stepRuleId) + 1, // Atualiza para a ordem do passo atual
+      current_sequence_step_order: workspaceData.ai_follow_up_rules.findIndex((r: { id: string }) => r.id === stepRuleId) + 1, // Atualiza para a ordem do passo atual
       updated_at: new Date(),
     };
 

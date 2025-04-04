@@ -1,0 +1,30 @@
+# Ignorar node_modules, iremos instalá-los dentro do contêiner
+**/node_modules
+node_modules
+
+# Ignorar arquivos de build (serão gerados dentro do contêiner)
+**/.next
+.next
+**/dist
+dist
+**/.turbo
+.turbo
+
+# Ignorar arquivos de cache
+**/.cache
+.cache
+.npm
+
+# Ignorar arquivos de desenvolvimento
+.git
+.github
+.vscode
+.idea
+**/*.log
+*.log
+.env.local
+.env.development
+.env.test
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
