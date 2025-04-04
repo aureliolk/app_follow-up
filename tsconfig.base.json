@@ -1,0 +1,23 @@
+//tsconfig.base.json
+{
+    "compilerOptions": {
+      "target": "ES2017",
+      "lib": ["esnext"],
+      "allowJs": true,
+      "skipLibCheck": true,
+      "strict": true,
+      "esModuleInterop": true,
+      "moduleResolution": "node", // Ou NodeNext/Bundler dependendo do seu setup
+      "resolveJsonModule": true,
+      "isolatedModules": true, // Pode precisar ser false na base se usar const enums
+      "incremental": true,
+      "baseUrl": ".",
+      "paths": {
+        // Alias globais (ex: para importar dentro do mesmo pacote)
+        // Mas alias *entre* pacotes devem ser resolvidos pelo pnpm workspaces
+        // ou project references. Ajuste conforme necessário.
+        "@/*": ["./*"] // Exemplo genérico, ajuste
+      }
+      // NÃO inclua "noEmit": true aqui se os tsconfig.build.json estendem daqui
+    }
+  }

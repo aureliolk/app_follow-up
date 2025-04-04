@@ -1,6 +1,6 @@
 //lib/middleare/api-token-auth.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/packages/shared-lib/src/db';
+import { prisma } from '../db';
 
 /**
  * Middleware para verificar e validar tokens de API

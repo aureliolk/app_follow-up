@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "compile:worker": "tsc --project tsconfig.worker.json && node scripts/resolve-aliases.mjs",
-    "build:next": "next build",
     "start": "next start",
     "lint": "next lint",
-    "build": "pnpm run --recursive build", 
-    "dev": "pnpm run --parallel dev"
+    "build:shared": "pnpm --filter @meuprojeto/shared-lib build", 
+    "build:workers": "pnpm --filter workers build",
+    "build:next": "pnpm --filter next-app build",
+    "generate": "pnpm exec prisma generate", 
+    "build": "pnpm run generate && pnpm run build:shared && pnpm run build:workers && pnpm run build:next", 
+    "dev": "pnpm run --parallel dev", 
+    "clean": "pnpm -r run clean"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.5",
