@@ -187,10 +187,12 @@ export default function ConversationDetail() {
   // Lógica dos Botões
   const showPauseButton = followUpStatus === 'ACTIVE';
   const showResumeButton = followUpStatus === 'PAUSED';
-  const canConvertOrCancel = showPauseButton || showResumeButton;
+  const followUpExistsAndIsActionable = !!conversation?.activeFollowUp && (conversation.activeFollowUp.status === 'ACTIVE' || conversation.activeFollowUp.status === 'PAUSED');
+ 
 
   // Loader geral para ações que mudam o status do FollowUp
   const isStatusActionLoading = isPausingFollowUp || isResumingFollowUp || isConvertingFollowUp || isCancellingFollowUp;
+
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -241,14 +243,14 @@ export default function ConversationDetail() {
               <span className="hidden sm:inline ml-1.5">Retomar</span>
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={handleMarkConverted} title="Marcar Convertido" disabled={isStatusActionLoading || !canConvertOrCancel}>
+          <Button size="sm" variant="outline" onClick={handleMarkConverted} title="Marcar Convertido" disabled={isStatusActionLoading || !followUpExistsAndIsActionable}>
             {isConvertingFollowUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 text-green-500" />}
             <span className="hidden sm:inline ml-1.5">Convertido</span>
           </Button>
           <Button
             size="sm" variant="outline"
             className="text-destructive border-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={handleCancelSequence} title="Cancelar Sequência" disabled={isStatusActionLoading || !canConvertOrCancel}
+            onClick={handleCancelSequence} title="Cancelar Sequência" disabled={isStatusActionLoading || !followUpExistsAndIsActionable}
           >
             {isCancellingFollowUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
             <span className="hidden sm:inline ml-1.5">Cancelar</span>

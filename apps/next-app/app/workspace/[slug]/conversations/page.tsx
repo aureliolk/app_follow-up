@@ -10,6 +10,8 @@ import ErrorMessage from '@/components/ui/ErrorMessage';
 import ConversationList from './components/ConversationList';
 import ConversationDetail from './components/ConversationDetail';
 import type { ClientConversation } from '@/app/types';
+import { Button } from '@/components/ui/button'; // Import Button
+import { cn } from '../../../../../../packages/shared-lib/src/utils'; // Import cn
 
 export default function ConversationsPage() {
   const { workspace, isLoading: workspaceLoading, error: workspaceError } = useWorkspace();
@@ -17,101 +19,114 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<ClientConversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // <<< NOVO ESTADO PARA FILTRO >>>
+  const [activeFilter, setActiveFilter] = useState<'ATIVAS' | 'CONVERTIDAS' | 'CANCELADAS' | 'COMPLETAS'>('ATIVAS'); // Padrão é Ativas
 
-  // --- CORREÇÃO NO useCallback ---
-  const fetchConversations = useCallback(async (wsId: string) => {
+  // Modificar fetchConversations para aceitar o filtro
+  const fetchConversations = useCallback(async (wsId: string, filter: string) => {
     if (!workspaceLoading) { setIsLoading(true); }
     setError(null);
-    console.log(`[ConversationsPage] Fetching conversations for workspace: ${wsId}`);
+    console.log(`[ConversationsPage] Fetching conversations for ws: ${wsId}, filter: ${filter}`);
     try {
       const response = await axios.get<{ success: boolean, data?: ClientConversation[], error?: string }>(
-        '/api/conversations', { params: { workspaceId: wsId } }
+        '/api/conversations',
+        { params: { workspaceId: wsId, status: filter } } // <<< PASSA O FILTRO
       );
+      // ... (resto da lógica de tratamento da resposta e seleção da conversa) ...
+       if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao carregar conversas');
+       setConversations(response.data.data);
 
-      if (!response.data.success || !response.data.data) {
-        throw new Error(response.data.error || 'Falha ao carregar conversas da API.');
-      }
-      const fetchedConversations = response.data.data;
-      console.log(`[ConversationsPage] ${fetchedConversations.length} conversas carregadas.`);
-      setConversations(fetchedConversations);
+       // Lógica de seleção/desseleção ao recarregar a lista filtrada
+       const currentSelectedId = selectedConversation?.id;
+       const listHasSelected = response.data.data.some(c => c.id === currentSelectedId);
 
-      // A lógica de seleção acontece aqui, mas não depende de estar no useCallback
-      const currentSelectedId = selectedConversation?.id; // Pega o ID atual *antes* de chamar selectConversation
-      if (!currentSelectedId && fetchedConversations.length > 0) {
-          console.log("[ConversationsPage] Auto-selecting first conversation:", fetchedConversations[0].id);
-          selectConversation(fetchedConversations[0]);
-      } else if (currentSelectedId) {
-          const updatedSelected = fetchedConversations.find(c => c.id === currentSelectedId);
-          if (!updatedSelected) {
-              console.log("[ConversationsPage] Previously selected conversation not found in new list, deselecting.");
-              selectConversation(null); // Desmarca se não existe mais
-          } else if (JSON.stringify(updatedSelected) !== JSON.stringify(selectedConversation)) {
-               // Opcional: Atualiza se os dados mudaram (evita loop se os dados forem idênticos)
-               console.log("[ConversationsPage] Updating selected conversation data:", updatedSelected.id);
-               selectConversation(updatedSelected);
-          }
-      }
+       if (currentSelectedId && !listHasSelected) {
+           // Se a selecionada não está mais na lista filtrada, desmarca
+           selectConversation(null);
+       } else if (!currentSelectedId && response.data.data.length > 0) {
+           // Se nada selecionado e lista não vazia, seleciona a primeira
+           selectConversation(response.data.data[0]);
+       }
+       // Se a selecionada ainda está na lista, não faz nada para manter a seleção
 
-    } catch (err: any) {
-        console.error("[ConversationsPage] Erro ao buscar conversas:", err);
+    } catch (err: any) { 
+      console.error("[ConversationsPage] Erro ao buscar conversas:", err);
         const message = err.response?.data?.error || err.message || 'Erro ao buscar conversas.';
         setError(message);
         setConversations([]);
         selectConversation(null); // Desmarca em caso de erro
-    } finally {
-        if (!workspaceLoading) { setIsLoading(false); }
     }
-  // <<< REMOVER selectedConversation e selectConversation das dependências >>>
-  // A função ainda os acessa do escopo, mas sua referência ficará estável.
-  }, [workspaceLoading, workspace?.id]); // Depende do workspaceId (do contexto pai) e seu loading
+      finally { if (!workspaceLoading) { setIsLoading(false); } }
+  }, [workspaceLoading, selectConversation, selectedConversation]); // Removi workspaceContext.workspace?.id
 
-  // --- CORREÇÃO NO useEffect ---
+  // Modificar useEffect para usar o filtro ativo
   useEffect(() => {
-    const wsId = workspace?.id; // Pega o ID atual do workspace
-
+    const wsId = workspace?.id;
     if (wsId && !workspaceLoading) {
-        console.log(`[ConversationsPage] useEffect triggered: Fetching for wsId ${wsId}`);
-        fetchConversations(wsId);
-    } else if (!workspaceLoading && !workspace) {
-         console.log("[ConversationsPage] useEffect triggered: Workspace not available.");
-         setIsLoading(false);
-         setError(workspaceError || 'Workspace não disponível ou acesso negado.');
-         setConversations([]);
-         selectConversation(null);
-    } else if (workspaceLoading) {
-        console.log("[ConversationsPage] useEffect triggered: Workspace is loading.");
-        setIsLoading(true);
-        setConversations([]);
-        selectConversation(null);
+        console.log(`[ConversationsPage] useEffect triggered: Fetching for wsId ${wsId} with filter ${activeFilter}`);
+        fetchConversations(wsId, activeFilter); // <<< PASSA O FILTRO ATIVO
     }
-    // <<< A dependência principal é o workspace.id (ou workspace inteiro) e seu loading >>>
-    // fetchConversations agora é estável e não precisa estar aqui se for chamado apenas com base no workspace.id
-  }, [workspace?.id, workspaceLoading, workspaceError, selectConversation, fetchConversations]); // Mantenha fetchConversations e selectConversation aqui se precisar garantir que a versão mais recente deles seja usada caso MUDEM (o que não deve acontecer com a correção no useCallback)
+    // ... (resto da lógica do useEffect) ...
+  }, [workspace?.id, workspaceLoading, workspaceError, activeFilter, fetchConversations, selectConversation]); // <<< ADICIONA activeFilter como dependência
 
 
-  // --- Renderização (Mantida) ---
+  // --- Renderização ---
   if (isLoading || workspaceLoading) { return <LoadingSpinner message="Carregando..." /> }
   const displayError = error || workspaceError;
-  if (displayError) { return <ErrorMessage message={displayError} /> }
+  if (displayError) {  return <ErrorMessage message={displayError} /> }
+
+  const filterOptions: typeof activeFilter[] = ['ATIVAS', 'CONVERTIDAS', 'CANCELADAS', 'COMPLETAS'];
 
   return (
-    <div className="flex h-full">
-      {/* Coluna Esquerda */}
-      <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background">
-        <ConversationList
-          conversations={conversations}
-          onSelectConversation={selectConversation}
-          selectedConversationId={selectedConversation?.id}
-        />
-         {!isLoading && conversations.length === 0 && !error && (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-                Nenhuma conversa encontrada.
-             </div>
-         )}
+    <div className="flex flex-col h-full"> {/* Alterado para flex-col */}
+      {/* <<< ADICIONADO HEADER COM FILTROS >>> */}
+      <div className="p-3 border-b border-border flex-shrink-0 bg-card/30 dark:bg-background">
+         <div className="flex items-center space-x-2">
+           <span className="text-sm font-medium text-muted-foreground">Mostrar:</span>
+           {filterOptions.map(filter => (
+               <Button
+                   key={filter}
+                   variant={activeFilter === filter ? "secondary" : "ghost"} // Destaca o ativo
+                   size="sm"
+                   onClick={() => {
+                       if (activeFilter !== filter) {
+                            setActiveFilter(filter);
+                            selectConversation(null); // Desmarca ao mudar filtro
+                       }
+                   }}
+                   className={cn("h-8 px-3", activeFilter === filter ? "bg-primary/15 text-primary" : "text-muted-foreground")}
+               >
+                   {filter.charAt(0) + filter.slice(1).toLowerCase()}
+               </Button>
+           ))}
+         </div>
       </div>
-      {/* Coluna Direita */}
-      <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-background">
-        <ConversationDetail />
+
+      {/* Container Flex principal para as colunas */}
+      <div className="flex flex-grow overflow-hidden"> {/* Adicionado flex-grow e overflow-hidden */}
+        {/* Coluna Esquerda */}
+        <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background flex-shrink-0">
+          {/* Mostra loading da lista */}
+          {isLoading && conversations.length === 0 && (
+             <div className="p-4"><LoadingSpinner size="small"/></div>
+          )}
+          <ConversationList
+            conversations={conversations}
+            onSelectConversation={selectConversation}
+            selectedConversationId={selectedConversation?.id}
+          />
+          {!isLoading && conversations.length === 0 && !error && (
+              <div className="p-4 text-center text-sm text-muted-foreground">
+                  Nenhuma conversa encontrada para o filtro "{activeFilter.toLowerCase()}".
+              </div>
+          )}
+        </div>
+
+        {/* Coluna Direita */}
+        <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-background">
+          {/* Passa a selectedConversation do contexto */}
+          <ConversationDetail />
+        </div>
       </div>
     </div>
   );
