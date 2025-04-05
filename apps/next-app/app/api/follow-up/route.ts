@@ -1,10 +1,10 @@
 // apps/next-app/app/api/follow-up/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@meuprojeto/shared-lib/src/db';
+import { prisma } from '@meuprojeto/shared-lib/db';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@meuprojeto/shared-lib/src/auth/auth-options';
-import { checkPermission } from '@meuprojeto/shared-lib/src/permissions';
+import { authOptions } from '@meuprojeto/shared-lib/auth/auth-options';
+import { checkPermission } from '@meuprojeto/shared-lib/permissions';
 // Usando uma importação dinâmica para o sequenceStepQueue já que é difícil acessar entre apps
 // Alternativamente, mova essa lógica para uma função no shared-lib
 import { Queue } from 'bullmq';

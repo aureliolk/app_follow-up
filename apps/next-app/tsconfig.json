@@ -1,3 +1,4 @@
+// apps/next-app/tsconfig.json
 {
   "compilerOptions": {
     "target": "ES2017",
@@ -6,27 +7,31 @@
       "dom.iterable",
       "esnext"
     ],
-    "baseUrl": ".", // Ou "src"
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"] // Ou ["src/*"] se baseUrl for "."
+      "@/*": ["./*"],
+      // Adicione o alias para shared-lib aqui TAMBÉM para o editor no contexto do Next.js
+       "@meuprojeto/shared-lib/*": ["../../packages/shared-lib/src/*"],
+       "@meuprojeto/shared-lib": ["../../packages/shared-lib/src/index"]
     },
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": false,
+    "strict": false, // Mantenha false se precisar
     "noEmit": true,
     "incremental": true,
+    "composite": true, // <<< HABILITA
     "module": "esnext",
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler", // Ou Node
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
+    "plugins": [ { "name": "next" } ]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "../../next.config.ts"],
-  "exclude": ["node_modules"]
+   // <<< REFERENCIA A SHARED-LIB >>>
+  "references": [
+    { "path": "../../packages/shared-lib" }
+  ],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "../../packages/shared-lib/src/**/*.ts"], // Inclui shared-lib para TS Server
+  "exclude": ["node_modules", "**/dist", ".next"]
 }

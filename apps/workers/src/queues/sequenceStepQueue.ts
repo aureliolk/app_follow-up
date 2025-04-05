@@ -1,6 +1,6 @@
 // apps/workers/src/queues/sequenceStepQueue.ts
 import { Queue } from 'bullmq';
-import { redisConnection } from '@meuprojeto/shared-lib/src/redis';
+import { redisConnection } from '@meuprojeto/shared-lib/redis';
 
 const SEQUENCE_QUEUE_NAME = 'sequence-step';
 

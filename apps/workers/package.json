@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
+  "main": "dist/index.js", 
+  "types": "dist/index.d.ts", 
   "scripts": {
-    "compile": "tsc -p tsconfig.json && node ../../scripts/resolve-aliases.mjs",
+    "compile": "tsc -p tsconfig.worker.json && node ../../scripts/resolve-aliases.mjs",
     "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist tsconfig.build.tsbuildinfo",
     "start:message": "node dist/workers/messageProcessor.js",
     "start:sequence": "node dist/workers/sequenceStepProcessor.js",
     "dev:message": "tsx src/workers/messageProcessor.ts",

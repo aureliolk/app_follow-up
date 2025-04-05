@@ -1,9 +1,9 @@
 // lib/workers/messageProcessor.ts
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@meuprojeto/shared-lib/src/redis';
-import { prisma } from '@meuprojeto/shared-lib/src/db';
-import { generateChatCompletion } from '@meuprojeto/shared-lib/src/ai/chatService';
-import { enviarTextoLivreLumibot } from '@meuprojeto/shared-lib/src/channel/lumibotSender';
+import { redisConnection } from '@meuprojeto/shared-lib/redis';
+import { prisma } from '@meuprojeto/shared-lib/db';
+import { generateChatCompletion } from '@meuprojeto/shared-lib/ai/chatService';
+import { enviarTextoLivreLumibot } from '@meuprojeto/shared-lib/channel/lumibotSender';
 import { MessageSenderType } from '@prisma/client'; // Importar tipos e Enums
 import { CoreMessage } from 'ai'; // Tipo para Vercel AI SDK
 
@@ -18,6 +18,13 @@ interface JobData {
   workspaceId: string;
   receivedTimestamp: number; // Timestamp de quando o webhook recebeu a mensagem
 }
+
+// Define o tipo esperado para as mensagens do histórico
+type HistoryMessage = {
+  sender_type: MessageSenderType;
+  content: string | null; // Content pode ser null
+  timestamp: Date;
+};
 
 async function processJob(job: Job<JobData>) {
   const { conversationId, clientId, newMessageId, workspaceId, receivedTimestamp } = job.data;
@@ -129,9 +136,9 @@ async function processJob(job: Job<JobData>) {
     console.log(`[MsgProcessor ${jobId}] Histórico obtido com ${historyMessages.length} mensagens.`);
 
     // --- 5. Formatar Mensagens para a API da IA ---
-    const aiMessages: CoreMessage[] = historyMessages.map(msg => ({
+    const aiMessages: CoreMessage[] = historyMessages.map((msg: HistoryMessage) => ({
       role: msg.sender_type === MessageSenderType.CLIENT ? 'user' : 'assistant', // CLIENT -> user, AI/SYSTEM -> assistant
-      content: msg.content,
+      content: msg.content ?? '', // Usa '' se content for null
     }));
 
     // --- 6. Obter Prompt e Credenciais do Workspace (já buscado) ---

@@ -1,0 +1,22 @@
+// apps/workers/tsconfig.json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,    // Essencial
+    "outDir": "dist",       // Onde o build colocará os arquivos
+    "rootDir": "src",       // De onde vêm os fontes
+    "declaration": true,    // NECESSÁRIO para composite
+    "declarationMap": true, // Bom ter
+    "sourceMap": true,      // Bom ter
+    "module": "NodeNext",   // << ALTERADO de CommonJS para NodeNext
+    "target": "ES2020",      // Mantém moderno
+    // Remova 'paths' se os imports usarem caminhos relativos para shared-lib
+    // Se mantiver imports com alias, o 'paths' é necessário AQUI para o EDITOR
+    "paths": { "@meuprojeto/shared-lib/*": ["../../packages/shared-lib/src/*"] }
+  },
+  "references": [ // Referencia a shared-lib
+    { "path": "../../packages/shared-lib" }
+  ],
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,29 +1,33 @@
-//tsconfig.json
+// apps/next-app/tsconfig.json
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "composite": true, // Essencial
+    // Opções específicas do Next.js (mantenha as importantes)
     "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
+    "strict": false, // ou true
+    "noEmit": true, // Next.js faz seu próprio emit
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+    "plugins": [ { "name": "next" } ],
+    // Paths para o editor
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
-    },
+      "@/*": ["./*"],
+      "@meuprojeto/shared-lib/*": ["../../packages/shared-lib/src/*"],
+      "@meuprojeto/shared-lib": ["../../packages/shared-lib/src/index"]
+    }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "next.config.ts"],
-  "exclude": ["node_modules"]
+  "references": [ // Referencia a shared-lib
+    { "path": "../../packages/shared-lib" }
+  ],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules", "dist", ".next"] // Exclui dist também
 }

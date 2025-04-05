@@ -1,11 +1,11 @@
 // apps/workers/src/workers/sequenceStepProcessor.ts
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@meuprojeto/shared-lib/src/redis';
-import { prisma } from '@meuprojeto/shared-lib/src/db';
-import { enviarTextoLivreLumibot } from '@meuprojeto/shared-lib/src/channel/lumibotSender';
+import { redisConnection } from '@meuprojeto/shared-lib/redis';
+import { prisma } from '@meuprojeto/shared-lib/db';
+import { enviarTextoLivreLumibot } from '@meuprojeto/shared-lib/channel/lumibotSender';
 import { sequenceStepQueue } from '../queues/sequenceStepQueue';
 import { FollowUpStatus, Prisma } from '@prisma/client'; // Importe Prisma para tipos
-import { formatMsToDelayString, parseDelayStringToMs } from '@meuprojeto/shared-lib/src/timeUtils'; // Importar utils
+import { formatMsToDelayString, parseDelayStringToMs } from '@meuprojeto/shared-lib/timeUtils'; // Importar utils
 
 const QUEUE_NAME = 'sequence-step';
 

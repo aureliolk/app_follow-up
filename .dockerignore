@@ -1,31 +1,47 @@
-# Ignorar node_modules, iremos instalá-los dentro do contêiner
-**/node_modules
-node_modules
+# .dockerignore
 
-# Ignorar arquivos de build (serão gerados dentro do contêiner)
-**/.next
-.next
-**/dist
-dist
-**/.turbo
-.turbo
-
-# Ignorar arquivos de cache
-**/.cache
-.cache
-.npm
-
-# Ignorar arquivos de desenvolvimento
+# Ignore Git directory
 .git
-.github
+.gitignore
+
+# Ignore Node dependencies
+node_modules
+**/node_modules
+
+# Ignore pnpm files (except lockfile)
+pnpm-lock.yaml
+!pnpm-lock.yaml # Make sure lockfile IS included
+.pnpm-store
+
+# Ignore build artifacts specific to local development
+dist
+**/dist
+.next
+out
+build
+
+# Ignore IDE and OS files
 .vscode
 .idea
-**/*.log
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Log files
 *.log
-.env.local
-.env.development
-.env.test
 npm-debug.log*
+pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.env
+lerna-debug.log*
+
+# Environment variables
+.env*
+!.env.example
