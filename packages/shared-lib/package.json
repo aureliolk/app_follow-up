@@ -43,6 +43,7 @@
     },
     "./queueService": {
       "types": "./dist/queues/queueService.d.ts",
+      "import": "./dist/queues/queueService.js",
       "require": "./dist/queues/queueService.js"
     }
   },

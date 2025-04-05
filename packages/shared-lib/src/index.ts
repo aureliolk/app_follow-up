@@ -9,4 +9,5 @@ export * from './auth/auth-utils';
 export * from './channel/lumibotSender';
 export * from './ai/chatService';
 export * from './middleware/api-token-auth';
+export * from './queues/queueService';
 // Exporte outros módulos conforme necessário

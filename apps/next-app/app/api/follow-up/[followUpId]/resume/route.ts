@@ -6,7 +6,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../../../../packages/shared-lib/src/auth/auth-options';
 import { checkPermission } from '../../../../../../../packages/shared-lib/src/permissions';
 import { FollowUpStatus as PrismaFollowUpStatus, Prisma } from '@prisma/client';
-import { addSequenceStepJob } from '@meuprojeto/shared-lib/queueService';
+import { addSequenceStepJob } from '@meuprojeto/shared-lib';
 
 const resumeSchema = z.object({
     workspaceId: z.string().uuid("ID do Workspace inválido"),

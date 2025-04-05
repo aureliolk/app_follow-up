@@ -5,8 +5,8 @@ import { Conversation, FollowUp, Prisma, FollowUpStatus as PrismaFollowUpStatus,
 // Remover imports diretos das filas
 // import { messageProcessingQueue } from '../../../../../../../apps/workers/src/queues/messageProcessingQueue';
 // import { sequenceStepQueue } from '../../../../../../../apps/workers/src/queues/sequenceStepQueue'; // Importar fila da sequência
-// Importar funções do serviço de filas da shared-lib
-import { addMessageProcessingJob, addSequenceStepJob } from '@meuprojeto/shared-lib/queueService';
+// Importar funções do serviço de filas da shared-lib (do ponto de entrada principal)
+import { addMessageProcessingJob, addSequenceStepJob } from '@meuprojeto/shared-lib';
 
 // --- Função Auxiliar para Iniciar Follow-up (Evita Repetição) ---
 async function startNewFollowUpSequence(clientId: string, workspaceId: string, conversationId: string) {
