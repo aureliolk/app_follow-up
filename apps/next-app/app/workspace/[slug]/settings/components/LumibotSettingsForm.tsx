@@ -119,7 +119,7 @@ export default function LumibotSettingsForm() {
               type="password" // Mascara o token
               value={apiToken}
               onChange={(e) => setApiToken(e.target.value)}
-              placeholder={workspace?.lumibot_api_token ? '******** (Token existente. Digite para substituir)' : 'Insira o token de API do agente'}
+              placeholder="Insira o token de API do agente (ou deixe em branco para manter)"
               className="bg-input border-input font-mono" // Fonte mono para tokens
               disabled={isSaving}
             />

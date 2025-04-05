@@ -40,6 +40,10 @@
     "./auth/auth-utils": {
       "types": "./dist/auth/auth-utils.d.ts",
       "require": "./dist/auth/auth-utils.js"
+    },
+    "./queueService": {
+      "types": "./dist/queues/queueService.d.ts",
+      "require": "./dist/queues/queueService.js"
     }
   },
   "scripts": {

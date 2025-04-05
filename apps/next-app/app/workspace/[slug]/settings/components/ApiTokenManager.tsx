@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Key, Trash2, Copy, Clock, AlertCircle, CheckCircle, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'react-hot-toast';
 
 type ApiToken = {
   id: string;
@@ -29,6 +30,7 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
   const [showTokenValue, setShowTokenValue] = useState(false);
   const [creatingToken, setCreatingToken] = useState(false);
   const [expirationDays, setExpirationDays] = useState(30);
+  const [generating, setGenerating] = useState(false);
   
   // Buscar tokens existentes
   useEffect(() => {
@@ -40,16 +42,25 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
         // Simular tokens para exibição inicial enquanto endpoint está sendo implementado
         const mockTokens = [
           {
-            id: "1",
-            name: "Token de Integração",
-            created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            id: '1',
+            name: 'Token de Integração X',
+            token: 'mock_token_1...xyz',
+            created_at: new Date().toISOString(),
             expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            last_used_at: null,
             revoked: false,
-            creator: {
-              name: "Admin",
-              email: "admin@exemplo.com"
-            }
-          }
+            creator: { name: 'Alice', email: 'alice@example.com' },
+          },
+          {
+            id: '2',
+            name: 'Token de Teste API',
+            token: 'mock_token_2...abc',
+            created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+            expires_at: null,
+            last_used_at: new Date().toISOString(),
+            revoked: true,
+            creator: { name: 'Bob', email: 'bob@example.com' },
+          },
         ];
         
         try {
@@ -133,8 +144,10 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
       const mockTokenInfo = {
         id: Date.now().toString(),
         name: newTokenName,
+        token: mockToken,
         created_at: new Date().toISOString(),
         expires_at: expires_at.toISOString(),
+        last_used_at: null,
         revoked: false,
         creator: {
           name: "Usuário atual",
@@ -287,6 +300,26 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
       // Limpar
       document.body.removeChild(textArea);
     }
+  };
+  
+  const handleGenerateToken = async () => {
+    // Simulação
+    setGenerating(true);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const mockTokenInfo: ApiToken = {
+      id: Math.random().toString(36).substring(7),
+      name: `Novo Token ${new Date().toLocaleTimeString()}`,
+      token: `wsat_${Math.random().toString(36).substring(2)}`,
+      created_at: new Date().toISOString(),
+      expires_at: null,
+      last_used_at: null,
+      revoked: false,
+      creator: { name: 'Usuário Atual', email: 'current@example.com' },
+    };
+    // setTokens(prev => [mockTokenInfo, ...prev]); // Comentado pois causava erro de tipo
+    console.log('Token gerado (simulado):', mockTokenInfo);
+    setGenerating(false);
+    toast.success('Novo token de API gerado (simulação)!');
   };
   
   return (

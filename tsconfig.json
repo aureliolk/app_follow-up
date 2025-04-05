@@ -1,33 +1,16 @@
-// apps/next-app/tsconfig.json
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "composite": true, // Essencial
-    // Opções específicas do Next.js (mantenha as importantes)
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": false, // ou true
-    "noEmit": true, // Next.js faz seu próprio emit
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [ { "name": "next" } ],
-    // Paths para o editor
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"],
-      "@meuprojeto/shared-lib/*": ["../../packages/shared-lib/src/*"],
-      "@meuprojeto/shared-lib": ["../../packages/shared-lib/src/index"]
+    // /tsconfig.json (NOVO - Raiz do Monorepo)
+    {
+      "files": [], // Nenhum arquivo fonte neste nível
+      "references": [
+        {
+          "path": "./packages/shared-lib"
+        }, // Caminho relativo correto da raiz
+        {
+          "path": "./apps/workers"
+        }, // Caminho relativo correto da raiz
+        {
+          "path": "./apps/next-app"
+        } // Adicione se next-app deve ser buildado por tsc -b
+                                             // (Normalmente Next.js tem seu próprio build)
+      ]
     }
-  },
-  "references": [ // Referencia a shared-lib
-    { "path": "../../packages/shared-lib" }
-  ],
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "dist", ".next"] // Exclui dist também
-}

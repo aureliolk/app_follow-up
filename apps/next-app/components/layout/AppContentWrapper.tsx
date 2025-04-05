@@ -2,11 +2,15 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import Header from '@/apps/next-app/components/header'; // Import o Header SEM early returns
-import Footer from '@/apps/next-app/components/footer'; // Import o Footer
+import { Toaster } from 'react-hot-toast';
+// import { Sidebar } from './Sidebar'; // <<< COMENTADO: Arquivo não encontrado
+// import { useLayoutStore } from "@/store/layoutStore"; // <<< COMENTADO: Pasta store não encontrada
+import Header from '@/components/header';
+import Footer from '@/components/footer';
 
 export default function AppContentWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // const { isSidebarOpen } = useLayoutStore(); // <<< COMENTADO
 
   // Define as condições para NÃO mostrar Header e Footer globais
   const hideGlobalHeader = pathname?.startsWith('/workspace/') || pathname?.startsWith('/auth/');

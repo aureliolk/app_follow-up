@@ -2,8 +2,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../../../../packages/shared-lib/src/db';
 import { Conversation, FollowUp, Prisma, FollowUpStatus as PrismaFollowUpStatus, ConversationStatus } from '@prisma/client'; // Importe tipos e Enums
-import { messageProcessingQueue } from '../../../../../../../apps/workers/src/queues/messageProcessingQueue';
-import { sequenceStepQueue } from '../../../../../../../apps/workers/src/queues/sequenceStepQueue'; // Importar fila da sequência
+// Remover imports diretos das filas
+// import { messageProcessingQueue } from '../../../../../../../apps/workers/src/queues/messageProcessingQueue';
+// import { sequenceStepQueue } from '../../../../../../../apps/workers/src/queues/sequenceStepQueue'; // Importar fila da sequência
+// Importar funções do serviço de filas da shared-lib
+import { addMessageProcessingJob, addSequenceStepJob } from '@meuprojeto/shared-lib/queueService';
 
 // --- Função Auxiliar para Iniciar Follow-up (Evita Repetição) ---
 async function startNewFollowUpSequence(clientId: string, workspaceId: string, conversationId: string) {
@@ -44,8 +47,10 @@ async function startNewFollowUpSequence(clientId: string, workspaceId: string, c
         if (nextMessageTime) {
             const jobData = { followUpId: newFollowUp.id, stepRuleId: firstRule.id, workspaceId };
             const jobOptions = { delay: delayMs, jobId: `seq_${newFollowUp.id}_step_${firstRule.id}`, removeOnComplete: true, removeOnFail: 5000 };
-            await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
-            console.log(`[Webhook Ingress] First sequence job scheduled for FollowUp ${newFollowUp.id}, Rule ${firstRule.id} with delay ${delayMs}ms`);
+            // Substituir chamada direta pela função da shared-lib
+            // await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
+            await addSequenceStepJob(jobData, jobOptions);
+            console.log(`[Webhook Ingress] First sequence job scheduled via QueueService for FollowUp ${newFollowUp.id}, Rule ${firstRule.id} with delay ${delayMs}ms`);
         } else {
              console.log(`[Webhook Ingress] First rule ${firstRule.id} has no valid delay. No job scheduled, sequence starts immediately if rules allow.`);
              // Poderia agendar com delay 0 se quisesse processamento imediato do primeiro passo
@@ -230,13 +235,15 @@ export async function POST(req: NextRequest) {
         await startNewFollowUpSequence(client.id, workspaceId, conversation.id);
     }
 
-    // --- Adicionar Job à Fila de Processamento de Mensagem (Mantido) ---
+    // --- Adicionar Job à Fila de Processamento de Mensagem (Usando shared-lib) ---
     try {
       const jobData = { conversationId: conversation.id, clientId: client.id, newMessageId: newMessage.id, workspaceId, receivedTimestamp: Date.now() };
-      await messageProcessingQueue.add('processIncomingMessage', jobData);
-      console.log(`[Webhook Ingress] Job adicionado à fila messageProcessingQueue para msg ${newMessage.id}`);
+      // Substituir chamada direta pela função da shared-lib
+      // await messageProcessingQueue.add('processIncomingMessage', jobData);
+      await addMessageProcessingJob(jobData);
+      console.log(`[Webhook Ingress] Job adicionado à fila messageProcessingQueue via QueueService para msg ${newMessage.id}`);
     } catch (queueError) {
-      console.error(`[Webhook Ingress] Falha ao adicionar job à fila messageProcessingQueue:`, queueError);
+      console.error(`[Webhook Ingress] Falha ao adicionar job à fila messageProcessingQueue via QueueService:`, queueError);
     }
 
     return NextResponse.json({ success: true, message: 'Mensagem recebida e processada' }, { status: 200 });

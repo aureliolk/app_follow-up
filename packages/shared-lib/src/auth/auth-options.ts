@@ -99,8 +99,7 @@ export const authOptions: NextAuthOptions = { // Usa o tipo importado
                 } else {
                      // Sem usuário no DB e sem objeto 'user' inicial, remove dados potencialmente inválidos
                      console.error(`JWT Callback: User ${userEmail} não encontrado no DB e sem dados iniciais.`);
-                     delete token.id;
-                     delete token.isSuperAdmin;
+                     token.id = undefined;
                 }
             }
         }

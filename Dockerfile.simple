@@ -1,0 +1,32 @@
+# Dockerfile.simple - Abordagem direta (Imagem Grande)
+
+# Use uma imagem Node.js completa que inclua ferramentas de build
+FROM node:20
+
+# Define o diretório de trabalho
+WORKDIR /app
+
+# Copia os arquivos de manifesto (separando o lockfile como teste)
+COPY package.json pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
+
+# Instala pnpm globalmente
+RUN npm install -g pnpm
+
+# Copia todo o restante do código do projeto
+COPY . .
+
+# Instala todas as dependências (incluindo devDependencies)
+# Usar --frozen-lockfile é recomendado em CI/builds para garantir consistência
+RUN pnpm install --frozen-lockfile
+
+# Executa o comando de build principal do monorepo
+# (Assume que 'pnpm build' na raiz constrói tudo na ordem correta)
+RUN pnpm run build
+
+# Expõe a porta padrão do Next.js (se aplicável)
+EXPOSE 3000
+
+# Define um comando padrão (ex: iniciar a aplicação web)
+# Você pode sobrescrever isso ao rodar o contêiner
+CMD ["pnpm", "start"] 

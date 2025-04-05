@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '../../../../../../apps/next-app/context/workspace-context';
 import { Loader2, UserPlus, Trash2, Mail, Shield, Users, Eye } from 'lucide-react';
+import { Select, SelectContent, SelectItem } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { TableCell } from '@/components/ui/table';
 
 type Member = {
   id: string;
@@ -264,32 +267,29 @@ export default function WorkspaceMembers() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                         <div className="flex items-center">
                           {getRoleIcon(member.role)}
-                          <select
+                          <Select
                             value={member.role}
-                            onChange={(e) => handleRoleChange(member.id, e.target.value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
-                            className="ml-2 bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#F54900] focus:border-transparent"
-                            disabled={workspace?.ownerId === member.userId}
+                            onValueChange={(value) => handleRoleChange(member.id, value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
+                            disabled={workspace?.owner_id === member.userId}
                           >
-                            <option value="ADMIN">Administrador</option>
-                            <option value="MEMBER">Membro</option>
-                            <option value="VIEWER">Visualizador</option>
-                          </select>
-                          {workspace?.ownerId === member.userId && (
-                            <span className="ml-2 text-xs px-2 py-1 bg-[#F54900]/20 text-[#F54900] rounded-full">
-                              Proprietário
-                            </span>
-                          )}
+                            <SelectContent>
+                              <SelectItem value="ADMIN" disabled={workspace?.owner_id === member.userId}>Administrador</SelectItem> 
+                              <SelectItem value="MEMBER" disabled={workspace?.owner_id === member.userId}>Membro</SelectItem>
+                              <SelectItem value="VIEWER" disabled={workspace?.owner_id === member.userId}>Visualizador</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {workspace?.ownerId !== member.userId && (
-                          <button
+                        {workspace?.owner_id !== member.userId && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
                             onClick={() => handleRemoveMember(member.id)}
-                            className="text-red-400 hover:text-red-300 transition-colors"
-                            title="Remover membro"
+                            disabled={workspace?.owner_id === member.userId}
                           >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
+                            Remover
+                          </Button>
                         )}
                       </td>
                     </tr>

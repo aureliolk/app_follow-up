@@ -20,6 +20,7 @@ interface CampaignFormModalProps {
 }
 
 const defaultFormData: CampaignFormData = {
+  id: '',
   name: '',
   description: '',
   active: true,
@@ -27,12 +28,12 @@ const defaultFormData: CampaignFormData = {
   ai_prompt_target_audience: '',
   ai_prompt_pain_point: '',
   ai_prompt_main_benefit: '',
-  ai_prompt_tone_of_voice: 'Neutro',
-  ai_prompt_extra_instructions: '',
-  ai_prompt_cta_link: '',
-  ai_prompt_cta_text: '',
-  idLumibot: null, // Mantido, se editável
-  tokenAgentLumibot: null, // Mantido, se editável
+  ai_prompt_tone_of_voice: '',
+  funnel_stage_id: '',
+  followUpId: '',
+  tokenAgentLumibot: null,
+  // createdAt: new Date(), // REMOVIDO - Não pertence a CampaignFormData
+  // steps: [] // REMOVIDO - Não pertence a CampaignFormData
 };
 
 export default function CampaignFormModal({
@@ -51,6 +52,7 @@ export default function CampaignFormModal({
       if (initialData) {
         // Preenche o formulário para edição
         setFormData({
+          id: initialData.id || '',
           name: initialData.name || '',
           description: initialData.description || '',
           active: initialData.active ?? true,
@@ -58,12 +60,12 @@ export default function CampaignFormModal({
           ai_prompt_target_audience: initialData.ai_prompt_target_audience || '',
           ai_prompt_pain_point: initialData.ai_prompt_pain_point || '',
           ai_prompt_main_benefit: initialData.ai_prompt_main_benefit || '',
-          ai_prompt_tone_of_voice: initialData.ai_prompt_tone_of_voice || 'Neutro',
-          ai_prompt_extra_instructions: initialData.ai_prompt_extra_instructions || '',
-          ai_prompt_cta_link: initialData.ai_prompt_cta_link || '',
-          ai_prompt_cta_text: initialData.ai_prompt_cta_text || '',
-          idLumibot: initialData.idLumibot ?? null,
+          ai_prompt_tone_of_voice: initialData.ai_prompt_tone_of_voice || '',
+          funnel_stage_id: initialData.funnel_stage_id || '',
+          followUpId: initialData.followUpId || '',
           tokenAgentLumibot: initialData.tokenAgentLumibot ?? null,
+          // createdAt: initialData.createdAt || new Date(), // REMOVIDO
+          // steps: initialData.steps || [] // REMOVIDO
         });
       } else {
         setFormData(defaultFormData); // Reset para criação

@@ -13,7 +13,7 @@
     "build:workers": "pnpm --filter workers build",
     "build:next": "pnpm --filter next-app build",
     "generate": "pnpm exec prisma generate", 
-    "build": "pnpm run generate && pnpm run build:shared && pnpm run build:workers && pnpm run build:next", 
+    "build": "pnpm run generate && pnpm exec tsc --build --verbose", 
     "dev": "pnpm run --parallel dev", 
     "clean": "pnpm -r run clean"
   },

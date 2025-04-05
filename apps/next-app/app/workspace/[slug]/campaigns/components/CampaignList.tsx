@@ -80,7 +80,7 @@ export default function CampaignList({ onEdit, onDelete, deletingId }: CampaignL
                 </Badge>
               </TableCell>
               <TableCell className="text-muted-foreground text-sm">
-                {format(new Date(campaign.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                {format(new Date(campaign.createdAt), 'dd/MM/yyyy', { locale: ptBR })}
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-2">

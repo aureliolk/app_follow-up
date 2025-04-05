@@ -49,38 +49,6 @@ export interface FollowUp {
   // metadata?: string | Record<string, any>; // O schema não tem metadata diretamente em FollowUp
 }
 
-// --- Tipo Campaign Atualizado (Combinação do seu e do necessário para o form) ---
-export interface Campaign {
-  id: string;
-  name: string;
-  description?: string | null;
-  created_at: string; // Manter como string se a API retorna assim
-  active: boolean;
-
-  // Campos de IA (do formulário anterior)
-  ai_prompt_product_name?: string | null;
-  ai_prompt_target_audience?: string | null;
-  ai_prompt_pain_point?: string | null;
-  ai_prompt_main_benefit?: string | null;
-  ai_prompt_tone_of_voice?: string | null;
-  ai_prompt_extra_instructions?: string | null;
-  ai_prompt_cta_link?: string | null;
-  ai_prompt_cta_text?: string | null;
-
-  // Campos agregados (opcionais, para listagem)
-  stepsCount?: number;
-  activeFollowUps?: number;
-
-  // Campos do seu tipo original (se ainda relevantes e não cobertos)
-  idLumibot?: string | null;           // Adicionado
-  tokenAgentLumibot?: string | null;   // Adicionado
-  // default_stage_id?: string; // Pode ser útil, mas não essencial para o form básico
-
-  // 'steps' provavelmente é carregado separadamente ou inferido dos stages
-  // steps?: any[]; // Evitar 'any' se possível. Talvez usar CampaignStep[] ou FunnelStep[]?
-}
-
-
 // --- Outros Tipos Fornecidos ---
 export interface FunnelStage {
   id: string;
@@ -223,9 +191,10 @@ export interface Campaign {
   stepsCount?: number;
   activeFollowUps?: number;
 
-  // Relações (não no form)
-  // stages?: FunnelStage[];
-  // steps?: CampaignStep[] | FunnelStep[]; // Carregado separadamente
+  // Relações e campos necessários no formulário/initialData
+  funnel_stage_id?: string | null; // Adicionado
+  followUpId?: string | null;      // Adicionado
+  steps?: CampaignStep[] | FunnelStep[]; // Adicionado (usando tipos existentes)
 }
 
 // --- ATUALIZE ClientConversation ---
@@ -268,12 +237,12 @@ export interface ClientConversation {
 // --- DEFINIÇÃO DE CampaignFormData ---
 // Cria um tipo baseado em Campaign, omitindo campos não editáveis no formulário.
 export type CampaignFormData = Omit<Campaign,
-  'id' |                // Gerado pelo banco
-  'created_at' |        // Gerado pelo banco
+  // 'id' |                // NÃO OMITIR ID - necessário para update
+  'createdAt' |        // Gerado pelo banco
   'stepsCount' |        // Calculado/Agregado
-  'activeFollowUps'    // Calculado/Agregado
-// Adicione outros campos aqui se eles NÃO forem editáveis no modal
-// Exemplo: 'idLumibot' | 'tokenAgentLumibot' (se não forem editáveis)
+  'activeFollowUps' |    // Calculado/Agregado
+  'steps'                // Relação complexa, não editada diretamente no form principal
+  // Não omitir funnel_stage_id e followUpId se forem parte do form
 >;
 
 

@@ -6,7 +6,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../../../../packages/shared-lib/src/auth/auth-options';
 import { checkPermission } from '../../../../../../../packages/shared-lib/src/permissions';
 import { FollowUpStatus as PrismaFollowUpStatus, Prisma } from '@prisma/client';
-import { sequenceStepQueue } from '../../../../../../../apps/workers/src/queues/sequenceStepQueue';
+import { addSequenceStepJob } from '@meuprojeto/shared-lib/queueService';
 
 const resumeSchema = z.object({
     workspaceId: z.string().uuid("ID do Workspace inválido"),
@@ -99,12 +99,12 @@ export async function POST(req: NextRequest, { params }: { params: { followUpId:
                 }
             });
 
-            // 4. Agendar o job
+            // 4. Agendar o job usando o serviço da shared-lib
             const jobData = { followUpId: followUp.id, stepRuleId: nextRule.id, workspaceId: followUp.workspace_id };
             const jobOptions = { delay: nextDelayMs, jobId: `seq_${followUp.id}_step_${nextRule.id}`, removeOnComplete: true, removeOnFail: 5000 };
-            await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
+            await addSequenceStepJob(jobData, jobOptions);
 
-             console.log(`API Resume: FollowUp ${followUpId} retomado. Próximo job (Regra ${nextRule.id}) agendado com delay ${nextDelayMs}ms.`);
+             console.log(`API Resume: FollowUp ${followUpId} retomado. Próximo job (Regra ${nextRule.id}) agendado via QueueService com delay ${nextDelayMs}ms.`);
              return { status: 'resumed' };
         }); // Fim da transação
 

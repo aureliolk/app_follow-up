@@ -1,6 +1,7 @@
 // app/follow-up/_services/followUpService.ts
 import axios from 'axios';
-import { FollowUp, Campaign, CampaignStep, FunnelStage, FunnelStep } from '@/apps/next-app/app/types';
+import { prisma } from '@meuprojeto/shared-lib/db';
+import { FollowUp, Campaign, CampaignStep, FunnelStage, FunnelStep } from '@/app/types';
 
 // Cache simples para campanhas
 const campaignStepsCache: Record<string, { data: any[], timestamp: number }> = {};

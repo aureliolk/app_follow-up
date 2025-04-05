@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../../../../packages/shared-lib/src/auth/auth-options'; // Ajuste o caminho se necessário
 import { checkPermission } from '../../../../../../packages/shared-lib/src/permissions'; // Ajuste o caminho se necessário
 import { z } from 'zod'; // Importar Zod para validação no POST
+import { Prisma } from '@prisma/client'; // Importar tipos Prisma
 
 // --- Função GET: Buscar campanhas por workspace ---
 export async function GET(req: NextRequest) {
@@ -82,9 +83,9 @@ export async function GET(req: NextRequest) {
 
 // --- Schema Zod para validação do corpo do POST ---
 const campaignCreateSchema = z.object({
-  // workspaceId será pego da sessão/permissão, não do corpo diretamente validado aqui
-  name: z.string().min(1, 'Nome da campanha é obrigatório'),
-  description: z.string().optional().nullable(),
+  // Mudar para apenas z.string() para tentar corrigir TS2322
+  name: z.string(), // Simplificado
+  description: z.string().optional(),
   active: z.boolean().optional().default(true),
   // Campos de IA (opcionais)
   ai_prompt_product_name: z.string().optional().nullable(),
@@ -96,7 +97,7 @@ const campaignCreateSchema = z.object({
   ai_prompt_cta_link: z.string().optional().nullable(),
   ai_prompt_cta_text: z.string().optional().nullable(),
    // Campos Lumibot (opcionais)
-  idLumibot: z.string().optional().nullable(),
+  idLumibot: z.string().optional(),
   tokenAgentLumibot: z.string().optional().nullable(),
 });
 
@@ -128,7 +129,31 @@ export async function POST(req: NextRequest) {
             console.error("API POST Campaigns: Erro de validação Zod:", validation.error.errors);
             return NextResponse.json({ success: false, error: 'Dados inválidos', details: validation.error.errors }, { status: 400 });
         }
-        const validatedData = validation.data; // Dados validados para criar a campanha
+
+        const validatedData = validation.data;
+        
+        // Verificar se o nome obrigatório existe
+        if (!validatedData.name) {
+            return NextResponse.json({ error: "Nome da campanha é obrigatório." }, { status: 400 });
+        }
+
+        // Criar objeto explícito com tipo Prisma e tratamento de opcionais/nulos
+        const dataForPrisma: Prisma.FollowUpCampaignCreateInput = {
+          name: validatedData.name, // Sabemos que name é string aqui
+          description: validatedData.description ?? null, // Prisma geralmente prefere null para opcionais ausentes
+          active: validatedData.active, // Zod fornece default, então deve existir
+          ai_prompt_product_name: validatedData.ai_prompt_product_name ?? null,
+          ai_prompt_target_audience: validatedData.ai_prompt_target_audience ?? null,
+          ai_prompt_pain_point: validatedData.ai_prompt_pain_point ?? null,
+          ai_prompt_main_benefit: validatedData.ai_prompt_main_benefit ?? null,
+          ai_prompt_tone_of_voice: validatedData.ai_prompt_tone_of_voice ?? null,
+          ai_prompt_extra_instructions: validatedData.ai_prompt_extra_instructions ?? null,
+          ai_prompt_cta_link: validatedData.ai_prompt_cta_link ?? null,
+          ai_prompt_cta_text: validatedData.ai_prompt_cta_text ?? null,
+          idLumibot: validatedData.idLumibot ?? undefined, // Ou null, dependendo do schema Prisma para idLumibot
+          tokenAgentLumibot: validatedData.tokenAgentLumibot ?? null,
+          // Adicione quaisquer outros campos necessários pelo Prisma aqui
+        };
 
         // Verificar permissão para criar (pelo menos MEMBER ou ADMIN)
         // Ajuste 'MEMBER' ou 'ADMIN' conforme sua regra de negócio
@@ -143,7 +168,7 @@ export async function POST(req: NextRequest) {
         const newCampaign = await prisma.$transaction(async (tx) => {
             // 1. Criar a campanha em si
             const createdCampaign = await tx.followUpCampaign.create({
-                data: validatedData, // Usa os dados validados
+                data: dataForPrisma, // Usa o objeto explicitamente tipado
             });
             console.log(`API POST Campaigns: Campanha criada (ID: ${createdCampaign.id})`);
 
