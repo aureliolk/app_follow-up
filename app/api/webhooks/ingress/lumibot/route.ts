@@ -134,89 +134,73 @@ export async function POST(req: NextRequest) {
      });
     console.log(`[Webhook Ingress] Cliente ${client.id} Upserted.`);
 
-    // --- NOVA LÓGICA: CONVERSA E FOLLOW-UP ---
+    // --- NOVA LÓGICA REVISADA (IDEIA 1): CONVERSA E FOLLOW-UP ---
     let conversation: Conversation;
-    let isNewConversation = false;
     let shouldStartNewFollowUp = false;
 
-    // 1. Verificar se existe conversa ATIVA
-    const existingActiveConversation = await prisma.conversation.findFirst({
+    // 1. Encontrar ou Criar a Conversa (sempre garante que temos uma)
+    const existingConversation = await prisma.conversation.findFirst({
         where: {
             workspace_id: workspaceId,
             channel_conversation_id: channelConversationId,
-            status: ConversationStatus.ACTIVE // Usa Enum
+            // Não filtra mais por status aqui, encontra qualquer uma existente
         }
     });
 
-    if (existingActiveConversation) {
-        console.log(`[Webhook Ingress] Conversa ATIVA ${existingActiveConversation.id} encontrada.`);
+    if (existingConversation) {
+        // Conversa já existe, atualiza-a (e garante que está ativa)
+        console.log(`[Webhook Ingress] Conversa ${existingConversation.id} encontrada.`);
         conversation = await prisma.conversation.update({
-            where: { id: existingActiveConversation.id },
+            where: { id: existingConversation.id },
             data: {
                 last_message_at: messageTimestamp,
                 updated_at: new Date(),
-                // Opcional: Atualizar metadados se necessário
-                // metadata: conversationMetadata
+                status: ConversationStatus.ACTIVE, // Garante que a conversa está ativa ao receber msg
             }
         });
-        console.log(`[Webhook Ingress] Conversa ${conversation.id} atualizada (last_message_at). Nenhum novo follow-up iniciado.`);
+        console.log(`[Webhook Ingress] Conversa ${conversation.id} atualizada e marcada como ATIVA.`);
     } else {
-        console.log(`[Webhook Ingress] Nenhuma conversa ATIVA encontrada para ChannelConvID ${channelConversationId}. Verificando follow-ups anteriores...`);
-
-        // 2. Se não há conversa ativa, verificar follow-ups anteriores do CLIENTE
-        const lastFollowUpForClient = await prisma.followUp.findFirst({
-            where: {
+        // Conversa não existe, cria uma nova
+        console.log(`[Webhook Ingress] Nenhuma conversa encontrada para ChannelConvID ${channelConversationId}. Criando NOVA conversa...`);
+        conversation = await prisma.conversation.create({
+            data: {
+                workspace_id: workspaceId,
                 client_id: client.id,
-                workspace_id: workspaceId
-            },
-            orderBy: { started_at: 'desc' } // Pega o mais recente
+                channel: normalizedChannel,
+                channel_conversation_id: channelConversationId,
+                status: ConversationStatus.ACTIVE, // Sempre começa ativa
+                is_ai_active: true, // Começa com IA ativa por padrão
+                last_message_at: messageTimestamp,
+                metadata: conversationMetadata,
+            }
         });
-
-        if (lastFollowUpForClient && lastFollowUpForClient.status !== PrismaFollowUpStatus.ACTIVE && lastFollowUpForClient.status !== PrismaFollowUpStatus.PAUSED) {
-            // Existe um follow-up anterior que NÃO está ativo/pausado -> Reativação!
-            console.log(`[Webhook Ingress] FollowUp anterior (${lastFollowUpForClient.id}, Status: ${lastFollowUpForClient.status}) encontrado para Cliente ${client.id}. Iniciando NOVO ciclo.`);
-            isNewConversation = true;
-            shouldStartNewFollowUp = true; // Sinaliza para iniciar novo follow-up
-        } else if (!lastFollowUpForClient) {
-            // Não há follow-up anterior -> Primeira vez!
-            console.log(`[Webhook Ingress] Nenhum FollowUp anterior encontrado para Cliente ${client.id}. Iniciando PRIMEIRO ciclo.`);
-            isNewConversation = true;
-            shouldStartNewFollowUp = true;
-        } else {
-            // Existe um follow-up ATIVO ou PAUSADO, mas a conversa não estava ativa? Situação estranha.
-            // Vamos apenas garantir que a conversa seja reativada ou criada.
-            console.warn(`[Webhook Ingress] Situação Inesperada: FollowUp ${lastFollowUpForClient.id} (Status: ${lastFollowUpForClient.status}) encontrado, mas nenhuma conversa ATIVA. Reativando/Criando conversa.`);
-             isNewConversation = true; // Assume que precisa criar/reativar a conversa
-             // Não inicia novo follow-up, pois já existe um ativo/pausado
-             shouldStartNewFollowUp = false;
-        }
-
-        // 3. Criar a Nova Conversa se necessário
-        if (isNewConversation) {
-             console.log(`[Webhook Ingress] Criando NOVA conversa para ChannelConvID ${channelConversationId}...`);
-             conversation = await prisma.conversation.create({
-                data: {
-                    workspace_id: workspaceId,
-                    client_id: client.id,
-                    channel: normalizedChannel,
-                    channel_conversation_id: channelConversationId,
-                    status: ConversationStatus.ACTIVE, // Sempre começa ativa
-                    is_ai_active: true, // Começa com IA ativa por padrão
-                    last_message_at: messageTimestamp,
-                    metadata: conversationMetadata,
-                }
-            });
-            console.log(`[Webhook Ingress] Nova conversa ${conversation.id} criada.`);
-        } else {
-            // Este caso não deveria acontecer com a lógica acima, mas por segurança:
-             console.error(`[Webhook Ingress] Lógica inconsistente: Não encontrou conversa ativa E não determinou que era nova conversa.`);
-             // Tentar encontrar *qualquer* conversa para evitar erro fatal?
-             const anyExistingConv = await prisma.conversation.findFirst({ where: { workspace_id: workspaceId, channel_conversation_id: channelConversationId }});
-             if (!anyExistingConv) throw new Error("Falha ao encontrar ou criar conversa.");
-             conversation = anyExistingConv; // Usa a existente encontrada
-        }
+        console.log(`[Webhook Ingress] Nova conversa ${conversation.id} criada.`);
     }
-    // --- FIM LÓGICA CONVERSA/FOLLOW-UP ---
+
+    // 2. Verificar Follow-ups Anteriores do CLIENTE para decidir se inicia sequência
+    // A decisão agora é INDEPENDENTE da existência ou status da conversa encontrada/criada acima.
+    const lastFollowUpForClient = await prisma.followUp.findFirst({
+        where: {
+            client_id: client.id,
+            workspace_id: workspaceId
+        },
+        orderBy: { started_at: 'desc' } // Pega o mais recente
+    });
+
+    if (!lastFollowUpForClient) {
+        // Não há follow-up anterior -> Primeira vez!
+        console.log(`[Webhook Ingress] Nenhum FollowUp anterior encontrado para Cliente ${client.id}. Iniciando PRIMEIRO ciclo.`);
+        shouldStartNewFollowUp = true;
+    } else if (lastFollowUpForClient.status !== PrismaFollowUpStatus.ACTIVE && lastFollowUpForClient.status !== PrismaFollowUpStatus.PAUSED) {
+        // Existe um follow-up anterior que NÃO está ativo/pausado (COMPLETED, CANCELLED, FAILED, CONVERTED) -> Reativação!
+        console.log(`[Webhook Ingress] FollowUp anterior (${lastFollowUpForClient.id}, Status: ${lastFollowUpForClient.status}) encontrado para Cliente ${client.id}. Iniciando NOVO ciclo.`);
+        shouldStartNewFollowUp = true; // Sinaliza para iniciar novo follow-up
+    } else {
+        // Existe um follow-up ATIVO ou PAUSADO. Não inicia novo ciclo.
+        console.log(`[Webhook Ingress] FollowUp anterior (${lastFollowUpForClient.id}, Status: ${lastFollowUpForClient.status}) encontrado e está ATIVO ou PAUSADO. Nenhum novo ciclo de follow-up será iniciado.`);
+        shouldStartNewFollowUp = false;
+    }
+    // --- FIM LÓGICA REVISADA CONVERSA/FOLLOW-UP ---
 
     // --- Salvar Mensagem Recebida (Mantido) ---
     const newMessage = await prisma.message.create({
