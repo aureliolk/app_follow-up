@@ -91,3 +91,7 @@ Thumbs.db
 
 #Docker
 Dockerfile
+docker-compose*.yml
+entrypoint.sh
+.dockerignore
+followup-stak.yml

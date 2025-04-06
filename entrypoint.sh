@@ -1,24 +1,15 @@
 #!/bin/sh
 # entrypoint.sh
 
-# Navega para o diretório da aplicação se necessário (WORKDIR já deve ser /app)
-# cd /app
+# Garante que o script pare se um comando falhar
+set -e
 
-echo "Starting Message Worker in background..."
-pnpm start:message &
-MESSAGE_PID=$!
+echo "[Entrypoint] Aplicando migrações do Prisma..."
+# Usa pnpm para executar o comando prisma local do projeto
+pnpm prisma migrate deploy --schema=./prisma/schema.prisma
+echo "[Entrypoint] Migrações aplicadas."
 
-echo "Starting Sequence Worker in background..."
-pnpm start:sequence &
-SEQUENCE_PID=$!
-
-echo "Starting Main Application (Web) in foreground..."
-# Usa exec para que o processo principal substitua o shell
-# e receba sinais corretamente do Docker
-exec pnpm start
-
-# Opcional: Adicionar trap para matar processos filhos ao sair
-# trap "kill $MESSAGE_PID $SEQUENCE_PID" SIGTERM SIGINT
-# wait $MESSAGE_PID
-# wait $SEQUENCE_PID
-# (A abordagem com exec no processo principal geralmente é suficiente) 
+echo "[Entrypoint] Iniciando o comando principal do container..."
+# Executa o comando passado como argumentos para este script
+# (será o CMD do Dockerfile ou o 'command' do docker-compose)
+exec "$@" 

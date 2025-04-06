@@ -9,8 +9,6 @@ node_modules
 **/node_modules
 
 # Ignore pnpm files (except lockfile)
-pnpm-lock.yaml
-!pnpm-lock.yaml # Make sure lockfile IS included
 .pnpm-store
 
 # Ignore build artifacts specific to local development
@@ -45,3 +43,9 @@ lerna-debug.log*
 # Environment variables
 .env*
 !.env.example
+
+# Docker specific files
+Dockerfile
+docker-compose*.yml
+.dockerignore
+entrypoint.sh
