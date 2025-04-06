@@ -7,7 +7,7 @@ import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
 import { FollowUpStatus, Prisma } from '@prisma/client'; // Importe Prisma para tipos
 import { formatMsToDelayString, parseDelayStringToMs } from '@/lib/timeUtils'; // Importar utils
 
-const QUEUE_NAME = 'sequence-step';
+const QUEUE_NAME = 'sequence-steps';
 
 interface SequenceJobData {
   followUpId: string;
@@ -17,6 +17,8 @@ interface SequenceJobData {
 
 // --- Função de Processamento do Job ---
 async function processSequenceStepJob(job: Job<SequenceJobData>) {
+  console.log(`[SequenceWorker] Tentando iniciar processamento para Job ID: ${job.id}, Step Rule ID: ${job.data?.stepRuleId}, FollowUp ID: ${job.data?.followUpId}`);
+
   const jobId = job.id || 'unknown-sequence-job';
   const { followUpId, stepRuleId, workspaceId: jobWorkspaceId } = job.data; // jobWorkspaceId pode ser redundante se buscarmos via followUp
 
@@ -284,6 +286,12 @@ try {
 
      sequenceWorker.on('stalled', (jobId: string) => {
         console.warn(`[SequenceWorker] Job ${jobId} estagnou (stalled). Verificando.`);
+    });
+
+    // <<< ADICIONAR LISTENERS DE DEBUG >>>
+    sequenceWorker.on('active', (job: Job<SequenceJobData>) => {
+      // Este evento dispara QUANDO o worker pega um job para processar.
+      console.log(`[SequenceWorker EVENT] Job ATIVO: ${job.id || 'N/A'} (FollowUp: ${job.data?.followUpId})`);
     });
 
     console.log(`[SequenceWorker] Worker iniciado e escutando a fila "${QUEUE_NAME}"...`);

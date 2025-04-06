@@ -2,7 +2,7 @@
 import { Queue } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
 
-const SEQUENCE_QUEUE_NAME = 'sequence-step';
+const SEQUENCE_QUEUE_NAME = 'sequence-steps';
 
 export const sequenceStepQueue = new Queue(SEQUENCE_QUEUE_NAME, {
     connection: redisConnection,
