@@ -15,25 +15,35 @@ import axios from 'axios';
 const AVAILABLE_MODELS = [
     { value: 'gpt-4o', label: 'OpenAI GPT-4o (Recomendado)' },
     { value: 'gpt-3.5-turbo', label: 'OpenAI GPT-3.5 Turbo' },
+    { value: 'gemini-2.5-pro-exp-03-25', label: 'Google Gemini 2.5 Pro' },
     // Adicionar outros modelos se necessário (Gemini, etc.)
 ];
 
 export default function AISettingsForm() {
-  const { workspace, isLoading: workspaceLoading, updateWorkspace, refreshWorkspaces } = useWorkspace(); // <<< Usar updateWorkspace do contexto
+  const { workspace, isLoading: workspaceLoading, updateWorkspace, refreshWorkspaces } = useWorkspace();
 
   const [systemPrompt, setSystemPrompt] = useState('');
-  const [modelPreference, setModelPreference] = useState('');
+  const [modelPreference, setModelPreference] = useState(() => {
+      const initialValue = workspace?.ai_model_preference;
+      return initialValue ?? AVAILABLE_MODELS[0].value;
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (workspace) {
-      console.log("AISettingsForm useEffect: Setting state from workspace", workspace);
-      setSystemPrompt(workspace.ai_default_system_prompt || '');
-      // Define o valor inicial do select. Se não houver preferência salva, usa o primeiro da lista.
-      setModelPreference(workspace.ai_model_preference || AVAILABLE_MODELS[0].value);
+      console.log("[Effect] Setting state from workspace", workspace);
+      const workspacePrompt = workspace.ai_default_system_prompt || '';
+      if (workspacePrompt !== systemPrompt) {
+          setSystemPrompt(workspacePrompt);
+      }
+      const workspaceModelPref = workspace.ai_model_preference ?? AVAILABLE_MODELS[0].value;
+      if (workspaceModelPref !== modelPreference) {
+          console.log(`[Effect] Model preference changed in workspace. Updating state from '${modelPreference}' to '${workspaceModelPref}'`);
+          setModelPreference(workspaceModelPref);
+      }
     }
-  }, [workspace]);
+  }, [workspace, systemPrompt, modelPreference]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -96,8 +106,7 @@ export default function AISettingsForm() {
     }
   };
 
-  // ... (restante do JSX do formulário permanece o mesmo) ...
-   if (workspaceLoading && !workspace) { // Mostrar loading apenas se o workspace ainda não carregou
+  if (workspaceLoading && !workspace) {
     return <p className="text-muted-foreground">Carregando dados do workspace...</p>;
   }
 
@@ -117,19 +126,17 @@ export default function AISettingsForm() {
             </div>
           )}
 
-          {/* Campo Modelo de IA */}
           <div className="space-y-1.5">
             <Label htmlFor="ai_model_preference" className="text-foreground">
               Modelo de IA Preferido
             </Label>
             <Select
                 name="ai_model_preference"
-                value={modelPreference} // Usa o estado local
-                onValueChange={(value) => setModelPreference(value)} // Atualiza o estado local
-                disabled={isSaving}
+                value={modelPreference}
+                onValueChange={(value) => setModelPreference(value)}
+                disabled={isSaving || workspaceLoading}
             >
               <SelectTrigger className="w-full md:w-1/2 bg-input border-input">
-                {/* Garante que o placeholder só aparece se não houver valor */}
                 <SelectValue placeholder="Selecione um modelo..." />
               </SelectTrigger>
               <SelectContent>
@@ -145,8 +152,6 @@ export default function AISettingsForm() {
             </p>
           </div>
 
-
-          {/* Campo Prompt Principal */}
           <div className="space-y-1.5">
             <Label htmlFor="ai_default_system_prompt" className="text-foreground">
               Prompt Principal do Sistema (Contexto da IA)
@@ -156,7 +161,7 @@ export default function AISettingsForm() {
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
               placeholder="Descreva aqui a persona da IA, o produto/serviço, objetivos da conversa, tom de voz, informações importantes, etc."
-              className="bg-input border-input min-h-[250px] font-mono text-sm" // Aumentar altura e usar fonte mono
+              className="bg-input border-input min-h-[250px] font-mono text-sm"
               disabled={isSaving}
             />
              <div className="text-xs text-muted-foreground flex items-start gap-1 pt-1">

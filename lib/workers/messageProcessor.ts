@@ -51,6 +51,7 @@ async function processJob(job: Job<JobData>) {
             select: {
                 id: true,
                 ai_default_system_prompt: true,
+                ai_model_preference: true,
                 lumibot_account_id: true,
                 lumibot_api_token: true,
                 // Incluir regras para agendamento posterior
@@ -142,13 +143,14 @@ async function processJob(job: Job<JobData>) {
     }));
 
     // --- 6. Obter Prompt e Credenciais do Workspace (já buscado) ---
+    const modelId = conversation.workspace.ai_model_preference || 'gpt-4o';
     const systemPrompt = conversation.workspace.ai_default_system_prompt ?? undefined;
     const { lumibot_account_id, lumibot_api_token } = conversation.workspace;
-    console.log(`[MsgProcessor ${jobId}] Usando prompt: ${!!systemPrompt}, Creds Lumibot: ${!!lumibot_account_id}/${!!lumibot_api_token}`);
+    console.log(`[MsgProcessor ${jobId}] Usando Modelo: ${modelId}, Prompt: ${!!systemPrompt}, Creds Lumibot: ${!!lumibot_account_id}/${!!lumibot_api_token}`);
 
     // --- 7. Chamar o Serviço de IA ---
     console.log(`[MsgProcessor ${jobId}] Chamando generateChatCompletion...`);
-    const aiResponseContent = await generateChatCompletion({ messages: aiMessages, systemPrompt });
+    const aiResponseContent = await generateChatCompletion({ messages: aiMessages, systemPrompt, modelId });
 
     // --- 8. Salvar e Enviar Resposta da IA ---
     if (aiResponseContent && aiResponseContent.trim() !== '') {
