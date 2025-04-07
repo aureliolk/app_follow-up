@@ -14,16 +14,22 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label"; // Shadcn label (opcional, mas bom para consistência)
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Usar Card para estrutura
 
+// <<< Adicionar tipo para o passo >>>
+type Step = 'checkEmail' | 'login' | 'register';
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/workspaces';
-  const inviteToken = searchParams.get('inviteToken'); // <<< Ler inviteToken
-  const initialEmail = searchParams.get('email') || ''; // <<< Ler email (opcional)
-  const { data: session, status } = useSession(); // Pegar status
+  const inviteToken = searchParams.get('inviteToken');
+  const initialEmail = searchParams.get('email') || '';
+  const { data: session, status } = useSession();
 
-  const [email, setEmail] = useState(initialEmail); // <<< Usar email inicial se houver
+  const [step, setStep] = useState<Step>('checkEmail'); // <<< Estado para controlar o passo
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
+  const [name, setName] = useState(''); // <<< Adicionar estado para nome (registro)
+  const [confirmPassword, setConfirmPassword] = useState(''); // <<< Adicionar estado para confirmar senha (registro)
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -35,8 +41,37 @@ function LoginForm() {
   }, [status, router, callbackUrl]);
   // --- Fim do Efeito ---
 
-  // Handler não muda
-  const handleSubmit = async (e: React.FormEvent) => {
+  // <<< Handler para Verificar Email >>>
+  const handleCheckEmail = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault(); // Prevenir envio de form se chamado por ele
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Erro ao verificar email');
+      }
+
+      if (data.exists) {
+        setStep('login');
+      } else {
+        setStep('register');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Ocorreu um erro.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // <<< Renomear para handleLogin >>>
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
@@ -46,6 +81,7 @@ function LoginForm() {
         redirect: false,
         email,
         password,
+        inviteToken: inviteToken || undefined, // <<< Passar inviteToken se existir
       });
 
       if (result?.error) {
@@ -57,6 +93,62 @@ function LoginForm() {
       router.push(callbackUrl);
     } catch (error) {
       setError('Ocorreu um erro. Por favor, tente novamente.');
+      setIsLoading(false);
+    }
+  };
+
+  // <<< Handler para Registro >>>
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem');
+      setIsLoading(false);
+      return;
+    }
+    if (password.length < 8) {
+      setError('A senha deve ter pelo menos 8 caracteres');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      // 1. Chamar API de registro (que agora processa o token)
+      const registerRes = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password, inviteToken: inviteToken || undefined }),
+      });
+      const registerData = await registerRes.json();
+
+      if (!registerRes.ok) {
+        throw new Error(registerData.message || 'Falha ao registrar');
+      }
+
+      // 2. Se registro OK, fazer login automaticamente
+      const loginResult = await signIn('credentials', {
+        redirect: false,
+        email,
+        password,
+        // Não precisa passar inviteToken aqui, já foi processado no registro
+      });
+
+      if (loginResult?.error) {
+        // Registro funcionou, mas login falhou?
+        setError('Conta criada, mas erro ao logar. Tente entrar na tela de login.');
+        // Voltar para checkEmail para que o usuário possa ir para login
+        setStep('checkEmail'); 
+        setIsLoading(false);
+        return;
+      }
+
+      // Registro e login OK, redirecionar
+      router.push(callbackUrl);
+
+    } catch (err: any) {
+      setError(err.message || 'Falha ao registrar');
       setIsLoading(false);
     }
   };
@@ -87,11 +179,16 @@ function LoginForm() {
       {/* Usa Card */}
       <Card className="w-full max-w-md border-border">
         <CardHeader className="text-center">
-          {/* Usa text-card-foreground */}
-          <CardTitle className="text-2xl font-bold text-card-foreground">Entrar</CardTitle>
-          {/* Usa text-muted-foreground */}
+          {/* Título muda baseado no passo */}
+          <CardTitle className="text-2xl font-bold text-card-foreground">
+            {step === 'checkEmail' && 'Entrar ou Cadastrar'}
+            {step === 'login' && 'Entrar'}
+            {step === 'register' && 'Criar sua conta'}
+          </CardTitle>
           <CardDescription className="text-muted-foreground">
-            Entre na sua conta para continuar
+            {step === 'checkEmail' && 'Digite seu email para continuar'}
+            {step === 'login' && `Bem-vindo(a) de volta! Digite sua senha para ${email}`}
+            {step === 'register' && `Quase lá! Complete seus dados para ${email}`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -102,56 +199,148 @@ function LoginForm() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* <<< Adicionar input oculto para o token >>> */}
-            <input type="hidden" name="inviteToken" value={inviteToken || ''} />
-            <div className="space-y-1.5">
-              {/* Usa Label (opcional) e text-foreground */}
-              <Label htmlFor="email" className="text-foreground">
-                Endereço de email
-              </Label>
-              {/* Usa Input */}
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Digite seu email"
-              />
-            </div>
+          {/* Formulário condicional baseado no passo */}
 
-            <div className="space-y-1.5">
-               <Label htmlFor="password" className="text-foreground">
-                Senha
-              </Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Digite sua senha"
-              />
-            </div>
-
-            <div>
-              {/* Usa Button */}
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="w-full" // variant="default" é aplicado automaticamente
-              >
-                {isLoading ? (
-                  <LoadingSpinner size="small" message="" />
-                ) : (
-                  'Entrar'
-                )}
+          {/* Passo 1: Verificar Email */} 
+          {step === 'checkEmail' && (
+            <form onSubmit={handleCheckEmail} className="space-y-4">
+              {/* Input oculto para o token aqui também? Ou só nos forms finais? Só nos finais. */}
+              <div className="space-y-1.5">
+                <Label htmlFor="email-check" className="text-foreground">
+                  Endereço de email
+                </Label>
+                <Input
+                  id="email-check"
+                  name="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Digite seu email"
+                  disabled={isLoading}
+                />
+              </div>
+              <Button type="submit" disabled={isLoading || !email} className="w-full">
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Continuar'}
               </Button>
-            </div>
-          </form>
+            </form>
+          )}
+
+          {/* Passo 2: Login */} 
+          {step === 'login' && (
+            <form onSubmit={handleLogin} className="space-y-4">
+              {/* <<< Adicionar input oculto para o token >>> */}
+              <input type="hidden" name="inviteToken" value={inviteToken || ''} />
+              <div className="space-y-1.5">
+                <Label htmlFor="email-login" className="text-foreground">
+                  Endereço de email
+                </Label>
+                <Input
+                  id="email-login"
+                  name="email"
+                  type="email"
+                  required
+                  value={email}
+                  disabled // Email não editável aqui
+                  className="bg-muted/50"
+                />
+              </div>
+              <div className="space-y-1.5">
+                 <Label htmlFor="password" className="text-foreground">
+                  Senha
+                </Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Digite sua senha"
+                />
+              </div>
+
+              <div>
+                {/* Usa Button */}
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full" // variant="default" é aplicado automaticamente
+                >
+                  {isLoading ? (
+                    <LoadingSpinner size="small" message="" />
+                  ) : (
+                    'Entrar'
+                  )}
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {/* Passo 3: Registro */} 
+          {step === 'register' && (
+            <form onSubmit={handleRegister} className="space-y-4">
+              <input type="hidden" name="inviteToken" value={inviteToken || ''} />
+              <div className="space-y-1.5">
+                <Label htmlFor="email-register" className="text-foreground">Email</Label>
+                <Input id="email-register" type="email" value={email} disabled className="mt-1 bg-muted/50" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="name-register">Nome Completo</Label>
+                <Input
+                  id="name-register"
+                  name="name"
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Digite seu nome"
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="password-register">Criar Senha</Label>
+                <Input
+                  id="password-register"
+                  name="password"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Mínimo 8 caracteres"
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="confirmPassword-register">Confirmar Senha</Label>
+                <Input
+                  id="confirmPassword-register"
+                  name="confirmPassword"
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repita a senha"
+                  disabled={isLoading}
+                />
+              </div>
+              <Button type="submit" disabled={isLoading} className="w-full">
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'Cadastrar'}
+              </Button>
+             {/* Botão Voltar */} 
+             <Button 
+                variant="link" 
+                size="sm" 
+                onClick={() => { setStep('checkEmail'); setError(''); setPassword(''); setConfirmPassword(''); setName(''); }}
+                className="w-full text-muted-foreground"
+                type="button"
+                disabled={isLoading}
+              >
+               Voltar
+             </Button>
+           </form>
+          )}
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -184,13 +373,15 @@ function LoginForm() {
         <CardFooter className="text-center block">
            {/* Usa text-muted-foreground e text-primary */}
           <p className="text-sm text-muted-foreground">
-            Não possui uma conta?{' '}
-            <Link
-              href="/auth/register"
-              className="font-medium text-primary hover:text-primary/90"
-            >
-              Cadastre-se
-            </Link>
+            {step === 'checkEmail' && (
+              <>Não possui uma conta? <Button variant="link" className="p-0 h-auto font-medium" onClick={() => setStep('register')}>Cadastre-se</Button></>
+            )}
+            {step === 'login' && (
+               <>Não possui uma conta? <Button variant="link" className="p-0 h-auto font-medium" onClick={() => setStep('register')}>Cadastre-se</Button></>
+            )}
+            {step === 'register' && (
+               <>Já possui uma conta? <Button variant="link" className="p-0 h-auto font-medium" onClick={() => setStep('login')}>Entrar</Button></>
+            )}
           </p>
         </CardFooter>
       </Card>

@@ -195,13 +195,6 @@ export default function Header() {
                 >
                   Entrar
                 </Link>
-                {/* Botão Cadastre-se - Estilo Primário Laranja Sólido */}
-                <Link
-                  href="/auth/register"
-                  className="inline-flex items-center justify-center px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-                >
-                  Cadastre-se
-                </Link>
               </>
               // --- Fim da Navegação Ajustada ---
             )}
@@ -295,13 +288,6 @@ export default function Header() {
                     className="block w-full mt-2 text-center px-4 py-2 border border-primary text-primary rounded-md hover:bg-primary/10 transition-colors"
                 >
                   Entrar
-                </Link>
-                {/* Botão Cadastre-se - Estilo Primário Laranja Sólido */}
-                <Link
-                  href="/auth/register"
-                  className="block w-full mt-2 text-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-                >
-                  Cadastre-se
                 </Link>
               </>
               // --- Fim Menu Não Logado Ajustado ---
