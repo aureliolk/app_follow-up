@@ -29,6 +29,7 @@ export const authOptions: NextAuthOptions = { // Usa o tipo importado
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        inviteToken: { label: 'Invite Token', type: 'text' }
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials.password) {
@@ -40,17 +41,44 @@ export const authOptions: NextAuthOptions = { // Usa o tipo importado
         if (!user || !user.password) {
           return null;
         }
-        // Use bcryptjs's compare method here
         const isValidPassword = await compare(credentials.password, user.password);
         if (!isValidPassword) {
           return null;
         }
+
+        const inviteToken = credentials.inviteToken;
+        if (inviteToken) {
+          console.log(`[Authorize] Tentando processar inviteToken ${inviteToken} para User ${user.id}`);
+          try {
+            const invitation = await prisma.workspaceInvitation.findUnique({
+              where: { token: inviteToken, status: 'PENDING' },
+            });
+
+            if (!invitation) {
+              console.warn(`[Authorize] Convite não encontrado ou não pendente para token: ${inviteToken}`);
+            } else if (invitation.expires_at < new Date()) {
+              console.warn(`[Authorize] Convite expirado para token: ${inviteToken}`);
+              await prisma.workspaceInvitation.update({ where: { id: invitation.id }, data: { status: 'EXPIRED' } });
+            } else {
+              console.log(`[Authorize] Convite válido para Workspace ${invitation.workspace_id}. Adicionando membro...`);
+              await prisma.workspaceMember.upsert({
+                where: { workspace_id_user_id: { workspace_id: invitation.workspace_id, user_id: user.id } },
+                update: { role: invitation.role },
+                create: { workspace_id: invitation.workspace_id, user_id: user.id, role: invitation.role },
+              });
+              await prisma.workspaceInvitation.update({ where: { id: invitation.id }, data: { status: 'ACCEPTED' } });
+              console.log(`[Authorize] Usuário ${user.id} adicionado ao workspace ${invitation.workspace_id}. Convite ${invitation.id} aceito.`);
+            }
+          } catch (inviteError) {
+            console.error(`[Authorize] Erro ao processar convite ${inviteToken}:`, inviteError);
+          }
+        }
+
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           image: user.image,
-          // isSuperAdmin não é retornado pelo authorize por padrão
         };
       },
     }),

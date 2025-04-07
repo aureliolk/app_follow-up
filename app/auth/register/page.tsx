@@ -3,7 +3,7 @@
 
 import { useState, Suspense, useEffect } from 'react'; // Adicionado useEffect
 import { signIn, useSession } from 'next-auth/react'; // Adicionado useSession
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 // Importar LoadingSpinner
@@ -16,10 +16,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams(); // <<< Adicionar useSearchParams
+  const inviteToken = searchParams.get('inviteToken'); // <<< Ler inviteToken
+  const initialEmail = searchParams.get('email') || ''; // <<< Ler email
   const { data: session, status } = useSession(); // Pegar status
 
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail); // <<< Usar email inicial
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -113,6 +116,8 @@ function RegisterForm() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* <<< Adicionar input oculto para o token >>> */}
+            <input type="hidden" name="inviteToken" value={inviteToken || ''} />
             <div className="space-y-1.5">
               {/* Usa Label e text-foreground */}
               <Label htmlFor="name" className="text-foreground">

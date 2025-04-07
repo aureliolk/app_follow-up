@@ -305,6 +305,8 @@ model WorkspaceInvitation {
   invited_by   String
   inviter      User      @relation(fields: [invited_by], references: [id])
   workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  status       InvitationStatus @default(PENDING)
+  updated_at   DateTime  @updatedAt
 
   @@unique([workspace_id, email])
   @@map("workspace_invitations")
@@ -493,4 +495,14 @@ enum FollowUpStatus {
   FAILED    // Ocorreu um erro irrecuperável (opcional)
 
   @@schema("follow_up_schema") // Certifique-se de colocar no schema correto!
+}
+
+// <<< Adicionar Enum para Status do Convite >>>
+enum InvitationStatus {
+  PENDING   // Convite enviado, aguardando aceite
+  ACCEPTED  // Convite aceito, usuário se tornou membro
+  EXPIRED   // Convite expirou antes de ser aceito
+  REVOKED   // Convite cancelado pelo admin antes de ser aceito
+
+  @@schema("workspace_schema") // Definir no schema correto
 }

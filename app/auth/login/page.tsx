@@ -18,9 +18,11 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/workspaces';
+  const inviteToken = searchParams.get('inviteToken'); // <<< Ler inviteToken
+  const initialEmail = searchParams.get('email') || ''; // <<< Ler email (opcional)
   const { data: session, status } = useSession(); // Pegar status
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail); // <<< Usar email inicial se houver
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -101,6 +103,8 @@ function LoginForm() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* <<< Adicionar input oculto para o token >>> */}
+            <input type="hidden" name="inviteToken" value={inviteToken || ''} />
             <div className="space-y-1.5">
               {/* Usa Label (opcional) e text-foreground */}
               <Label htmlFor="email" className="text-foreground">

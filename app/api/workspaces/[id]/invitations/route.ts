@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 import crypto from 'crypto';
+import { sendInvitationEmail } from '@/lib/email';
 
 // Get all invitations for a workspace
 export async function GET(
@@ -139,16 +140,41 @@ export async function POST(
         workspace_id: workspaceId,
         invited_by: session.user.id,
       },
+      include: {
+        workspace: {
+          select: { name: true }
+        }
+      }
     });
 
-    // In a real app, you would send an email with the invitation link
-    // For now, we'll just return the token in the response
+    if (!invitation.workspace) {
+      console.error(`[Invite API] Workspace ${workspaceId} não encontrado após criar convite ${invitation.id}`);
+      return NextResponse.json(
+        { message: 'Erro interno: Workspace não encontrado após criar convite.' },
+        { status: 500 }
+      );
+    }
+
+    const emailSent = await sendInvitationEmail({
+        to: invitation.email,
+        token: invitation.token,
+        workspaceName: invitation.workspace.name
+    });
+
+    if (!emailSent) {
+      console.error(`[Invite API] Convite ${invitation.id} criado, mas falha ao enviar email para ${invitation.email}`);
+      return NextResponse.json(
+        { message: 'Convite criado, mas falha ao enviar o email de notificação.' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       id: invitation.id,
       email: invitation.email,
       role: invitation.role,
+      status: invitation.status,
       expiresAt: invitation.expires_at,
-      token: invitation.token,
     });
   } catch (error) {
     console.error('Error creating invitation:', error);

@@ -7,6 +7,9 @@ import { Loader2, UserPlus, Trash2, Mail, Shield, Users, Eye } from 'lucide-reac
 import { Select, SelectContent, SelectItem } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { TableCell } from '@/components/ui/table';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type Member = {
   id: string;
@@ -189,50 +192,52 @@ export default function WorkspaceMembers() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-semibold text-center mb-8">Membros do Workspace</h1>
-        
-        {error && (
-          <div className="bg-red-900/30 text-red-400 p-4 border border-red-800 rounded-md mb-6">
-            {error}
-            <button 
-              className="float-right text-red-400 hover:text-red-300"
-              onClick={() => setError('')}
-            >
-              &times;
-            </button>
-          </div>
-        )}
+    <div className="space-y-8">
+      {error && (
+        <div className="bg-destructive/10 text-destructive p-3 border border-destructive/30 rounded-md">
+          {error}
+          <button 
+            className="float-right text-destructive hover:text-destructive/80"
+            onClick={() => setError('')}
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8 shadow-lg">
-          <h2 className="text-xl font-semibold mb-4 text-gray-200">Convidar Novo Membro</h2>
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-xl text-card-foreground">Convidar Novo Membro</CardTitle>
+        </CardHeader>
+        <CardContent>
           <form onSubmit={handleInvite} className="flex flex-col md:flex-row gap-4">
             <div className="flex-grow">
-              <input
+              <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Endereço de email"
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F54900] focus:border-transparent"
+                className="w-full"
                 required
+                disabled={isSubmitting}
               />
             </div>
             <div className="w-full md:w-48">
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[#F54900] focus:border-transparent"
+                className="w-full h-9 px-3 py-1 bg-input border border-input rounded-md text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isSubmitting}
               >
                 <option value="ADMIN">Administrador</option>
                 <option value="MEMBER">Membro</option>
                 <option value="VIEWER">Visualizador</option>
               </select>
             </div>
-            <button
+            <Button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2 bg-[#F54900] hover:bg-[#D93C00] text-white rounded-md flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="whitespace-nowrap"
             >
               {isSubmitting ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -240,55 +245,61 @@ export default function WorkspaceMembers() {
                 <UserPlus className="h-4 w-4 mr-2" />
               )}
               Convidar
-            </button>
+            </Button>
           </form>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8 shadow-lg">
-          <h2 className="text-xl font-semibold mb-4 text-gray-200">Membros do Workspace</h2>
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-xl text-card-foreground">Membros Atuais</CardTitle>
+        </CardHeader>
+        <CardContent>
           {members.length === 0 ? (
-            <p className="text-gray-400 italic">Nenhum membro encontrado.</p>
+            <p className="text-muted-foreground italic">Nenhum membro ativo encontrado.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-700">
+              <table className="min-w-full divide-y divide-border">
                 <thead>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Nome</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Função</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Ações</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Nome</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Função</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700">
+                <tbody className="divide-y divide-border">
                   {members.map((member) => (
-                    <tr key={member.id} className="hover:bg-gray-700/50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-200">{member.name}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{member.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        <div className="flex items-center">
+                    <tr key={member.id} className="hover:bg-accent/50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{member.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{member.email}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex items-center gap-2">
                           {getRoleIcon(member.role)}
-                          <Select
+                          <Select 
                             value={member.role}
                             onValueChange={(value) => handleRoleChange(member.id, value as 'ADMIN' | 'MEMBER' | 'VIEWER')}
                             disabled={workspace?.owner_id === member.userId}
                           >
+                            <SelectTrigger className="h-8 w-[120px] text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="ADMIN" disabled={workspace?.owner_id === member.userId}>Administrador</SelectItem> 
+                              <SelectItem value="ADMIN" disabled={workspace?.owner_id === member.userId}>Admin</SelectItem>
                               <SelectItem value="MEMBER" disabled={workspace?.owner_id === member.userId}>Membro</SelectItem>
-                              <SelectItem value="VIEWER" disabled={workspace?.owner_id === member.userId}>Visualizador</SelectItem>
+                              <SelectItem value="VIEWER" disabled={workspace?.owner_id === member.userId}>Viewer</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
                         {workspace?.owner_id !== member.userId && (
                           <Button
                             variant="destructive"
                             size="sm"
                             onClick={() => handleRemoveMember(member.id)}
-                            disabled={workspace?.owner_id === member.userId}
                           >
-                            Remover
+                            <Trash2 className="h-3 w-3 mr-1"/> Remover
                           </Button>
                         )}
                       </td>
@@ -298,61 +309,69 @@ export default function WorkspaceMembers() {
               </table>
             </div>
           )}
-        </div>
+        </CardContent>
+      </Card>
 
-        {invitations.length > 0 && (
-          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 shadow-lg">
-            <h2 className="text-xl font-semibold mb-4 text-gray-200">Convites Pendentes</h2>
+      {invitations.length > 0 && (
+        <Card className="border-border bg-card">
+          <CardHeader>
+            <CardTitle className="text-xl text-card-foreground">Convites Pendentes</CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-700">
+              <table className="min-w-full divide-y divide-border">
                 <thead>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Função</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Expira em</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Ações</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Função</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Expira em</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700">
+                <tbody className="divide-y divide-border">
                   {invitations.map((invitation) => (
-                    <tr key={invitation.id} className="hover:bg-gray-700/50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{invitation.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        <div className="flex items-center">
+                    <tr key={invitation.id} className="hover:bg-accent/50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{invitation.email}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex items-center gap-2">
                           {getRoleIcon(invitation.role)}
-                          <span className="ml-2">
+                          <span className="ml-2 text-foreground">
                             {invitation.role === 'ADMIN' ? 'Administrador' : 
                              invitation.role === 'MEMBER' ? 'Membro' : 'Visualizador'}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                         {new Date(invitation.expiresAt).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 flex gap-3">
-                        <button
+                      <td className="px-6 py-4 whitespace-nowrap text-sm flex gap-3">
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => handleResendInvitation(invitation.id)}
-                          className="text-blue-400 hover:text-blue-300 transition-colors"
+                          className="text-primary hover:text-primary/80 h-7 w-7"
                           title="Reenviar convite"
                         >
-                          <Mail className="h-5 w-5" />
-                        </button>
-                        <button
+                          <Mail className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => handleCancelInvitation(invitation.id)}
-                          className="text-red-400 hover:text-red-300 transition-colors"
+                          className="text-destructive hover:text-destructive/80 h-7 w-7"
                           title="Cancelar convite"
                         >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
-      </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
