@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/auth-options";
 import { checkPermission } from "@/lib/permissions";
+import { sendInvitationEmail } from "@/lib/email";
 
 // Delete an invitation
 export async function DELETE(
@@ -20,8 +21,8 @@ export async function DELETE(
       );
     }
 
-    // Properly accessing dynamic route params in Next.js 13+
-    const { id: workspaceId, invitationId } = params;
+    // <<< Acessar params de forma assíncrona >>>
+    const { id: workspaceId, invitationId } = await params;
     
     // Check if user has admin permission for this workspace
     const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');
@@ -81,8 +82,8 @@ export async function POST(
       );
     }
 
-    // Properly accessing dynamic route params in Next.js 13+
-    const { id: workspaceId, invitationId } = params;
+    // <<< Acessar params de forma assíncrona >>>
+    const { id: workspaceId, invitationId } = await params;
     
     // Check if user has admin permission for this workspace
     const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');
@@ -94,17 +95,24 @@ export async function POST(
       );
     }
 
-    // Find the invitation
+    // <<< Buscar convite com nome do workspace e token >>>
     const invitation = await prisma.workspaceInvitation.findFirst({
       where: {
         id: invitationId,
         workspace_id: workspaceId,
+        // Opcional: Adicionar verificação se já não está ACCEPTED?
+        // status: { not: 'ACCEPTED' }
       },
+      include: { // Incluir nome do workspace para o email
+        workspace: {
+          select: { name: true }
+        }
+      }
     });
 
-    if (!invitation) {
+    if (!invitation || !invitation.workspace) {
       return NextResponse.json(
-        { message: 'Invitation not found' },
+        { message: 'Invitation or associated workspace not found' },
         { status: 404 }
       );
     }
@@ -113,21 +121,34 @@ export async function POST(
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    // Update the invitation
-    const updatedInvitation = await prisma.workspaceInvitation.update({
+    // <<< Manter o update simples, já temos os dados do convite >>>
+    await prisma.workspaceInvitation.update({
       where: { id: invitationId },
       data: {
         expires_at: expiresAt,
+        status: 'PENDING' // <<< Garantir que o status volte para PENDING caso tenha expirado
       },
     });
 
-    // In a real app, you would send an email with the invitation link
-    // For now, we'll just return success message
+    // <<< Reenviar o email de convite >>>
+    const emailSent = await sendInvitationEmail({
+      to: invitation.email,
+      token: invitation.token,
+      workspaceName: invitation.workspace.name
+    });
 
+    if (!emailSent) {
+      console.error(`[Resend Invite API] Convite ${invitation.id} atualizado, mas falha ao reenviar email para ${invitation.email}`);
+      // Retornar erro indicando falha no reenvio do email
+      return NextResponse.json(
+        { message: 'Convite atualizado, mas falha ao reenviar o email de notificação.' },
+        { status: 500 }
+      );
+    }
+
+    // <<< Resposta de sucesso (sem dados sensíveis) >>>
     return NextResponse.json({
       message: 'Invitation resent successfully',
-      email: updatedInvitation.email,
-      expiresAt: updatedInvitation.expires_at,
     });
   } catch (error) {
     console.error('Error resending invitation:', error);

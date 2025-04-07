@@ -1,9 +1,9 @@
 import { prisma } from '@/lib/db';
 import { notFound, redirect } from 'next/navigation';
-import { Button } from '@/components/ui/button'; // Usaremos botões Shadcn
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import InviteAcceptanceForm from './components/InviteAcceptanceForm';
 
 interface InvitePageProps {
   params: {
@@ -12,7 +12,7 @@ interface InvitePageProps {
 }
 
 export default async function InvitePage({ params }: InvitePageProps) {
-  const { token } = params;
+  const { token } = await params;
 
   if (!token) {
     notFound(); // Se não houver token, página não encontrada
@@ -67,53 +67,28 @@ export default async function InvitePage({ params }: InvitePageProps) {
             Convite para Workspace
           </CardTitle>
           <CardDescription className="text-muted-foreground pt-2">
-            {message} {/* Exibe a mensagem de status */}
+            {/* Exibe a mensagem de status inicial */}
+            {!isValid ? message : `Você foi convidado para "${workspaceName}". Verifique seu email abaixo.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {!isValid && (
             <div className="flex items-center justify-center text-destructive">
               <AlertTriangle className="h-6 w-6 mr-2" />
-              <span>{message}</span> {/* Repete a mensagem para clareza */} 
+              <span>{message}</span>
             </div>
           )}
           
+          {/* <<< Renderizar o formulário se o convite for válido >>> */} 
           {isValid && invitation && (
-            <>
-              <p className="text-center text-muted-foreground">
-                Para aceitar o convite e entrar em "{workspaceName}", faça login ou crie uma nova conta.
-              </p>
-              <div className="flex flex-col space-y-4">
-                {/* TODO: Implementar fluxo de login/cadastro aqui */}
-                {/* O ideal é que estes botões levem para páginas de login/cadastro 
-                    passando o token na URL ou em estado para ser processado após autenticação */}
-                <Button 
-                  asChild 
-                  className="w-full"
-                >
-                  {/* Passar href para o Link, que é filho do Button asChild */} 
-                  <Link href={`/auth/login?inviteToken=${token}&email=${invitation.email}`}>
-                    Fazer Login para Aceitar
-                  </Link>
-                </Button>
-                <Button 
-                  asChild 
-                  variant="outline" 
-                  className="w-full"
-                >
-                   {/* Passar href para o Link, que é filho do Button asChild */} 
-                   <Link href={`/auth/register?inviteToken=${token}&email=${invitation.email}`}>
-                     Criar Conta para Aceitar
-                   </Link>
-                </Button>
-              </div>
-              <p className="text-xs text-center text-muted-foreground">
-                Ao aceitar, você concorda em ser adicionado ao workspace "{workspaceName}" com a função de {invitation.role}.
-              </p>
-            </>
+            <InviteAcceptanceForm 
+              token={token} 
+              initialEmail={invitation.email}
+              workspaceName={workspaceName}
+              role={invitation.role}
+            />
           )}
 
-          {/* Link para voltar para a página inicial ou login genérico */} 
           {!isValid && (
              <div className="text-center mt-6">
                 <Link href="/" className="text-sm text-primary hover:text-primary/80">

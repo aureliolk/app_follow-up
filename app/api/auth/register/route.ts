@@ -27,6 +27,24 @@ export async function POST(req: Request) {
       );
     }
 
+    // <<< Validar convite ANTES de criar usuário e workspace padrão >>>
+    let validInvitation: Awaited<ReturnType<typeof prisma.workspaceInvitation.findUnique>> | null = null;
+    if (inviteToken) {
+      console.log(`[Register API] Verificando inviteToken ${inviteToken} antes de criar usuário...`);
+      validInvitation = await prisma.workspaceInvitation.findUnique({
+        where: { 
+          token: inviteToken, 
+          status: 'PENDING',
+          expires_at: { gt: new Date() } // Já verifica expiração aqui
+        },
+      });
+      if (validInvitation) {
+        console.log(`[Register API] Convite válido encontrado para Workspace ${validInvitation.workspace_id}.`);
+      } else {
+        console.warn(`[Register API] Convite inválido, expirado ou não pendente para token: ${inviteToken}. Registro procederá normalmente.`);
+      }
+    }
+
     // Hash password
     const hashedPassword = await hash(password, 10);
 
@@ -49,58 +67,55 @@ export async function POST(req: Request) {
       console.log(`Super admin created: ${email}`);
     }
 
-    // Create a default workspace for the user
-    const workspaceName = `${name}'s Workspace`;
-    const workspaceSlug = `${name.toLowerCase().replace(/\s+/g, '-')}-workspace-${Date.now()}`.slice(0, 50);
+    // <<< Lógica Condicional: Processar Convite OU Criar Workspace Padrão >>>
+    let message = 'User created successfully.';
 
-    await prisma.workspace.create({
-      data: {
-        name: workspaceName,
-        slug: workspaceSlug,
-        owner_id: user.id,
-        members: {
-          create: {
+    if (validInvitation) {
+      // Processar o convite válido encontrado anteriormente
+      try {
+         console.log(`[Register API] Adicionando membro ${user.id} ao Workspace ${validInvitation.workspace_id} via convite...`);
+        await prisma.workspaceMember.create({ // Usar create aqui, pois o usuário é novo
+          data: {
+            workspace_id: validInvitation.workspace_id,
             user_id: user.id,
-            role: 'ADMIN',
+            role: validInvitation.role,
+          },
+        });
+        await prisma.workspaceInvitation.update({
+          where: { id: validInvitation.id },
+          data: { status: 'ACCEPTED' },
+        });
+        console.log(`[Register API] Convite ${validInvitation.id} aceito e membro adicionado.`);
+        message = 'User created successfully and invitation accepted.';
+      } catch (inviteProcessingError) {
+         console.error(`[Register API] Erro ao processar convite ${validInvitation.id} APÓS criar usuário ${user.id}:`, inviteProcessingError);
+         message = 'User created, but failed to process invitation acceptance.';
+      }
+    } else {
+      // Nenhum convite válido, criar workspace padrão
+      console.log(`[Register API] Nenhum convite válido. Criando workspace padrão para ${user.email}`);
+      const workspaceName = `${name}'s Workspace`;
+      const workspaceSlug = `${name.toLowerCase().replace(/\s+/g, '-')}-workspace-${Date.now()}`.slice(0, 50);
+
+      await prisma.workspace.create({
+        data: {
+          name: workspaceName,
+          slug: workspaceSlug,
+          owner_id: user.id,
+          members: {
+            create: {
+              user_id: user.id,
+              role: 'ADMIN',
+            },
           },
         },
-      },
-    });
-
-    // Process invite if token exists
-    let inviteProcessed = false;
-    if (inviteToken) {
-      console.log(`[Register API] Tentando processar inviteToken ${inviteToken} para User ${user.id}`);
-      try {
-        const invitation = await prisma.workspaceInvitation.findUnique({
-          where: { token: inviteToken, status: 'PENDING' },
-        });
-
-        if (!invitation) {
-          console.warn(`[Register API] Convite não encontrado ou não pendente para token: ${inviteToken}`);
-        } else if (invitation.expires_at < new Date()) {
-          console.warn(`[Register API] Convite expirado para token: ${inviteToken}`);
-          await prisma.workspaceInvitation.update({ where: { id: invitation.id }, data: { status: 'EXPIRED' } });
-        } else {
-          // Convite válido!
-          console.log(`[Register API] Convite válido para Workspace ${invitation.workspace_id}. Adicionando membro...`);
-          await prisma.workspaceMember.upsert({
-            where: { workspace_id_user_id: { workspace_id: invitation.workspace_id, user_id: user.id } },
-            update: { role: invitation.role },
-            create: { workspace_id: invitation.workspace_id, user_id: user.id, role: invitation.role },
-          });
-          await prisma.workspaceInvitation.update({ where: { id: invitation.id }, data: { status: 'ACCEPTED' } });
-          console.log(`[Register API] Usuário ${user.id} adicionado ao workspace ${invitation.workspace_id}. Convite ${invitation.id} aceito.`);
-          inviteProcessed = true;
-        }
-      } catch (inviteError) {
-        console.error(`[Register API] Erro ao processar convite ${inviteToken}:`, inviteError);
-        // Não falhar o registro por causa do convite
-      }
+      });
+      console.log(`[Register API] Workspace padrão criado para ${user.email}`);
     }
+    // <<< Fim Lógica Condicional >>>
 
     return NextResponse.json(
-      { message: 'User created successfully' + (inviteProcessed ? ' and invitation accepted.' : '.') },
+      { message: message },
       { status: 201 }
     );
   } catch (error) {

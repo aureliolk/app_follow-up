@@ -119,37 +119,42 @@ export default function WorkspacesList() {
 
         <ErrorMessage message={error} onDismiss={() => setError('')} />
 
-        {/* Formulário para criar workspace */}
-        <Card className="mb-8 border-border bg-card">
-          <CardHeader>
-            <CardTitle className="text-card-foreground">Criar Novo Workspace</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreateWorkspace} className="flex flex-col sm:flex-row gap-4">
-              <Input
-                type="text"
-                value={newWorkspaceName}
-                onChange={(e) => setNewWorkspaceName(e.target.value)}
-                placeholder="Nome do novo workspace"
-                className="flex-grow bg-input border-input text-foreground placeholder:text-muted-foreground"
-                required
-                disabled={isCreating}
-              />
-              <Button
-                type="submit"
-                disabled={isCreating || !newWorkspaceName.trim()}
-                className="w-full sm:w-auto"
-              >
-                {isCreating ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Plus className="h-4 w-4 mr-2" />
-                )}
-                Criar
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        {isSuperAdmin && (
+          <>
+            {/* Formulário para criar workspace */}
+            <Card className="mb-8 border-border bg-card">
+              <CardHeader>
+                <CardTitle className="text-card-foreground">Criar Novo Workspace</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreateWorkspace} className="flex flex-col sm:flex-row gap-4">
+                  <Input
+                    type="text"
+                    value={newWorkspaceName}
+                    onChange={(e) => setNewWorkspaceName(e.target.value)}
+                    placeholder="Nome do novo workspace"
+                    className="flex-grow bg-input border-input text-foreground placeholder:text-muted-foreground"
+                    required
+                    disabled={isCreating}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={isCreating || !newWorkspaceName.trim()}
+                    className="w-full sm:w-auto"
+                  >
+                    {isCreating ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Plus className="h-4 w-4 mr-2" />
+                    )}
+                    Criar
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </>
+        )}
+        
 
         {/* Lista de workspaces */}
         <h2 className="text-xl font-semibold mb-4 text-foreground">

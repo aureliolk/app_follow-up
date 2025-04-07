@@ -67,8 +67,8 @@ export async function POST(
       );
     }
 
-    // Properly accessing dynamic route params in Next.js 13+
-    const { id: workspaceId } = params;
+    // <<< Acessar params de forma assíncrona >>>
+    const { id: workspaceId } = await params;
     
     // Check if user has admin permission for this workspace
     const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');
