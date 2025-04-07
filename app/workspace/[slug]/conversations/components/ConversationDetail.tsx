@@ -57,11 +57,14 @@ export default function ConversationDetail() {
     addMessageOptimistically,
     updateMessageStatus,
     clearMessagesError,
+    addRealtimeMessage, // <<< OBTER NOVA FUNÇÃO DO CONTEXTO
   } = useFollowUp();
 
   // --- Estado Local ---
   const [newMessage, setNewMessage] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref para o elemento ScrollArea
+  // Ref para guardar a instância do EventSource
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // --- Scroll Automático ---
   useEffect(() => {
@@ -80,6 +83,62 @@ export default function ConversationDetail() {
       }
     }
   }, [messages]); // Depende das mensagens do contexto
+
+  // --- <<< NOVO EFFECT PARA SSE >>> ---
+  useEffect(() => {
+    // Fecha conexão anterior se existir ao mudar de conversa ou desmontar
+    if (eventSourceRef.current) {
+      console.log(`[ConvDetail SSE] Fechando conexão SSE anterior.`);
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    // Só abre nova conexão se houver uma conversa selecionada
+    if (conversation?.id) {
+      const conversationId = conversation.id;
+      console.log(`[ConvDetail SSE] Iniciando conexão SSE para conversa: ${conversationId}`);
+
+      // Cria a nova conexão EventSource
+      const newEventSource = new EventSource(`/api/conversations/${conversationId}/events`);
+      eventSourceRef.current = newEventSource; // Guarda a referência
+
+      // Listener para o evento 'connected' (opcional)
+      newEventSource.addEventListener('connected', (event) => {
+        console.log("[ConvDetail SSE] Conexão estabelecida com sucesso:", event.data);
+      });
+
+      // Listener principal para novas mensagens
+      newEventSource.addEventListener('new-message', (event) => {
+        try {
+          const messageData: Message = JSON.parse(event.data);
+          console.log(`[ConvDetail SSE] Nova mensagem recebida: ${messageData.id}`);
+          // Chama a função do contexto para adicionar a mensagem ao estado
+          addRealtimeMessage(messageData);
+        } catch (error) {
+          console.error("[ConvDetail SSE] Erro ao parsear mensagem SSE:", error, "\nData:", event.data);
+        }
+      });
+
+      // Listener para erros na conexão SSE
+      newEventSource.onerror = (error) => {
+        console.error("[ConvDetail SSE] Erro na conexão EventSource:", error);
+        // O navegador tentará reconectar automaticamente em caso de erro
+        // Poderia adicionar lógica para fechar manualmente se necessário
+        // newEventSource.close();
+        // eventSourceRef.current = null;
+      };
+    }
+
+    // Função de limpeza: é executada quando a dependência (conversation.id) muda
+    // ou quando o componente é desmontado.
+    return () => {
+      if (eventSourceRef.current) {
+        console.log(`[ConvDetail SSE] Limpeza: Fechando conexão SSE.`);
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, [conversation?.id, addRealtimeMessage]); // Depende do ID da conversa e da função do contexto
 
   // --- Handlers de Ação ---
 

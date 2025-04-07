@@ -163,9 +163,19 @@ async function processJob(job: Job<JobData>) {
           content: aiResponseContent,
           timestamp: newAiMessageTimestamp, // Usar timestamp consistente
         },
-        select: { id: true } // Selecionar apenas o ID
       });
       console.log(`[MsgProcessor ${jobId}] Resposta da IA salva no DB (ID: ${newAiMessage.id}).`);
+
+      // Publicar a nova mensagem no canal Redis
+      try {
+        const channel = `chat-updates:${conversationId}`;
+        const payload = JSON.stringify(newAiMessage); // Envia o objeto completo
+        await redisConnection.publish(channel, payload);
+        console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada no canal Redis: ${channel}`);
+      } catch (publishError) {
+        console.error(`[MsgProcessor ${jobId}] Falha ao publicar mensagem da IA ${newAiMessage.id} no Redis:`, publishError);
+        // Não lançar erro aqui para não parar o fluxo principal
+      }
 
       // Atualizar last_message_at da conversa para refletir a ação da IA
       // Fazemos isso ANTES de tentar enviar para garantir que o estado reflita a intenção

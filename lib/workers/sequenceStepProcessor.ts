@@ -220,7 +220,7 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
     // Opcional: Salvar a mensagem enviada no histórico de mensagens
     try {
-        await prisma.message.create({
+        const savedMessage = await prisma.message.create({
             data: {
                 conversation_id: conversationData.id, // ID da conversa encontrada
                 sender_type: 'AI', // Mensagem enviada pela IA da sequência
@@ -229,7 +229,19 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
                 metadata: { ruleId: currentRule.id, type: 'sequence_step_sent' }
             }
         });
-        console.log(`[SequenceWorker ${jobId}] Mensagem do passo ${currentRule.id} salva no histórico da conversa ${conversationData.id}.`);
+        console.log(`[SequenceWorker ${jobId}] Mensagem do passo ${currentRule.id} salva no histórico (ID: ${savedMessage.id}) da conversa ${conversationData.id}.`);
+
+        // <<< ADICIONAR PUBLICAÇÃO NO REDIS AQUI >>>
+        try {
+            const channel = `chat-updates:${conversationData.id}`;
+            const payload = JSON.stringify(savedMessage); // Envia o objeto salvo
+            await redisConnection.publish(channel, payload);
+            console.log(`[SequenceWorker ${jobId}] Mensagem da sequência ${savedMessage.id} publicada no canal Redis: ${channel}`);
+        } catch (publishError) {
+            console.error(`[SequenceWorker ${jobId}] Falha ao publicar mensagem da sequência ${savedMessage.id} no Redis:`, publishError);
+            // Não lançar erro aqui
+        }
+
     } catch(logError) {
         console.warn(`[SequenceWorker ${jobId}] Falha ao salvar log da mensagem da sequência:`, logError);
     }

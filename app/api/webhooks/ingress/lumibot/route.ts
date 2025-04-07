@@ -8,6 +8,7 @@ import { Conversation, FollowUp, FollowUpStatus as PrismaFollowUpStatus, Convers
 // Importar funções do serviço de filas da shared-lib (do ponto de entrada principal)
 import { addMessageProcessingJob, addSequenceStepJob } from '@/lib/queues/queueService';
 import crypto from "crypto";
+import { redisConnection } from '@/lib/redis';
 
 // --- Função Auxiliar para Iniciar Follow-up (Evita Repetição) ---
 async function startNewFollowUpSequence(clientId: string, workspaceId: string, conversationId: string) {
@@ -211,9 +212,22 @@ export async function POST(req: NextRequest) {
         timestamp: messageTimestamp,
         channel_message_id: channelMessageId,
         metadata: messageMetadata,
-      }
+      },
+      // Incluir o tipo de remetente nos dados retornados (opcional, mas útil)
+      // select: { id: true, sender_type: true, content: true, timestamp: true } // Exemplo
     });
     console.log(`[Webhook Ingress] Mensagem ${newMessage.id} salva para Conv ${conversation.id}.`);
+
+    // <<< ADICIONAR PUBLICAÇÃO NO REDIS AQUI >>>
+    try {
+      const channel = `chat-updates:${conversation.id}`;
+      const payload = JSON.stringify(newMessage); // Envia o objeto da mensagem como string JSON
+      await redisConnection.publish(channel, payload);
+      console.log(`[Webhook Ingress] Mensagem ${newMessage.id} publicada no canal Redis: ${channel}`);
+    } catch (publishError) {
+      console.error(`[Webhook Ingress] Falha ao publicar mensagem ${newMessage.id} no Redis:`, publishError);
+      // Não lançar erro aqui para não parar o fluxo principal
+    }
 
     // --- Disparar Follow-up Automático SE NECESSÁRIO ---
     if (shouldStartNewFollowUp) {

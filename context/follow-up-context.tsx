@@ -84,6 +84,9 @@ interface FollowUpContextType {
 
     // Cache Management
     clearMessageCache: (conversationId: string) => void;
+
+    // New function for SSE messages
+    addRealtimeMessage: (message: Message) => void;
 }
 
 // --- Context Creation ---
@@ -331,6 +334,28 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         }));
     }, []);
 
+    // <<< NOVA FUNÇÃO PARA MENSAGENS SSE >>>
+    const addRealtimeMessage = useCallback((message: Message) => {
+        // Verifica se a mensagem pertence à conversa selecionada
+        if (selectedConversation?.id && message.conversation_id === selectedConversation.id) {
+            setSelectedConversationMessages(prevMessages => {
+                // Verifica se a mensagem já existe na lista (evita duplicatas)
+                const messageExists = prevMessages.some(msg => msg.id === message.id);
+                if (!messageExists) {
+                    console.log(`[FollowUpContext] Adicionando mensagem SSE: ${message.id}`);
+                    // Adiciona a nova mensagem e reordena por timestamp (garante ordem)
+                    const updatedMessages = [...prevMessages, message];
+                    updatedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    return updatedMessages;
+                } else {
+                    // console.log(`[FollowUpContext] Mensagem SSE ${message.id} já existe. Ignorando.`);
+                }
+                return prevMessages; // Retorna o estado anterior se a mensagem já existe
+            });
+        }
+         // Se não pertence à conversa selecionada, não faz nada
+    }, [selectedConversation?.id]); // Depende do ID da conversa selecionada
+
     // --- FollowUp Status/Action ---
 
     // Kept for potential manual triggering elsewhere, ensure API exists if used
@@ -462,6 +487,8 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         startFollowUpSequence, pauseFollowUp, resumeFollowUp, convertFollowUp, cancelFollowUp, sendManualMessage,
         // Cache
         clearMessageCache,
+        // New function for SSE messages
+        addRealtimeMessage,
         // Removido selectedCampaign/loadingSelectedCampaign se não forem mais usados
     }), [
         // List all state variables and memoized functions here
@@ -473,7 +500,8 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         fetchFollowUps, clearFollowUpsError,
         selectConversation, fetchConversationMessages, clearMessagesError, addMessageOptimistically, updateMessageStatus,
         startFollowUpSequence, pauseFollowUp, resumeFollowUp, convertFollowUp, cancelFollowUp, sendManualMessage,
-        clearMessageCache
+        clearMessageCache,
+        addRealtimeMessage
     ]);
 
     return (
