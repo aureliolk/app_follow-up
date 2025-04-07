@@ -1,43 +1,45 @@
+// apps/next-app/app/workspace/[slug]/page.tsx
 'use client';
-import { useWorkspace } from '../../../context/workspace-context';
+import { useWorkspace } from '@/context/workspace-context';
 import { ArrowUpRight, Users, BarChart2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { followUpService } from '../../follow-up/_services/followUpService';
-import LoadingSpinner from '../../../components/ui/LoadingSpinner';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
+// Remover import do serviço, vamos usar o contexto
+// import { followUpService } from '../../follow-up/_services/followUpService';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+// <<< IMPORTAR O CONTEXTO DE FOLLOW-UP >>>
+import { useFollowUp } from '@/context/follow-up-context';
 
 export default function WorkspaceDashboard() {
-  const { workspace, isLoading } = useWorkspace();
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [followUps, setFollowUps] = useState<any[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
+  const { workspace, isLoading: workspaceIsLoading } = useWorkspace(); // Renomear isLoading para evitar conflito
+  // <<< OBTER FUNÇÕES E ESTADOS DO CONTEXTO >>>
+  const {
+    campaigns,
+    followUps,
+    fetchCampaigns,
+    fetchFollowUps,
+    loadingCampaigns,
+    loadingFollowUps,
+    followUpsError, // <<< Obter estado de erro também
+    campaignsError
+  } = useFollowUp();
+
+  // Opcional: manter um estado de loading combinado se preferir
+  const isLoadingData = loadingCampaigns || loadingFollowUps || workspaceIsLoading;
+  const dataError = campaignsError || followUpsError; // Combinar erros para exibição
 
   useEffect(() => {
-    async function loadWorkspaceData() {
-      if (!workspace) return;
-      
-      try {
-        setLoadingData(true);
-        
-        // Carregar campanhas do workspace
-        const workspaceCampaigns = await followUpService.getCampaigns(workspace.id);
-        setCampaigns(workspaceCampaigns);
-        
-        // Carregar follow-ups ativos do workspace
-        const activeFollowUps = await followUpService.getFollowUps('active', workspace.id);
-        setFollowUps(activeFollowUps);
-      } catch (error) {
-        console.error('Erro ao carregar dados do workspace:', error);
-      } finally {
-        setLoadingData(false);
-      }
+    if (workspace?.id && !workspaceIsLoading) {
+      console.log(`[WorkspaceDashboard] Workspace ID ${workspace.id} disponível. Buscando dados do contexto...`);
+      // <<< CHAMAR FUNÇÕES DO CONTEXTO >>>
+      fetchCampaigns(workspace.id);
+      fetchFollowUps('active', workspace.id); // Buscar apenas os ativos para este card
     }
-    
-    loadWorkspaceData();
-  }, [workspace]);
+  }, [workspace?.id, workspaceIsLoading, fetchCampaigns, fetchFollowUps]); // Incluir funções do contexto como dependência
 
-  if (isLoading) {
+  // Loading inicial do WORKSPACE
+  if (workspaceIsLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <LoadingSpinner message="Carregando workspace..." />
@@ -45,14 +47,33 @@ export default function WorkspaceDashboard() {
     );
   }
 
-  if (!workspace) return null;
+  if (!workspace) {
+     // Pode acontecer se houver erro no contexto do workspace
+     // Ou se o slug for inválido
+     return <div className="container mx-auto text-center py-10 text-destructive">Workspace não encontrado ou erro ao carregar.</div>;
+  }
+
+  // <<< ADICIONAR VERIFICAÇÃO DE LOADING DOS DADOS >>>
+  if (loadingCampaigns || loadingFollowUps) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        {/* Pode usar a mesma mensagem ou uma diferente */}
+        <LoadingSpinner message="Carregando dados do dashboard..." />
+      </div>
+    );
+  }
+
+  // Tratamento de erro combinado dos dados
+  if (dataError) {
+      return <div className="container mx-auto text-center py-10 text-destructive">Erro ao carregar dados: {dataError}</div>;
+  }
 
   return (
     <div className="container mx-auto">
       <h1 className="text-3xl font-bold mb-6 text-foreground">
         Bem-vindo ao {workspace.name}
       </h1>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Card Follow-ups Ativos */}
         <Card className="border-border">
@@ -61,16 +82,18 @@ export default function WorkspaceDashboard() {
             <BarChart2 className="text-primary h-5 w-5" />
           </CardHeader>
           <CardContent>
-            {loadingData ? (
+            {/* <<< USAR loadingFollowUps DIRETAMENTE >>> */}
+            {loadingFollowUps ? (
               <LoadingSpinner size="small" message="" />
             ) : followUps.length > 0 ? (
               <div>
+                {/* <<< USAR followUps do contexto >>> */}
                 <p className="text-2xl font-bold text-foreground mb-2">{followUps.length}</p>
-                <Link 
-                  href="/follow-up" 
+                <Link
+                  href={`/workspace/${workspace.slug}/conversations`} // Link para a página de conversas
                   className="text-primary text-sm flex items-center hover:underline"
                 >
-                  Ver todos <ArrowUpRight className="ml-1 h-3 w-3" />
+                  Ver conversas <ArrowUpRight className="ml-1 h-3 w-3" />
                 </Link>
               </div>
             ) : (
@@ -78,7 +101,7 @@ export default function WorkspaceDashboard() {
             )}
           </CardContent>
         </Card>
-        
+
         {/* Card Campanhas */}
         <Card className="border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -86,13 +109,15 @@ export default function WorkspaceDashboard() {
             <BarChart2 className="text-primary h-5 w-5" />
           </CardHeader>
           <CardContent>
-            {loadingData ? (
+            {/* <<< USAR loadingCampaigns DIRETAMENTE >>> */}
+            {loadingCampaigns ? (
               <LoadingSpinner size="small" message="" />
             ) : campaigns.length > 0 ? (
               <div>
+                 {/* <<< USAR campaigns do contexto >>> */}
                 <p className="text-2xl font-bold text-foreground mb-2">{campaigns.length}</p>
-                <Link 
-                  href="/follow-up/campaigns" 
+                <Link
+                  href={`/workspace/${workspace.slug}/campaigns`} // Ajustar link se necessário
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Gerenciar campanhas <ArrowUpRight className="ml-1 h-3 w-3" />
@@ -101,8 +126,8 @@ export default function WorkspaceDashboard() {
             ) : (
               <div>
                 <p className="text-muted-foreground text-sm mb-3">Nenhuma campanha encontrada.</p>
-                <Link 
-                  href="/follow-up/campaigns" 
+                <Link
+                  href={`/workspace/${workspace.slug}/campaigns/new`} // Ajustar link se necessário
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Criar campanha <ArrowUpRight className="ml-1 h-3 w-3" />
@@ -111,7 +136,7 @@ export default function WorkspaceDashboard() {
             )}
           </CardContent>
         </Card>
-        
+
         {/* Card Equipe */}
         <Card className="border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -119,13 +144,14 @@ export default function WorkspaceDashboard() {
             <Users className="text-primary h-5 w-5" />
           </CardHeader>
           <CardContent>
+            {/* A contagem de membros vem do contexto do workspace, manter como está */}
             {workspace._count?.members ? (
               <div>
                 <p className="text-2xl font-bold text-foreground mb-2">
                   {workspace._count.members} {workspace._count.members === 1 ? 'membro' : 'membros'}
                 </p>
-                <Link 
-                  href={`/workspace/${workspace.slug}/members`} 
+                <Link
+                  href={`/workspace/${workspace.slug}/members`}
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Gerenciar membros <ArrowUpRight className="ml-1 h-3 w-3" />
@@ -134,8 +160,8 @@ export default function WorkspaceDashboard() {
             ) : (
               <div>
                 <p className="text-muted-foreground text-sm mb-3">Apenas você no workspace.</p>
-                <Link 
-                  href={`/workspace/${workspace.slug}/members`} 
+                <Link
+                  href={`/workspace/${workspace.slug}/members`}
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Convidar membros <ArrowUpRight className="ml-1 h-3 w-3" />

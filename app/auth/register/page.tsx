@@ -6,6 +6,8 @@ import { signIn, useSession } from 'next-auth/react'; // Adicionado useSession
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
+// Importar LoadingSpinner
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 // Importar componentes Shadcn UI
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -83,7 +85,8 @@ function RegisterForm() {
   if (status === 'loading' || status === 'authenticated') {
      return (
         <div className="min-h-screen flex items-center justify-center bg-background">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+             {/* Usar LoadingSpinner com mensagem apropriada */} 
+            <LoadingSpinner message="Verificando sessão..." />
         </div>
     );
   }
@@ -180,7 +183,7 @@ function RegisterForm() {
                 className="w-full"
               >
                 {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <LoadingSpinner size="small" message="" />
                 ) : (
                   'Cadastrar'
                 )}
@@ -236,7 +239,11 @@ function RegisterForm() {
 // Suspense wrapper não muda
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<div>Carregando...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <LoadingSpinner message="Carregando página de registro..." />
+      </div>
+    }>
       <RegisterForm />
     </Suspense>
   );

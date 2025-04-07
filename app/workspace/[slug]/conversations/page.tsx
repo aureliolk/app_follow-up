@@ -108,7 +108,7 @@ export default function ConversationsPage() {
         <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background flex-shrink-0">
           {/* Mostra loading da lista */}
           {isLoading && conversations.length === 0 && (
-             <div className="p-4"><LoadingSpinner size="small"/></div>
+             <div className="p-4"><LoadingSpinner size="small"/>asda</div>
           )}
           <ConversationList
             conversations={conversations}

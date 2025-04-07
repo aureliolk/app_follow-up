@@ -62,27 +62,46 @@ export default function ConversationDetail() {
 
   // --- Estado Local ---
   const [newMessage, setNewMessage] = useState('');
-  const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref para o elemento ScrollArea
-  // Ref para guardar a instância do EventSource
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // --- Scroll Automático ---
-  useEffect(() => {
+  // --- Scroll Automático REFINADO ---
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const scrollAreaElement = scrollAreaRef.current;
     if (scrollAreaElement) {
       const viewportElement = scrollAreaElement.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]');
       if (viewportElement) {
-        const timer = setTimeout(() => {
-          // Scroll mais inteligente: só scrolla se já estiver perto do fim
-          const isScrolledToBottom = viewportElement.scrollHeight - viewportElement.scrollTop - viewportElement.clientHeight < 150; // Tolerância
-          if (isScrolledToBottom) {
-            viewportElement.scrollTo({ top: viewportElement.scrollHeight, behavior: 'smooth' });
-          }
-        }, 150); // Aumentar um pouco o delay pode ajudar
-        return () => clearTimeout(timer);
+        viewportElement.scrollTo({ top: viewportElement.scrollHeight, behavior });
+        console.log(`[ConvDetail Scroll] Rolando para o fim (behavior: ${behavior})`);
       }
     }
-  }, [messages]); // Depende das mensagens do contexto
+  }, []);
+
+  useEffect(() => {
+    if (messages.length > 0 && !isLoadingMessages) {
+       const timer = setTimeout(() => {
+         console.log('[ConvDetail Scroll] Mensagens carregadas, rolando para o fim (instantâneo).');
+         scrollToBottom('auto');
+       }, 150);
+       return () => clearTimeout(timer);
+    }
+  }, [messages, isLoadingMessages, conversation?.id, scrollToBottom]);
+
+  const prevMessagesLengthRef = useRef(messages.length);
+  useEffect(() => {
+    if (messages.length > prevMessagesLengthRef.current) {
+      const scrollAreaElement = scrollAreaRef.current;
+      const viewportElement = scrollAreaElement?.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]');
+      if (viewportElement) {
+        const isScrolledToBottom = viewportElement.scrollHeight - viewportElement.scrollTop - viewportElement.clientHeight < 150;
+        if (isScrolledToBottom) {
+           console.log('[ConvDetail Scroll] Nova mensagem adicionada, rolando suavemente para o fim.');
+           scrollToBottom('smooth');
+        }
+      }
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages, scrollToBottom]);
 
   // --- <<< NOVO EFFECT PARA SSE >>> ---
   useEffect(() => {

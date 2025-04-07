@@ -18,6 +18,8 @@ import { toast } from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { formatMsToDelayString, parseDelayStringToMs } from '@/lib/timeUtils';
 import { WorkspaceAiFollowUpRule as PrismaRule } from '@prisma/client';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import ErrorMessage from '@/components/ui/ErrorMessage';
 
 // Interface para os dados do formulário (o que o usuário digita)
 interface RuleFormData {
@@ -189,9 +191,8 @@ export default function AiFollowUpRules() {
 
         {/* Estado de Carregamento do Contexto */}
         {loadingAiFollowUpRules && (
-          <div className="flex justify-center items-center py-6 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            Carregando regras...
+          <div className="flex items-center justify-center py-4">
+            <LoadingSpinner message="Carregando regras..." />
           </div>
         )}
 

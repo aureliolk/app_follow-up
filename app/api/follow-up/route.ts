@@ -7,6 +7,7 @@ import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 // Importe Prisma e o Enum se você o definiu no schema
 import { FollowUpStatus, Prisma } from '@prisma/client';
+import { FollowUpStatus as PrismaFollowUpStatus } from '@prisma/client'; // Importar Enum para validação
 
 // Esquema de validação para o corpo da requisição
 const startFollowUpSchema = z.object({
@@ -122,5 +123,66 @@ export async function POST(req: NextRequest) {
             ? 'Erro de validação ao criar sequência.' // Mensagem específica para validação
             : 'Erro interno do servidor ao iniciar sequência.';
       return NextResponse.json({ success: false, error: clientErrorMessage }, { status: 500 });
+  }
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = request.nextUrl;
+  const workspaceId = searchParams.get('workspaceId');
+  const statusParam = searchParams.get('status'); // Pode ser 'active', 'completed', etc.
+
+  if (!workspaceId) {
+    return NextResponse.json({ success: false, error: 'Workspace ID é obrigatório' }, { status: 400 });
+  }
+
+  try {
+    // Construir o filtro Prisma dinamicamente
+    const whereClause: any = {
+      workspace_id: workspaceId,
+    };
+
+    // Validar e adicionar status ao filtro se fornecido
+    if (statusParam) {
+        // Converte o parâmetro de string para o tipo Enum esperado (case-insensitive)
+        const statusEnumValue = Object.values(PrismaFollowUpStatus).find(
+            enumValue => enumValue.toLowerCase() === statusParam.toLowerCase()
+        );
+
+        if (statusEnumValue) {
+             // Use o valor do Enum correspondente na query Prisma
+             // Como o status no seu schema é uma string, comparamos a string
+             // Se fosse um Enum no schema, usaríamos: whereClause.status = statusEnumValue;
+             whereClause.status = statusEnumValue; // Assume que status no DB é uma string que casa com o Enum
+        } else {
+            console.warn(`[API /api/follow-up GET] Status inválido recebido: ${statusParam}. Ignorando filtro de status.`);
+            // Não adiciona filtro de status se for inválido
+            // Poderia retornar um erro 400 se preferir ser mais estrito:
+            // return NextResponse.json({ success: false, error: `Status inválido: ${statusParam}` }, { status: 400 });
+        }
+    }
+
+
+    console.log(`[API /api/follow-up GET] Buscando FollowUps com filtro:`, whereClause);
+
+    // Buscar os follow-ups no banco de dados
+    const followUps = await prisma.followUp.findMany({
+      where: whereClause,
+      orderBy: {
+        started_at: 'desc', // Ou outro campo de ordenação relevante
+      },
+      // Você pode incluir relações se precisar dos dados no frontend
+      // include: {
+      //   client: { select: { id: true, name: true, phone_number: true } }
+      // }
+    });
+
+    console.log(`[API /api/follow-up GET] Encontrados ${followUps.length} follow-ups.`);
+
+    return NextResponse.json({ success: true, data: followUps });
+
+  } catch (error) {
+    console.error('[API /api/follow-up GET] Erro ao buscar follow-ups:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    return NextResponse.json({ success: false, error: `Erro interno do servidor: ${errorMessage}` }, { status: 500 });
   }
 }

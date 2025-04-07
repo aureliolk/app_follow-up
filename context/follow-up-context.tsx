@@ -87,6 +87,9 @@ interface FollowUpContextType {
 
     // New function for SSE messages
     addRealtimeMessage: (message: Message) => void;
+
+    // <<< NOVA DEFINIÇÃO PARA NOTIFICAÇÃO >>>
+    unreadConversationIds: Set<string>; // Estado para IDs não lidos
 }
 
 // --- Context Creation ---
@@ -115,6 +118,8 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
     const [isCancellingFollowUp, setIsCancellingFollowUp] = useState(false);
     const [isSendingMessage, setIsSendingMessage] = useState(false);
     const [messageCache, setMessageCache] = useState<Record<string, Message[]>>({});
+    // <<< NOVO ESTADO PARA NOTIFICAÇÃO >>>
+    const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set());
 
     // --- Error/Cache Clear Functions ---
     const clearCampaignsError = useCallback(() => setCampaignsError(null), []);
@@ -288,11 +293,17 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         setSelectedConversationMessages([]);
         setSelectedConversationError(null);
         if (conversation?.id) {
-            fetchConversationMessages(conversation.id); // Fetch messages for the newly selected convo
+            // <<< LIMPAR NOTIFICAÇÃO AO SELECIONAR >>>
+            setUnreadConversationIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(conversation.id);
+                return newSet;
+            });
+            fetchConversationMessages(conversation.id); // Fetch messages
         } else {
             setLoadingSelectedConversationMessages(false);
         }
-    }, [/* fetchConversationMessages dependency added via useEffect below */]); // `fetchConversationMessages` will be defined below
+    }, [/* fetchConversationMessages dependency added via useEffect below */]);
 
     const fetchConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
         if (messageCache[conversationId]) {
@@ -334,27 +345,46 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         }));
     }, []);
 
-    // <<< NOVA FUNÇÃO PARA MENSAGENS SSE >>>
     const addRealtimeMessage = useCallback((message: Message) => {
-        // Verifica se a mensagem pertence à conversa selecionada
+        // <<< LOG INICIAL >>>
+        console.log(`[FollowUpContext addRealtimeMessage] Recebida msg ${message.id} para conv ${message.conversation_id}. Conv selecionada: ${selectedConversation?.id}`);
+
         if (selectedConversation?.id && message.conversation_id === selectedConversation.id) {
+             // <<< LOG - CONVERSA SELECIONADA >>>
+            console.log(`[FollowUpContext addRealtimeMessage] Mensagem pertence à conversa selecionada.`);
             setSelectedConversationMessages(prevMessages => {
-                // Verifica se a mensagem já existe na lista (evita duplicatas)
                 const messageExists = prevMessages.some(msg => msg.id === message.id);
                 if (!messageExists) {
-                    console.log(`[FollowUpContext] Adicionando mensagem SSE: ${message.id}`);
-                    // Adiciona a nova mensagem e reordena por timestamp (garante ordem)
+                    console.log(`[FollowUpContext addRealtimeMessage] Adicionando msg ${message.id} à lista selecionada.`);
                     const updatedMessages = [...prevMessages, message];
                     updatedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                     return updatedMessages;
                 } else {
-                    // console.log(`[FollowUpContext] Mensagem SSE ${message.id} já existe. Ignorando.`);
+                    console.log(`[FollowUpContext addRealtimeMessage] Msg ${message.id} já existe na lista selecionada.`);
                 }
-                return prevMessages; // Retorna o estado anterior se a mensagem já existe
+                return prevMessages;
             });
+        } else if (message.conversation_id) {
+             // <<< LOG - CONVERSA NÃO SELECIONADA >>>
+             console.log(`[FollowUpContext addRealtimeMessage] Mensagem NÃO pertence à conversa selecionada. Verificando unread...`);
+            setUnreadConversationIds(prev => {
+                 // <<< LOG - DENTRO DO SETTER >>>
+                console.log(`[FollowUpContext addRealtimeMessage] Atualizando unread. Prev Set:`, prev, `Tentando adicionar: ${message.conversation_id}`);
+                if (!prev.has(message.conversation_id!)) {
+                    console.log(`[FollowUpContext addRealtimeMessage] Adicionando ${message.conversation_id} ao Set de não lidas.`);
+                    const newSet = new Set(prev);
+                    newSet.add(message.conversation_id!);
+                    return newSet;
+                } else {
+                    console.log(`[FollowUpContext addRealtimeMessage] ID ${message.conversation_id} já estava no Set de não lidas.`);
+                    return prev; // Retorna o mesmo Set se já existe
+                }
+            });
+        } else {
+            // <<< LOG - CASO ESTRANHO >>>
+            console.warn(`[FollowUpContext addRealtimeMessage] Mensagem ${message.id} sem conversation_id? Ignorando.`);
         }
-         // Se não pertence à conversa selecionada, não faz nada
-    }, [selectedConversation?.id]); // Depende do ID da conversa selecionada
+    }, [selectedConversation?.id]);
 
     // --- FollowUp Status/Action ---
 
@@ -489,7 +519,8 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         clearMessageCache,
         // New function for SSE messages
         addRealtimeMessage,
-        // Removido selectedCampaign/loadingSelectedCampaign se não forem mais usados
+        // <<< ADICIONAR NOVO ESTADO AO CONTEXTO >>>
+        unreadConversationIds,
     }), [
         // List all state variables and memoized functions here
         campaigns, loadingCampaigns, campaignsError,
@@ -501,7 +532,9 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         selectConversation, fetchConversationMessages, clearMessagesError, addMessageOptimistically, updateMessageStatus,
         startFollowUpSequence, pauseFollowUp, resumeFollowUp, convertFollowUp, cancelFollowUp, sendManualMessage,
         clearMessageCache,
-        addRealtimeMessage
+        addRealtimeMessage,
+        // <<< ADICIONAR NOVO ESTADO ÀS DEPENDÊNCIAS >>>
+        unreadConversationIds,
     ]);
 
     return (

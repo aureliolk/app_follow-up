@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import WorkspaceHeader from './components/WorkspaceHeader'; // <<< Importar
 import WorkspaceFooter from './components/WorkspaceFooter'; // <<< Importar (opcional)
+import LoadingSpinner from '@/components/ui/LoadingSpinner'; // << Adicionar import
 
 // Interface para os itens de navegação
 interface NavItem {
@@ -55,8 +56,8 @@ export default function WorkspaceLayout({
     { href: '', label: 'Dashboard', icon: LayoutDashboard, matchExact: true },
     { href: '/conversations', label: 'Conversas', icon: MessageSquare },
     { href: '/clients', label: 'Clientes', icon: Contact },
-    { href: '/followup', label: 'Follow-up', icon: MessageSquare },
-    { href: '/campaigns', label: 'Campanhas', icon: CheckSquare },
+    // { href: '/followup', label: 'Follow-up', icon: MessageSquare },
+    // { href: '/campaigns', label: 'Campanhas', icon: CheckSquare },
     { href: '/members', label: 'Membros', icon: Users },
     { href: '/ia', label: 'IA', icon: BrainCog },
     { href: '/settings', label: 'Configurações', icon: Settings },
@@ -86,9 +87,9 @@ export default function WorkspaceLayout({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2 text-muted-foreground">Carregando workspace...</span>
-      </div>
+      {/* Substituir Loader2 e span pelo LoadingSpinner */}
+      <LoadingSpinner message="Carregando workspace..." />
+    </div>
     );
   }
 

@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic'; // Garante que a rota não seja estatica
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
-    const { id: conversationId } = params;
+    const awaitedParams = await params;
+    const { id: conversationId } = awaitedParams;
 
     if (!conversationId) {
         return new NextResponse('Conversation ID is required', { status: 400 });

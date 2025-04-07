@@ -6,11 +6,13 @@ import { signIn, useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
+// Importar LoadingSpinner
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 // Importar componentes Shadcn UI (se usados no projeto antigo, se não, manter inputs normais)
-import { Input } from "../../../components/ui/input";
-import { Button } from "../../../components/ui/button";
-import { Label } from "../../../components/ui/label"; // Shadcn label (opcional, mas bom para consistência)
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../../../components/ui/card"; // Usar Card para estrutura
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label"; // Shadcn label (opcional, mas bom para consistência)
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Usar Card para estrutura
 
 function LoginForm() {
   const router = useRouter();
@@ -72,7 +74,7 @@ function LoginForm() {
   if (status === 'loading' || status === 'authenticated') {
     return (
         <div className="min-h-screen flex items-center justify-center bg-background">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <LoadingSpinner message="Verificando sessão..." />
         </div>
     );
   }
@@ -139,7 +141,7 @@ function LoginForm() {
                 className="w-full" // variant="default" é aplicado automaticamente
               >
                 {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <LoadingSpinner size="small" message="" />
                 ) : (
                   'Entrar'
                 )}
@@ -195,7 +197,11 @@ function LoginForm() {
 // Suspense wrapper não muda
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div>Carregando...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <LoadingSpinner message="Carregando página de login..." />
+      </div>
+    }>
       <LoginForm />
     </Suspense>
   );
