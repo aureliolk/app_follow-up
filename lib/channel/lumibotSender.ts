@@ -60,4 +60,48 @@ export async function enviarTextoLivreLumibot(
     }
 }
 
+// Função auxiliar de envio usndo templte oficial do whatsapp Lumibot (HSM)
+export async function sendTemplateWhatsappOficialLumibot(
+    accountId: string,
+    conversationId: string, // clientId
+    token: string,
+    stepData: {
+      message_content: string;    // Conteúdo base do template
+      template_name: string;      // Nome EXATO do HSM aprovado
+      category: string;           // Categoria do template
+    },
+    clientName: string // Nome real do cliente para usar em {{1}}
+  ): Promise<{ success: boolean, responseData: any }> {
+  
+    const apiUrl = `https://app.lumibot.com.br/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+    const headers = { 'Content-Type': 'application/json', 'api_access_token': token };
+  
+    // --- Montando o corpo ---
+    const body: any = {
+      content: stepData.message_content,
+      message_type: "outgoing",
+      template_params: {
+        name: stepData.template_name,
+        category: stepData.category || "UTILITY",
+        language: "pt_BR",
+      }
+    };
+  
+    // Adiciona processed_params APENAS se a mensagem contiver {{1}} e clientName for válido
+    if (stepData.message_content.includes('{{1}}') && clientName) {
+      body.template_params.processed_params = { "1": clientName };
+    }
+    // --- Fim da montagem do corpo ---
+  
+    console.log(`[Lumibot Processor] Enviando HSM: ${apiUrl}, Payload:`, JSON.stringify(body));
+    try {
+      const response = await axios.post(apiUrl, body, { headers });
+      console.log(`[Lumibot Processor] Resposta Lumibot (HSM): Status ${response.status}`);
+      return { success: response.status >= 200 && response.status < 300, responseData: response.data };
+    } catch (err: any) {
+      console.error(`[Lumibot Processor] Erro ao enviar HSM (${stepData.template_name}): ${err.message}`, err.response?.data);
+      return { success: false, responseData: err.response?.data || { error: err.message } };
+    }
+  }
+
 // Você pode adicionar outras funções aqui se precisar enviar outros tipos de mensagem (template, etc.)

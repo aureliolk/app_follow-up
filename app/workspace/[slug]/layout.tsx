@@ -57,7 +57,7 @@ export default function WorkspaceLayout({
     { href: '/conversations', label: 'Conversas', icon: MessageSquare },
     { href: '/clients', label: 'Clientes', icon: Contact },
     // { href: '/followup', label: 'Follow-up', icon: MessageSquare },
-    // { href: '/campaigns', label: 'Campanhas', icon: CheckSquare },
+    { href: '/campaigns/new', label: 'Campanhas', icon: CheckSquare },
     { href: '/members', label: 'Membros', icon: Users },
     { href: '/ia', label: 'IA', icon: BrainCog },
     { href: '/settings', label: 'Configurações', icon: Settings },

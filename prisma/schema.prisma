@@ -261,6 +261,7 @@ model Workspace {
   invitations         WorkspaceInvitation[]
   members             WorkspaceMember[]
   webhooks            WorkspaceWebhook[]
+  campaigns           Campaign[] // Relação reversa para Campaigns
   owner               User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
 
   clients             Client[]                    @relation("WorkspaceToClient")
@@ -274,6 +275,13 @@ model Workspace {
 
   lumibot_account_id String?  @default("") // ID da Conta Lumibot associada
   lumibot_api_token  String? @default("") // Token de API do Agente/Inbox Lumibot (CONSIDERAR CRIPTOGRAFIA em produção)
+
+  // --- Campos para WhatsApp Cloud API --- 
+  whatsappPhoneNumberId String? @map("whatsapp_phone_number_id")
+  whatsappBusinessAccountId String? @map("whatsapp_business_account_id") // WABA ID
+  whatsappAccessToken String? @map("whatsapp_access_token") // PRECISA CRIPTOGRAFAR
+  whatsappWebhookVerifyToken String? @map("whatsapp_webhook_verify_token") // Token para validar seu webhook
+  // --- Fim Campos WhatsApp --- 
 
   @@map("workspaces")
   @@schema("workspace_schema")
@@ -505,4 +513,49 @@ enum InvitationStatus {
   REVOKED   // Convite cancelado pelo admin antes de ser aceito
 
   @@schema("workspace_schema") // Definir no schema correto
+}
+
+model Campaign {
+  id                   String    @id @default(cuid()) // Usando cuid() como padrão no projeto
+  name                 String
+  message              String    @db.Text // Usar Text para mensagens potencialmente longas
+  status               String    @default("PENDING") // Ex: PENDING, PROCESSING, COMPLETED, FAILED, PAUSED, CANCELLED
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  workspaceId          String    @map("workspace_id")
+  workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Campos de agendamento
+  sendIntervalSeconds  Int       @map("send_interval_seconds") // Intervalo em segundos
+  allowedSendStartTime String    @map("allowed_send_start_time") // Formato "HH:MM" (ex: "09:00")
+  allowedSendEndTime   String    @map("allowed_send_end_time")   // Formato "HH:MM" (ex: "18:00")
+  allowedSendDays      String    @map("allowed_send_days")       // Ex: "1,2,3,4,5" ou JSON [1,2,3,4,5]
+
+  // Campos para Template HSM (Opcionais)
+  isTemplate           Boolean   @default(false) @map("is_template")
+  templateName         String?   @map("template_name")      // Nome exato do template HSM
+  templateCategory     String?   @map("template_category")  // Categoria do template (ex: UTILITY)
+
+  // Relação com os contatos da campanha
+  contacts             CampaignContact[]
+
+  @@map("campaigns")
+  @@schema("workspace_schema") // Adicionando ao schema do workspace
+}
+
+model CampaignContact {
+  id           String   @id @default(cuid())
+  campaignId   String   @map("campaign_id")
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactInfo  String   @map("contact_info") // Telefone ou outro identificador
+  contactName  String?  @map("contact_name") // Nome do contato (opcional)
+  status       String   @default("PENDING") // Ex: PENDING, SENT, FAILED
+  sentAt       DateTime? @map("sent_at")
+  error        String?  @db.Text // Armazenar mensagens de erro longas
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([campaignId, status]) // Índice para buscar contatos pendentes rapidamente
+  @@map("campaign_contacts")
+  @@schema("workspace_schema") // Adicionando ao schema do workspace
 }

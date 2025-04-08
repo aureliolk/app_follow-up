@@ -1,0 +1,89 @@
+# TODO - Implementação da Campanha de Disparo em Massa
+
+**1. Backend - Modelos e Migrations:**
+    *   [ ] **Definir Modelos Prisma:**
+        *   Abrir `prisma/schema.prisma`.
+        *   Criar o `model Campaign` com os campos: `id`, `name`, `message`, `status` (PENDING, PROCESSING, COMPLETED, FAILED, PAUSED), `createdAt`, `updatedAt`, `workspaceId` (com relação `@relation`), `sendIntervalSeconds`, `allowedSendStartTime` (String "HH:MM"), `allowedSendEndTime` (String "HH:MM"), `allowedSendDays` (String/JSON).
+        *   Criar o `model CampaignContact` com os campos: `id`, `campaignId` (com relação `@relation`), `contactInfo` (String), `status` (PENDING, SENT, FAILED), `sentAt` (DateTime?), `error` (String?), `createdAt`, `updatedAt`. Adicionar `@@index([campaignId, status])`.
+    *   [ ] **Executar Migração:** Rodar `npx prisma migrate dev --name add_campaign_models` (ou nome similar) para aplicar as alterações ao banco de dados.
+
+**2. Backend - Filas e Workers (Estrutura Inicial):**
+    *   [ ] **Definir Fila BullMQ:** Criar `lib/queues/campaignQueue.ts`. Definir e exportar a instância da fila (`new Queue('campaign-sender', { connection: redis })`).
+    *   [ ] **Definir Worker BullMQ:** Criar `lib/workers/campaignWorker.ts`. Configurar a estrutura básica do worker (`new Worker('campaign-sender', async (job) => { /* ... Lógica virá aqui ... */ }, { connection: redis })`). Incluir tratamento básico de erros (`worker.on('failed', ...)`).
+    *   [ ] **Garantir Conexão Redis:** Verificar se `lib/redis.ts` está configurado e sendo exportado corretamente.
+
+**3. Frontend - Rota e Componentes UI:**
+    *   [ ] **Criar Estrutura da Rota:** Criar os diretórios `app/workspace/[slug]/campaigns/new/` e `app/workspace/[slug]/campaigns/new/components/`.
+    *   [ ] **Criar Página (`page.tsx`):**
+        *   Criar `app/workspace/[slug]/campaigns/new/page.tsx`.
+        *   Definir como Server Component.
+        *   Receber `params: { slug: string }`.
+        *   Buscar dados do `workspace` (ID, nome, token Lumibot relevante) usando o `slug` e `lib/db.ts`.
+        *   Renderizar o componente de formulário, passando `workspaceId` e outras props necessárias.
+    *   [ ] **Criar Formulário (`CampaignForm.tsx`):**
+        *   Criar `app/workspace/[slug]/campaigns/new/components/CampaignForm.tsx`.
+        *   Definir como Client Component (`'use client'`).
+        *   Receber `workspaceId` e `lumibotToken` (ou config relevante) como props.
+        *   Implementar o formulário usando `components/ui/` (Shadcn):
+            *   `Input` para Nome da Campanha.
+            *   `Textarea` para Mensagem.
+            *   `Input type="number"` para Intervalo (segundos/minutos).
+            *   `Input type="time"` para Horário de Início e Fim.
+            *   Grupo de `Checkbox` (ou `ToggleGroup`) para Dias da Semana permitidos.
+            *   Componente para Upload de Arquivo (Excel/CSV).
+        *   Gerenciar estado do formulário com `useState`.
+    *   [ ] **Implementar Upload e Parse (Client-Side):**
+        *   No `CampaignForm.tsx` (ou um sub-componente), adicionar lógica para:
+            *   Capturar o arquivo do `Input type="file"`.
+            *   Instalar e usar `xlsx` ou `sheetjs` para ler o arquivo no navegador.
+            *   Extrair a lista de contatos (números de telefone, etc.).
+            *   Armazenar a lista processada no estado do formulário.
+
+**4. Integração - Server Action e Criação da Campanha:**
+    *   [ ] **Definir Server Action:**
+        *   Criar `lib/actions/campaignActions.ts` (ou definir diretamente em `page.tsx`).
+        *   Definir uma função `createCampaignAction` que recebe os dados do formulário (incluindo a lista de contatos processada) e `workspaceId`.
+    *   [ ] **Implementar Lógica do Server Action:**
+        *   Validar os dados recebidos.
+        *   Usar `lib/db.ts` para:
+            *   Criar o registro `Campaign` associado ao `workspaceId`.
+            *   Criar os registros `CampaignContact` para cada contato na lista (usar `prisma.campaignContact.createMany` para eficiência), associando ao `campaignId` recém-criado.
+        *   Usar `lib/queues/campaignQueue.ts` para adicionar um **único job inicial** à fila, contendo `{ campaignId: newCampaign.id }`.
+        *   Retornar sucesso ou erro.
+    *   [ ] **Conectar Formulário ao Action:**
+        *   No `CampaignForm.tsx`, implementar a função `onSubmit`.
+        *   Chamar o `createCampaignAction` passando os dados do estado.
+        *   Usar `react-hot-toast` para dar feedback ao usuário (sucesso, erro).
+        *   Considerar desabilitar o botão de submit durante o processamento.
+
+**5. Backend - Lógica Principal do Worker:**
+    *   [ ] **Implementar Processamento do Job:** Dentro do `campaignWorker.ts`:
+        *   Receber o `job.data.campaignId`.
+        *   Buscar `Campaign` e `Workspace` associado (`include: { workspace: true }`).
+        *   **Verificar Status:** Se `Campaign.status` for `PAUSED` ou `CANCELLED`, não fazer nada e retornar (ou logar).
+        *   **Buscar Próximo Contato:** Buscar **um** `CampaignContact` com `status: PENDING` e `campaignId` correspondente. Se não encontrar, atualizar `Campaign.status` para `COMPLETED` e retornar.
+        *   **Verificar Janela de Tempo:**
+            *   Obter hora/dia atual (usar `date-fns` ou `dayjs` para robustez com fusos).
+            *   Comparar com `allowedSendDays`, `allowedSendStartTime`, `allowedSendEndTime` da campanha.
+        *   **Se Dentro da Janela:**
+            *   Atualizar `Campaign.status` para `PROCESSING` (se ainda for `PENDING`).
+            *   Chamar `lumibotSender` (`enviarTextoLivreLumibot` ou outra) passando `contactInfo`, `campaign.message`, e o `token` do `workspace`.
+            *   Se envio OK: Atualizar `CampaignContact.status` para `SENT` e `sentAt`.
+            *   Se envio Falhou: Atualizar `CampaignContact.status` para `FAILED` e salvar `error`.
+            *   **Agendar Próximo Envio:** Adicionar novo job à `campaignQueue` com o mesmo `campaignId` e `delay: campaign.sendIntervalSeconds * 1000`.
+        *   **Se Fora da Janela:**
+            *   Calcular tempo (em ms) até o início da *próxima* janela permitida.
+            *   Adicionar novo job à `campaignQueue` com o mesmo `campaignId` e o `delay` calculado.
+
+**6. Frontend - Visualização e Gerenciamento (Opcional/Futuro):**
+    *   [ ] Criar página `app/workspace/[slug]/campaigns/page.tsx` para listar campanhas existentes.
+    *   [ ] Exibir status da campanha.
+    *   [ ] Adicionar botões para Pausar/Retomar/Cancelar campanhas (requer atualização do status no DB e talvez lógica no worker para verificar o status).
+    *   [ ] Mostrar estatísticas básicas (enviados/falhados).
+
+**7. Refinamentos:**
+    *   [ ] Adicionar validação de input robusta (frontend e backend).
+    *   [ ] Melhorar tratamento de erros e logs no worker e server action.
+    *   [ ] Garantir segurança (verificar se o usuário tem permissão para criar/ver campanhas no workspace).
+    *   [ ] Testar exaustivamente a lógica de agendamento e janelas de tempo.
+    *   [ ] Considerar limites da API Lumibot (rate limiting pode ser necessário no worker, além do intervalo definido).
