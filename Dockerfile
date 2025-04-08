@@ -13,7 +13,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 # --frozen-lockfile garante que as versões exatas do lockfile sejam usadas
 # --prod pode ser omitido aqui se devDependencies forem necessárias para o build
-RUN pnpm install --frozen-lockfile # <<< Agora o pnpm deve ser encontrado
+RUN pnpm install --frozen-lockfile 
 
 # Copiar o restante do código da aplicação
 # Atenção: Certifique-se de ter um .dockerignore para evitar copiar node_modules, .git, dist, etc.
@@ -24,10 +24,5 @@ RUN pnpm run prisma:generate
 
 # Construir todas as partes da aplicação (Next.js, workers, shared-lib)
 # Use o comando de build geral do seu CLAUDE.md
-RUN pnpm run build
+RUN pnpm run build 
 
-# (Opcional) Remover dependências de desenvolvimento se não forem mais necessárias
-# RUN pnpm prune --prod
-
-# ---- Estágio 2: Runner ----
-# ... (o restante do Dockerfile continua igual) ...

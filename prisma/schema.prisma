@@ -189,12 +189,12 @@ model User {
   id                String                @id @default(uuid())
   name              String?
   email             String                @unique
-  email_verified    DateTime?
+  email_verified    DateTime?             @map("email_verified")
   image             String?
   password          String?
-  created_at        DateTime              @default(now())
-  updated_at        DateTime              @updatedAt
-  is_super_admin    Boolean               @default(false)
+  created_at        DateTime              @default(now()) @map("created_at")
+  updated_at        DateTime              @updatedAt @map("updated_at")
+  is_super_admin    Boolean               @default(false) @map("is_super_admin")
   accounts          Account[]
   sessions          Session[]
   created_tokens    WorkspaceApiToken[]
@@ -209,28 +209,28 @@ model User {
 
 model Account {
   id                  String  @id @default(uuid())
-  user_id             String
+  user_id             String  @map("user_id")
   type                String
   provider            String
-  provider_account_id String
+  provider_account_id String  @map("provider_account_id")
   refresh_token       String?
   access_token        String?
   expires_at          Int?
-  token_type          String?
+  token_type          String? @map("token_type")
   scope               String?
   id_token            String?
-  session_state       String?
+  session_state       String? @map("session_state")
   user                User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  @@unique([provider, provider_account_id])
+  @@unique([provider, provider_account_id], name: "provider_provider_account_id")
   @@map("accounts")
   @@schema("workspace_schema")
 }
 
 model Session {
   id            String   @id @default(uuid())
-  session_token String   @unique
-  user_id       String
+  session_token String   @unique @map("session_token")
+  user_id       String   @map("user_id")
   expires       DateTime
   user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 

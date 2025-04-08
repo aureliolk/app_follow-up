@@ -43,7 +43,7 @@ export default function AISettingsForm() {
           setModelPreference(workspaceModelPref);
       }
     }
-  }, [workspace, systemPrompt, modelPreference]);
+  }, [workspace]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
