@@ -148,10 +148,10 @@ export async function PUT(
 // --- DELETE: Excluir cliente ---
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const clientId = params.id;
+    const { id: clientId } = await params;
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId'); // Espera workspaceId como query param
 
