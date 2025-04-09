@@ -181,6 +181,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                        update: {
                                            last_message_at: new Date(receivedTimestamp),
                                            status: ConversationStatus.ACTIVE, // Reabre a conversa se estava fechada
+                                           channel: 'WHATSAPP',
                                            updated_at: new Date(),
                                        },
                                        create: {
