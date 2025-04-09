@@ -25,6 +25,7 @@ import {
   Folders,
   Contact,
   BrainCog,
+  Cable,
 } from 'lucide-react';
 import WorkspaceHeader from './components/WorkspaceHeader'; // <<< Importar
 import WorkspaceFooter from './components/WorkspaceFooter'; // <<< Importar (opcional)
@@ -57,7 +58,8 @@ export default function WorkspaceLayout({
     { href: '/conversations', label: 'Conversas', icon: MessageSquare },
     { href: '/clients', label: 'Clientes', icon: Contact },
     // { href: '/followup', label: 'Follow-up', icon: MessageSquare },
-    { href: '/campaigns/new', label: 'Campanhas', icon: CheckSquare },
+    { href: '/campaigns/new', label: 'Disparador', icon: CheckSquare },
+    { href: '/integrations/whatsapp', label: 'Integrações', icon: Cable },
     { href: '/members', label: 'Membros', icon: Users },
     { href: '/ia', label: 'IA', icon: BrainCog },
     { href: '/settings', label: 'Configurações', icon: Settings },

@@ -340,7 +340,7 @@ export default function ConversationDetail() {
       <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
         {isLoadingMessages && !messages.length && (
           <div className="flex justify-center items-center h-32">
-            <LoadingSpinner message="Carregando histórico..." size="small" />
+            <LoadingSpinner message="Carregando histórico... asda"  />
           </div>
         )}
         {messageError && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}

@@ -50,38 +50,44 @@ export async function GET(req: NextRequest) {
     const conversations = await prisma.conversation.findMany({
       where: {
         workspace_id: workspaceId,
-        // A condição agora é baseada na existência de um FollowUp com o status desejado
-        // para o cliente desta conversa, neste workspace.
-        client: {
-          follow_ups: {
-            some: { // Precisa ter PELO MENOS UM followup que satisfaça a condição
-              workspace_id: workspaceId, // Garante que é do workspace correto
-              status: {
-                in: prismaStatusesToFilter // Usa os status mapeados
+        OR: [
+          {
+            client: {
+              follow_ups: {
+                some: {
+                  workspace_id: workspaceId,
+                  status: { in: prismaStatusesToFilter }
+                }
+              }
+            }
+          },
+          {
+            client: {
+              follow_ups: {
+                none: {
+                  workspace_id: workspaceId
+                }
               }
             }
           }
-        }
-        // Você pode remover o filtro por conversation.status se o status do FollowUp for o principal
-        // status: ConversationStatus.ACTIVE
+        ]
       },
       include: {
         client: {
           select: {
             id: true, name: true, phone_number: true,
-            // Inclui o follow-up MAIS RECENTE que corresponde ao filtro de status
             follow_ups: {
               where: {
                 workspace_id: workspaceId,
                 status: { in: prismaStatusesToFilter }
               },
-              orderBy: { started_at: 'desc' }, // Pega o mais recente DENTRE os filtrados
+              orderBy: { started_at: 'desc' },
               select: { id: true, status: true },
               take: 1
             }
           }
         },
-        messages: { // Última mensagem
+        messages: {
           select: { content: true, timestamp: true, sender_type: true },
           orderBy: { timestamp: 'desc' },
           take: 1,
