@@ -1,11 +1,14 @@
-// app/api/webhook/ingress/whatsapp/route.ts
 import { type NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto'; // Importa a biblioteca crypto do Node.js
+import { prisma } from '@/lib/db';
+import { messageProcessingQueue } from '@/lib/queues/messageProcessingQueue';
+import { ConversationStatus, MessageSenderType } from '@prisma/client';
+import { redisConnection } from '@/lib/redis';
 
-// --- Método GET para Verificação (Já implementado) ---
+// --- Método GET para Verificação (Implementado) ---
 export async function GET(request: NextRequest) {
-    // ... (código anterior do GET permanece aqui) ...
-     console.log('[WHATSAPP WEBHOOK] Recebida requisição GET para verificação.');
+    // ... código GET existente ...
+    console.log('[WHATSAPP WEBHOOK] Recebida requisição GET para verificação.');
 
     const searchParams = request.nextUrl.searchParams;
     const mode = searchParams.get('hub.mode');
@@ -40,16 +43,15 @@ export async function GET(request: NextRequest) {
     }
 }
 
-
-// --- Método POST para Receber Eventos ---
+// --- Método POST para Receber Eventos --- 
 export async function POST(request: NextRequest) {
   console.log('[WHATSAPP WEBHOOK] Recebida requisição POST (evento).');
 
   // 1. Obter o corpo RAW da requisição (essencial para validar assinatura)
-  const rawBody = await request.text(); // Ler como texto primeiro
+  // Usamos request.clone() para poder ler o corpo duas vezes (uma como texto, outra como json se válido)
+  const rawBody = await request.clone().text();
 
   // 2. Obter a assinatura enviada pela Meta do cabeçalho
-  // A assinatura vem no formato "sha256=HASH_REAL"
   const signatureHeader = request.headers.get('X-Hub-Signature-256');
   console.log(`[WHATSAPP WEBHOOK] Assinatura recebida: ${signatureHeader}`);
 
@@ -59,21 +61,18 @@ export async function POST(request: NextRequest) {
   }
 
   // 3. Validar a assinatura
-  const appSecret = process.env.WHATSAPP_APP_SECRET; // <<< Carregue seu Segredo do App Meta da variável de ambiente
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
 
   if (!appSecret) {
     console.error('[WHATSAPP WEBHOOK] ERRO DE CONFIGURAÇÃO: WHATSAPP_APP_SECRET não definido no .env!');
-    // Não podemos validar sem o segredo, retornar erro interno.
     return new NextResponse('Internal Server Error: App Secret not configured', { status: 500 });
   }
 
-  // Calcula o hash esperado usando o corpo RAW e o segredo
   const expectedSignature = crypto
     .createHmac('sha256', appSecret)
     .update(rawBody)
     .digest('hex');
 
-  // Compara o hash calculado com o hash enviado pela Meta (removendo o prefixo "sha256=")
   const receivedSignatureHash = signatureHeader.split('=')[1];
 
   if (expectedSignature !== receivedSignatureHash) {
@@ -83,47 +82,164 @@ export async function POST(request: NextRequest) {
 
   console.log('[WHATSAPP WEBHOOK] Assinatura validada com sucesso.');
 
-  // 4. Processar o corpo (agora que é seguro) e adicionar à fila
+  // 4. Processar o corpo (agora que é seguro)
   try {
-    const payload = JSON.parse(rawBody); // Agora faz o parse do JSON
-    console.log('[WHATSAPP WEBHOOK] Payload recebido:', JSON.stringify(payload, null, 2));
+    const payload = await request.json(); // Agora faz o parse do JSON
+    // console.log('[WHATSAPP WEBHOOK] Payload recebido e validado:', JSON.stringify(payload, null, 2)); // Pode ser muito verboso
 
-    // TODO: Analisar o `payload` para encontrar mensagens/eventos relevantes
-    // Exemplo básico (precisa ser adaptado à estrutura REAL do payload da Meta):
+    // --- Início Lógica de Processamento REAL ---
     if (payload.object === 'whatsapp_business_account') {
-        for (const entry of payload.entry) {
-            for (const change of entry.changes) {
-                if (change.field === 'messages') {
-                     // Iterar sobre as mensagens dentro de 'value.messages'
-                     for (const message of change.value.messages || []) {
-                         if (message.type === 'text') { // Exemplo: processar apenas texto
-                            const from = message.from; // Número do remetente
-                            const messageBody = message.text.body;
-                            const timestamp = new Date(parseInt(message.timestamp, 10) * 1000); // Timestamp UNIX
-                            const wamId = message.id; // ID da mensagem WhatsApp
+      for (const entry of payload.entry || []) {
+        for (const change of entry.changes || []) {
+          if (change.field === 'messages' && change.value?.messages) {
+            const metadata = change.value.metadata; // Metadados da mensagem (contém IDs)
+            const contacts = change.value.contacts; // Informações de quem enviou
+            const messages = change.value.messages; // Array de mensagens
 
-                            console.log(`[WHATSAPP WEBHOOK] Mensagem de texto recebida de ${from}: "${messageBody}" (ID: ${wamId})`);
+            for (const message of messages) {
+              // Processar apenas mensagens de texto recebidas (ignorar status de entrega, etc.)
+              if (message.type === 'text' && message.from) {
+                const receivedTimestamp = parseInt(message.timestamp, 10) * 1000; // Timestamp da mensagem (em segundos, converter para ms)
+                const senderPhoneNumber = message.from; // Número de quem enviou
+                const messageText = message.text.body;
+                const messageIdFromWhatsapp = message.id; // ID da mensagem na API do WhatsApp
+                const workspacePhoneNumberId = metadata?.phone_number_id; // ID do número da EMPRESA que recebeu
 
-                            // TODO: Adicionar Job à Fila (ex: whatsappWebhookQueue)
-                            // const jobData = { from, messageBody, timestamp, wamId, /* outros dados como workspaceId se puder determinar */ };
-                            // await whatsappWebhookQueue.add('processIncomingMessage', jobData);
-                            console.log(`[WHATSAPP WEBHOOK] Placeholder: Adicionaria job para processar msg de ${from}`);
-                         }
-                         // TODO: Lidar com outros tipos de mensagem (imagem, áudio, status, etc.) se necessário
-                     }
+                if (!workspacePhoneNumberId) {
+                  console.error('[WHATSAPP WEBHOOK] phone_number_id não encontrado nos metadados. Impossível associar ao workspace.');
+                  continue; // Pula para a próxima mensagem
                 }
-                // TODO: Lidar com outros tipos de 'field' (ex: message_statuses)
+
+                console.log(`[WHATSAPP WEBHOOK] Mensagem de texto recebida de ${senderPhoneNumber} via ${workspacePhoneNumberId}: "${messageText.substring(0,50)}..."`);
+
+                try {
+                  // 1. Encontrar Workspace pelo ID do número de telefone (use findFirst)
+                  const workspace = await prisma.workspace.findFirst({
+                    where: { whatsappPhoneNumberId: workspacePhoneNumberId },
+                    select: { id: true }
+                  });
+
+                  if (!workspace) {
+                    console.error(`[WHATSAPP WEBHOOK] Workspace não encontrado para whatsappPhoneNumberId: ${workspacePhoneNumberId}`);
+                    continue;
+                  }
+                  const workspaceId = workspace.id;
+
+                  // 2. Encontrar ou Criar Cliente (Use correct index name suggested by linter)
+                  const client = await prisma.client.upsert({
+                    where: {
+                      // Using correct index name based on linter suggestion
+                      workspace_id_phone_number_channel: {
+                        workspace_id: workspaceId,
+                        phone_number: senderPhoneNumber,
+                        channel: 'WHATSAPP'
+                      }
+                    },
+                    update: { name: contacts?.find((c:any) => c.wa_id === senderPhoneNumber)?.profile?.name || 'WhatsApp User' },
+                    create: {
+                      workspace_id: workspaceId,
+                      phone_number: senderPhoneNumber,
+                      channel: 'WHATSAPP',
+                      name: contacts?.find((c:any) => c.wa_id === senderPhoneNumber)?.profile?.name || 'WhatsApp User',
+                    },
+                    select: { id: true }
+                  });
+                  const clientId = client.id;
+
+                  // 3. Encontrar ou Criar Conversa (Use correct index name suggested by linter)
+                  const conversation = await prisma.conversation.upsert({
+                    where: {
+                      // Using correct index name based on linter suggestion
+                      workspace_id_client_id_channel: {
+                         workspace_id: workspaceId,
+                         client_id: clientId,
+                         channel: 'WHATSAPP'
+                      }
+                    },
+                    update: {
+                       last_message_at: new Date(receivedTimestamp),
+                       status: ConversationStatus.ACTIVE,
+                       channel: 'WHATSAPP',
+                       is_ai_active: true,
+                    },
+                    create: {
+                      workspace_id: workspaceId,
+                      client_id: clientId,
+                      channel: 'WHATSAPP',
+                      status: ConversationStatus.ACTIVE,
+                      is_ai_active: true,
+                      last_message_at: new Date(receivedTimestamp),
+                    },
+                     // Adding channel to select to confirm the value after upsert
+                     select: { id: true, is_ai_active: true, channel: true }
+                  });
+                  const conversationId = conversation.id;
+
+                  // <<< NOVO LOG APÓS UPSERT >>>
+                  console.log(`[WHATSAPP WEBHOOK] Conversation Upsert executado para ID: ${conversationId}. Canal retornado: ${conversation.channel}. Intenção era definir/atualizar para WHATSAPP.`);
+
+                  // 4. Salvar a Mensagem Recebida (ensure api_message_id is removed or correct)
+                  const newMessage = await prisma.message.create({
+                    data: {
+                      conversation_id: conversationId,
+                      sender_type: MessageSenderType.CLIENT,
+                      content: messageText,
+                      timestamp: new Date(receivedTimestamp),
+                      // api_message_id: messageIdFromWhatsapp, // Ensure removed/correct
+                    },
+                    select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true }
+                  });
+                  const newMessageId = newMessage.id;
+
+                   // 5. Publicar no Redis (use imported redisConnection)
+                  try {
+                       const redisChannel = `chat-updates:${conversationId}`;
+                       // Construct payload matching potential UI expectations (ensure all fields are present)
+                       const redisPayload = JSON.stringify({
+                           id: newMessage.id,
+                           conversation_id: newMessage.conversation_id,
+                           content: newMessage.content,
+                           sender_type: newMessage.sender_type,
+                           timestamp: newMessage.timestamp.toISOString(), // Send ISO string
+                           // Include other fields if needed by UI, e.g., api_message_id if you re-add it
+                       });
+                       await redisConnection.publish(redisChannel, redisPayload); // Use imported connection
+                       console.log(`[WHATSAPP WEBHOOK] Mensagem ${newMessageId} publicada no Redis canal ${redisChannel}`);
+                   } catch (publishError) {
+                       console.error(`[WHATSAPP WEBHOOK] Falha ao publicar mensagem ${newMessageId} no Redis:`, publishError);
+                   }
+
+                  // 6. Adicionar Job à Fila (Use correct job name)
+                  if (conversation.is_ai_active) {
+                     await messageProcessingQueue.add('process-message', { // Correct job name
+                         conversationId: conversationId,
+                         clientId: clientId,
+                         newMessageId: newMessageId,
+                         workspaceId: workspaceId,
+                         receivedTimestamp: Date.now()
+                     });
+                     console.log(`[WHATSAPP WEBHOOK] Job 'process-message' adicionado para msg ${newMessageId} (Conv: ${conversationId})`);
+                  } else {
+                      console.log(`[WHATSAPP WEBHOOK] IA inativa para Conv ${conversationId}. Job NÃO adicionado.`);
+                  }
+
+                } catch (dbError) {
+                  console.error(`[WHATSAPP WEBHOOK] Erro de banco de dados ao processar mensagem de ${senderPhoneNumber}:`, dbError);
+                  // Continuar para a próxima mensagem, mesmo se uma falhar
+                }
+              }
             }
+          }
         }
+      }
     }
+    // --- Fim Lógica de Processamento REAL ---
 
   } catch (error) {
-    console.error('[WHATSAPP WEBHOOK] Erro ao processar o payload JSON:', error);
-    // Mesmo com erro no processamento, AINDA respondemos 200 OK para a Meta!
-    // A Meta não se importa se o *seu* processamento falhou, apenas se você recebeu.
+    console.error('[WHATSAPP WEBHOOK] Erro ao processar o payload JSON ou lógica interna:', error);
+    // Mesmo com erro no processamento, respondemos 200 OK para a Meta.
   }
 
   // 5. Responder 200 OK para a Meta RAPIDAMENTE!
-  // Isso confirma o recebimento, mesmo que o processamento interno falhe ou seja assíncrono.
   return new NextResponse('EVENT_RECEIVED', { status: 200 });
-}
+} 
