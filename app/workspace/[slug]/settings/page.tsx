@@ -1,10 +1,9 @@
 // app/workspace/[slug]/settings/page.tsx
 'use client';
-import { useState } from 'react'; // <<< Adicionar useState
+import { useState, Suspense } from 'react';
 import { useWorkspace } from '@/context/workspace-context';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ApiTokenManager from './components/ApiTokenManager';
-import LumibotSettingsForm from './components/LumibotSettingsForm';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +13,7 @@ import IngressWebhookDisplay from './components/IngressWebhookDisplay';
 
 export default function WorkspaceSettingsPage() {
   const { workspace, isLoading } = useWorkspace();
-  const [activeTab, setActiveTab] = useState('general'); // <<< ESTADO PARA ABA ATIVA
+  const [activeTab, setActiveTab] = useState('general');
 
   // Definição das instruções movida para cá para limpeza
   const lumibotInstructions = (
@@ -45,10 +44,9 @@ export default function WorkspaceSettingsPage() {
     <div className="container mx-auto py-6">
       <h1 className="text-2xl font-bold mb-6 text-foreground">Configurações do Workspace: {workspace.name}</h1>
 
-      {/* <<< Controlar o valor e a mudança da aba >>> */}
       <Tabs
-        value={activeTab} // Controlado pelo estado
-        onValueChange={setActiveTab} // Atualiza o estado quando a aba muda
+        value={activeTab}
+        onValueChange={setActiveTab}
         className="w-full"
        >
         <TabsList className="mb-8 grid w-full grid-cols-2 md:grid-cols-5 bg-card border border-border"> {/* Ajustado grid-cols para 5 */}
@@ -56,9 +54,10 @@ export default function WorkspaceSettingsPage() {
           <TabsTrigger value="api">API</TabsTrigger>
           <TabsTrigger value="integrations">Integrações</TabsTrigger>
           <TabsTrigger value="notifications">Notificações</TabsTrigger>
+          {/* <<< Membros pode precisar de lógica separada ou permissão >>> */}
+          {/* <TabsTrigger value="members">Membros</TabsTrigger> */}
         </TabsList>
 
-        {/* Conteúdo das Abas (sem alterações aqui) */}
         <TabsContent value="general" className="space-y-6">
            <Card className="border-border bg-card">
              <CardHeader>
@@ -87,7 +86,23 @@ export default function WorkspaceSettingsPage() {
         </TabsContent>
 
         <TabsContent value="integrations" className="space-y-6">
-           <LumibotSettingsForm />
+           {/* <<< Adicionar aqui as configurações de integração WhatsApp >>> */}
+           {/* (Isso provavelmente precisará de um novo componente) */}
+           <Card className="border-border bg-card">
+             <CardHeader>
+               <CardTitle className="text-card-foreground">Integração WhatsApp</CardTitle>
+                <CardDescription>
+                  Configure a conexão com a API Cloud do WhatsApp.
+                </CardDescription>
+             </CardHeader>
+             <CardContent>
+                 {/* Aqui entraria o formulário/componente para WhatsApp */}
+                 <div className="bg-blue-900/20 border border-blue-700 text-blue-200 p-4 rounded-md">
+                   Configuração da Integração WhatsApp (Em breve... ou carregar componente existente).
+                 </div>
+             </CardContent>
+           </Card>
+
            <IngressWebhookDisplay
              channelName="Lumibot / Chatwoot"
              pathSegment="lumibot"
@@ -110,6 +125,13 @@ export default function WorkspaceSettingsPage() {
              </CardContent>
            </Card>
         </TabsContent>
+
+        {/* ... Aba Members (se for mantida) ... */}
+        {/*
+        <TabsContent value="members" className="space-y-6">
+           {/* <MemberList workspace={workspace} /> */}
+        {/* </TabsContent>
+        */}
       </Tabs>
     </div>
   );

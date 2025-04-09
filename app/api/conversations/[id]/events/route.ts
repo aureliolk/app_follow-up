@@ -47,6 +47,8 @@ export async function GET(
 
             // Handler para mensagens recebidas no canal Redis
             subscriber.on('message', (ch, message) => {
+                 // <<< DEBUG LOG >>>
+                 console.log(`[SSE Route DEBUG] Raw message received by subscriber. Target Channel: ${channel}, Received on Channel: ${ch}`);
                  if (ch === channel) {
                     console.log(`[SSE Route] Mensagem recebida no canal ${channel}`);
                     try {

@@ -2,7 +2,8 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection } from '../redis';
 import { CAMPAIGN_SENDER_QUEUE, campaignQueue } from '../queues/campaignQueue';
 import { prisma } from '../db'; // Importa a instância nomeada do Prisma Client
-import { enviarTextoLivreLumibot, sendTemplateWhatsappOficialLumibot } from '../channel/lumibotSender'; // Importar funções de envio
+import { sendWhatsappMessage } from '../channel/whatsappSender'; // <<< ADICIONAR IMPORT WHATSAPP >>>
+import { decrypt } from '../encryption'; // <<< ADICIONAR IMPORT DECRYPT >>>
 import { Prisma } from '@prisma/client'; // Importar tipos Prisma se necessário
 import { getDay, parse, isWithinInterval, setHours, setMinutes, setSeconds, setMilliseconds, format, addDays, differenceInMilliseconds } from 'date-fns';
 // Importar bibliotecas de data/hora (ex: date-fns ou dayjs) se forem usadas
@@ -123,67 +124,83 @@ const processCampaignJob = async (job: Job<CampaignJobData>) => {
             await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PROCESSING' } });
         }
 
-        // 4. Enviar Mensagem via Lumibot
-        const lumibotToken = campaign.workspace.lumibot_api_token;
-        const lumibotAccountId = campaign.workspace.lumibot_account_id; // Assumindo que você tem isso no workspace
+        // <<< INÍCIO: LÓGICA DE ENVIO WHATSAPP (Substituir Lumibot) >>>
+        const whatsappToken = campaign.workspace.whatsappAccessToken;
+        const whatsappPhoneId = campaign.workspace.whatsappPhoneNumberId;
+        const clientPhoneNumber = nextContact.contactInfo; // Assumindo que contactInfo é o número do cliente
 
-        if (!lumibotToken || !lumibotAccountId) {
-            throw new Error(`Credenciais Lumibot não configuradas para o workspace ${campaign.workspaceId}`);
+        if (!whatsappToken || !whatsappPhoneId || !clientPhoneNumber) {
+            console.error(`[WORKER ${job.id}] Credenciais WhatsApp ou número do cliente faltando para Workspace ${campaign.workspaceId} / Contato ${nextContact.id}.`);
+            // Marcar como falha e talvez pausar campanha?
+            await prisma.campaignContact.update({
+                where: { id: nextContact.id },
+                data: { status: 'FAILED', error: 'Credenciais WhatsApp ou número do cliente ausentes no workspace/contato.' },
+            });
+             // Considerar pausar a campanha ou notificar admin
+             // await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PAUSED' } });
+            throw new Error(`Credenciais WhatsApp ou número do cliente faltando para Workspace ${campaign.workspaceId} / Contato ${nextContact.id}.`);
         }
 
-        // --- Escolher tipo de envio --- 
-        let sendResult: { success: boolean; responseData: any };
+        let decryptedAccessToken: string | null = null;
+        try {
+            decryptedAccessToken = decrypt(whatsappToken); // <<< Usar função decrypt importada >>>
+            if (!decryptedAccessToken) throw new Error("Token de acesso WhatsApp descriptografado está vazio.");
+        } catch (decryptError: any) {
+             console.error(`[WORKER ${job.id}] Falha ao descriptografar token WhatsApp para Workspace ${campaign.workspaceId}:`, decryptError.message);
+             await prisma.campaignContact.update({
+                where: { id: nextContact.id },
+                data: { status: 'FAILED', error: 'Falha ao descriptografar token de acesso WhatsApp.' },
+             });
+             // Considerar pausar a campanha
+             throw new Error(`Falha ao descriptografar token WhatsApp: ${decryptError.message}`);
+        }
+
+        let sendSuccess = false;
+        let errorMessage: string | null = null;
+
+        // --- Lógica de Envio WhatsApp --- 
+        // TODO: Implementar envio de TEMPLATE vs TEXTO LIVRE para WhatsApp
+        // Por agora, vamos enviar apenas texto livre (campaign.message)
 
         if (campaign.isTemplate) {
-            // --- Envio via Template HSM --- 
-            console.log(`[WORKER ${job.id}] Tentando envio via Template HSM.`);
-            if (!campaign.templateName || !campaign.templateCategory) {
-                throw new Error(`Campanha ${campaignId} marcada como template, mas nome ou categoria do template estão faltando.`);
-            }
-
-            const templateData = {
-                message_content: campaign.message,    // Conteúdo base do template
-                template_name: campaign.templateName,   // Nome EXATO do HSM aprovado
-                category: campaign.templateCategory,    // Categoria do template
-            };
-
-            // Nota: Usar contactName (pode ser null/undefined)
-            const clientName = nextContact.contactName || ''; // Usar string vazia se não houver nome
-
-            sendResult = await sendTemplateWhatsappOficialLumibot(
-                lumibotAccountId,
-                nextContact.contactInfo, // Assumindo que contactInfo é o ID/telefone do destinatário
-                lumibotToken,
-                templateData,
-                clientName
-            );
-
-        } else {
-            // --- Envio via Texto Livre --- 
-            console.log(`[WORKER ${job.id}] Tentando envio via Texto Livre.`);
-            sendResult = await enviarTextoLivreLumibot(
-                lumibotAccountId,
-                nextContact.contactInfo, // Assumindo que contactInfo é o ID/telefone do destinatário
-                lumibotToken,
-                campaign.message
-            );
+            console.warn(`[WORKER ${job.id}] Envio de template WhatsApp ainda não implementado neste worker. Enviando como texto livre por enquanto.`);
+            // Aqui entraria a lógica para chamar uma função como sendWhatsappTemplateMessage(...)
+            // passando templateName, category, parâmetros, etc.
         }
-        // --- Fim Escolher tipo de envio ---
+        
+        console.log(`[WORKER ${job.id}] Tentando envio via WhatsApp (Texto Livre) para ${clientPhoneNumber}...`);
+        try {
+            const sendResult = await sendWhatsappMessage(
+                whatsappPhoneId,
+                clientPhoneNumber,
+                decryptedAccessToken,
+                campaign.message // Usando a mensagem da campanha
+            );
+
+            if (sendResult.success) {
+                sendSuccess = true;
+                console.log(`[WORKER ${job.id}] Mensagem enviada com sucesso via WhatsApp para contato ${nextContact.id}. Message ID: ${sendResult.messageId}`);
+            } else {
+                errorMessage = JSON.stringify(sendResult.error || 'Erro desconhecido no envio WhatsApp');
+                console.error(`[WORKER ${job.id}] Falha ao enviar mensagem via WhatsApp para contato ${nextContact.id}. Erro:`, errorMessage);
+            }
+        } catch (sendError: any) {
+             errorMessage = `Exceção durante envio WhatsApp: ${sendError.message}`;
+             console.error(`[WORKER ${job.id}] Exceção ao enviar mensagem via WhatsApp para contato ${nextContact.id}:`, sendError);
+        }
+        // <<< FIM: LÓGICA DE ENVIO WHATSAPP >>>
 
         // 5. Atualizar Status do Contato
-        if (sendResult.success) {
+        if (sendSuccess) {
             await prisma.campaignContact.update({
                 where: { id: nextContact.id },
                 data: { status: 'SENT', sentAt: new Date() },
             });
-            console.log(`[WORKER] Mensagem enviada com sucesso para contato ${nextContact.id}`);
         } else {
             await prisma.campaignContact.update({
                 where: { id: nextContact.id },
-                data: { status: 'FAILED', error: JSON.stringify(sendResult.responseData) },
+                data: { status: 'FAILED', error: errorMessage },
             });
-             console.error(`[WORKER] Falha ao enviar mensagem para contato ${nextContact.id}. Erro:`, sendResult.responseData);
-            // Considerar se uma falha deve parar a campanha ou apenas marcar o contato
         }
 
         // 6. Agendar Próximo Job (se houver mais contatos)
@@ -276,6 +293,13 @@ const processCampaignJob = async (job: Job<CampaignJobData>) => {
   } catch (error: any) {
     console.error(`[WORKER ERROR] Erro ao processar job ${job.id} para Campaign ${campaignId}:`, error);
     // Lançar o erro novamente faz com que BullMQ tente novamente baseado nas `attempts`
+    if (job?.attemptsMade >= (job?.opts?.attempts ?? 3)) {
+        console.error(`[WORKER] Job ${job.id} falhou após ${job.attemptsMade} tentativas. Desistindo.`);
+        // Marcar campanha como pausada?
+        try {
+            await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'PAUSED' } });
+        } catch (updateError) { /* ignore */ }
+    }
     throw error;
   }
 };

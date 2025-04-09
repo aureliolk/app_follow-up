@@ -49,29 +49,44 @@ export async function saveWhatsappCredentialsAction(
   } = validation.data;
 
   try {
-    // Criptografar os segredos ANTES de salvar
-    console.log(`[ACTION] Criptografando segredos para Workspace ${workspaceId}...`);
-    const encryptedAccessToken = encrypt(accessToken);
-    const encryptedAppSecret = encrypt(appSecret);
-    console.log(`[ACTION] Segredos criptografados.`);
+    // Construir o objeto de dados para atualização condicionalmente
+    const updateData: any = {
+      whatsappPhoneNumberId: phoneNumberId,
+      whatsappBusinessAccountId: businessAccountId,
+      whatsappWebhookVerifyToken: webhookVerifyToken,
+      // Sempre gera um novo token de rota se um não existir, ou mantém o existente?
+      // Por enquanto, vamos gerar um novo a cada save para garantir unicidade e rota atualizada
+      whatsappWebhookRouteToken: crypto.randomBytes(16).toString('hex'),
+    };
 
-    // Gerar o token único para a rota do webhook
-    const webhookRouteToken = crypto.randomBytes(16).toString('hex');
-    console.log(`[ACTION] Gerado webhookRouteToken: ${webhookRouteToken}`);
+    // Criptografar e adicionar accessToken SOMENTE se um novo valor foi fornecido
+    if (accessToken && accessToken !== 'PRESERVE_EXISTING') { // Verifica se não é vazio e não é o placeholder
+      console.log(`[ACTION] Criptografando novo Access Token para Workspace ${workspaceId}...`);
+      updateData.whatsappAccessToken = encrypt(accessToken);
+      console.log(`[ACTION] Novo Access Token criptografado.`);
+    } else {
+      console.log(`[ACTION] Mantendo Access Token existente para Workspace ${workspaceId}.`);
+    }
 
+    // Criptografar e adicionar appSecret SOMENTE se um novo valor foi fornecido
+    if (appSecret && appSecret !== 'PRESERVE_EXISTING') { // Verifica se não é vazio e não é o placeholder
+      console.log(`[ACTION] Criptografando novo App Secret para Workspace ${workspaceId}...`);
+      updateData.whatsappAppSecret = encrypt(appSecret);
+      console.log(`[ACTION] Novo App Secret criptografado.`);
+    } else {
+      console.log(`[ACTION] Mantendo App Secret existente para Workspace ${workspaceId}.`);
+    }
+    
+    // Remover a geração duplicada do routeToken que estava abaixo
+    // console.log(`[ACTION] Gerado webhookRouteToken: ${updateData.whatsappWebhookRouteToken}`);
+
+    // Atualizar o workspace com os dados construídos
     await prisma.workspace.update({
       where: { id: workspaceId },
-      data: {
-        whatsappPhoneNumberId: phoneNumberId,
-        whatsappBusinessAccountId: businessAccountId,
-        whatsappAccessToken: encryptedAccessToken, // Salvar valor criptografado
-        whatsappAppSecret: encryptedAppSecret,   // Salvar valor criptografado
-        whatsappWebhookVerifyToken: webhookVerifyToken,
-        whatsappWebhookRouteToken: webhookRouteToken, // Salvar o token gerado
-      },
+      data: updateData,
     });
 
-    console.log(`[ACTION] Credenciais WhatsApp salvas (criptografadas) e route token gerado para Workspace ${workspaceId}`);
+    console.log(`[ACTION] Credenciais WhatsApp atualizadas (segredos preservados se não alterados) para Workspace ${workspaceId}`);
     revalidatePath(`/workspace/${workspaceId}/settings/integrations/whatsapp`); // Atualiza a página
 
     return { success: true };

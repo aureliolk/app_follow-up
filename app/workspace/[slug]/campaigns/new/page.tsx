@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db'; // Ajuste o caminho se necessário
 import { notFound } from 'next/navigation';
 import CampaignForm from './components/CampaignForm'; // Importa o formulário
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // Usando Shadcn para layout
+import { getServerSession } from 'next-auth/next'; // Importar getServerSession
+import { authOptions } from '@/lib/auth/auth-options'; // Importar authOptions
 
 interface NewCampaignPageProps {
   params: {
@@ -11,18 +13,27 @@ interface NewCampaignPageProps {
 }
 
 export default async function NewCampaignPage({ params }: NewCampaignPageProps) {
-  const { slug } = await params;
+  const session = await getServerSession(authOptions); // Obter sessão
+  if (!session?.user?.id) {
+    // Idealmente, redirecionar para login ou mostrar erro não autorizado
+    // Por simplicidade aqui, podemos retornar notFound(), mas uma página de erro seria melhor
+    notFound();
+  }
+  const userId = session.user.id; // Obter userId
 
-  // Buscar dados do workspace pelo slug
+  const { slug } = params; // Remover await daqui, params não é Promise
+
+  // Buscar dados do workspace pelo slug, verificando pertencimento
   const workspace = await prisma.workspace.findUnique({
-    where: { slug },
+    where: {
+      slug: slug, // Usar a variável slug
+      members: { some: { user_id: userId } }
+    },
     select: {
       id: true,
       name: true,
-      // Inclua outros campos se necessário, ex: lumibot_api_token, lumibot_account_id
-      // É importante buscar aqui apenas o necessário para passar ao formulário
-      lumibot_api_token: true,
-      lumibot_account_id: true,
+      // REMOVIDO: lumibot_api_token: true,
+      // REMOVIDO: lumibot_account_id: true,
     },
   });
 
@@ -31,8 +42,8 @@ export default async function NewCampaignPage({ params }: NewCampaignPageProps) 
     notFound();
   }
 
-  // Verificar se as credenciais Lumibot estão presentes, se forem essenciais
-  const lumibotConfigured = !!workspace.lumibot_api_token && !!workspace.lumibot_account_id;
+  // REMOVIDO: Verificação de configuração Lumibot
+  // const lumibotConfigured = !!workspace.lumibot_api_token && !!workspace.lumibot_account_id;
 
   return (
     <div className="container mx-auto py-10">
@@ -44,18 +55,11 @@ export default async function NewCampaignPage({ params }: NewCampaignPageProps) 
            </CardDescription>
          </CardHeader>
          <CardContent>
-           {lumibotConfigured ? (
-             <CampaignForm
-               workspaceId={workspace.id}
-               // Passe outras props se necessário, como o token (se for usar no client-side, CUIDADO)
-             />
-           ) : (
-             <div className="text-center text-red-600 bg-red-100 p-4 rounded-md">
-               <p className="font-semibold">Configuração Incompleta!</p>
-               <p>As credenciais da API Lumibot (ID da Conta e Token) precisam ser configuradas nas configurações deste workspace antes de criar campanhas.</p>
-               {/* Adicionar link para as configurações do workspace se possível */}
-             </div>
-           )}
+           {/* REMOVIDO: Renderização condicional - sempre mostra o formulário */}
+           <CampaignForm
+             workspaceId={workspace.id}
+             // Passe outras props se necessário
+           />
          </CardContent>
        </Card>
     </div>

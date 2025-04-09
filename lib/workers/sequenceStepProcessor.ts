@@ -2,7 +2,8 @@
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
 import { prisma } from '@/lib/db';
-import { enviarTextoLivreLumibot } from '@/lib/channel/lumibotSender';
+import { sendWhatsappMessage } from '@/lib/channel/whatsappSender';
+import { decrypt } from '@/lib/encryption';
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
 import { FollowUpStatus, Prisma } from '@prisma/client'; // Importe Prisma para tipos
 import { formatMsToDelayString, parseDelayStringToMs } from '@/lib/timeUtils'; // Importar utils
@@ -26,18 +27,16 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
   console.log(`[SequenceWorker ${jobId}] Processando Step Rule ${stepRuleId} para FollowUp ${followUpId}`);
 
   try {
-    // 1. Buscar FollowUp e dados relacionados indiretamente
+    // 1. Buscar FollowUp e dados relacionados
     console.log(`[SequenceWorker ${jobId}] Buscando FollowUp ${followUpId}...`);
     const followUp = await prisma.followUp.findUnique({
       where: { id: followUpId },
       include: {
-        // <<< CORREÇÃO PRINCIPAL: INCLUIR WORKSPACE E CLIENT >>>
         workspace: {
           select: {
-            id: true, // Para confirmação
-            lumibot_account_id: true,
-            lumibot_api_token: true,
-            // Buscar TODAS as regras ordenadas para encontrar a próxima
+            id: true,
+            whatsappAccessToken: true,
+            whatsappPhoneNumberId: true,
             ai_follow_up_rules: {
               orderBy: { created_at: 'asc' },
               select: { id: true, delay_milliseconds: true, message_content: true, created_at: true },
@@ -48,22 +47,7 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
           select: {
             id: true,
             name: true,
-            // Precisamos da conversa associada para obter o channel_conversation_id
-            // Buscar a MAIS RECENTE conversa ATIVA do cliente neste workspace
-            conversations: {
-                 where: {
-                     workspace_id: jobWorkspaceId, // Filtra pelo workspace correto
-                     status: 'ACTIVE' // Busca apenas conversas ativas
-                 },
-                 orderBy: {
-                     last_message_at: 'desc' // Pega a mais recente
-                 },
-                 take: 1,
-                 select: {
-                     id: true,
-                     channel_conversation_id: true
-                 }
-            }
+            phone_number: true,
           },
         },
       },
@@ -100,28 +84,30 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
     }
      console.log(`[SequenceWorker ${jobId}] Regra atual encontrada: ID=${currentRule.id}`);
 
-    // 5. Obter dados do Cliente e da Conversa
+    // 5. Obter dados do Cliente
     const clientData = followUp.client;
-    if (!clientData) {
-        console.error(`[SequenceWorker ${jobId}] ERRO INESPERADO: Cliente não incluído para FollowUp ${followUpId}.`);
-        throw new Error(`Cliente não encontrado nos dados do FollowUp ${followUpId}.`);
+    if (!clientData?.phone_number) {
+        console.error(`[SequenceWorker ${jobId}] Cliente ou número de telefone não encontrado para FollowUp ${followUpId}.`);
+        throw new Error(`Cliente ou telefone não encontrado nos dados do FollowUp ${followUpId}.`);
     }
-    // Obter a conversa mais recente ativa (buscada no include)
-    const conversationData = clientData.conversations?.[0];
-    if (!conversationData?.channel_conversation_id) {
-         console.warn(`[SequenceWorker ${jobId}] Nenhuma conversa ativa recente ou channel_conversation_id encontrado para o cliente ${clientData.id}. Não é possível enviar.`);
-         // Decidir se deve falhar ou pular. Pular pode ser mais seguro.
-         return { status: 'skipped', reason: 'Channel Conversation ID não encontrado' };
+    const clientPhoneNumber = clientData.phone_number;
+    console.log(`[SequenceWorker ${jobId}] Dados do Cliente (Nome: ${clientData.name || 'N/A'}, Telefone: ${clientPhoneNumber}) OK.`);
+
+    // 6. Obter Credenciais WhatsApp e Descriptografar
+    const { whatsappAccessToken, whatsappPhoneNumberId } = workspaceData;
+    if (!whatsappAccessToken || !whatsappPhoneNumberId) {
+      console.warn(`[SequenceWorker ${jobId}] Credenciais WhatsApp ausentes para workspace ${workspaceData.id}. Não é possível enviar.`);
+      return { status: 'skipped', reason: 'Credenciais WhatsApp ausentes' };
     }
-    const channelConversationId = conversationData.channel_conversation_id;
-     console.log(`[SequenceWorker ${jobId}] Dados do Cliente (Nome: ${clientData.name || 'N/A'}) e Conversa (ChannelID: ${channelConversationId}) OK.`);
 
-
-    // 6. Obter Credenciais Lumibot
-    const { lumibot_account_id, lumibot_api_token } = workspaceData;
-    if (!lumibot_account_id || !lumibot_api_token) {
-      console.warn(`[SequenceWorker ${jobId}] Credenciais Lumibot ausentes para workspace ${workspaceData.id}. Não é possível enviar.`);
-      return { status: 'skipped', reason: 'Credenciais Lumibot ausentes' };
+    let decryptedAccessToken: string | null = null;
+    try {
+        decryptedAccessToken = decrypt(whatsappAccessToken);
+        if (!decryptedAccessToken) throw new Error("Token de acesso WhatsApp descriptografado está vazio.");
+    } catch (decryptError: any) {
+         console.error(`[SequenceWorker ${jobId}] Falha ao descriptografar token WhatsApp para Workspace ${workspaceData.id}:`, decryptError.message);
+         // Não tentar novamente se a chave estiver errada
+         return { status: 'failed', reason: 'Falha ao descriptografar token WhatsApp' }; 
     }
 
     // 7. Formatar a Mensagem (Substituir Placeholders)
@@ -134,20 +120,32 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
     // Adicionar mais placeholders conforme necessário
     console.log(`[SequenceWorker ${jobId}] Mensagem final a ser enviada: "${messageToSend}"`);
 
-    // 8. Enviar Mensagem via Lumibot
-    console.log(`[SequenceWorker ${jobId}] Enviando mensagem para Lumibot (ChannelConvID: ${channelConversationId})...`);
-    const sendResult = await enviarTextoLivreLumibot(
-      lumibot_account_id,
-      channelConversationId,
-      lumibot_api_token,
-      messageToSend
-    );
+    // 8. Enviar Mensagem via WhatsApp
+    console.log(`[SequenceWorker ${jobId}] Enviando mensagem para WhatsApp (Número: ${clientPhoneNumber})...`);
+    let sendSuccess = false;
+    let errorMessage: string | null = null;
+    try {
+        const sendResult = await sendWhatsappMessage(
+            whatsappPhoneNumberId,
+            clientPhoneNumber,
+            decryptedAccessToken,
+            messageToSend
+        );
+        if (sendResult.success) {
+            sendSuccess = true;
+        } else {
+            errorMessage = JSON.stringify(sendResult.error || 'Erro desconhecido no envio WhatsApp');
+        }
+    } catch (sendError: any) {
+        errorMessage = `Exceção durante envio WhatsApp: ${sendError.message}`;
+        console.error(`[SequenceWorker ${jobId}] Exceção ao enviar mensagem via WhatsApp para ${clientPhoneNumber}:`, sendError);
+    }
 
     // 9. Lidar com Resultado do Envio e Agendar Próximo Passo
     let nextRuleId: string | null = null;
     let nextDelayMs: number | null = null;
 
-    if (sendResult.success) {
+    if (sendSuccess) {
       console.log(`[SequenceWorker ${jobId}] Mensagem enviada com sucesso.`);
 
       // Encontrar a PRÓXIMA regra na sequência
@@ -169,10 +167,9 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
     } else {
       // O envio falhou
-      console.error(`[SequenceWorker ${jobId}] Falha ao enviar mensagem via Lumibot:`, sendResult.responseData);
-      // Lançar erro para BullMQ tentar novamente? Ou marcar como falha e parar?
-      // Por ora, vamos lançar erro para retentativa.
-      throw new Error(`Falha ao enviar mensagem do passo ${stepRuleId} via Lumibot.`);
+      console.error(`[SequenceWorker ${jobId}] Falha ao enviar mensagem via WhatsApp:`, errorMessage);
+      // Lançar erro para BullMQ tentar novamente?
+      throw new Error(`Falha ao enviar mensagem do passo ${stepRuleId} via WhatsApp: ${errorMessage}`);
     }
 
     // 10. Atualizar o FollowUp no Banco
@@ -219,43 +216,30 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
     console.log(`[SequenceWorker ${jobId}] FollowUp ${followUpId} atualizado no DB. Novo status: ${updateData.status}, NextMsgAt: ${updateData.next_sequence_message_at || 'N/A'}`);
 
     // Opcional: Salvar a mensagem enviada no histórico de mensagens
-    try {
-        const savedMessage = await prisma.message.create({
-            data: {
-                conversation_id: conversationData.id, // ID da conversa encontrada
-                sender_type: 'AI', // Mensagem enviada pela IA da sequência
-                content: messageToSend,
-                timestamp: new Date(), // Timestamp do envio
-                metadata: { ruleId: currentRule.id, type: 'sequence_step_sent' }
-            }
-        });
-        console.log(`[SequenceWorker ${jobId}] Mensagem do passo ${currentRule.id} salva no histórico (ID: ${savedMessage.id}) da conversa ${conversationData.id}.`);
-
-        // <<< ADICIONAR PUBLICAÇÃO NO REDIS AQUI >>>
+    // PARA ISSO, PRECISAMOS DO conversation_id. Como simplificamos a busca,
+    // precisaríamos buscar a conversa ativa mais recente aqui, se quisermos salvar.
+    // Exemplo:
+    /*
+    const conversation = await prisma.conversation.findFirst({
+        where: { client_id: clientData.id, workspace_id: workspaceData.id, status: 'ACTIVE' },
+        orderBy: { last_message_at: 'desc' },
+        select: { id: true }
+    });
+    if (conversation) {
         try {
-            const channel = `chat-updates:${conversationData.id}`;
-            const payload = JSON.stringify(savedMessage); // Envia o objeto salvo
-            await redisConnection.publish(channel, payload);
-            console.log(`[SequenceWorker ${jobId}] Mensagem da sequência ${savedMessage.id} publicada no canal Redis: ${channel}`);
-        } catch (publishError) {
-            console.error(`[SequenceWorker ${jobId}] Falha ao publicar mensagem da sequência ${savedMessage.id} no Redis:`, publishError);
-            // Não lançar erro aqui
-        }
-
-    } catch(logError) {
-        console.warn(`[SequenceWorker ${jobId}] Falha ao salvar log da mensagem da sequência:`, logError);
+            const savedMessage = await prisma.message.create({ data: { ... } });
+            // ... publicar no Redis ...
+        } catch(logError) { ... }
+    } else {
+        console.warn(`[SequenceWorker ${jobId}] Conversa ativa não encontrada para salvar log da mensagem da sequência.`);
     }
-
+    */
 
     console.log(`--- [SequenceWorker ${jobId}] FIM (Sucesso) ---`);
     return { status: 'completed', nextStepScheduled: !!nextRuleId };
 
-  } catch (error) {
-    console.error(`[SequenceWorker ${jobId}] Erro CRÍTICO ao processar job de sequência para FollowUp ${followUpId}:`, error);
-    if (error instanceof Error) {
-        console.error(error.stack);
-    }
-    console.log(`--- [SequenceWorker ${jobId}] FIM (Erro Crítico) ---`);
+  } catch (error: any) {
+    console.error(`[SequenceWorker ERROR ${job?.id}] Erro processando step ${stepRuleId} para FollowUp ${followUpId}:`, error);
     // Tentar marcar FollowUp como falhado? Ou deixar BullMQ tentar novamente?
      try {
          await prisma.followUp.update({
@@ -266,7 +250,7 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
      } catch (updateError) {
           console.error(`[SequenceWorker ${jobId}] Falha ao marcar FollowUp ${followUpId} como FAILED:`, updateError);
      }
-    throw error; // Re-lança para BullMQ tratar como falha
+    throw error; // Re-lança para BullMQ
   }
 }
 

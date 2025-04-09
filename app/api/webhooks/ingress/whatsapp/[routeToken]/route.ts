@@ -227,18 +227,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     // --- Publish to Redis (Workspace Channel for List Updates) ---
                                     try {
                                         const workspaceChannel = `workspace-updates:${workspace.id}`;
+                                        // <<< ENRIQUECER PAYLOAD >>>
                                         const workspacePayload = {
                                             type: 'new_message', // Tipo do evento
+                                            // Dados da Conversa
                                             conversationId: conversation.id,
-                                            clientId: client.id, // Pode ser útil para UI
-                                            lastMessageTimestamp: newMessage.timestamp.toISOString(), // Timestamp da nova mensagem
-                                            // Adicionar outros dados se necessário (ex: sender_type)
+                                            channel: conversation.channel, // Adicionado
+                                            status: conversation.status, // Adicionado (ex: ACTIVE)
+                                            is_ai_active: conversation.is_ai_active, // Adicionado
+                                            lastMessageTimestamp: newMessage.timestamp.toISOString(), // Usar o timestamp da ÚLTIMA msg
+                                            last_message_at: new Date(newMessage.timestamp).toISOString(), // Adicionado (equivalente ao timestamp)
+                                            // Dados do Cliente
+                                            clientId: client.id,
+                                            clientName: client.name, // Adicionado
+                                            clientPhone: client.phone_number, // Adicionado
+                                            // Dados da Última Mensagem (pode ser a atual)
+                                            lastMessageContent: newMessage.content, // Adicionado
+                                            lastMessageSenderType: newMessage.sender_type, // Adicionado
+                                            // Metadata (Opcional)
+                                            metadata: conversation.metadata,
                                         };
                                         await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Notificação publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Notificação ENRIQUECIDA publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
                                     } catch (publishError) {
                                         console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar notificação no Redis (Canal Workspace):`, publishError);
-                                        // Não parar o fluxo principal por causa disso
                                     }
 
                                     // --- Enqueue Job ---

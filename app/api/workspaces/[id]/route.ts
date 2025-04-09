@@ -40,7 +40,6 @@ export async function GET(
         where: { id: workspaceId },
         select: {
             id: true, name: true, slug: true, owner_id: true, created_at: true, updated_at: true,
-            lumibot_account_id: true,
             ai_default_system_prompt: true,
             ai_model_preference: true,
             owner: { select: { id: true, name: true, email: true } },
@@ -71,12 +70,10 @@ export async function GET(
   }
 }
 
-// Esquema Zod para atualização ... (manter como está)
+// Esquema Zod para atualização
 const workspaceUpdateSchema = z.object({
   name: z.string().min(1).optional(),
   slug: z.string().min(1).optional(),
-  lumibot_account_id: z.string().optional().nullable(),
-  lumibot_api_token: z.string().optional().nullable(),
   ai_default_system_prompt: z.string().optional().nullable(),
   ai_model_preference: z.string().optional().nullable(),
 });
@@ -113,12 +110,10 @@ export async function PATCH(
     const validation = workspaceUpdateSchema.safeParse(body);
 
     if (!validation.success) {
-       return NextResponse.json(
-         { message: 'Dados inválidos', errors: validation.error.errors },
-         { status: 400 }
-       );
+        return NextResponse.json({ message: 'Dados inválidos', errors: validation.error.flatten().fieldErrors }, { status: 400 });
     }
-    const { name, slug, lumibot_account_id, lumibot_api_token, ai_default_system_prompt, ai_model_preference } = validation.data;
+
+    const { name, slug, ai_default_system_prompt, ai_model_preference } = validation.data;
 
     if (slug) {
       const existingWorkspace = await prisma.workspace.findUnique({ where: { slug } });
@@ -130,8 +125,6 @@ export async function PATCH(
     const dataToUpdate: Prisma.WorkspaceUpdateInput = {};
     if (name !== undefined) dataToUpdate.name = name;
     if (slug !== undefined) dataToUpdate.slug = slug;
-    if (lumibot_account_id !== undefined) dataToUpdate.lumibot_account_id = lumibot_account_id;
-    if (lumibot_api_token !== undefined) dataToUpdate.lumibot_api_token = lumibot_api_token;
     if (ai_default_system_prompt !== undefined) dataToUpdate.ai_default_system_prompt = ai_default_system_prompt;
     if (ai_model_preference !== undefined) dataToUpdate.ai_model_preference = ai_model_preference;
 
@@ -142,9 +135,8 @@ export async function PATCH(
     const workspace = await prisma.workspace.update({
       where: { id: workspaceId },
       data: dataToUpdate,
-      select: { // Retorna os dados atualizados (sem o token)
+      select: { // Retorna os dados atualizados
          id: true, name: true, slug: true, owner_id: true, created_at: true, updated_at: true,
-         lumibot_account_id: true,
          ai_default_system_prompt: true,
          ai_model_preference: true,
          _count: { select: { members: true } },

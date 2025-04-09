@@ -272,9 +272,6 @@ model Workspace {
   ai_model_preference      String?
   webhook_ingress_secret   String? @unique
 
-  lumibot_account_id String? @default("") // ID da Conta Lumibot associada
-  lumibot_api_token  String? @default("") // Token de API do Agente/Inbox Lumibot (CONSIDERAR CRIPTOGRAFIA em produção)
-
   // --- Campos para WhatsApp Cloud API --- 
   whatsappPhoneNumberId      String? @map("whatsapp_phone_number_id")
   whatsappBusinessAccountId  String? @map("whatsapp_business_account_id") // WABA ID

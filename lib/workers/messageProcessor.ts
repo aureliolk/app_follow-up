@@ -3,7 +3,6 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
 import { prisma } from '@/lib/db';
 import { generateChatCompletion } from '@/lib/ai/chatService';
-import { enviarTextoLivreLumibot } from '@/lib/channel/lumibotSender';
 // Importar a função de envio do WhatsApp (deve existir em lib/channel/whatsappSender.ts)
 import { sendWhatsappMessage } from '@/lib/channel/whatsappSender';
 import { MessageSenderType, ConversationStatus } from '@prisma/client'; // Adicionar ConversationStatus
@@ -49,28 +48,20 @@ async function processJob(job: Job<JobData>) {
       select: {
         id: true,
         is_ai_active: true,
-        channel_conversation_id: true, // Usado por Lumibot
-        channel: true,                 // ** NOVO: Precisamos do canal **
-        client: {                      // ** NOVO: Precisamos do telefone do cliente para WhatsApp **
-            select: { phone_number: true }
-        },
+        channel: true,
+        client: { select: { phone_number: true } },
         workspace_id: true,
         workspace: {
             select: {
                 id: true,
                 ai_default_system_prompt: true,
                 ai_model_preference: true,
-                // Lumibot creds
-                lumibot_account_id: true,
-                lumibot_api_token: true,
-                // WhatsApp creds (precisam ser descriptografados)
-                whatsappAccessToken: true,
-                whatsappPhoneNumberId: true,
-                // Regras de Follow-up
-                 ai_follow_up_rules: {
+                whatsappAccessToken: true,        // Needed for sending reply
+                whatsappPhoneNumberId: true,       // Needed for sending reply
+                ai_follow_up_rules: {
                     orderBy: { delay_milliseconds: 'asc' },
                     select: { id: true, delay_milliseconds: true },
-                    take: 1 // Só precisamos da primeira (menor delay)
+                    take: 1
                 }
             }
         }
@@ -215,75 +206,48 @@ async function processJob(job: Job<JobData>) {
       });
       console.log(`[MsgProcessor ${jobId}] Timestamp da conversa atualizado.`);
 
-      // <<< INÍCIO ENVIO CONDICIONAL >>>
+      // <<< INÍCIO ENVIO CONDICIONAL SIMPLIFICADO >>>
       let sendSuccess = false;
-      // <<< LOG EXISTENTE (GARANTIR CLAREZA) >>>
       console.log(`[MsgProcessor ${jobId}] VERIFICANDO CANAL PARA ENVIO. Canal a ser usado na decisão: ${channel}`);
 
-      if (channel === 'LUMIBOT') { // Ajuste o valor exato se necessário
-            const { lumibot_account_id, lumibot_api_token } = workspace;
-            const channelConversationId = conversationData.channel_conversation_id;
-
-            if (lumibot_account_id && lumibot_api_token && channelConversationId) {
-                console.log(`[MsgProcessor ${jobId}] Tentando enviar resposta via Lumibot para channel_conv_id ${channelConversationId}...`);
-                const sendResult = await enviarTextoLivreLumibot(
-                    lumibot_account_id,
-                    channelConversationId,
-                    lumibot_api_token,
-                    aiResponseContent
-                );
-                if (sendResult.success) {
-                    sendSuccess = true;
-                    console.log(`[MsgProcessor ${jobId}] Resposta enviada com sucesso para Lumibot.`);
-                } else {
-                    console.error(`[MsgProcessor ${jobId}] Falha ao enviar resposta para Lumibot:`, JSON.stringify(sendResult.responseData));
-                }
-            } else {
-                console.error(`[MsgProcessor ${jobId}] Dados ausentes para envio via Lumibot (AccountID: ${!!lumibot_account_id}, Token: ${!!lumibot_api_token}, ChannelConvID: ${!!channelConversationId}).`);
-            }
-
-      } else if (channel === 'WHATSAPP') {
-            console.log(`[MsgProcessor ${jobId}] Bloco de envio WhatsApp alcançado. Verificando credenciais...`); // Log de depuração
+      // REMOVIDO: Bloco if (channel === 'LUMIBOT') { ... }
+      
+      // Assume WHATSAPP ou falha silenciosamente se o canal for inesperado
+      if (channel === 'WHATSAPP') {
+            console.log(`[MsgProcessor ${jobId}] Bloco de envio WhatsApp alcançado.`);
             const { whatsappAccessToken, whatsappPhoneNumberId } = workspace;
-
-            // Verifica se as credenciais e telefone do cliente existem
             if (whatsappAccessToken && whatsappPhoneNumberId && clientPhoneNumber) {
                 let decryptedAccessToken: string | null = null;
                 try {
-                    // Descriptografar o Access Token ANTES de usar
                     console.log(`[MsgProcessor ${jobId}] Tentando descriptografar Access Token...`);
                     decryptedAccessToken = decrypt(whatsappAccessToken);
                     if (!decryptedAccessToken) throw new Error("Token de acesso descriptografado está vazio.");
                     console.log(`[MsgProcessor ${jobId}] Access Token descriptografado com sucesso.`);
 
-                    console.log(`[MsgProcessor ${jobId}] Tentando enviar resposta via WhatsApp para ${clientPhoneNumber} usando número ${whatsappPhoneNumberId}...`);
-
-                    // Chamar a função de envio do WhatsApp
+                    console.log(`[MsgProcessor ${jobId}] Tentando enviar resposta via WhatsApp para ${clientPhoneNumber}...`);
                     const sendResult = await sendWhatsappMessage(
-                        whatsappPhoneNumberId, // ID do número que está enviando
-                        clientPhoneNumber,     // Telefone do destinatário
-                        decryptedAccessToken,  // Token descriptografado
-                        aiResponseContent      // Conteúdo da mensagem
+                        whatsappPhoneNumberId,
+                        clientPhoneNumber,
+                        decryptedAccessToken,
+                        aiResponseContent
                     );
-
                     if (sendResult.success) {
                         sendSuccess = true;
                         console.log(`[MsgProcessor ${jobId}] Resposta enviada com sucesso para WhatsApp. Message ID: ${sendResult.messageId}`);
                     } else {
                         console.error(`[MsgProcessor ${jobId}] Falha ao enviar resposta para WhatsApp:`, JSON.stringify(sendResult.error || 'Erro desconhecido'));
                     }
-
                 } catch (decryptOrSendError: any) {
                      console.error(`[MsgProcessor ${jobId}] Erro ao descriptografar token ou enviar via WhatsApp:`, decryptOrSendError.message);
                 }
             } else {
-                 console.error(`[MsgProcessor ${jobId}] Dados ausentes para envio via WhatsApp (AccessToken: ${!!whatsappAccessToken}, PhoneID: ${!!whatsappPhoneNumberId}, ClientPhone: ${!!clientPhoneNumber}).`);
+                 console.error(`[MsgProcessor ${jobId}] Dados ausentes para envio via WhatsApp (Token: ${!!whatsappAccessToken}, PhoneID: ${!!whatsappPhoneNumberId}, ClientPhone: ${!!clientPhoneNumber}).`);
             }
-
       } else {
-          console.warn(`[MsgProcessor ${jobId}] Canal desconhecido ou não suportado para envio: ${channel}. Nenhuma mensagem enviada.`);
+          // Canal desconhecido ou não suportado (após remover Lumibot)
+          console.warn(`[MsgProcessor ${jobId}] Canal ${channel} não é WHATSAPP. Nenhuma mensagem enviada.`);
       }
-      // <<< FIM ENVIO CONDICIONAL >>>
+      // <<< FIM ENVIO CONDICIONAL SIMPLIFICADO >>>
 
       // TODO: Lógica de agendamento de follow-up (pode depender de sendSuccess)
       // Exemplo: if (sendSuccess && workspace.ai_follow_up_rules?.length > 0) { /* ... agendar ... */ }
