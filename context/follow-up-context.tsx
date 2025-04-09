@@ -8,7 +8,9 @@ import React, {
     useCallback,
     ReactNode,
     useMemo, // Import useMemo
-    useEffect
+    useEffect,
+    Dispatch, // <<< Importar Dispatch e SetStateAction
+    SetStateAction
 } from 'react';
 import axios, { AxiosError } from 'axios'; // Import AxiosError for better type checking
 import { useWorkspace } from '@/context/workspace-context';
@@ -90,6 +92,7 @@ interface FollowUpContextType {
 
     // <<< NOVA DEFINIÇÃO PARA NOTIFICAÇÃO >>>
     unreadConversationIds: Set<string>; // Estado para IDs não lidos
+    setUnreadConversationIds: Dispatch<SetStateAction<Set<string>>>; // <<< ADICIONAR O SETTER
 }
 
 // --- Context Creation ---
@@ -521,6 +524,7 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         addRealtimeMessage,
         // <<< ADICIONAR NOVO ESTADO AO CONTEXTO >>>
         unreadConversationIds,
+        setUnreadConversationIds, // <<< INCLUIR O SETTER NO VALOR DO CONTEXTO >>>
     }), [
         // List all state variables and memoized functions here
         campaigns, loadingCampaigns, campaignsError,
@@ -535,6 +539,7 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         addRealtimeMessage,
         // <<< ADICIONAR NOVO ESTADO ÀS DEPENDÊNCIAS >>>
         unreadConversationIds,
+        setUnreadConversationIds, // <<< ADICIONAR SETTER ÀS DEPENDÊNCIAS do useMemo >>>
     ]);
 
     return (

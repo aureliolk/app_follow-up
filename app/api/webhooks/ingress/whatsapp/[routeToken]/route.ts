@@ -213,14 +213,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     });
                                     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} (WPP ID: ${messageIdFromWhatsapp}) salva para Conv ${conversation.id}.`);
 
-                                    // --- Publish to Redis ---
+                                    // --- Publish to Redis (Conversation Channel) ---
                                     try {
-                                        const redisChannel = `chat-updates:${conversation.id}`;
-                                        const payloadString = JSON.stringify(newMessage);
-                                        await redisConnection.publish(redisChannel, payloadString);
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} publicada no canal Redis: ${redisChannel}`);
+                                        const conversationChannel = `chat-updates:${conversation.id}`;
+                                        // Enviando objeto completo da mensagem salva para o canal da conversa
+                                        const conversationPayloadString = JSON.stringify(newMessage);
+                                        await redisConnection.publish(conversationChannel, conversationPayloadString);
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
                                     } catch (publishError) {
-                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar mensagem ${newMessage.id} no Redis:`, publishError);
+                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar mensagem ${newMessage.id} no Redis (Canal Conversa):`, publishError);
+                                    }
+
+                                    // --- Publish to Redis (Workspace Channel for List Updates) ---
+                                    try {
+                                        const workspaceChannel = `workspace-updates:${workspace.id}`;
+                                        const workspacePayload = {
+                                            type: 'new_message', // Tipo do evento
+                                            conversationId: conversation.id,
+                                            clientId: client.id, // Pode ser útil para UI
+                                            lastMessageTimestamp: newMessage.timestamp.toISOString(), // Timestamp da nova mensagem
+                                            // Adicionar outros dados se necessário (ex: sender_type)
+                                        };
+                                        await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Notificação publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
+                                    } catch (publishError) {
+                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar notificação no Redis (Canal Workspace):`, publishError);
+                                        // Não parar o fluxo principal por causa disso
                                     }
 
                                     // --- Enqueue Job ---

@@ -180,15 +180,33 @@ async function processJob(job: Job<JobData>) {
       });
       console.log(`[MsgProcessor ${jobId}] Resposta da IA salva no DB (ID: ${newAiMessage.id}).`);
 
-      // Publicar a nova mensagem no canal Redis
+      // Publicar a nova mensagem no canal Redis da CONVERSA
       try {
-        const redisChannel = `chat-updates:${conversationId}`;
-        const payload = JSON.stringify(newAiMessage);
-        await redisConnection.publish(redisChannel, payload);
-        console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada no canal Redis: ${redisChannel}`);
+        const conversationChannel = `chat-updates:${conversationId}`;
+        // Certifique-se de que newAiMessage tenha os dados necessários ou faça nova busca
+        const conversationPayload = JSON.stringify(newAiMessage);
+        await redisConnection.publish(conversationChannel, conversationPayload);
+        console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
       } catch (publishError) {
-        console.error(`[MsgProcessor ${jobId}] Falha ao publicar mensagem da IA ${newAiMessage.id} no Redis:`, publishError);
+        console.error(`[MsgProcessor ${jobId}] Falha ao publicar mensagem da IA ${newAiMessage.id} no Redis (Canal Conversa):`, publishError);
       }
+
+      // <<< NOVO: PUBLICAR NOTIFICAÇÃO NO CANAL REDIS DO WORKSPACE >>>
+       try {
+          // Precisamos do workspaceId aqui, que já temos de job.data
+          const workspaceChannel = `workspace-updates:${workspaceId}`;
+          const workspacePayload = {
+              type: 'new_message', // Mesmo tipo de evento
+              conversationId: conversationId,
+              clientId: clientId, // Já temos de job.data
+              lastMessageTimestamp: newAiMessage.timestamp.toISOString(), // Timestamp da msg da IA
+          };
+          await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+          console.log(`[MsgProcessor ${jobId}] Notificação de msg IA publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
+       } catch (publishError) {
+          console.error(`[MsgProcessor ${jobId}] Falha ao publicar notificação de msg IA no Redis (Canal Workspace):`, publishError);
+          // Não parar o fluxo por isso
+       }
 
       // Atualizar last_message_at da conversa
       await prisma.conversation.update({

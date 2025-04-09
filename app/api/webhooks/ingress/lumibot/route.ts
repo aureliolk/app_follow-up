@@ -100,31 +100,38 @@ export async function POST(req: NextRequest) {
     const clientName = body.sender?.name || firstMessage?.sender?.name;
     const clientPhone = body.sender?.phone_number || firstMessage?.sender?.phone_number;
     const clientMetadata = body.sender || firstMessage?.sender || null;
-    const channel = body.conversation?.channel;
-    const normalizedChannel = channel?.split('::')[1]?.toUpperCase() || 'UNKNOWN';
+    const rawChannel = body.conversation?.channel;
+    const channel = rawChannel?.split('::')[1]?.toUpperCase() || 'UNKNOWN';
+    const normalizedChannel = channel;
     const channelConversationId = body.conversation?.id?.toString();
     const conversationMetadata = body.conversation?.meta || null;
-    const messageMetadata = { /* ... (mantido) ... */ };
+    const messageMetadata = { whatsappMessage: firstMessage };
 
-    if (!clientPhone || !channelConversationId || !messageContent) { /* ... (validação mantida) ... */ }
-    console.log(`[Webhook Ingress] Dados Extraídos: ClientPhone=${clientPhone}, ChannelConvID=${channelConversationId}, Channel=${normalizedChannel}`);
+    if (!clientPhone || !channelConversationId || !messageContent) {
+        console.warn(`[Webhook Ingress] Dados essenciais ausentes: ClientPhone=${!!clientPhone}, ChannelConvID=${!!channelConversationId}, Content=${!!messageContent}`);
+        return NextResponse.json({ success: false, error: 'Dados essenciais ausentes no payload' }, { status: 400 });
+    }
+    
+    console.log(`[Webhook Ingress] Dados Extraídos: ClientPhone=${clientPhone}, ChannelConvID=${channelConversationId}`);
+    console.log(`[Webhook Ingress] Raw Channel Recebido: ${rawChannel}`);
+    console.log(`[Webhook Ingress] Normalized Channel para DB: ${normalizedChannel}`);
 
-    // --- Lógica de Upsert Cliente (Mantida) ---
+    // --- Lógica de Upsert Cliente (Incluir log do canal usado) ---
     const client = await prisma.client.upsert({
       where: {
-        workspace_id_phone_number_channel: { // Usando o índice único
+        workspace_id_phone_number_channel: {
           workspace_id: workspaceId,
           phone_number: clientPhone,
           channel: normalizedChannel,
         }
       },
-      update: { // O que atualizar se o cliente já existe
+      update: {
         name: clientName,
         external_id: clientExternalId,
         metadata: clientMetadata,
         updated_at: new Date(),
       },
-      create: { // O que criar se for novo
+      create: {
         workspace_id: workspaceId,
         external_id: clientExternalId,
         phone_number: clientPhone,
@@ -133,112 +140,121 @@ export async function POST(req: NextRequest) {
         metadata: clientMetadata,
       },
      });
-    console.log(`[Webhook Ingress] Cliente ${client.id} Upserted.`);
+    console.log(`[Webhook Ingress] Cliente ${client.id} Upserted (Usando Channel: ${normalizedChannel}).`);
 
-    // --- NOVA LÓGICA REVISADA (IDEIA 1): CONVERSA E FOLLOW-UP ---
+    // --- Lógica Conversa e Follow-up --- 
     let conversation: Conversation;
     let shouldStartNewFollowUp = false;
 
-    // 1. Encontrar ou Criar a Conversa (sempre garante que temos uma)
+    // 1. Encontrar ou Criar a Conversa
     const existingConversation = await prisma.conversation.findFirst({
         where: {
             workspace_id: workspaceId,
             channel_conversation_id: channelConversationId,
-            // Não filtra mais por status aqui, encontra qualquer uma existente
-        }
+        },
+        // Não selecionar campos específicos aqui, precisamos do objeto todo depois
+        // select: { id: true, channel: true }
     });
 
     if (existingConversation) {
-        // Conversa já existe, atualiza-a (e garante que está ativa)
-        console.log(`[Webhook Ingress] Conversa ${existingConversation.id} encontrada.`);
+        console.log(`[Webhook Ingress] Conversa ${existingConversation.id} encontrada (Canal Existente: ${existingConversation.channel}). Atualizando...`);
         conversation = await prisma.conversation.update({
             where: { id: existingConversation.id },
             data: {
                 last_message_at: messageTimestamp,
                 updated_at: new Date(),
-                status: ConversationStatus.ACTIVE, // Garante que a conversa está ativa ao receber msg
-            }
+                status: ConversationStatus.ACTIVE,
+                channel: normalizedChannel, // <<< ADICIONADO: Atualiza o canal!
+            },
+            // Remover select para obter o objeto completo
+            // select: { id: true, channel: true }
         });
-        console.log(`[Webhook Ingress] Conversa ${conversation.id} atualizada e marcada como ATIVA.`);
+        console.log(`[Webhook Ingress] Conversa ${conversation.id} atualizada. Canal definido para: ${conversation.channel}.`);
     } else {
-        // Conversa não existe, cria uma nova
-        console.log(`[Webhook Ingress] Nenhuma conversa encontrada para ChannelConvID ${channelConversationId}. Criando NOVA conversa...`);
+        console.log(`[Webhook Ingress] Nenhuma conversa encontrada para ChannelConvID ${channelConversationId}. Criando NOVA conversa (Usando Channel: ${normalizedChannel})...`);
         conversation = await prisma.conversation.create({
             data: {
                 workspace_id: workspaceId,
                 client_id: client.id,
                 channel: normalizedChannel,
                 channel_conversation_id: channelConversationId,
-                status: ConversationStatus.ACTIVE, // Sempre começa ativa
-                is_ai_active: true, // Começa com IA ativa por padrão
+                status: ConversationStatus.ACTIVE,
+                is_ai_active: true,
                 last_message_at: messageTimestamp,
                 metadata: conversationMetadata,
-            }
+            },
+            // Remover select para obter o objeto completo
+            // select: { id: true, channel: true }
         });
-        console.log(`[Webhook Ingress] Nova conversa ${conversation.id} criada.`);
+        console.log(`[Webhook Ingress] Nova conversa ${conversation.id} criada. Canal definido para: ${conversation.channel}.`);
     }
 
     // 2. Verificar Follow-ups Anteriores do CLIENTE para decidir se inicia sequência
-    // A decisão agora é INDEPENDENTE da existência ou status da conversa encontrada/criada acima.
     const lastFollowUpForClient = await prisma.followUp.findFirst({
         where: {
             client_id: client.id,
             workspace_id: workspaceId
         },
-        orderBy: { started_at: 'desc' } // Pega o mais recente
+        orderBy: { started_at: 'desc' }
     });
 
     if (!lastFollowUpForClient) {
-        // Não há follow-up anterior -> Primeira vez!
         console.log(`[Webhook Ingress] Nenhum FollowUp anterior encontrado para Cliente ${client.id}. Iniciando PRIMEIRO ciclo.`);
         shouldStartNewFollowUp = true;
     } else if (lastFollowUpForClient.status !== PrismaFollowUpStatus.ACTIVE && lastFollowUpForClient.status !== PrismaFollowUpStatus.PAUSED) {
-        // Existe um follow-up anterior que NÃO está ativo/pausado (COMPLETED, CANCELLED, FAILED, CONVERTED) -> Reativação!
         console.log(`[Webhook Ingress] FollowUp anterior (${lastFollowUpForClient.id}, Status: ${lastFollowUpForClient.status}) encontrado para Cliente ${client.id}. Iniciando NOVO ciclo.`);
-        shouldStartNewFollowUp = true; // Sinaliza para iniciar novo follow-up
+        shouldStartNewFollowUp = true;
     } else {
-        // Existe um follow-up ATIVO ou PAUSADO. Não inicia novo ciclo.
         console.log(`[Webhook Ingress] FollowUp anterior (${lastFollowUpForClient.id}, Status: ${lastFollowUpForClient.status}) encontrado e está ATIVO ou PAUSADO. Nenhum novo ciclo de follow-up será iniciado.`);
         shouldStartNewFollowUp = false;
     }
-    // --- FIM LÓGICA REVISADA CONVERSA/FOLLOW-UP ---
 
-    // --- Salvar Mensagem Recebida (Mantido) ---
+    // --- Salvar Mensagem Recebida --- 
     const newMessage = await prisma.message.create({
       data: {
         conversation_id: conversation.id,
         sender_type: 'CLIENT',
-        content: messageContent,
-        timestamp: messageTimestamp,
-        channel_message_id: channelMessageId,
-        metadata: messageMetadata,
+        content: messageContent, // <<< Garantir que messageContent está definido
+        timestamp: messageTimestamp, // <<< Garantir que messageTimestamp está definido
+        channel_message_id: channelMessageId, // <<< Garantir que channelMessageId está definido
+        metadata: messageMetadata, // <<< Garantir que messageMetadata está definido
       },
-      // Incluir o tipo de remetente nos dados retornados (opcional, mas útil)
-      // select: { id: true, sender_type: true, content: true, timestamp: true } // Exemplo
     });
     console.log(`[Webhook Ingress] Mensagem ${newMessage.id} salva para Conv ${conversation.id}.`);
 
-    // <<< ADICIONAR PUBLICAÇÃO NO REDIS AQUI >>>
+    // --- Publicação no Redis (Canal Conversa) --- 
     try {
-      const channel = `chat-updates:${conversation.id}`;
-      const payload = JSON.stringify(newMessage); // Envia o objeto da mensagem como string JSON
-      await redisConnection.publish(channel, payload);
-      console.log(`[Webhook Ingress] Mensagem ${newMessage.id} publicada no canal Redis: ${channel}`);
+      const conversationChannel = `chat-updates:${conversation.id}`;
+      const payload = JSON.stringify(newMessage);
+      await redisConnection.publish(conversationChannel, payload);
+      console.log(`[Webhook Ingress] Mensagem ${newMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
     } catch (publishError) {
-      console.error(`[Webhook Ingress] Falha ao publicar mensagem ${newMessage.id} no Redis:`, publishError);
-      // Não lançar erro aqui para não parar o fluxo principal
+      console.error(`[Webhook Ingress] Falha ao publicar mensagem ${newMessage.id} no Redis (Canal Conversa):`, publishError);
     }
 
-    // --- Disparar Follow-up Automático SE NECESSÁRIO ---
+    // --- Publicação no Redis (Canal Workspace) --- 
+    try {
+        const workspaceChannel = `workspace-updates:${workspaceId}`;
+        const workspacePayload = {
+            type: 'new_message',
+            conversationId: conversation.id,
+            clientId: client.id,
+            lastMessageTimestamp: newMessage.timestamp.toISOString(),
+        };
+        await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+        console.log(`[Webhook Ingress] Notificação publicada no canal Redis do WORKSPACE: ${workspaceChannel} (via Lumibot)`);
+    } catch (publishError) {
+        console.error(`[Webhook Ingress] Falha ao publicar notificação no Redis (Canal Workspace via Lumibot):`, publishError);
+    }
+
+    // --- Disparar Follow-up Automático SE NECESSÁRIO --- 
     if (shouldStartNewFollowUp) {
         await startNewFollowUpSequence(client.id, workspaceId, conversation.id);
     }
 
-    // --- Adicionar Job à Fila de Processamento de Mensagem (Usando shared-lib) ---
+    // --- Adicionar Job à Fila de Processamento de Mensagem --- 
     try {
       const jobData = { conversationId: conversation.id, clientId: client.id, newMessageId: newMessage.id, workspaceId, receivedTimestamp: Date.now() };
-      // Substituir chamada direta pela função da shared-lib
-      // await messageProcessingQueue.add('processIncomingMessage', jobData);
       await addMessageProcessingJob(jobData);
       console.log(`[Webhook Ingress] Job adicionado à fila messageProcessingQueue via QueueService para msg ${newMessage.id}`);
     } catch (queueError) {
