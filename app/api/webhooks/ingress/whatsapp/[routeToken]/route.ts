@@ -16,6 +16,7 @@ interface RouteParams {
 
 // --- Função auxiliar para buscar Workspace e segredos ---
 async function getWorkspaceByRouteToken(routeToken: string) {
+    console.log(`[WHATSAPP WEBHOOK - GET ${routeToken}] Recebida requisição GET para verificação.`);
     if (!routeToken) return null;
 
     // Busca o workspace pelo token único da rota do webhook
@@ -35,11 +36,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { routeToken } = await params;
     console.log(`[WHATSAPP WEBHOOK - GET ${routeToken}] Recebida requisição GET para verificação.`);
 
+    // Log antes da busca
+    console.log(`[WHATSAPP WEBHOOK - GET ${routeToken}] Buscando workspace com whatsappWebhookRouteToken = ${routeToken}`);
+    
     // Buscar o workspace para obter o Verify Token específico
     const workspace = await getWorkspaceByRouteToken(routeToken);
+
+    // Log após a busca
+    console.log(`[WHATSAPP WEBHOOK - GET ${routeToken}] Resultado da busca: ${workspace ? `Workspace ID: ${workspace.id}` : 'Nenhum workspace encontrado.'}`);
+
     if (!workspace || !workspace.whatsappWebhookVerifyToken) {
-        console.warn(`[WHATSAPP WEBHOOK - GET ${routeToken}] Workspace ou Verify Token não encontrado para este routeToken.`);
-        return new NextResponse('Endpoint configuration not found or invalid.', { status: 404 });
+        // Log explicando o motivo do 404
+        if (!workspace) {
+            console.warn(`[WHATSAPP WEBHOOK - GET ${routeToken}] ERRO 404/405: Nenhum workspace encontrado no banco com este routeToken.`);
+        } else {
+            console.warn(`[WHATSAPP WEBHOOK - GET ${routeToken}] ERRO 404/405: Workspace ${workspace.id} encontrado, mas não possui whatsappWebhookVerifyToken configurado.`);
+        }
+        // Retornar 404 se não encontrou ou não tem o token de verificação
+        return new NextResponse('Endpoint configuration not found or invalid.', { status: 404 }); 
     }
     const expectedVerifyToken = workspace.whatsappWebhookVerifyToken; // Token específico do Workspace!
 
@@ -56,7 +70,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Responde com o challenge e status 200 OK
         return new NextResponse(challenge, { status: 200 });
     } else {
-        console.warn(`[WHATSAPP WEBHOOK - GET ${routeToken}] Falha na verificação.`);
+        console.warn(`[WHATSAPP WEBHOOK - GET ${routeToken}] Falha na verificação (modo ou token incorreto).`);
         // Responde com 403 Forbidden se o token ou modo estiverem incorretos
         return new NextResponse('Failed validation. Make sure the validation tokens match.', { status: 403 });
     }

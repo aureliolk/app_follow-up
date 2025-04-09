@@ -44,6 +44,9 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
     event.preventDefault();
     setError(null);
 
+    const newVerifyToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    console.log("Gerado novo Verify Token para salvar:", newVerifyToken);
+
     // Validações básicas no cliente (validação mais robusta deve ser na action)
     // Verifica campos não sensíveis e verifica os sensíveis apenas se não estiverem já setados
     if (
@@ -51,21 +54,17 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
       !businessAccountId ||
       (!currentSettings.isAccessTokenSet && !accessToken) || // Só exige accessToken se não estiver setado
       (!currentSettings.isAppSecretSet && !appSecret) ||   // Só exige appSecret se não estiver setado
-      !verifyToken
+      !newVerifyToken // <<< USAR O NOVO TOKEN GERADO AQUI PARA VALIDAR
     ) {
       setError('Por favor, preencha todos os campos obrigatórios.');
-      // Ajusta a mensagem de erro para ser mais clara, já que nem todos os campos são sempre obrigatórios
       return;
     }
 
+    // Atualiza o estado local agora que a validação passou (útil para UI, mas não crítico para submit)
+    setVerifyToken(newVerifyToken);
+
     setIsLoading(true);
     toast.loading('Salvando credenciais...', { id: 'save-whatsapp' });
-
-    // --- GERAR NOVO VERIFY TOKEN A CADA SAVE ---
-    const newVerifyToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-    console.log("Gerado novo Verify Token para salvar:", newVerifyToken);
-    // Atualiza o estado local também, embora o valor enviado para a action seja o mais importante aqui
-    setVerifyToken(newVerifyToken); 
 
     try {
        console.log("Enviando para Action:", {
@@ -82,13 +81,10 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
         workspaceId: currentSettings.workspaceId,
         phoneNumberId,
         businessAccountId,
-        // Se o accessToken não foi digitado (está vazio) E já existe um salvo,
-        // a action PRECISA preservar o antigo. A action atual sobrescreve.
-        // Precisamos ajustar a action ou enviar um sinal.
-        // Por agora, enviaremos o que temos no estado. A action precisa ser mais inteligente.
-        accessToken: accessToken || 'PRESERVE_EXISTING', // Placeholder - Idealmente a action lida com isso
-        appSecret: appSecret || 'PRESERVE_EXISTING', // Placeholder - Idealmente a action lida com isso
-        webhookVerifyToken: newVerifyToken, // <<< Passa o novo token gerado
+        // Enviar o valor do estado diretamente. A action preserva se estiver vazio.
+        accessToken: accessToken, 
+        appSecret: appSecret, // A action também deve preservar se estiver vazio
+        webhookVerifyToken: newVerifyToken, 
       });
 
       if (result?.success) {
@@ -159,8 +155,10 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
             type="password" // Usar tipo password para mascarar
             value={accessToken}
             onChange={(e) => setAccessToken(e.target.value)}
-            placeholder={currentSettings.isAccessTokenSet ? '******** (Já configurado)' : 'Cole o token aqui'}
-            required={!currentSettings.isAccessTokenSet} // Obrigatório apenas se não estiver setado
+            // Placeholder indica que deixar em branco mantém o atual, se já estiver setado
+            placeholder={currentSettings.isAccessTokenSet ? 'Atual: ******** (Deixe em branco para manter)' : 'Cole o token aqui'}
+            // Não é obrigatório se já estiver setado, permitindo preservar
+            required={!currentSettings.isAccessTokenSet} 
             disabled={isLoading}
           />
            <p className="text-[0.8rem] text-muted-foreground">Token gerado no App Meta (usuário do sistema ou outro). Será armazenado de forma segura.</p>
@@ -172,8 +170,10 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
             type="password" // Usar tipo password para mascarar
             value={appSecret}
             onChange={(e) => setAppSecret(e.target.value)}
-            placeholder={currentSettings.isAppSecretSet ? '******** (Já configurado)' : 'Cole o segredo aqui'}
-            required={!currentSettings.isAppSecretSet} // Obrigatório apenas se não estiver setado
+            // Placeholder indica que deixar em branco mantém o atual, se já estiver setado
+            placeholder={currentSettings.isAppSecretSet ? 'Atual: ******** (Deixe em branco para manter)' : 'Cole o segredo aqui'}
+            // Não é obrigatório se já estiver setado, permitindo preservar
+            required={!currentSettings.isAppSecretSet} 
             disabled={isLoading}
           />
           <p className="text-[0.8rem] text-muted-foreground">Encontrado nas Configurações &gt; Básico do seu App Meta. Será armazenado de forma segura.</p>
