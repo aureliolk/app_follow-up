@@ -1,11 +1,19 @@
-// app/api/webhook/ingress/whatsapp/[routeToken]/route.ts
+// app/api/webhooks/ingress/whatsapp/[routeToken]/route.ts
 import { type NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { redisConnection } from '@/lib/redis'; // Importar conexão Redis
 import { addMessageProcessingJob } from '@/lib/queues/queueService'; // Importar função de enfileiramento
-import { ConversationStatus, Prisma } from '@prisma/client'; // Importar tipos necessários
+import { ConversationStatus, FollowUpStatus, Prisma } from '@prisma/client'; // Importar tipos necessários
+import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // Importar a fila de sequência
+
+// Interface para dados do job de sequência (pode estar em lib/types se usada em mais lugares)
+interface SequenceJobData {
+  followUpId: string;
+  stepRuleId: string;
+  workspaceId: string;
+}
 
 // Define interface for route parameters if not already defined earlier
 interface RouteParams {
@@ -105,10 +113,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // 2. Validar Assinatura
-    if (!signatureHeader) { /* ... (tratamento assinatura ausente) ... */ }
+    if (!signatureHeader) {
+        console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura ausente (X-Hub-Signature-256). Rejeitando.`);
+        return new NextResponse('Missing signature header', { status: 400 });
+    }
     const expectedSignature = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
     const receivedSignatureHash = signatureHeader.split('=')[1];
-    if (expectedSignature !== receivedSignatureHash) { /* ... (tratamento assinatura inválida) ... */ }
+    if (expectedSignature !== receivedSignatureHash) {
+        console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura inválida. Expected: ${expectedSignature}, Received Hash: ${receivedSignatureHash}. Rejeitando.`);
+        return new NextResponse('Invalid signature', { status: 403 });
+    }
     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura validada com sucesso para Workspace ${workspace.id}.`);
 
     // --- INÍCIO: Processamento do Payload (APÓS validação) ---
@@ -179,36 +193,51 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     });
                                     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Cliente ${client.id} (Telefone: ${senderPhoneNumber}) Upserted.`);
 
-                                    // --- Upsert Conversation ---
-                                    // WhatsApp não tem ID de conversa estável, usamos uma combinação
-                                    // A chave será client + workspace + channel
-                                    const conversation = await prisma.conversation.upsert({
-                                       where: {
-                                          // Criar um índice composto no schema se não existir:
-                                          // @@unique([workspace_id, client_id, channel])
-                                          workspace_id_client_id_channel: {
+                                    // --- Tentar Criar ou Atualizar Conversa ---
+                                    let conversation: Prisma.ConversationGetPayload<{}>; // Definir tipo explícito
+                                    let wasCreated = false;
+                                    try {
+                                        // Tenta criar primeiro
+                                        conversation = await prisma.conversation.create({
+                                            data: {
                                                 workspace_id: workspace.id,
                                                 client_id: client.id,
                                                 channel: 'WHATSAPP',
-                                          }
-                                       },
-                                       update: {
-                                           last_message_at: new Date(receivedTimestamp),
-                                           status: ConversationStatus.ACTIVE, // Reabre a conversa se estava fechada
-                                           channel: 'WHATSAPP',
-                                           updated_at: new Date(),
-                                       },
-                                       create: {
-                                           workspace_id: workspace.id,
-                                           client_id: client.id,
-                                           channel: 'WHATSAPP',
-                                           status: ConversationStatus.ACTIVE,
-                                           is_ai_active: true, // Começa com IA ativa
-                                           last_message_at: new Date(receivedTimestamp),
-                                           // Não temos channel_conversation_id estável do WhatsApp
-                                       }
-                                    });
-                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa ${conversation.id} Upserted/Atualizada.`);
+                                                status: ConversationStatus.ACTIVE,
+                                                is_ai_active: true, // Começa com IA ativa
+                                                last_message_at: new Date(receivedTimestamp),
+                                            }
+                                        });
+                                        wasCreated = true;
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nova Conversa ${conversation.id} CRIADA para Cliente ${client.id}. (wasCreated = true)`);
+                                    } catch (e) {
+                                        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+                                            // Violação de constraint única, a conversa já existe. Atualizar.
+                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa existente para cliente ${client.id} encontrada. Atualizando...`);
+                                            conversation = await prisma.conversation.update({
+                                                where: {
+                                                    workspace_id_client_id_channel: {
+                                                        workspace_id: workspace.id,
+                                                        client_id: client.id,
+                                                        channel: 'WHATSAPP',
+                                                    }
+                                                },
+                                                data: {
+                                                    last_message_at: new Date(receivedTimestamp),
+                                                    status: ConversationStatus.ACTIVE, // Reabre se estava fechada
+                                                    updated_at: new Date(),
+                                                }
+                                            });
+                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa ${conversation.id} ATUALIZADA.`);
+                                        } else {
+                                            // Outro erro durante a criação/atualização da conversa
+                                            console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro inesperado ao criar/atualizar conversa para cliente ${client.id}:`, e);
+                                            // Considerar se deve parar aqui ou continuar sem conversa? Por segurança, vamos parar.
+                                            // Não retornar 500 para a Meta, apenas logar e pular esta mensagem.
+                                            continue; // Pula para a próxima mensagem no loop
+                                        }
+                                    }
+                                    // --- Fim Criar/Atualizar Conversa ---
 
                                     // --- Save Message ---
                                     const newMessage = await prisma.message.create({
@@ -227,10 +256,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     });
                                     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} (WPP ID: ${messageIdFromWhatsapp}) salva para Conv ${conversation.id}.`);
 
-                                    // --- Publish to Redis (Conversation Channel) ---
+                                    // --- Publish to Redis (Canal da Conversa) ---
                                     try {
                                         const conversationChannel = `chat-updates:${conversation.id}`;
-                                        // Enviando objeto completo da mensagem salva para o canal da conversa
                                         const conversationPayloadString = JSON.stringify(newMessage);
                                         await redisConnection.publish(conversationChannel, conversationPayloadString);
                                         console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
@@ -238,28 +266,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar mensagem ${newMessage.id} no Redis (Canal Conversa):`, publishError);
                                     }
 
-                                    // --- Publish to Redis (Workspace Channel for List Updates) ---
+                                    // --- Publish to Redis (Canal do Workspace) ---
                                     try {
                                         const workspaceChannel = `workspace-updates:${workspace.id}`;
-                                        // <<< ENRIQUECER PAYLOAD >>>
                                         const workspacePayload = {
-                                            type: 'new_message', // Tipo do evento
-                                            // Dados da Conversa
+                                            type: 'new_message',
                                             conversationId: conversation.id,
-                                            channel: conversation.channel, // Adicionado
-                                            status: conversation.status, // Adicionado (ex: ACTIVE)
-                                            is_ai_active: conversation.is_ai_active, // Adicionado
-                                            lastMessageTimestamp: newMessage.timestamp.toISOString(), // Usar o timestamp da ÚLTIMA msg
-                                            last_message_at: new Date(newMessage.timestamp).toISOString(), // Adicionado (equivalente ao timestamp)
-                                            // Dados do Cliente
+                                            channel: conversation.channel,
+                                            status: conversation.status,
+                                            is_ai_active: conversation.is_ai_active,
+                                            lastMessageTimestamp: newMessage.timestamp.toISOString(),
+                                            last_message_at: newMessage.timestamp.toISOString(), // Redundante mas mantém consistência
                                             clientId: client.id,
-                                            clientName: client.name, // Adicionado
-                                            clientPhone: client.phone_number, // Adicionado
-                                            // Dados da Última Mensagem (pode ser a atual)
-                                            lastMessageContent: newMessage.content, // Adicionado
-                                            lastMessageSenderType: newMessage.sender_type, // Adicionado
-                                            // Metadata (Opcional)
-                                            metadata: conversation.metadata,
+                                            clientName: client.name,
+                                            clientPhone: client.phone_number,
+                                            lastMessageContent: newMessage.content,
+                                            lastMessageSenderType: newMessage.sender_type,
+                                            metadata: conversation.metadata, // Incluir metadata da conversa
                                         };
                                         await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
                                         console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Notificação ENRIQUECIDA publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
@@ -267,7 +290,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar notificação no Redis (Canal Workspace):`, publishError);
                                     }
 
-                                    // --- Enqueue Job ---
+                                    // --- Enqueue Job para Processamento da Mensagem (IA, etc.) ---
+                                    // É importante que este job NÃO dependa do início do follow-up
                                     try {
                                         const jobData = {
                                             conversationId: conversation.id,
@@ -276,16 +300,95 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                             workspaceId: workspace.id,
                                             receivedTimestamp: receivedTimestamp,
                                         };
-                                        await addMessageProcessingJob(jobData);
+                                        await addMessageProcessingJob(jobData); // Adiciona à fila 'message-processing'
                                         console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Job adicionado à fila message-processing para msg ${newMessage.id}.`);
                                     } catch (queueError) {
                                         console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao adicionar job à fila message-processing:`, queueError);
+                                         // Logar o erro, mas continuar, pois a mensagem foi salva
                                     }
 
-                                    // TODO: Adicionar lógica para iniciar Follow-up (startNewFollowUpSequence) se necessário,
-                                    // similar ao webhook do Lumibot, adaptando a lógica de verificação.
+                                    // --- INÍCIO: Lógica para Iniciar Follow-up ---
+                                    if (wasCreated) {
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nova conversa (${conversation.id}) detectada. Verificando regras de follow-up para Workspace ${workspace.id}...`);
+                                        try {
+                                            // 1. Buscar regras de follow-up para este workspace
+                                            const followUpRules = await prisma.workspaceAiFollowUpRule.findMany({
+                                                where: { workspace_id: workspace.id },
+                                                orderBy: { created_at: 'asc' }, // Ordenar pela data de criação (ou um campo 'order' se existir)
+                                                select: { id: true, delay_milliseconds: true }
+                                            });
 
-                                } // Fim if message.from && (message.type === 'text' || message.type === 'image' || message.type === 'audio')
+                                            if (followUpRules.length > 0) {
+                                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] ${followUpRules.length} regra(s) de follow-up encontradas para Workspace ${workspace.id}. Iniciando sequência...`);
+                                                const firstRule = followUpRules[0];
+
+                                                // 2. Criar o registro de FollowUp
+                                                const newFollowUp = await prisma.followUp.create({
+                                                    data: {
+                                                        workspace_id: workspace.id,
+                                                        client_id: client.id,
+                                                        status: FollowUpStatus.ACTIVE, // Começa ativo
+                                                        current_sequence_step_order: 0, // Indica que nenhum passo foi executado ainda
+                                                        // next_sequence_message_at será definido após agendar o job
+                                                    }
+                                                });
+                                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Registro FollowUp ${newFollowUp.id} criado para cliente ${client.id}.`);
+
+                                                // 3. Calcular delay e agendar o primeiro job na fila sequenceStepQueue
+                                                const firstDelay = Number(firstRule.delay_milliseconds); // Converter BigInt para Number
+
+                                                if (isNaN(firstDelay) || firstDelay < 0) {
+                                                    console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Delay inválido (${firstRule.delay_milliseconds}) para a primeira regra ${firstRule.id}. Follow-up não será agendado.`);
+                                                     // Opcional: Marcar FollowUp como falhado ou logar
+                                                     await prisma.followUp.update({
+                                                         where: { id: newFollowUp.id },
+                                                         data: { status: FollowUpStatus.FAILED }
+                                                     });
+                                                } else {
+                                                    const jobData: SequenceJobData = {
+                                                        followUpId: newFollowUp.id,
+                                                        stepRuleId: firstRule.id,
+                                                        workspaceId: workspace.id,
+                                                    };
+                                                    const jobOptions = {
+                                                        delay: firstDelay,
+                                                        jobId: `seq_${newFollowUp.id}_step_${firstRule.id}`, // ID único para idempotência
+                                                        removeOnComplete: true, // Remove da fila se completar com sucesso
+                                                        removeOnFail: 5000, // Mantém por 5000 jobs falhados (ou um número razoável)
+                                                    };
+
+                                                    try {
+                                                        await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
+                                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Primeiro job de follow-up (Regra: ${firstRule.id}) agendado para FollowUp ${newFollowUp.id} com delay de ${firstDelay}ms.`);
+
+                                                        // Atualizar o FollowUp com a data do próximo envio
+                                                        await prisma.followUp.update({
+                                                            where: { id: newFollowUp.id },
+                                                            data: { next_sequence_message_at: new Date(Date.now() + firstDelay) }
+                                                        });
+
+                                                    } catch (scheduleError) {
+                                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] ERRO CRÍTICO ao agendar primeiro job de follow-up para FollowUp ${newFollowUp.id}:`, scheduleError);
+                                                         // Marcar o FollowUp como FAILED, pois o agendamento falhou
+                                                         await prisma.followUp.update({
+                                                            where: { id: newFollowUp.id },
+                                                            data: { status: FollowUpStatus.FAILED }
+                                                        });
+                                                    }
+                                                }
+                                            } else {
+                                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nenhuma regra de follow-up encontrada para Workspace ${workspace.id}. Sequência não iniciada.`);
+                                            }
+                                        } catch (followUpError) {
+                                            console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro ao tentar iniciar a sequência de follow-up para cliente ${client.id}:`, followUpError);
+                                            // Logar o erro, mas não parar o processamento da mensagem principal
+                                        }
+                                    } else {
+                                         console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa existente (${conversation.id}) atualizada. Não iniciando nova sequência de follow-up.`);
+                                    }
+                                    // --- FIM: Lógica para Iniciar Follow-up ---
+
+                                } // Fim if message.from && (message.type === 'text' || ...)
                             } // Fim loop messages
                         } // Fim if change.field === 'messages'
                     } // Fim loop changes
@@ -295,6 +398,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     } catch (parseError) {
         console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro ao fazer parse do JSON ou processar payload:`, parseError);
         // Não falhar a resposta para a Meta aqui, pois a assinatura foi válida.
+        // Responder 200 OK mesmo assim, mas logar o erro interno.
     }
     // --- FIM: Processamento do Payload ---
 

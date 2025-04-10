@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { sendWhatsappMessage } from '@/lib/channel/whatsappSender';
 import { decrypt } from '@/lib/encryption';
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
-import { FollowUpStatus, Prisma } from '@prisma/client'; // Importe Prisma para tipos
+import { FollowUpStatus, Prisma, ConversationStatus, MessageSenderType } from '@prisma/client'; // Importe Prisma para tipos
 import { formatMsToDelayString, parseDelayStringToMs } from '@/lib/timeUtils'; // Importar utils
 
 const QUEUE_NAME = 'sequence-steps';
@@ -48,6 +48,12 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
             id: true,
             name: true,
             phone_number: true,
+            conversations: {
+                where: { channel: 'WHATSAPP', status: ConversationStatus.ACTIVE },
+                select: { id: true, status: true, is_ai_active: true, metadata: true },
+                orderBy: { last_message_at: 'desc' },
+                take: 1
+            }
           },
         },
       },
@@ -61,36 +67,40 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
     console.log(`[SequenceWorker ${jobId}] FollowUp encontrado. Status: ${followUp.status}`);
 
     // 2. Verificar Status do FollowUp
-    // Usar string diretamente se não tiver o Enum importado corretamente
-    if (followUp.status !== 'ACTIVE' && followUp.status !== FollowUpStatus.ACTIVE) { // Checa string e Enum
+    if (followUp.status !== FollowUpStatus.ACTIVE) { // Usar Enum
       console.log(`[SequenceWorker ${jobId}] FollowUp ${followUpId} não está ativo (Status: ${followUp.status}). Job ignorado.`);
       return { status: 'skipped', reason: `FollowUp não ativo (${followUp.status})` };
     }
 
-    // 3. Verificar se o Workspace foi carregado (agora deve funcionar)
+    // 3. Verificar se o Workspace foi carregado
     if (!followUp.workspace) {
-         // Este erro não deve mais ocorrer com o include correto
-         console.error(`[SequenceWorker ${jobId}] ERRO INESPERADO: Workspace não incluído para FollowUp ${followUpId}. Verifique a query Prisma.`);
+         console.error(`[SequenceWorker ${jobId}] ERRO INESPERADO: Workspace não incluído para FollowUp ${followUpId}.`);
          throw new Error(`Workspace não encontrado nos dados do FollowUp ${followUpId}.`);
     }
-     const workspaceData = followUp.workspace; // Dados do workspace carregados
+     const workspaceData = followUp.workspace;
      console.log(`[SequenceWorker ${jobId}] Dados do Workspace (ID: ${workspaceData.id}) carregados.`);
 
-    // 4. Encontrar a regra ATUAL (stepRuleId) dentro das regras do workspace
-    const currentRule = workspaceData.ai_follow_up_rules.find((rule: { id: string }) => rule.id === stepRuleId);
+    // 4. Encontrar a regra ATUAL
+    const currentRule = workspaceData.ai_follow_up_rules.find((rule) => rule.id === stepRuleId);
     if (!currentRule) {
         console.error(`[SequenceWorker ${jobId}] Regra de passo ${stepRuleId} não encontrada nas regras do workspace ${workspaceData.id}.`);
         throw new Error(`Regra ${stepRuleId} não encontrada para o workspace.`);
     }
      console.log(`[SequenceWorker ${jobId}] Regra atual encontrada: ID=${currentRule.id}`);
 
-    // 5. Obter dados do Cliente
+    // 5. Obter dados do Cliente e ID da Conversa
     const clientData = followUp.client;
     if (!clientData?.phone_number) {
         console.error(`[SequenceWorker ${jobId}] Cliente ou número de telefone não encontrado para FollowUp ${followUpId}.`);
         throw new Error(`Cliente ou telefone não encontrado nos dados do FollowUp ${followUpId}.`);
     }
     const clientPhoneNumber = clientData.phone_number;
+    const activeConversation = clientData.conversations?.[0];
+    if (!activeConversation) {
+         console.warn(`[SequenceWorker ${jobId}] NENHUMA CONVERSA ATIVA encontrada para Cliente ${clientData.id} / Workspace ${workspaceData.id}. Não é possível salvar a mensagem de follow-up.`);
+    } else {
+        console.log(`[SequenceWorker ${jobId}] Conversa ativa encontrada: ID=${activeConversation.id}`);
+    }
     console.log(`[SequenceWorker ${jobId}] Dados do Cliente (Nome: ${clientData.name || 'N/A'}, Telefone: ${clientPhoneNumber}) OK.`);
 
     // 6. Obter Credenciais WhatsApp e Descriptografar
@@ -106,24 +116,23 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
         if (!decryptedAccessToken) throw new Error("Token de acesso WhatsApp descriptografado está vazio.");
     } catch (decryptError: any) {
          console.error(`[SequenceWorker ${jobId}] Falha ao descriptografar token WhatsApp para Workspace ${workspaceData.id}:`, decryptError.message);
-         // Não tentar novamente se a chave estiver errada
-         return { status: 'failed', reason: 'Falha ao descriptografar token WhatsApp' }; 
+         return { status: 'failed', reason: 'Falha ao descriptografar token WhatsApp' };
     }
 
-    // 7. Formatar a Mensagem (Substituir Placeholders)
+    // 7. Formatar a Mensagem
     let messageToSend = currentRule.message_content;
     console.log(`[SequenceWorker ${jobId}] Mensagem original da regra: "${messageToSend}"`);
     if (clientData.name) {
-      messageToSend = messageToSend.replace(/\[NomeCliente\]/gi, clientData.name);
+      messageToSend = messageToSend.replace(/\\[NomeCliente\\]/gi, clientData.name);
       console.log(`[SequenceWorker ${jobId}] Placeholder [NomeCliente] substituído.`);
     }
-    // Adicionar mais placeholders conforme necessário
     console.log(`[SequenceWorker ${jobId}] Mensagem final a ser enviada: "${messageToSend}"`);
 
     // 8. Enviar Mensagem via WhatsApp
     console.log(`[SequenceWorker ${jobId}] Enviando mensagem para WhatsApp (Número: ${clientPhoneNumber})...`);
     let sendSuccess = false;
     let errorMessage: string | null = null;
+    let sentMessageIdFromWhatsapp: string | null = null;
     try {
         const sendResult = await sendWhatsappMessage(
             whatsappPhoneNumberId,
@@ -131,8 +140,9 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
             decryptedAccessToken,
             messageToSend
         );
-        if (sendResult.success) {
+        if (sendResult.success && sendResult.messageId) {
             sendSuccess = true;
+            sentMessageIdFromWhatsapp = sendResult.messageId;
         } else {
             errorMessage = JSON.stringify(sendResult.error || 'Erro desconhecido no envio WhatsApp');
         }
@@ -141,15 +151,72 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
         console.error(`[SequenceWorker ${jobId}] Exceção ao enviar mensagem via WhatsApp para ${clientPhoneNumber}:`, sendError);
     }
 
-    // 9. Lidar com Resultado do Envio e Agendar Próximo Passo
+    // 9. Lidar com Resultado do Envio, Salvar Mensagem, Publicar, Agendar Próximo Passo
     let nextRuleId: string | null = null;
     let nextDelayMs: number | null = null;
 
     if (sendSuccess) {
-      console.log(`[SequenceWorker ${jobId}] Mensagem enviada com sucesso.`);
+      console.log(`[SequenceWorker ${jobId}] Mensagem enviada com sucesso (WPP ID: ${sentMessageIdFromWhatsapp}).`);
+
+      if (activeConversation) {
+          try {
+              const savedMessage = await prisma.message.create({
+                  data: {
+                      conversation_id: activeConversation.id,
+                      sender_type: MessageSenderType.AI,
+                      content: messageToSend,
+                      timestamp: new Date(),
+                      channel_message_id: sentMessageIdFromWhatsapp,
+                      metadata: {
+                          followUpId: followUpId,
+                          stepRuleId: stepRuleId,
+                      }
+                  },
+                  select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true }
+              });
+              console.log(`[SequenceWorker ${jobId}] Mensagem de follow-up ${savedMessage.id} salva para Conv ${activeConversation.id}.`);
+
+              try {
+                  const conversationChannel = `chat-updates:${activeConversation.id}`;
+                  const conversationPayloadString = JSON.stringify(savedMessage);
+                  await redisConnection.publish(conversationChannel, conversationPayloadString);
+                  console.log(`[SequenceWorker ${jobId}] Mensagem ${savedMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
+              } catch (publishConvError) {
+                  console.error(`[SequenceWorker ${jobId}] Falha ao publicar mensagem ${savedMessage.id} no Redis (Canal Conversa):`, publishConvError);
+              }
+
+              try {
+                  const workspaceChannel = `workspace-updates:${workspaceData.id}`;
+                  const workspacePayload = {
+                       type: 'new_message',
+                       conversationId: activeConversation.id,
+                       channel: 'WHATSAPP',
+                       status: activeConversation.status,
+                       is_ai_active: activeConversation.is_ai_active,
+                       lastMessageTimestamp: savedMessage.timestamp.toISOString(),
+                       last_message_at: savedMessage.timestamp.toISOString(),
+                       clientId: clientData.id,
+                       clientName: clientData.name,
+                       clientPhone: clientData.phone_number,
+                       lastMessageContent: savedMessage.content,
+                       lastMessageSenderType: savedMessage.sender_type,
+                       metadata: activeConversation.metadata,
+                  };
+                  await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+                  console.log(`[SequenceWorker ${jobId}] Notificação ENRIQUECIDA (follow-up) publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
+              } catch (publishWsError) {
+                  console.error(`[SequenceWorker ${jobId}] Falha ao publicar notificação de follow-up no Redis (Canal Workspace):`, publishWsError);
+              }
+
+          } catch (saveError) {
+              console.error(`[SequenceWorker ${jobId}] ERRO ao salvar mensagem de follow-up para Conv ${activeConversation.id}:`, saveError);
+          }
+      } else {
+          console.warn(`[SequenceWorker ${jobId}] Conversa ativa não encontrada. Mensagem enviada ("${messageToSend}") não será salva no histórico.`);
+      }
 
       // Encontrar a PRÓXIMA regra na sequência
-      const currentRuleIndex = workspaceData.ai_follow_up_rules.findIndex((rule: { id: string }) => rule.id === stepRuleId);
+      const currentRuleIndex = workspaceData.ai_follow_up_rules.findIndex((rule) => rule.id === stepRuleId);
       const nextRule = workspaceData.ai_follow_up_rules[currentRuleIndex + 1];
 
       if (nextRule) {
@@ -168,20 +235,20 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
     } else {
       // O envio falhou
       console.error(`[SequenceWorker ${jobId}] Falha ao enviar mensagem via WhatsApp:`, errorMessage);
-      // Lançar erro para BullMQ tentar novamente?
+      // Lançar erro para BullMQ tentar novamente (ou ter tratamento de falha customizado)
       throw new Error(`Falha ao enviar mensagem do passo ${stepRuleId} via WhatsApp: ${errorMessage}`);
     }
 
     // 10. Atualizar o FollowUp no Banco
     const updateData: Prisma.FollowUpUpdateInput = {
-      current_sequence_step_order: workspaceData.ai_follow_up_rules.findIndex((r: { id: string }) => r.id === stepRuleId) + 1, // Atualiza para a ordem do passo atual
+      current_sequence_step_order: workspaceData.ai_follow_up_rules.findIndex((r) => r.id === stepRuleId) + 1,
       updated_at: new Date(),
     };
 
     if (nextRuleId && nextDelayMs !== null) {
       // Agenda próximo passo
       updateData.next_sequence_message_at = new Date(Date.now() + nextDelayMs);
-      updateData.status = 'ACTIVE'; // Mantém ativo
+      updateData.status = FollowUpStatus.ACTIVE; // Manter ativo (usar Enum)
 
       // Agendar job na fila
       const nextJobData: SequenceJobData = { followUpId, stepRuleId: nextRuleId, workspaceId: workspaceData.id };
@@ -196,15 +263,13 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
         console.log(`[SequenceWorker ${jobId}] Próximo job (regra ${nextRuleId}) agendado com delay ${nextDelayMs}ms.`);
       } catch (scheduleError) {
           console.error(`[SequenceWorker ${jobId}] ERRO ao agendar PRÓXIMO job de sequência para FollowUp ${followUpId}:`, scheduleError);
-          // O que fazer aqui? Falhar o job atual? Logar e continuar?
-          // Por segurança, vamos lançar o erro para indicar que o agendamento falhou.
           throw new Error(`Falha ao agendar próximo passo da sequência: ${scheduleError}`);
       }
 
     } else {
       // Fim da sequência
       console.log(`[SequenceWorker ${jobId}] Marcando FollowUp ${followUpId} como COMPLETED.`);
-      updateData.status = 'COMPLETED'; // Usar Enum se tiver
+      updateData.status = FollowUpStatus.COMPLETED; // Usar Enum
       updateData.next_sequence_message_at = null;
       updateData.completed_at = new Date();
     }
@@ -215,36 +280,15 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
     });
     console.log(`[SequenceWorker ${jobId}] FollowUp ${followUpId} atualizado no DB. Novo status: ${updateData.status}, NextMsgAt: ${updateData.next_sequence_message_at || 'N/A'}`);
 
-    // Opcional: Salvar a mensagem enviada no histórico de mensagens
-    // PARA ISSO, PRECISAMOS DO conversation_id. Como simplificamos a busca,
-    // precisaríamos buscar a conversa ativa mais recente aqui, se quisermos salvar.
-    // Exemplo:
-    /*
-    const conversation = await prisma.conversation.findFirst({
-        where: { client_id: clientData.id, workspace_id: workspaceData.id, status: 'ACTIVE' },
-        orderBy: { last_message_at: 'desc' },
-        select: { id: true }
-    });
-    if (conversation) {
-        try {
-            const savedMessage = await prisma.message.create({ data: { ... } });
-            // ... publicar no Redis ...
-        } catch(logError) { ... }
-    } else {
-        console.warn(`[SequenceWorker ${jobId}] Conversa ativa não encontrada para salvar log da mensagem da sequência.`);
-    }
-    */
-
     console.log(`--- [SequenceWorker ${jobId}] FIM (Sucesso) ---`);
     return { status: 'completed', nextStepScheduled: !!nextRuleId };
 
   } catch (error: any) {
     console.error(`[SequenceWorker ERROR ${job?.id}] Erro processando step ${stepRuleId} para FollowUp ${followUpId}:`, error);
-    // Tentar marcar FollowUp como falhado? Ou deixar BullMQ tentar novamente?
      try {
          await prisma.followUp.update({
              where: { id: followUpId },
-             data: { status: 'FAILED' } // Usar Enum se tiver
+             data: { status: FollowUpStatus.FAILED } // Usar Enum
          });
          console.log(`[SequenceWorker ${jobId}] FollowUp ${followUpId} marcado como FAILED devido a erro crítico.`);
      } catch (updateError) {
