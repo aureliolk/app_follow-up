@@ -221,7 +221,17 @@ export async function POST(
             // Canal da Conversa
             try {
                 const conversationChannel = `chat-updates:${conversationId}`;
-                await redisConnection.publish(conversationChannel, JSON.stringify(newMessage));
+                const redisPayload = {
+                    type: 'new_message',
+                    payload: {
+                        id: newMessage.id,
+                        conversation_id: newMessage.conversation_id,
+                        content: newMessage.content,
+                        sender_type: newMessage.sender_type,
+                        timestamp: newMessage.timestamp.toISOString(),
+                    }
+                };
+                await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
                 console.log(`API POST Messages (${conversationId}): Message ${newMessage.id} published to CONVERSATION channel ${conversationChannel}.`);
             } catch (publishError) {
                 console.error(`API POST Messages (${conversationId}): Failed to publish to CONVERSATION channel:`, publishError);

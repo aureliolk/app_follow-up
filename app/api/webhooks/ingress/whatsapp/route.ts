@@ -195,15 +195,17 @@ export async function POST(request: NextRequest) {
                   try {
                        const redisChannel = `chat-updates:${conversationId}`;
                        // Construct payload matching potential UI expectations (ensure all fields are present)
-                       const redisPayload = JSON.stringify({
-                           id: newMessage.id,
-                           conversation_id: newMessage.conversation_id,
-                           content: newMessage.content,
-                           sender_type: newMessage.sender_type,
-                           timestamp: newMessage.timestamp.toISOString(), // Send ISO string
-                           // Include other fields if needed by UI, e.g., api_message_id if you re-add it
-                       });
-                       await redisConnection.publish(redisChannel, redisPayload); // Use imported connection
+                       const redisPayload = {
+                           type: 'new_message',
+                           payload: {
+                               id: newMessage.id,
+                               conversation_id: newMessage.conversation_id,
+                               content: newMessage.content,
+                               sender_type: newMessage.sender_type,
+                               timestamp: newMessage.timestamp.toISOString(), // Send ISO string
+                           }
+                       };
+                       await redisConnection.publish(redisChannel, JSON.stringify(redisPayload)); // Use imported connection
                        console.log(`[WHATSAPP WEBHOOK] Mensagem ${newMessageId} publicada no Redis canal ${redisChannel}`);
                    } catch (publishError) {
                        console.error(`[WHATSAPP WEBHOOK] Falha ao publicar mensagem ${newMessageId} no Redis:`, publishError);

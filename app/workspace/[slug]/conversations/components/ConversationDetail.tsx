@@ -108,76 +108,87 @@ export default function ConversationDetail() {
 
   // --- <<< NOVO EFFECT PARA SSE >>> ---
   useEffect(() => {
-    // Fecha conexão anterior se existir ao mudar de conversa ou desmontar
     if (eventSourceRef.current) {
       console.log(`[ConvDetail SSE] Fechando conexão SSE anterior.`);
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
 
-    // Só abre nova conexão se houver uma conversa selecionada
     if (conversation?.id) {
       const conversationId = conversation.id;
       console.log(`[ConvDetail SSE] Iniciando conexão SSE para conversa: ${conversationId}`);
 
-      // Cria a nova conexão EventSource
-      const newEventSource = new EventSource(`/api/conversations/${conversationId}/events`);
-      eventSourceRef.current = newEventSource; // Guarda a referência
+      let retryCount = 0;
+      const maxRetries = 3;
+      const retryDelay = 2000; // 2 segundos
 
-      // Listener para o evento 'connected' (opcional)
-      newEventSource.addEventListener('connected', (event) => {
-        console.log("[ConvDetail SSE] Conexão estabelecida com sucesso:", event.data);
-      });
+      const connectSSE = () => {
+        const newEventSource = new EventSource(`/api/conversations/${conversationId}/events`);
+        eventSourceRef.current = newEventSource;
 
-      // <<< MODIFICAR ESTE LISTENER >>>
-      // Usar onmessage para capturar todos os eventos ou adicionar listeners específicos
-      newEventSource.onmessage = (event) => { // Usando onmessage genérico
-        // <<< RESTAURAR CÓDIGO ORIGINAL >>>
-        console.log("[ConvDetail SSE] Raw event data received:", event.data);
-        try {
-          const eventData = JSON.parse(event.data);
-          console.log("[ConvDetail SSE] Parsed event received:", eventData);
+        newEventSource.addEventListener('connection_ready', (event) => {
+          console.log("[ConvDetail SSE] Conexão estabelecida com sucesso:", event.data);
+          retryCount = 0; // Reset retry count on successful connection
+        });
 
-          // Verificar o TIPO do evento
-          if (eventData.type === 'new_message' && eventData.payload) {
-             console.log(`[ConvDetail SSE] Processando new_message: ${eventData.payload.id}`);
-             addRealtimeMessage(eventData.payload);
-          } else if (eventData.type === 'message_content_updated' && eventData.payload) {
-             console.log(`[ConvDetail SSE] Processando message_content_updated: ${eventData.payload.id}`);
-             updateRealtimeMessageContent(
-                eventData.payload.id,
-                eventData.payload.content,
-                eventData.payload.metadata
-             );
-          } else {
-             console.warn("[ConvDetail SSE] Tipo de evento desconhecido ou sem payload:", eventData.type);
+        // Ouvir eventos específicos
+        newEventSource.addEventListener('new_message', (event) => {
+          try {
+            const messageData = JSON.parse(event.data);
+            console.log(`[ConvDetail SSE] Nova mensagem recebida:`, messageData);
+            addRealtimeMessage(messageData);
+          } catch (error) {
+            console.error("[ConvDetail SSE] Erro ao parsear mensagem SSE:", error, "\nData:", event.data);
           }
-        } catch (error) {
-          console.error("[ConvDetail SSE] Erro ao parsear ou processar evento SSE:", error, "\nData:", event.data);
-        }
+        });
+
+        // Ouvir atualizações de conteúdo de mensagem (ex: quando mídia é processada)
+        newEventSource.addEventListener('message_content_updated', (event) => {
+          try {
+            const messageData = JSON.parse(event.data);
+            console.log(`[ConvDetail SSE] Atualização de conteúdo recebida:`, messageData);
+            updateRealtimeMessageContent(
+              messageData.id,
+              messageData.content,
+              messageData.metadata
+            );
+          } catch (error) {
+            console.error("[ConvDetail SSE] Erro ao parsear atualização SSE:", error, "\nData:", event.data);
+          }
+        });
+
+        newEventSource.addEventListener('error', (error) => {
+          console.error("[ConvDetail SSE] Erro na conexão EventSource:", error);
+          
+          if (retryCount < maxRetries) {
+            retryCount++;
+            console.log(`[ConvDetail SSE] Tentativa ${retryCount} de ${maxRetries}. Reconectando em ${retryDelay}ms...`);
+            
+            // Fechar conexão atual
+            newEventSource.close();
+            eventSourceRef.current = null;
+            
+            // Tentar reconectar após delay
+            setTimeout(connectSSE, retryDelay);
+          } else {
+            console.error(`[ConvDetail SSE] Máximo de tentativas (${maxRetries}) atingido.`);
+            toast.error('Erro na conexão em tempo real. Por favor, recarregue a página.');
+          }
+        });
       };
 
-      // Remover listener específico 'new-message' se estiver usando onmessage
-      // newEventSource.addEventListener('new-message', (event) => { ... });
-
-      // Listener para erros na conexão SSE
-      newEventSource.onerror = (error) => {
-        console.error("[ConvDetail SSE] Erro na conexão EventSource:", error);
-        // O navegador tentará reconectar automaticamente em caso de erro
-      };
+      // Iniciar conexão
+      connectSSE();
     }
 
-    // Função de limpeza: é executada quando a dependência (conversation.id) muda
-    // ou quando o componente é desmontado.
     return () => {
-      console.log('[ConvDetail LIFECYCLE] SSE useEffect CLEANUP executing...');
       if (eventSourceRef.current) {
         console.log(`[ConvDetail SSE] Limpeza: Fechando conexão SSE.`);
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
     };
-  }, [conversation?.id]); // Depender APENAS do ID da conversa
+  }, [conversation?.id, addRealtimeMessage]);
 
   // --- Handlers de Ação ---
 

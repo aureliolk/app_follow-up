@@ -178,8 +178,21 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
               try {
                   const conversationChannel = `chat-updates:${activeConversation.id}`;
-                  const conversationPayloadString = JSON.stringify(savedMessage);
-                  await redisConnection.publish(conversationChannel, conversationPayloadString);
+                  const conversationPayload = {
+                      type: 'new_message',
+                      payload: {
+                          id: savedMessage.id,
+                          conversation_id: savedMessage.conversation_id,
+                          content: savedMessage.content,
+                          sender_type: savedMessage.sender_type,
+                          timestamp: savedMessage.timestamp.toISOString(),
+                          metadata: {
+                              followUpId: followUpId,
+                              stepRuleId: stepRuleId,
+                          }
+                      }
+                  };
+                  await redisConnection.publish(conversationChannel, JSON.stringify(conversationPayload));
                   console.log(`[SequenceWorker ${jobId}] Mensagem ${savedMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
               } catch (publishConvError) {
                   console.error(`[SequenceWorker ${jobId}] Falha ao publicar mensagem ${savedMessage.id} no Redis (Canal Conversa):`, publishConvError);
@@ -189,18 +202,20 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
                   const workspaceChannel = `workspace-updates:${workspaceData.id}`;
                   const workspacePayload = {
                        type: 'new_message',
-                       conversationId: activeConversation.id,
-                       channel: 'WHATSAPP',
-                       status: activeConversation.status,
-                       is_ai_active: activeConversation.is_ai_active,
-                       lastMessageTimestamp: savedMessage.timestamp.toISOString(),
-                       last_message_at: savedMessage.timestamp.toISOString(),
-                       clientId: clientData.id,
-                       clientName: clientData.name,
-                       clientPhone: clientData.phone_number,
-                       lastMessageContent: savedMessage.content,
-                       lastMessageSenderType: savedMessage.sender_type,
-                       metadata: activeConversation.metadata,
+                       payload: {
+                           conversationId: activeConversation.id,
+                           channel: 'WHATSAPP',
+                           status: activeConversation.status,
+                           is_ai_active: activeConversation.is_ai_active,
+                           lastMessageTimestamp: savedMessage.timestamp.toISOString(),
+                           last_message_at: savedMessage.timestamp.toISOString(),
+                           clientId: clientData.id,
+                           clientName: clientData.name,
+                           clientPhone: clientData.phone_number,
+                           lastMessageContent: savedMessage.content,
+                           lastMessageSenderType: savedMessage.sender_type,
+                           metadata: activeConversation.metadata
+                       }
                   };
                   await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
                   console.log(`[SequenceWorker ${jobId}] Notificação ENRIQUECIDA (follow-up) publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);

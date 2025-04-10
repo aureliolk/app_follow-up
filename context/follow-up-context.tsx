@@ -403,34 +403,85 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, []);
 
     const addRealtimeMessage = useCallback((message: Message) => {
-        // Só adiciona se for a conversa selecionada E a mensagem não existir já
-        // (Evita duplicatas se a API e o SSE chegarem quase juntos ou se o SSE enviar msg do próprio user)
+        console.log(`[FollowUpContext] Recebida mensagem SSE:`, {
+            messageId: message.id,
+            conversationId: message.conversation_id,
+            selectedConvId: selectedConversation?.id,
+            content: message.content?.slice(0, 50) + '...'
+        });
+
+        // Validação básica da mensagem
+        if (!message.id || !message.conversation_id) {
+            console.error('[FollowUpContext] Mensagem SSE inválida:', message);
+            return;
+        }
+
+        // Se for a conversa selecionada
         if (message.conversation_id === selectedConversation?.id) {
-             setSelectedConversationMessages(prevMessages => {
-                 if (!prevMessages.some(m => m.id === message.id)) {
-                      console.log(`[FollowUpContext] Adicionando mensagem SSE: ${message.id}`);
-                      return [...prevMessages, message];
-                 } else {
-                     console.warn(`[FollowUpContext] Mensagem SSE ${message.id} já existe no estado. Ignorando.`);
+            setSelectedConversationMessages(prevMessages => {
+                // Verifica se a mensagem já existe
+                const messageExists = prevMessages.some(m => m.id === message.id);
+                
+                if (!messageExists) {
+                    console.log(`[FollowUpContext] Adicionando mensagem SSE ${message.id} à conversa ${message.conversation_id}`);
+                    
+                    // Ordena as mensagens por timestamp
+                    const updatedMessages = [...prevMessages, message].sort((a, b) => 
+                        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                    );
+                    
+                    return updatedMessages;
+                } else {
+                    console.warn(`[FollowUpContext] Mensagem SSE ${message.id} já existe no estado. Ignorando.`);
                     return prevMessages;
-                 }
-             });
-             // Atualizar cache
-             setMessageCache(prevCache => {
+                }
+            });
+
+            // Atualiza o cache
+            setMessageCache(prevCache => {
                 const currentCache = prevCache[message.conversation_id] || [];
-                 if (!currentCache.some(m => m.id === message.id)) {
-                    return { ...prevCache, [message.conversation_id]: [...currentCache, message] };
-                 }
-                 return prevCache;
+                const messageExists = currentCache.some(m => m.id === message.id);
+
+                if (!messageExists) {
+                    // Ordena o cache também por timestamp
+                    const updatedCache = [...currentCache, message].sort((a, b) =>
+                        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                    );
+                    
+                    return { 
+                        ...prevCache, 
+                        [message.conversation_id]: updatedCache 
+                    };
+                }
+                return prevCache;
             });
         } else {
             console.log(`[FollowUpContext] Mensagem SSE recebida para conversa não selecionada (${message.conversation_id}). Marcando como não lida.`);
+            
             // Marca como não lida se não for a conversa atual
-             setUnreadConversationIds(prev => {
-                 const next = new Set(prev);
-                 next.add(message.conversation_id);
-                 return next;
-             });
+            setUnreadConversationIds(prev => {
+                const next = new Set(prev);
+                next.add(message.conversation_id);
+                return next;
+            });
+
+            // Atualiza o cache mesmo não sendo a conversa atual
+            setMessageCache(prevCache => {
+                const currentCache = prevCache[message.conversation_id] || [];
+                const messageExists = currentCache.some(m => m.id === message.id);
+
+                if (!messageExists) {
+                    const updatedCache = [...currentCache, message].sort((a, b) =>
+                        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                    );
+                    
+                    return {
+                        ...prevCache,
+                        [message.conversation_id]: updatedCache
+                    };
+                }
+                return prevCache;
+            });
         }
     }, [selectedConversation?.id]);
 
