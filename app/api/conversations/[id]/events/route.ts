@@ -47,24 +47,42 @@ export async function GET(
 
             // Handler para mensagens recebidas no canal Redis
             subscriber.on('message', (ch, message) => {
-                 // <<< DEBUG LOG >>>
-                 console.log(`[SSE Route DEBUG] Raw message received by subscriber. Target Channel: ${channel}, Received on Channel: ${ch}`);
+                 console.log(`[SSE Route DEBUG] Raw message received by subscriber. Target Channel: ${channel}, Received on Channel: ${ch}, Data: ${message}`);
                  if (ch === channel) {
                     console.log(`[SSE Route] Mensagem recebida no canal ${channel}`);
                     try {
-                        // Tentar parsear a mensagem (assumindo que foi publicada como JSON string)
-                        // Não precisamos necessariamente parsear aqui, podemos apenas encaminhar
-                        // const parsedMessage = JSON.parse(message);
+                        // 1. Parsear a mensagem do Redis
+                        const parsedMessage = JSON.parse(message);
+                        
+                        // 2. Extrair o tipo e o payload (ou dados relevantes)
+                        const eventType = parsedMessage.type; // Ex: 'new_message', 'message_content_updated'
+                        const eventPayload = parsedMessage.payload || parsedMessage; // Use payload se existir, senão o objeto todo
 
-                        // Formata a mensagem para SSE: event e data
-                        // Usamos 'new-message' como nome do evento
-                        const sseMessage = `event: new-message\ndata: ${message}\n\n`;
+                        if (!eventType) {
+                            console.warn(`[SSE Route] Mensagem do Redis sem 'type' no canal ${channel}. Ignorando. Data: ${message}`);
+                            return; // Ignora mensagens sem tipo
+                        }
+
+                        // 3. Formata a mensagem SSE dinamicamente
+                        // O nome do evento SSE será o 'type' da mensagem do Redis
+                        // O 'data' será o payload (ou objeto todo) stringificado
+                        const sseMessage = `event: ${eventType}\ndata: ${JSON.stringify(eventPayload)}\n\n`;
+                        
+                        // <<< LOG ANTES DO ENVIO >>>
+                        console.log(`[SSE Route - SENDING] Preparando para enviar evento: type=${eventType}, ConvID=${conversationId}`);
+
                         streamController.enqueue(new TextEncoder().encode(sseMessage));
-                    } catch (parseError) {
-                        console.error(`[SSE Route] Falha ao processar/enviar mensagem SSE para ${channel}:`, parseError);
-                        console.error(`[SSE Route] Mensagem original: ${message}`);
-                        // Não fechar o stream por um erro de parse, apenas logar
+
+                        // <<< LOG APÓS O ENVIO (SE NÃO HOUVE ERRO) >>>
+                        console.log(`[SSE Route - SENT] Evento enfileirado com sucesso: type=${eventType}, ConvID=${conversationId}`);
+
+                    } catch (processError) { // Renomeado para não conflitar
+                        console.error(`[SSE Route] Falha ao processar/enviar mensagem SSE para ${channel}:`, processError);
+                        console.error(`[SSE Route] Mensagem original do Redis: ${message}`);
                     }
+                 } else {
+                     // <<< LOG SE O CANAL NÃO CORRESPONDER (Improvável mas bom ter) >>>
+                     console.log(`[SSE Route DEBUG] Mensagem recebida em canal diferente (${ch}). Ignorando para ${channel}.`);
                  }
             });
 

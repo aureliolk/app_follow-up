@@ -140,30 +140,58 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                             const contacts = change.value.contacts; // <<< DEFINIR CONTACTS AQUI (fora do loop de msg)
                             for (const message of change.value.messages) {
                                 // Processar mensagens de texto, imagem ou áudio recebidas
-                                if (message.from && (message.type === 'text' || message.type === 'image' || message.type === 'audio')) {
+                                if (message.from) {
                                     const receivedTimestamp = parseInt(message.timestamp, 10) * 1000; // Timestamp da mensagem (em segundos, converter para ms)
                                     const senderPhoneNumber = message.from; // Número de quem enviou
                                     const messageIdFromWhatsapp = message.id; // ID da mensagem na API do WhatsApp
                                     const workspacePhoneNumberId = metadata?.phone_number_id; // <<< USAR METADATA DEFINIDO ACIMA
 
                                     let messageContent: string | null = null;
-                                    let messageType = message.type; // Guarda o tipo original
+                                    const messageType = message.type;
                                     let mediaId: string | null = null;
+                                    let mimeType: string | null = null; // <<< Guardar mime_type
+                                    let requiresProcessing = false; // <<< Flag para saber se deve enfileirar job
 
                                     if (messageType === 'text') {
                                         messageContent = message.text?.body;
-                                    } else if (messageType === 'image') {
+                                        requiresProcessing = true; // Texto normal também vai para IA
+                                    } else if (messageType === 'image') { // <<< Tratamento de Imagem >>>
                                         messageContent = "[Imagem Recebida]"; // Placeholder
                                         mediaId = message.image?.id ?? null;
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Imagem Recebida: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}`);
-                                    } else if (messageType === 'audio') {
+                                        mimeType = message.image?.mime_type ?? null;
+                                        requiresProcessing = !!mediaId; // Só processa se tiver ID
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Imagem Recebida: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
+                                    } else if (messageType === 'audio') { // <<< Tratamento de Áudio >>>
                                         messageContent = "[Áudio Recebido]"; // Placeholder
                                         mediaId = message.audio?.id ?? null;
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Áudio Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}`);
+                                        mimeType = message.audio?.mime_type ?? null;
+                                        requiresProcessing = !!mediaId;
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Áudio Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
+                                    } else if (messageType === 'video') { // <<< Tratamento de Vídeo >>>
+                                        messageContent = "[Vídeo Recebido]"; // Placeholder
+                                        mediaId = message.video?.id ?? null;
+                                        mimeType = message.video?.mime_type ?? null;
+                                        requiresProcessing = !!mediaId;
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Vídeo Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
+                                    } else if (messageType === 'document') { // <<< Tratamento de Documento >>>
+                                        messageContent = `[Documento Recebido: ${message.document?.filename || 'Nome não disponível'}]`; // Placeholder com nome do arquivo
+                                        mediaId = message.document?.id ?? null;
+                                        mimeType = message.document?.mime_type ?? null;
+                                        requiresProcessing = !!mediaId;
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Documento Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
+                                    } else if (messageType === 'sticker') { // <<< Tratamento de Sticker >>>
+                                        messageContent = "[Sticker Recebido]"; // Placeholder
+                                        mediaId = message.sticker?.id ?? null;
+                                        mimeType = message.sticker?.mime_type ?? null;
+                                        requiresProcessing = !!mediaId; // Sticker também pode ser baixado
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Sticker Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
+                                    } else {
+                                        // Outros tipos (location, contacts, etc.) - Logar e não processar
+                                        console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Tipo de mensagem não suportado recebido: ${messageType}. Pulando.`);
+                                        continue; // Pula para a próxima mensagem
                                     }
-
                                     // Validar se temos conteúdo (ou placeholder)
-                                    if (!messageContent) {
+                                    if (!messageContent || !requiresProcessing) { // Pula se não tiver conteúdo OU não for para processar
                                         console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conteúdo da mensagem não processável ou tipo ${messageType} não tratado. Pulando.`);
                                         continue;
                                     }
@@ -244,26 +272,35 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         data: {
                                             conversation_id: conversation.id,
                                             sender_type: 'CLIENT',
-                                            content: messageContent,
+                                            content: messageContent, // Placeholder para mídias
                                             timestamp: new Date(receivedTimestamp),
                                             channel_message_id: messageIdFromWhatsapp,
-                                            metadata: {
+                                            metadata: { // Armazenar detalhes da mídia
                                                 whatsappMessage: message,
-                                                mediaId: mediaId
+                                                // Somente adicionar campos se existirem
+                                                ...(mediaId && { mediaId }),
+                                                ...(mimeType && { mimeType }),
+                                                messageType: messageType, // Sempre guardar o tipo original
                                             }
                                         },
                                         select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true }
                                     });
                                     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} (WPP ID: ${messageIdFromWhatsapp}) salva para Conv ${conversation.id}.`);
 
-                                    // --- Publish to Redis (Canal da Conversa) ---
+                                    // --- Publish to Redis (Canal da Conversa - CORRIGIDO) ---
                                     try {
                                         const conversationChannel = `chat-updates:${conversation.id}`;
-                                        const conversationPayloadString = JSON.stringify(newMessage);
+                                        // <<< CORREÇÃO AQUI >>> Envolver no formato { type, payload }
+                                        const conversationPayload = { 
+                                            type: 'new_message', 
+                                            payload: newMessage 
+                                        };
+                                        const conversationPayloadString = JSON.stringify(conversationPayload); 
                                         await redisConnection.publish(conversationChannel, conversationPayloadString);
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
+                                        // Atualizar log para refletir o novo formato
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Evento {type: 'new_message', payload: Msg ${newMessage.id}} publicado no canal Redis da CONVERSA: ${conversationChannel}`); 
                                     } catch (publishError) {
-                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar mensagem ${newMessage.id} no Redis (Canal Conversa):`, publishError);
+                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar evento new_message para ${newMessage.id} no Redis (Canal Conversa):`, publishError);
                                     }
 
                                     // --- Publish to Redis (Canal do Workspace) ---
@@ -292,19 +329,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                                     // --- Enqueue Job para Processamento da Mensagem (IA, etc.) ---
                                     // É importante que este job NÃO dependa do início do follow-up
-                                    try {
-                                        const jobData = {
-                                            conversationId: conversation.id,
-                                            clientId: client.id,
-                                            newMessageId: newMessage.id,
-                                            workspaceId: workspace.id,
-                                            receivedTimestamp: receivedTimestamp,
-                                        };
-                                        await addMessageProcessingJob(jobData); // Adiciona à fila 'message-processing'
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Job adicionado à fila message-processing para msg ${newMessage.id}.`);
-                                    } catch (queueError) {
-                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao adicionar job à fila message-processing:`, queueError);
-                                         // Logar o erro, mas continuar, pois a mensagem foi salva
+                                    if (requiresProcessing) {
+                                        try {
+                                            const jobData = {
+                                                conversationId: conversation.id,
+                                                clientId: client.id,
+                                                newMessageId: newMessage.id,
+                                                workspaceId: workspace.id,
+                                                receivedTimestamp: receivedTimestamp,
+                                            };
+                                            await addMessageProcessingJob(jobData);
+                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Job adicionado à fila message-processing para msg ${newMessage.id}.`);
+                                        } catch (queueError) {
+                                            console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao adicionar job à fila message-processing:`, queueError);
+                                             // Logar o erro, mas continuar, pois a mensagem foi salva
+                                        }
+                                    } else {
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} (Tipo: ${messageType}) não requer processamento pela IA/Worker. Job não enfileirado.`);
                                     }
 
                                     // --- INÍCIO: Lógica para Iniciar Follow-up ---
@@ -388,7 +429,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     }
                                     // --- FIM: Lógica para Iniciar Follow-up ---
 
-                                } // Fim if message.from && (message.type === 'text' || ...)
+                                } // Fim if message.from
                             } // Fim loop messages
                         } // Fim if change.field === 'messages'
                     } // Fim loop changes

@@ -141,62 +141,63 @@ export default function ConversationsPage() {
                 if (eventData.type === 'new_message' && eventData.conversationId) {
                     console.log(`[ConversationsPage] SSE: Nova mensagem detectada para Conv ${eventData.conversationId}...`);
 
-                    // ATUALIZAR ESTADO DIRETAMENTE (Lógica adicionada anteriormente)
+                    // REFATORADO: Atualizar estado da lista de forma mais segura
                     setConversations(prevConversations => {
-                        const existingConvoIndex = prevConversations.findIndex(c => c.id === eventData.conversationId);
-                        let updatedConversations = [...prevConversations];
+                        const convoIndex = prevConversations.findIndex(c => c.id === eventData.conversationId);
+                        let updatedList = [...prevConversations];
 
-                        const newLastMessage = {
-                           content: eventData.lastMessageContent || 'Nova mensagem...', // Assumir que esses campos existem no evento
-                           timestamp: eventData.lastMessageTimestamp || new Date().toISOString(),
-                           sender_type: eventData.lastMessageSenderType || 'UNKNOWN',
+                        const newLastMessageData = {
+                           content: eventData.lastMessageContent || '...', // Obter do evento
+                           timestamp: eventData.lastMessageTimestamp || new Date().toISOString(), // Obter do evento
+                           sender_type: eventData.lastMessageSenderType || 'UNKNOWN', // Obter do evento
                         };
 
-                        if (existingConvoIndex > -1) {
-                            // Conversa existente: Atualiza e move para o topo
-                            console.log(`[ConversationsPage] SSE: Atualizando conversa existente ${eventData.conversationId}`);
-                            const existingConvo = updatedConversations[existingConvoIndex];
-                            const updatedConvo = {
-                                ...existingConvo,
-                                last_message: newLastMessage,
-                                last_message_at: new Date(newLastMessage.timestamp), // Atualizar timestamp principal
-                                // Opcional: Atualizar status, etc., se vier no evento
+                        if (convoIndex > -1) {
+                            // Conversa existente: Atualiza SÓ os campos da lista e move para o topo
+                            console.log(`[ConversationsPage] SSE: Atualizando APENAS last_message da conversa existente ${eventData.conversationId}`);
+                            const existingConvo = updatedList[convoIndex];
+                            // Cria um NOVO objeto apenas para a atualização, mas baseado no existente
+                            const updatedConvoPreview = {
+                                ...existingConvo, // Mantém outras props como client, etc.
+                                last_message: newLastMessageData,
+                                last_message_at: new Date(newLastMessageData.timestamp),
+                                // Poderia atualizar status, is_ai_active se vierem no evento também
+                                status: eventData.status || existingConvo.status,
+                                is_ai_active: eventData.is_ai_active ?? existingConvo.is_ai_active,
                             };
-                            updatedConversations.splice(existingConvoIndex, 1); // Remove da posição antiga
-                            updatedConversations.unshift(updatedConvo); // Adiciona no topo
+                            updatedList.splice(convoIndex, 1); // Remove da posição antiga
+                            updatedList.unshift(updatedConvoPreview); // Adiciona no topo
                         } else {
-                            // Nova conversa: Adiciona no topo (precisa de dados mínimos do cliente)
-                            console.log(`[ConversationsPage] SSE: Adicionando nova conversa ${eventData.conversationId}`);
-                            const newConversation: ClientConversation = {
+                            // Nova conversa: Adiciona um objeto MÍNIMO no topo
+                            // A busca completa ocorrerá se/quando o usuário clicar nela
+                             console.log(`[ConversationsPage] SSE: Adicionando PREVIEW da nova conversa ${eventData.conversationId}`);
+                             const newConversationPreview: ClientConversation = {
                                 id: eventData.conversationId,
-                                workspace_id: wsId, // wsId está no escopo externo do useEffect
-                                client_id: eventData.clientId || 'unknown-client', // Precisa vir do evento
-                                channel: eventData.channel || 'UNKNOWN', // Precisa vir do evento
-                                status: 'ACTIVE', // Default para nova conversa
-                                is_ai_active: eventData.is_ai_active ?? true, // Default ou do evento
-                                last_message_at: new Date(newLastMessage.timestamp),
-                                created_at: new Date(newLastMessage.timestamp), // Aproximação
-                                updated_at: new Date(newLastMessage.timestamp),
-                                client: { // Precisa vir do evento
-                                    id: eventData.clientId || 'unknown-client',
+                                workspace_id: wsId,
+                                client_id: eventData.clientId || 'unknown',
+                                channel: eventData.channel || 'UNKNOWN',
+                                status: eventData.status || 'ACTIVE',
+                                is_ai_active: eventData.is_ai_active ?? true,
+                                last_message_at: new Date(newLastMessageData.timestamp),
+                                created_at: new Date(newLastMessageData.timestamp), // Aproximação
+                                updated_at: new Date(newLastMessageData.timestamp),
+                                client: {
+                                    id: eventData.clientId || 'unknown',
                                     name: eventData.clientName || eventData.clientPhone || 'Novo Contato',
                                     phone_number: eventData.clientPhone || null,
                                 },
-                                last_message: newLastMessage,
-                                activeFollowUp: null, // Nova conversa não tem follow-up ativo ainda
+                                last_message: newLastMessageData,
+                                activeFollowUp: null, // Preview não tem detalhes de follow-up
                                 metadata: {},
                             };
-                            // Apenas adiciona se realmente tivermos um ID
-                            if (newConversation.id) {
-                                updatedConversations.unshift(newConversation);
-                            } else {
-                                console.warn('[ConversationsPage] SSE: ID da nova conversa ausente no evento, não foi possível adicionar.');
-                            }
+                             if (newConversationPreview.id !== 'unknown') { // Evita adicionar se ID for inválido
+                                updatedList.unshift(newConversationPreview);
+                             }
                         }
-                        return updatedConversations;
+                        return updatedList;
                     });
 
-                    // Atualiza não lidas (manter)
+                    // Lógica de não lidas (manter como estava, usando Ref)
                     if (eventData.conversationId && eventData.conversationId !== selectedConversationRef.current?.id) {
                         console.log(`[ConversationsPage] SSE: Marcando ${eventData.conversationId} como não lida (via Contexto Ref).`);
                         setUnreadConversationsRef.current(prev => {
@@ -206,9 +207,9 @@ export default function ConversationsPage() {
                         });
                     }
                 } else if (eventData.type === 'conversation_updated' && eventData.conversationId) {
-                     // Exemplo: Lógica para atualizar status ou outros dados de uma conversa existente
+                     // Manter esta lógica como estava, ela parece segura (só atualiza campos)
                      console.log(`[ConversationsPage] SSE: Evento conversation_updated para ${eventData.conversationId}`);
-                     setConversations(prev => prev.map(c => 
+                     setConversations(prev => prev.map(c =>
                         c.id === eventData.conversationId ? { ...c, ...eventData.changes } : c
                      ));
                 }

@@ -93,6 +93,9 @@ interface FollowUpContextType {
     // <<< NOVA DEFINIÇÃO PARA NOTIFICAÇÃO >>>
     unreadConversationIds: Set<string>; // Estado para IDs não lidos
     setUnreadConversationIds: Dispatch<SetStateAction<Set<string>>>; // <<< ADICIONAR O SETTER
+
+    // <<< Adicionar nova função para atualização >>>
+    updateRealtimeMessageContent: (messageId: string, newContent: string, newMetadata: any) => void;
 }
 
 // --- Context Creation ---
@@ -290,103 +293,170 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         );
     }, [workspaceContext, handleApiCall]);
 
-    // --- Selected Conversation Actions ---
-    const selectConversation = useCallback((conversation: ClientConversation | null) => {
-        setSelectedConversation(conversation);
-        setSelectedConversationMessages([]);
-        setSelectedConversationError(null);
-        if (conversation?.id) {
-            // <<< LIMPAR NOTIFICAÇÃO AO SELECIONAR >>>
-            setUnreadConversationIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(conversation.id);
-                return newSet;
-            });
-            fetchConversationMessages(conversation.id); // Fetch messages
-        } else {
-            setLoadingSelectedConversationMessages(false);
-        }
-    }, [/* fetchConversationMessages dependency added via useEffect below */]);
+    // --- Selected Conversation / Message Actions ---
 
-    const fetchConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
+    // <<< MOVER fetchConversationMessages para ANTES de selectConversation >>>
+     const fetchConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
         if (messageCache[conversationId]) {
+            console.log(`[FollowUpContext] Cache hit for messages in Conv ${conversationId}`);
             setSelectedConversationMessages(messageCache[conversationId]);
+            setLoadingSelectedConversationMessages(false);
             return messageCache[conversationId];
         }
-        return handleApiCall(
-            async () => {
-                const response = await axios.get<{ success: boolean, data?: Message[], error?: string }>(
-                    `/api/conversations/${conversationId}/messages`
-                );
-                if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao buscar mensagens');
-                const fetchedMessages = response.data.data;
-                setSelectedConversationMessages(fetchedMessages);
-                setMessageCache(prev => ({ ...prev, [conversationId]: fetchedMessages }));
-                return fetchedMessages;
-            },
-            setLoadingSelectedConversationMessages, // Use specific loading state
-            setSelectedConversationError, // Use specific error state
-            null
-        );
-    }, [messageCache, handleApiCall]);
 
-    // Effect to link selectConversation and fetchConversationMessages
-     useEffect(() => {
-        // This empty effect ensures fetchConversationMessages is available when selectConversation is defined
-     }, [fetchConversationMessages]);
+        console.log(`[FollowUpContext] Cache miss. Fetching messages for Conv ${conversationId}`);
+        setLoadingSelectedConversationMessages(true);
+        setSelectedConversationError(null);
+        try {
+            const response = await axios.get<{ success: boolean, data?: Message[], error?: string }>(
+                `/api/conversations/${conversationId}/messages`
+            );
+            if (!response.data.success || !response.data.data) {
+                throw new Error(response.data.error || 'Falha ao buscar mensagens');
+            }
+            const messages = response.data.data;
+            setSelectedConversationMessages(messages);
+            setMessageCache(prev => ({ ...prev, [conversationId]: messages }));
+            console.log(`[FollowUpContext] Fetched ${messages.length} messages for Conv ${conversationId}`);
+            return messages;
+        } catch (error: any) {
+            console.error(`[FollowUpContext] Error fetching messages for Conv ${conversationId}:`, error);
+            const message = error.response?.data?.error || error.message || 'Erro ao buscar mensagens';
+            setSelectedConversationError(message);
+            setSelectedConversationMessages([]); // Limpa em caso de erro
+            return [];
+        } finally {
+            setLoadingSelectedConversationMessages(false);
+        }
+    }, [messageCache]); // Depende do cache
+
+    const selectConversation = useCallback((conversation: ClientConversation | null) => {
+        // Limpa erro anterior ao selecionar nova conversa
+        setSelectedConversationError(null);
+
+        // Lógica para remover highlight de não lido (assumindo que unreadConversationIds e setUnread... estão disponíveis)
+        if (conversation && unreadConversationIds.has(conversation.id)) {
+            setUnreadConversationIds(prev => {
+                const next = new Set(prev);
+                next.delete(conversation.id);
+                return next;
+            });
+        }
+
+        setSelectedConversation(conversation);
+        if (conversation) {
+            setLoadingSelectedConversation(true);
+            axios.get(`/api/conversations/${conversation.id}`, {
+                params: {
+                    workspaceId: conversation.workspace_id,
+                    includeFollowUp: true
+                }
+            })
+            .then(response => {
+                if (response.data.success) {
+                    setSelectedConversation(response.data.data);
+                    fetchConversationMessages(conversation.id);
+                } else {
+                    throw new Error(response.data.error || 'Falha ao buscar detalhes da conversa');
+                }
+            })
+            .catch(err => {
+                console.error("Erro ao buscar detalhes da conversa:", err);
+                setSelectedConversationError('Falha ao carregar detalhes da conversa.');
+                setSelectedConversationMessages([]);
+            })
+            .finally(() => setLoadingSelectedConversation(false));
+
+        } else {
+            setSelectedConversationMessages([]); // Limpa mensagens ao deselecionar
+            setLoadingSelectedConversationMessages(false);
+        }
+    }, [fetchConversationMessages, unreadConversationIds, setUnreadConversationIds]); // Manter dependências corretas
 
     const addMessageOptimistically = useCallback((message: Message) => {
         setSelectedConversationMessages(prev => [...prev, message]);
     }, []);
 
     const updateMessageStatus = useCallback((tempId: string, finalMessage: Message | null, error?: string) => {
-        setSelectedConversationMessages(prev => prev.map(msg => {
-            if (msg.id === tempId) {
-                return finalMessage ? finalMessage : { ...msg, metadata: { ...msg.metadata, status: 'failed', error: error || 'Erro' } };
-            }
-            return msg;
-        }));
+        setSelectedConversationMessages(prev =>
+            prev.map(msg => {
+                if (msg.id === tempId) {
+                    if (finalMessage) {
+                        return { ...finalMessage }; // Substitui com a mensagem final da API
+                    } else {
+                        return { ...msg, metadata: { ...msg.metadata, status: 'failed', error: error || 'Falha desconhecida' } };
+                    }
+                }
+                return msg;
+            })
+        );
+         // Atualizar cache se a mensagem final chegou
+         if (finalMessage?.conversation_id) {
+            setMessageCache(prevCache => {
+                const currentCache = prevCache[finalMessage.conversation_id];
+                if (!currentCache) return prevCache;
+                const updatedCache = currentCache.map(msg => msg.id === tempId ? finalMessage : msg);
+                return { ...prevCache, [finalMessage.conversation_id]: updatedCache };
+            });
+        }
     }, []);
 
     const addRealtimeMessage = useCallback((message: Message) => {
-        // <<< LOG INICIAL >>>
-        console.log(`[FollowUpContext addRealtimeMessage] Recebida msg ${message.id} para conv ${message.conversation_id}. Conv selecionada: ${selectedConversation?.id}`);
-
-        if (selectedConversation?.id && message.conversation_id === selectedConversation.id) {
-             // <<< LOG - CONVERSA SELECIONADA >>>
-            console.log(`[FollowUpContext addRealtimeMessage] Mensagem pertence à conversa selecionada.`);
-            setSelectedConversationMessages(prevMessages => {
-                const messageExists = prevMessages.some(msg => msg.id === message.id);
-                if (!messageExists) {
-                    console.log(`[FollowUpContext addRealtimeMessage] Adicionando msg ${message.id} à lista selecionada.`);
-                    const updatedMessages = [...prevMessages, message];
-                    updatedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                    return updatedMessages;
-                } else {
-                    console.log(`[FollowUpContext addRealtimeMessage] Msg ${message.id} já existe na lista selecionada.`);
-                }
-                return prevMessages;
-            });
-        } else if (message.conversation_id) {
-             // <<< LOG - CONVERSA NÃO SELECIONADA >>>
-             console.log(`[FollowUpContext addRealtimeMessage] Mensagem NÃO pertence à conversa selecionada. Verificando unread...`);
-            setUnreadConversationIds(prev => {
-                 // <<< LOG - DENTRO DO SETTER >>>
-                console.log(`[FollowUpContext addRealtimeMessage] Atualizando unread. Prev Set:`, prev, `Tentando adicionar: ${message.conversation_id}`);
-                if (!prev.has(message.conversation_id!)) {
-                    console.log(`[FollowUpContext addRealtimeMessage] Adicionando ${message.conversation_id} ao Set de não lidas.`);
-                    const newSet = new Set(prev);
-                    newSet.add(message.conversation_id!);
-                    return newSet;
-                } else {
-                    console.log(`[FollowUpContext addRealtimeMessage] ID ${message.conversation_id} já estava no Set de não lidas.`);
-                    return prev; // Retorna o mesmo Set se já existe
-                }
+        // Só adiciona se for a conversa selecionada E a mensagem não existir já
+        // (Evita duplicatas se a API e o SSE chegarem quase juntos ou se o SSE enviar msg do próprio user)
+        if (message.conversation_id === selectedConversation?.id) {
+             setSelectedConversationMessages(prevMessages => {
+                 if (!prevMessages.some(m => m.id === message.id)) {
+                      console.log(`[FollowUpContext] Adicionando mensagem SSE: ${message.id}`);
+                      return [...prevMessages, message];
+                 } else {
+                     console.warn(`[FollowUpContext] Mensagem SSE ${message.id} já existe no estado. Ignorando.`);
+                    return prevMessages;
+                 }
+             });
+             // Atualizar cache
+             setMessageCache(prevCache => {
+                const currentCache = prevCache[message.conversation_id] || [];
+                 if (!currentCache.some(m => m.id === message.id)) {
+                    return { ...prevCache, [message.conversation_id]: [...currentCache, message] };
+                 }
+                 return prevCache;
             });
         } else {
-            // <<< LOG - CASO ESTRANHO >>>
-            console.warn(`[FollowUpContext addRealtimeMessage] Mensagem ${message.id} sem conversation_id? Ignorando.`);
+            console.log(`[FollowUpContext] Mensagem SSE recebida para conversa não selecionada (${message.conversation_id}). Marcando como não lida.`);
+            // Marca como não lida se não for a conversa atual
+             setUnreadConversationIds(prev => {
+                 const next = new Set(prev);
+                 next.add(message.conversation_id);
+                 return next;
+             });
         }
+    }, [selectedConversation?.id]);
+
+    // <<< IMPLEMENTAR NOVA FUNÇÃO >>>
+    const updateRealtimeMessageContent = useCallback((messageId: string, newContent: string, newMetadata: any) => {
+        const conversationId = selectedConversation?.id;
+        if (!conversationId) return; // Não faz nada se nenhuma conversa estiver selecionada
+
+        console.log(`[FollowUpContext] Atualizando conteúdo/metadata para mensagem ${messageId} na conversa ${conversationId}`);
+
+        const updateFn = (prevMessages: Message[]) =>
+             prevMessages.map(msg =>
+                 msg.id === messageId
+                    ? { ...msg, content: newContent, metadata: newMetadata }
+                    : msg
+             );
+
+        // Atualiza o estado
+        setSelectedConversationMessages(updateFn);
+
+        // Atualiza o cache
+        setMessageCache(prevCache => {
+            const currentCache = prevCache[conversationId];
+            if (!currentCache) return prevCache;
+            return { ...prevCache, [conversationId]: updateFn(currentCache) };
+        });
+
     }, [selectedConversation?.id]);
 
     // --- FollowUp Status/Action ---
@@ -412,7 +482,7 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const pauseFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) throw new Error('Workspace ID não encontrado para pausar.');
+        if (!wsId) throw new Error('Workspace ID é necessário para pausar.');
         await handleApiCall(
             async () => {
                 const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/${followUpId}/pause`, { workspaceId: wsId });
@@ -421,15 +491,15 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
                 setSelectedConversation(prev => prev ? { ...prev, activeFollowUp: prev.activeFollowUp ? { ...prev.activeFollowUp, status: 'PAUSED' } : null } : null);
             },
             setIsPausingFollowUp,
-            setFollowUpsError,
+            setSelectedConversationError, // Erro será mostrado no contexto da conversa
             'Pausando sequência...',
-            'Sequência pausada!'
+            'Sequência pausada.'
         );
-    }, [workspaceContext, handleApiCall]);
+    }, [workspaceContext, handleApiCall, selectedConversation]);
 
     const resumeFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) throw new Error('Workspace ID não encontrado para retomar.');
+        if (!wsId) throw new Error('Workspace ID é necessário para retomar.');
         await handleApiCall(
             async () => {
                 const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/${followUpId}/resume`, { workspaceId: wsId });
@@ -438,68 +508,72 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
                  setSelectedConversation(prev => prev ? { ...prev, activeFollowUp: prev.activeFollowUp ? { ...prev.activeFollowUp, status: 'ACTIVE' } : null } : null);
             },
             setIsResumingFollowUp,
-            setFollowUpsError,
+            setSelectedConversationError,
             'Retomando sequência...',
-            'Sequência retomada!'
+            'Sequência retomada.'
         );
-    }, [workspaceContext, handleApiCall]);
+    }, [workspaceContext, handleApiCall, selectedConversation]);
 
     const convertFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) throw new Error('Workspace ID não encontrado para converter.');
+        if (!wsId) throw new Error('Workspace ID é necessário para marcar como convertido.');
         await handleApiCall(
             async () => {
-                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/convert`, { followUpId, workspaceId: wsId });
+                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/${followUpId}/convert`, { workspaceId: wsId });
                 if (!response.data.success) throw new Error(response.data.error || 'Falha ao converter.');
-                 // Clear selected conversation if it was this one, or trigger list refetch
-                 if (selectedConversation?.activeFollowUp?.id === followUpId) {
-                    selectConversation(null); // Deselects, page should refetch list
-                 }
-                 // TODO: Consider triggering fetchConversations from the page component after this succeeds.
+                 // Remover follow-up da conversa local e talvez fechar a conversa ou atualizar lista?
+                if (selectedConversation?.activeFollowUp?.id === followUpId) {
+                    setSelectedConversation(prev => prev ? { ...prev, activeFollowUp: null } : null);
+                    // Opcional: Mudar status da conversa para CLOSED? Ou deixar a página principal recarregar?
+                }
+                 // Idealmente, a página deveria recarregar a lista de conversas do filtro atual
+                 // ou o SSE deveria enviar um evento para remover/atualizar a conversa na lista.
             },
             setIsConvertingFollowUp,
-            setFollowUpsError,
+            setSelectedConversationError,
             'Marcando como convertido...',
-            'Marcado como convertido!'
+            'Sequência marcada como convertida.'
         );
-    }, [workspaceContext, handleApiCall, selectedConversation, selectConversation]);
+    }, [workspaceContext, handleApiCall, selectedConversation]);
 
     const cancelFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) throw new Error('Workspace ID não encontrado para cancelar.');
+        if (!wsId) throw new Error('Workspace ID é necessário para cancelar sequência.');
         await handleApiCall(
             async () => {
-                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/cancel`, { followUpId, workspaceId: wsId });
-                if (!response.data.success) throw new Error(response.data.error || 'Falha ao cancelar.');
-                 // Clear selected conversation or trigger list refetch
-                 if (selectedConversation?.activeFollowUp?.id === followUpId) {
-                     selectConversation(null);
-                 }
-                // TODO: Consider triggering fetchConversations from the page component.
+                const response = await axios.post<{ success: boolean, message?: string, error?: string }>(`/api/follow-up/${followUpId}/cancel`, { workspaceId: wsId });
+                if (selectedConversation?.activeFollowUp?.id === followUpId) {
+                    setSelectedConversation(prev => prev ? { ...prev, activeFollowUp: null } : null);
+                }
+                 // Idealmente, a página deveria recarregar a lista ou SSE deveria atualizar.
             },
             setIsCancellingFollowUp,
-            setFollowUpsError,
+            setSelectedConversationError,
             'Cancelando sequência...',
-            'Sequência cancelada!'
+            'Sequência cancelada.'
         );
-    }, [workspaceContext, handleApiCall, selectedConversation, selectConversation]);
+    }, [workspaceContext, handleApiCall, selectedConversation]);
 
     // --- Manual Message Action ---
     const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string): Promise<Message> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) throw new Error('Workspace ID não encontrado para enviar.');
+        if (!wsId) throw new Error('Workspace ID é necessário para enviar mensagem.');
         // Note: success message is handled optimistically by the caller using updateMessageStatus
         return handleApiCall(
             async () => {
-                const response = await axios.post<{ success: boolean, data?: Message, error?: string }>(`/api/conversations/${conversationId}/messages`, { content });
-                if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao enviar.');
-                // No need to update local state here, caller uses updateMessageStatus
-                return response.data.data;
+                const response = await axios.post<{ success: boolean, data: Message, error?: string }>(
+                    `/api/conversations/${conversationId}/messages`,
+                    { content, workspaceId: wsId, senderType: 'AI' } // Ou SYSTEM?
+                );
+                if (!response.data.success || !response.data.data) {
+                    throw new Error(response.data.error || 'Falha ao enviar mensagem');
+                }
+                return response.data.data; // Retorna a mensagem finalizada da API
             },
             setIsSendingMessage,
-            setSelectedConversationError,
-            'Enviando...', // Loading message
-            undefined // No success message here, handled by caller
+            null, // Erro já tratado em updateMessageStatus
+            null, // Loading já tratado pelo estado otimista
+            // 'Mensagem enviada' // Não mostrar toast de sucesso aqui
         );
     }, [workspaceContext, handleApiCall]);
 
@@ -525,6 +599,8 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         // <<< ADICIONAR NOVO ESTADO AO CONTEXTO >>>
         unreadConversationIds,
         setUnreadConversationIds, // <<< INCLUIR O SETTER NO VALOR DO CONTEXTO >>>
+        // <<< Adicionar nova função para atualização >>>
+        updateRealtimeMessageContent,
     }), [
         // List all state variables and memoized functions here
         campaigns, loadingCampaigns, campaignsError,
@@ -540,6 +616,8 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         // <<< ADICIONAR NOVO ESTADO ÀS DEPENDÊNCIAS >>>
         unreadConversationIds,
         setUnreadConversationIds, // <<< ADICIONAR SETTER ÀS DEPENDÊNCIAS do useMemo >>>
+        // <<< Adicionar nova função para atualização >>>
+        updateRealtimeMessageContent,
     ]);
 
     return (

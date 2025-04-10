@@ -34,6 +34,8 @@ import { useFollowUp } from '@/context/follow-up-context'; // Importar o hook do
 
 // Remover o parâmetro de props da função
 export default function ConversationDetail() {
+  // <<< LOG DE RENDERIZAÇÃO >>>
+  console.log('[ConvDetail LIFECYCLE] Rendering/Mounting...');
 
   // --- Obter tudo do Contexto ---
   const {
@@ -57,7 +59,8 @@ export default function ConversationDetail() {
     addMessageOptimistically,
     updateMessageStatus,
     clearMessagesError,
-    addRealtimeMessage, // <<< OBTER NOVA FUNÇÃO DO CONTEXTO
+    addRealtimeMessage,
+    updateRealtimeMessageContent, // <<< OBTER A NOVA FUNÇÃO
   } = useFollowUp();
 
   // --- Estado Local ---
@@ -126,17 +129,36 @@ export default function ConversationDetail() {
         console.log("[ConvDetail SSE] Conexão estabelecida com sucesso:", event.data);
       });
 
-      // Listener principal para novas mensagens
-      newEventSource.addEventListener('new-message', (event) => {
+      // <<< MODIFICAR ESTE LISTENER >>>
+      // Usar onmessage para capturar todos os eventos ou adicionar listeners específicos
+      newEventSource.onmessage = (event) => { // Usando onmessage genérico
+        // <<< ADICIONAR LOG AQUI - ANTES DO TRY/CATCH >>>
+        console.log("[ConvDetail SSE] Raw event data received:", event.data);
         try {
-          const messageData: Message = JSON.parse(event.data);
-          console.log(`[ConvDetail SSE] Nova mensagem recebida: ${messageData.id}`);
-          // Chama a função do contexto para adicionar a mensagem ao estado
-          addRealtimeMessage(messageData);
+          const eventData = JSON.parse(event.data);
+          console.log("[ConvDetail SSE] Parsed event received:", eventData);
+
+          // Verificar o TIPO do evento
+          if (eventData.type === 'new_message' && eventData.payload) {
+             console.log(`[ConvDetail SSE] Processando new_message: ${eventData.payload.id}`);
+             addRealtimeMessage(eventData.payload);
+          } else if (eventData.type === 'message_content_updated' && eventData.payload) {
+             console.log(`[ConvDetail SSE] Processando message_content_updated: ${eventData.payload.id}`);
+             updateRealtimeMessageContent(
+                eventData.payload.id,
+                eventData.payload.content,
+                eventData.payload.metadata
+             );
+          } else {
+             console.warn("[ConvDetail SSE] Tipo de evento desconhecido ou sem payload:", eventData.type);
+          }
         } catch (error) {
-          console.error("[ConvDetail SSE] Erro ao parsear mensagem SSE:", error, "\nData:", event.data);
+          console.error("[ConvDetail SSE] Erro ao parsear ou processar evento SSE:", error, "\nData:", event.data);
         }
-      });
+      };
+
+      // Remover listener específico 'new-message' se estiver usando onmessage
+      // newEventSource.addEventListener('new-message', (event) => { ... });
 
       // Listener para erros na conexão SSE
       newEventSource.onerror = (error) => {
@@ -151,13 +173,15 @@ export default function ConversationDetail() {
     // Função de limpeza: é executada quando a dependência (conversation.id) muda
     // ou quando o componente é desmontado.
     return () => {
+      // <<< LOG DE LIMPEZA >>>
+      console.log('[ConvDetail LIFECYCLE] SSE useEffect CLEANUP executing...');
       if (eventSourceRef.current) {
         console.log(`[ConvDetail SSE] Limpeza: Fechando conexão SSE.`);
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
     };
-  }, [conversation?.id, addRealtimeMessage]); // Depende do ID da conversa e da função do contexto
+  }, [conversation?.id, addRealtimeMessage, updateRealtimeMessageContent]); // Depende do ID da conversa e das funções do contexto
 
   // --- Handlers de Ação ---
 
@@ -369,7 +393,50 @@ export default function ConversationDetail() {
                     <XCircle size={14} />
                   </span>
                 )}
-                <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                {/* <<< Renderização Condicional de Conteúdo >>> */}
+                {(msg.metadata as any)?.messageType === 'image' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
+                  // Renderizar Imagem
+                  <a href={msg.content} target="_blank" rel="noopener noreferrer" className="block max-w-xs" title="Abrir imagem em nova aba">
+                    <img 
+                      src={msg.content}
+                      alt="Imagem enviada"
+                      className="rounded-md object-cover w-full h-auto max-h-60 cursor-pointer"
+                      onError={(e) => (e.currentTarget.style.display = 'none')} // Esconder se a imagem falhar
+                    />
+                  </a>
+                ) : (msg.metadata as any)?.messageType === 'audio' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
+                  // Renderizar Áudio
+                  <audio controls src={msg.content} className="w-full max-w-xs">
+                     Seu navegador não suporta o elemento de áudio.
+                  </audio>
+                ) : (msg.metadata as any)?.messageType === 'video' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
+                  // Renderizar Vídeo
+                  <video controls src={msg.content} className="rounded-md w-full max-w-xs">
+                     Seu navegador não suporta o elemento de vídeo.
+                  </video>
+                ) : (msg.metadata as any)?.messageType === 'document' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
+                  // Renderizar Link para Documento
+                  <a 
+                    href={msg.content}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300 hover:underline break-all"
+                    title="Baixar documento"
+                  >
+                    {`Baixar: ${ (msg.metadata as any)?.whatsappMessage?.document?.filename || 'Documento'}`}
+                  </a>
+                ) : (msg.metadata as any)?.messageType === 'sticker' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
+                 // Renderizar Sticker (como imagem)
+                 <img 
+                     src={msg.content}
+                     alt="Sticker enviado"
+                     className="max-w-[120px] max-h-[120px] object-contain"
+                     onError={(e) => (e.currentTarget.style.display = 'none')} // Esconder se falhar
+                 />
+                ) : (
+                  // Renderizar Texto Normal ou Placeholder
+                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                )}
                 <div className="text-xs opacity-70 mt-1 text-right">
                   <span title={format(new Date(msg.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>
                     {format(new Date(msg.timestamp), 'HH:mm')}

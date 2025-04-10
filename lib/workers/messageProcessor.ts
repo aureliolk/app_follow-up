@@ -5,10 +5,16 @@ import { prisma } from '@/lib/db';
 import { generateChatCompletion } from '@/lib/ai/chatService';
 // Importar a função de envio do WhatsApp (deve existir em lib/channel/whatsappSender.ts)
 import { sendWhatsappMessage } from '@/lib/channel/whatsappSender';
-import { MessageSenderType, ConversationStatus } from '@prisma/client'; // Adicionar ConversationStatus
+import { MessageSenderType, ConversationStatus, Prisma } from '@prisma/client'; // Adicionar Prisma
 import { CoreMessage } from 'ai'; // Tipo para Vercel AI SDK
 // Importar função de descriptografia
 import { decrypt } from '@/lib/encryption';
+// <<< Novas importações >>>
+import { getWhatsappMediaUrl } from '@/lib/channel/whatsappUtils';
+import { s3Client, s3BucketName } from '@/lib/s3Client';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import axios from 'axios';
+import { lookup } from 'mime-types'; // Para obter extensão do mime type
 
 const QUEUE_NAME = 'message-processing';
 const BUFFER_TIME_MS = 3000; // 3 segundos de buffer (ajuste se necessário)
@@ -27,6 +33,8 @@ type HistoryMessage = {
   sender_type: MessageSenderType;
   content: string | null; // Content pode ser null
   timestamp: Date;
+  // Incluir metadata para checar mídia no histórico recente?
+  metadata?: any; // Adicionar metadata opcional
 };
 
 async function processJob(job: Job<JobData>) {
@@ -41,37 +49,50 @@ async function processJob(job: Job<JobData>) {
     await new Promise(resolve => setTimeout(resolve, BUFFER_TIME_MS));
     console.log(`[MsgProcessor ${jobId}] Buffer inicial concluído.`);
 
-    // --- 2. Buscar Conversa, Canal, Credenciais e Verificar Status da IA ---
-    console.log(`[MsgProcessor ${jobId}] Buscando dados da conversa ${conversationId} e workspace...`);
-    const conversationData = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: {
-        id: true,
-        is_ai_active: true,
-        channel: true,
-        client: { select: { phone_number: true } },
-        workspace_id: true,
-        workspace: {
-            select: {
-                id: true,
-                ai_default_system_prompt: true,
-                ai_model_preference: true,
-                whatsappAccessToken: true,        // Needed for sending reply
-                whatsappPhoneNumberId: true,       // Needed for sending reply
-                ai_follow_up_rules: {
-                    orderBy: { delay_milliseconds: 'asc' },
-                    select: { id: true, delay_milliseconds: true },
-                    take: 1
+    // --- 2. Buscar Mensagem Atual e Dados da Conversa --- <<< MODIFICADO >>>
+    console.log(`[MsgProcessor ${jobId}] Buscando dados da mensagem ${newMessageId} e conversa ${conversationId}...`);
+    const currentMessage = await prisma.message.findUnique({
+        where: { id: newMessageId },
+        select: {
+            id: true,
+            content: true,
+            metadata: true,
+            conversation: {
+                select: {
+                    id: true,
+                    is_ai_active: true,
+                    channel: true,
+                    status: true,       // <<< Incluir status da conversa
+                    metadata: true,     // <<< Incluir metadata da conversa
+                    client: {
+                        select: {
+                            id: true,       // <<< Incluir ID do cliente
+                            phone_number: true,
+                            name: true,     // <<< Incluir nome do cliente
+                        }
+                    },
+                    workspace_id: true,
+                    workspace: {
+                        select: {
+                            id: true,
+                            ai_default_system_prompt: true,
+                            ai_model_preference: true,
+                            whatsappAccessToken: true,
+                            whatsappPhoneNumberId: true,
+                        }
+                    }
                 }
             }
         }
-      }
     });
 
-    if (!conversationData) {
-      console.error(`[MsgProcessor ${jobId}] Erro: Conversa ${conversationId} não encontrada.`);
-      throw new Error(`Conversa ${conversationId} não encontrada.`);
+    if (!currentMessage || !currentMessage.conversation) {
+      console.error(`[MsgProcessor ${jobId}] Erro: Mensagem ${newMessageId} ou sua conversa não encontrada.`);
+      throw new Error(`Mensagem ${newMessageId} ou conversa associada não encontrada.`);
     }
+
+    const conversationData = currentMessage.conversation;
+
     if (!conversationData.workspace) {
          console.error(`[MsgProcessor ${jobId}] Erro: Workspace associado à conversa ${conversationId} não encontrado.`);
          throw new Error(`Workspace para a conversa ${conversationId} não encontrado.`);
@@ -83,16 +104,15 @@ async function processJob(job: Job<JobData>) {
 
     // Destruturar dados para facilitar acesso
     const { channel, client, workspace } = conversationData;
-    const clientPhoneNumber = client.phone_number; // Telefone do destinatário para WhatsApp
+    const clientPhoneNumber = client.phone_number;
 
-    // <<< NOVO LOG APÓS LEITURA >>>
-    console.log(`[MsgProcessor ${jobId}] Dados lidos do DB para Conv ${conversationId}. Canal LIDO: ${channel}`);
+    console.log(`[MsgProcessor ${jobId}] Dados lidos do DB para Msg ${newMessageId} / Conv ${conversationId}. Canal: ${channel}`);
 
     if (!conversationData.is_ai_active) {
       console.log(`[MsgProcessor ${jobId}] IA inativa para conversa ${conversationId}. Pulando.`);
-      return { status: 'skipped', reason: 'IA Inativa' };
+      return { status: 'skipped', handledBatch: true };
     }
-    console.log(`[MsgProcessor ${jobId}] IA está ativa para a conversa (Canal: ${channel}).`);
+    console.log(`[MsgProcessor ${jobId}] IA está ativa para a conversa.`);
 
     // --- 3. Identificar Mensagens Recentes do Cliente (Lógica Debounce) ---
     const lastAiMessage = await prisma.message.findFirst({
@@ -129,33 +149,189 @@ async function processJob(job: Job<JobData>) {
 
     console.log(`[MsgProcessor ${jobId}] ESTE JOB (msg ${newMessageId}) É O RESPONSÁVEL PELO LOTE.`);
 
-    // --- 4. Buscar Histórico Completo (Contexto para IA) ---
+    // --- 4. Processar Mídia (se existir) --- <<< NOVO BLOCO >>>
+    let finalContentForHistory = currentMessage.content; // Começa com o conteúdo original (placeholder ou texto)
+    let messageToPublish = currentMessage; // Mensagem a ser publicada no Redis
+
+    const metadata = currentMessage.metadata as any; // Cast para acessar propriedades
+    const mediaId = metadata?.mediaId;
+    const mimeType = metadata?.mimeType;
+
+    // <<< ADICIONAR LOG DE DEBUG AQUI >>>
+    console.log(`[MsgProcessor ${jobId}] Debug Mídia Check: mediaId=${mediaId}, mimeType=${mimeType}, hasAccessToken=${!!workspace.whatsappAccessToken}, metadataObject=`, metadata);
+
+    if (mediaId && mimeType && workspace.whatsappAccessToken) {
+        console.log(`[MsgProcessor ${jobId}] Mídia detectada (ID: ${mediaId}, Tipo: ${mimeType}). Iniciando processamento...`);
+        let decryptedAccessToken: string | null = null;
+        try {
+            decryptedAccessToken = decrypt(workspace.whatsappAccessToken);
+            if (!decryptedAccessToken) throw new Error("Token de acesso WhatsApp descriptografado está vazio.");
+
+            const mediaUrl = await getWhatsappMediaUrl(mediaId, decryptedAccessToken);
+
+            if (mediaUrl) {
+                console.log(`[MsgProcessor ${jobId}] Baixando mídia de: ${mediaUrl}`);
+                const downloadResponse = await axios.get(mediaUrl, {
+                    responseType: 'arraybuffer', // Importante para arquivos binários
+                    headers: { Authorization: `Bearer ${decryptedAccessToken}` }, // Header necessário para download
+                });
+
+                const mediaData = Buffer.from(downloadResponse.data);
+                const downloadContentType = downloadResponse.headers['content-type'];
+                const fileExtension = lookup(downloadContentType || mimeType) || ''; // Tenta obter extensão do content-type ou mimeType
+                const s3Key = `whatsapp-media/${workspace.id}/${conversationId}/${newMessageId}${fileExtension ? '.' + fileExtension : ''}`;
+                const s3ContentType = downloadContentType || mimeType; // Prioriza Content-Type do download
+
+                console.log(`[MsgProcessor ${jobId}] Fazendo upload para S3: Bucket=${s3BucketName}, Key=${s3Key}, ContentType=${s3ContentType}`);
+
+                await s3Client.send(new PutObjectCommand({
+                    Bucket: s3BucketName,
+                    Key: s3Key,
+                    Body: mediaData,
+                    ContentType: s3ContentType,
+                    // ACL: 'public-read' // Definir ACL se o bucket não for público por padrão e você quiser links públicos diretos
+                }));
+
+                // Assumindo estrutura de URL pública (ajustar se necessário para URLs assinadas ou configuração diferente)
+                // Remover / do final do endpoint se houver
+                const storageEndpoint = process.env.STORAGE_ENDPOINT?.replace(/\/$/, '');
+                const minioUrl = `${storageEndpoint}/${s3BucketName}/${s3Key}`;
+                console.log(`[MsgProcessor ${jobId}] Upload S3 concluído. URL: ${minioUrl}`);
+
+                // Atualizar mensagem no banco com a URL do Minio
+                const updatedMessage = await prisma.message.update({
+                    where: { id: newMessageId },
+                    data: {
+                        content: minioUrl, // Substitui placeholder pela URL
+                        metadata: { // Atualiza metadata (preserva o original e adiciona/atualiza)
+                            ...(metadata || {}),
+                            s3Key: s3Key,
+                            uploadedToS3: true,
+                            originalContentPlaceholder: finalContentForHistory // Guarda o placeholder original
+                        }
+                    },
+                     // <<< Selecionar novamente dados COMPLETOS para Redis >>>
+                    // Reutilizar a mesma estrutura de select de findUnique para consistência
+                    select: {
+                        id: true,
+                        conversation_id: true,
+                        sender_type: true,
+                        content: true,
+                        timestamp: true,
+                        channel_message_id: true,
+                        metadata: true,
+                        // <<< Incluir a relação novamente se for usada para publicação >>>
+                        // (Embora messageToPublish seja atualizado, talvez não precise aqui se já temos conversationData)
+                        // conversation: { select: { ... } } // Redundante se `messageToPublish` for apenas para `chat-updates`
+                    }
+                });
+                finalContentForHistory = `[${metadata.messageType || 'Mídia'} enviada pelo usuário: ${minioUrl}]`;
+                // Ajuste: messageToPublish precisa ser compatível com o payload do Redis
+                // Se chat-updates só precisa dos campos básicos, o select acima está OK.
+                // Se precisar de dados da conversa, teríamos que incluí-los aqui ou buscar separadamente.
+                // Por simplicidade, vamos assumir que o select acima é suficiente para chat-updates.
+                // A publicação workspace-updates usará `conversationData` e `newAiMessage` que já têm os dados.
+                messageToPublish = updatedMessage as any; // Cast temporário para evitar erro complexo de tipo
+
+                 // <<< RE-PUBLICAR MENSAGEM ATUALIZADA NO REDIS >>>
+                 // Publicar no canal Redis da Conversa (com URL S3)
+                try {
+                    const conversationChannel = `chat-updates:${conversationId}`;
+                    // <<< Enviar evento específico de atualização >>>
+                    const updatePayload = {
+                        type: "message_content_updated", // <<< Novo tipo de evento
+                        payload: {
+                            id: messageToPublish.id,
+                            content: messageToPublish.content, // A URL do S3
+                            metadata: messageToPublish.metadata // O metadata atualizado
+                        }
+                    };
+                    const conversationPayloadString = JSON.stringify(updatePayload);
+                    await redisConnection.publish(conversationChannel, conversationPayloadString);
+                    console.log(`[MsgProcessor ${jobId}] Evento message_content_updated para ${messageToPublish.id} publicado no canal Redis da CONVERSA.`);
+                } catch (publishConvError) {
+                    console.error(`[MsgProcessor ${jobId}] Falha ao RE-publicar mensagem ${messageToPublish.id} no Redis (Canal Conversa):`, publishConvError);
+                }
+                 // Publicar no canal Redis do Workspace (com URL S3)
+                try {
+                    const workspaceChannel = `workspace-updates:${workspaceId}`;
+                    // <<< Manter este payload para atualizar a lista geral? Ou usar um tipo diferente? >>>
+                    // Por enquanto, vamos manter como estava, mas talvez precise ajustar depois.
+                    const workspacePayload = {
+                         type: 'message_updated', // Novo tipo de evento?
+                         conversationId: conversationId,
+                         messageId: messageToPublish.id,
+                         content: messageToPublish.content, // URL do S3
+                         metadata: messageToPublish.metadata,
+                         // ... outros campos se necessário ...
+                    };
+                    await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+                    console.log(`[MsgProcessor ${jobId}] Notificação de ATUALIZAÇÃO de mensagem (URL S3) publicada no canal Redis do WORKSPACE.`);
+                } catch (publishWsError) {
+                    console.error(`[MsgProcessor ${jobId}] Falha ao publicar ATUALIZAÇÃO de mensagem no Redis (Canal Workspace):`, publishWsError);
+                }
+
+            } else {
+                console.warn(`[MsgProcessor ${jobId}] Não foi possível obter URL de mídia para ID ${mediaId}. Usando placeholder.`);
+                 // Mantém finalContentForHistory como o placeholder original
+            }
+        } catch (mediaError: any) {
+            console.error(`[MsgProcessor ${jobId}] Erro durante processamento de mídia para ID ${mediaId}:`, mediaError.message);
+             // Mantém finalContentForHistory como o placeholder original
+        }
+    } else if (mediaId && !workspace.whatsappAccessToken) {
+        console.warn(`[MsgProcessor ${jobId}] Mídia ID ${mediaId} encontrado, mas Access Token do WhatsApp está ausente no workspace. Impossível processar mídia.`);
+        // Mantém finalContentForHistory como o placeholder original
+    }
+
+    // --- 5. Buscar Histórico Completo (Contexto para IA) --- <<< AJUSTADO >>>
     console.log(`[MsgProcessor ${jobId}] Buscando histórico completo (limite ${HISTORY_LIMIT}) para IA...`);
-    const historyMessages = await prisma.message.findMany({
+    const historyMessagesRaw = await prisma.message.findMany({
       where: { conversation_id: conversationId },
       orderBy: { timestamp: 'desc' },
       take: HISTORY_LIMIT,
-      select: { sender_type: true, content: true, timestamp: true }
+      // Selecionar metadata para tratar mídias no histórico?
+      select: { sender_type: true, content: true, timestamp: true, metadata: true, id: true } // Incluir ID e metadata
     });
-    historyMessages.reverse();
-    console.log(`[MsgProcessor ${jobId}] Histórico obtido com ${historyMessages.length} mensagens.`);
+    historyMessagesRaw.reverse();
 
-    // --- 5. Formatar Mensagens para a API da IA ---
-    const aiMessages: CoreMessage[] = historyMessages.map((msg: HistoryMessage) => ({
-      role: msg.sender_type === MessageSenderType.CLIENT ? 'user' : 'assistant',
-      content: msg.content ?? '',
-    }));
+    // --- 6. Formatar Mensagens para a API da IA --- <<< AJUSTADO >>>
+    const aiMessages: CoreMessage[] = historyMessagesRaw.map((msg: HistoryMessage & { id: string }) => {
+        let contentForAI = msg.content ?? '';
+        const msgMetadata = msg.metadata as any;
+        // Se for a mensagem atual e tiver sido processada como mídia, usar a versão formatada
+        if (msg.id === newMessageId && msgMetadata?.uploadedToS3) {
+            contentForAI = finalContentForHistory;
+        }
+        // Opcional: Detectar mídias em mensagens *anteriores* no histórico se necessário
+        else if (msg.sender_type === MessageSenderType.CLIENT && msgMetadata?.mediaId && !msgMetadata?.uploadedToS3) {
+            // Mensagem de mídia anterior que pode não ter sido processada (ou falhou)
+            contentForAI = msgMetadata.originalContentPlaceholder || `[${msgMetadata.messageType || 'Mídia'} enviada pelo usuário (link indisponível)]`;
+        }
+        else if (msg.sender_type === MessageSenderType.CLIENT && msgMetadata?.mediaId && msgMetadata?.uploadedToS3) {
+            // Mídia anterior já processada, usar a URL salva
+             contentForAI = `[${msgMetadata.messageType || 'Mídia'} enviada pelo usuário: ${msg.content}]`;
+        }
 
-    // --- 6. Obter Prompt e Modelo (já feito na busca) ---
-    const modelId = conversationData.workspace.ai_model_preference || 'gpt-4o'; // Ajuste o padrão se necessário
+        return {
+            role: msg.sender_type === MessageSenderType.CLIENT ? 'user' : 'assistant',
+            // Usar o conteúdo ajustado para a IA
+            content: contentForAI,
+        };
+    });
+    console.log(`[MsgProcessor ${jobId}] Histórico formatado para IA com ${aiMessages.length} mensagens.`);
+    // console.log("Histórico para IA:", JSON.stringify(aiMessages, null, 2)); // Debug (pode ser verboso)
+
+    // --- 7. Obter Prompt e Modelo --- (Mantido)
+    const modelId = conversationData.workspace.ai_model_preference || 'gpt-4o';
     const systemPrompt = conversationData.workspace.ai_default_system_prompt ?? undefined;
     console.log(`[MsgProcessor ${jobId}] Usando Modelo: ${modelId}, Prompt: ${!!systemPrompt}`);
 
-    // --- 7. Chamar o Serviço de IA ---
+    // --- 8. Chamar o Serviço de IA --- (Mantido)
     console.log(`[MsgProcessor ${jobId}] Chamando generateChatCompletion...`);
     const aiResponseContent = await generateChatCompletion({ messages: aiMessages, systemPrompt, modelId });
 
-    // --- 8. Salvar e Enviar Resposta da IA (LÓGICA CONDICIONAL) ---
+    // --- 9. Salvar e Enviar Resposta da IA --- (Mantido, mas com ajustes nas publicações)
     if (aiResponseContent && aiResponseContent.trim() !== '') {
       console.log(`[MsgProcessor ${jobId}] IA retornou conteúdo: "${aiResponseContent.substring(0, 100)}..."`);
       const newAiMessageTimestamp = new Date();
@@ -168,35 +344,57 @@ async function processJob(job: Job<JobData>) {
           content: aiResponseContent,
           timestamp: newAiMessageTimestamp,
         },
+         // <<< Selecionar dados para publicação >>>
+        select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true }
       });
       console.log(`[MsgProcessor ${jobId}] Resposta da IA salva no DB (ID: ${newAiMessage.id}).`);
 
-      // Publicar a nova mensagem no canal Redis da CONVERSA
+      // Publicar a nova mensagem da IA no canal Redis da CONVERSA
       try {
         const conversationChannel = `chat-updates:${conversationId}`;
-        // Certifique-se de que newAiMessage tenha os dados necessários ou faça nova busca
-        const conversationPayload = JSON.stringify(newAiMessage);
+        // <<< Enviar evento específico para NOVA mensagem da IA >>>
+        const newAiMessagePayload = {
+            type: "new_message", // <<< Tipo claro para nova mensagem
+            payload: { // Incluir os dados básicos necessários para a UI
+              id: newAiMessage.id,
+              conversation_id: newAiMessage.conversation_id,
+              sender_type: newAiMessage.sender_type,
+              content: newAiMessage.content,
+              timestamp: newAiMessage.timestamp,
+              metadata: null // ou {} - Metadados da IA podem não ser relevantes aqui
+            }
+        };
+        const conversationPayload = JSON.stringify(newAiMessagePayload);
         await redisConnection.publish(conversationChannel, conversationPayload);
         console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
       } catch (publishError) {
         console.error(`[MsgProcessor ${jobId}] Falha ao publicar mensagem da IA ${newAiMessage.id} no Redis (Canal Conversa):`, publishError);
       }
 
-      // <<< NOVO: PUBLICAR NOTIFICAÇÃO NO CANAL REDIS DO WORKSPACE >>>
+      // Publicar notificação no canal Redis do WORKSPACE
        try {
-          // Precisamos do workspaceId aqui, que já temos de job.data
           const workspaceChannel = `workspace-updates:${workspaceId}`;
+          // Usar dados de `conversationData` e `newAiMessage`
           const workspacePayload = {
-              type: 'new_message', // Mesmo tipo de evento
+              type: 'new_message',
               conversationId: conversationId,
-              clientId: clientId, // Já temos de job.data
-              lastMessageTimestamp: newAiMessage.timestamp.toISOString(), // Timestamp da msg da IA
+              clientId: clientId,
+              messageId: newAiMessage.id, // <<< Usar o ID da mensagem da IA
+              lastMessageTimestamp: newAiMessage.timestamp.toISOString(),
+              channel: channel,
+              status: conversationData.status, // <<< Usar status de conversationData
+              is_ai_active: conversationData.is_ai_active,
+              last_message_at: newAiMessage.timestamp.toISOString(),
+              clientName: client?.name, // <<< Usar nome de client (pode ser null)
+              clientPhone: clientPhoneNumber,
+              lastMessageContent: newAiMessage.content, // <<< Usar conteúdo da IA
+              lastMessageSenderType: newAiMessage.sender_type, // <<< Usar sender_type da IA
+              metadata: conversationData.metadata, // <<< Usar metadata de conversationData
           };
           await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
           console.log(`[MsgProcessor ${jobId}] Notificação de msg IA publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
        } catch (publishError) {
           console.error(`[MsgProcessor ${jobId}] Falha ao publicar notificação de msg IA no Redis (Canal Workspace):`, publishError);
-          // Não parar o fluxo por isso
        }
 
       // Atualizar last_message_at da conversa
@@ -206,34 +404,37 @@ async function processJob(job: Job<JobData>) {
       });
       console.log(`[MsgProcessor ${jobId}] Timestamp da conversa atualizado.`);
 
-      // <<< INÍCIO ENVIO CONDICIONAL SIMPLIFICADO >>>
+      // Enviar resposta via WhatsApp (se canal for WhatsApp)
       let sendSuccess = false;
-      console.log(`[MsgProcessor ${jobId}] VERIFICANDO CANAL PARA ENVIO. Canal a ser usado na decisão: ${channel}`);
-
-      // REMOVIDO: Bloco if (channel === 'LUMIBOT') { ... }
-      
-      // Assume WHATSAPP ou falha silenciosamente se o canal for inesperado
+      console.log(`[MsgProcessor ${jobId}] VERIFICANDO CANAL PARA ENVIO. Canal: ${channel}`);
       if (channel === 'WHATSAPP') {
             console.log(`[MsgProcessor ${jobId}] Bloco de envio WhatsApp alcançado.`);
             const { whatsappAccessToken, whatsappPhoneNumberId } = workspace;
             if (whatsappAccessToken && whatsappPhoneNumberId && clientPhoneNumber) {
-                let decryptedAccessToken: string | null = null;
+                let decryptedAccessTokenForSend: string | null = null;
                 try {
-                    console.log(`[MsgProcessor ${jobId}] Tentando descriptografar Access Token...`);
-                    decryptedAccessToken = decrypt(whatsappAccessToken);
-                    if (!decryptedAccessToken) throw new Error("Token de acesso descriptografado está vazio.");
-                    console.log(`[MsgProcessor ${jobId}] Access Token descriptografado com sucesso.`);
+                    console.log(`[MsgProcessor ${jobId}] Tentando descriptografar Access Token para envio...`);
+                    decryptedAccessTokenForSend = decrypt(whatsappAccessToken);
+                    if (!decryptedAccessTokenForSend) throw new Error("Token de acesso descriptografado para envio está vazio.");
+                    console.log(`[MsgProcessor ${jobId}] Access Token para envio descriptografado com sucesso.`);
 
                     console.log(`[MsgProcessor ${jobId}] Tentando enviar resposta via WhatsApp para ${clientPhoneNumber}...`);
                     const sendResult = await sendWhatsappMessage(
                         whatsappPhoneNumberId,
                         clientPhoneNumber,
-                        decryptedAccessToken,
+                        decryptedAccessTokenForSend,
                         aiResponseContent
                     );
                     if (sendResult.success) {
                         sendSuccess = true;
                         console.log(`[MsgProcessor ${jobId}] Resposta enviada com sucesso para WhatsApp. Message ID: ${sendResult.messageId}`);
+                        // <<< Opcional: Atualizar mensagem da IA com channel_message_id >>>
+                        if (sendResult.messageId) {
+                            await prisma.message.update({
+                                where: { id: newAiMessage.id },
+                                data: { channel_message_id: sendResult.messageId }
+                            }).catch(err => console.error(`[MsgProcessor ${jobId}] Falha ao atualizar channel_message_id para msg IA ${newAiMessage.id}:`, err));
+                        }
                     } else {
                         console.error(`[MsgProcessor ${jobId}] Falha ao enviar resposta para WhatsApp:`, JSON.stringify(sendResult.error || 'Erro desconhecido'));
                     }
@@ -244,13 +445,8 @@ async function processJob(job: Job<JobData>) {
                  console.error(`[MsgProcessor ${jobId}] Dados ausentes para envio via WhatsApp (Token: ${!!whatsappAccessToken}, PhoneID: ${!!whatsappPhoneNumberId}, ClientPhone: ${!!clientPhoneNumber}).`);
             }
       } else {
-          // Canal desconhecido ou não suportado (após remover Lumibot)
           console.warn(`[MsgProcessor ${jobId}] Canal ${channel} não é WHATSAPP. Nenhuma mensagem enviada.`);
       }
-      // <<< FIM ENVIO CONDICIONAL SIMPLIFICADO >>>
-
-      // TODO: Lógica de agendamento de follow-up (pode depender de sendSuccess)
-      // Exemplo: if (sendSuccess && workspace.ai_follow_up_rules?.length > 0) { /* ... agendar ... */ }
 
     } else {
       console.log(`[MsgProcessor ${jobId}] IA não retornou conteúdo. Nenhuma mensagem salva ou enviada.`);
