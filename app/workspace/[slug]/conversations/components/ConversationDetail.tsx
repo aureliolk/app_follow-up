@@ -132,7 +132,7 @@ export default function ConversationDetail() {
       // <<< MODIFICAR ESTE LISTENER >>>
       // Usar onmessage para capturar todos os eventos ou adicionar listeners específicos
       newEventSource.onmessage = (event) => { // Usando onmessage genérico
-        // <<< ADICIONAR LOG AQUI - ANTES DO TRY/CATCH >>>
+        // <<< RESTAURAR CÓDIGO ORIGINAL >>>
         console.log("[ConvDetail SSE] Raw event data received:", event.data);
         try {
           const eventData = JSON.parse(event.data);
@@ -164,16 +164,12 @@ export default function ConversationDetail() {
       newEventSource.onerror = (error) => {
         console.error("[ConvDetail SSE] Erro na conexão EventSource:", error);
         // O navegador tentará reconectar automaticamente em caso de erro
-        // Poderia adicionar lógica para fechar manualmente se necessário
-        // newEventSource.close();
-        // eventSourceRef.current = null;
       };
     }
 
     // Função de limpeza: é executada quando a dependência (conversation.id) muda
     // ou quando o componente é desmontado.
     return () => {
-      // <<< LOG DE LIMPEZA >>>
       console.log('[ConvDetail LIFECYCLE] SSE useEffect CLEANUP executing...');
       if (eventSourceRef.current) {
         console.log(`[ConvDetail SSE] Limpeza: Fechando conexão SSE.`);
@@ -181,7 +177,7 @@ export default function ConversationDetail() {
         eventSourceRef.current = null;
       }
     };
-  }, [conversation?.id, addRealtimeMessage, updateRealtimeMessageContent]); // Depende do ID da conversa e das funções do contexto
+  }, [conversation?.id]); // Depender APENAS do ID da conversa
 
   // --- Handlers de Ação ---
 

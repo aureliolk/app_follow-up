@@ -331,10 +331,11 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, [messageCache]); // Depende do cache
 
     const selectConversation = useCallback((conversation: ClientConversation | null) => {
-        // Limpa erro anterior ao selecionar nova conversa
+        // <<< LOG AQUI >>>
+        console.log(`[FollowUpContext DEBUG] selectConversation called with: ${conversation ? `ID: ${conversation.id}` : 'null'}`);
+
         setSelectedConversationError(null);
 
-        // Lógica para remover highlight de não lido (assumindo que unreadConversationIds e setUnread... estão disponíveis)
         if (conversation && unreadConversationIds.has(conversation.id)) {
             setUnreadConversationIds(prev => {
                 const next = new Set(prev);

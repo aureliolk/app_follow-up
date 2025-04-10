@@ -64,15 +64,29 @@ export default function ConversationsPage() {
        }
   }, [workspaceLoading]); // Apenas workspaceLoading como dependência estável aqui
 
-  // Lógica de seleção/desseleção separada
+  // Lógica de seleção/desseleção separada - REFATORADA
   const handleFetchedData = useCallback((fetchedData: ClientConversation[]) => {
         const currentSelectedId = selectedConversation?.id;
         const listHasSelected = fetchedData.some(c => c.id === currentSelectedId);
-        if (currentSelectedId && !listHasSelected) {
+
+        // Só deseleciona (chama null) se a conversa atual NÃO está na nova lista E a nova lista está VAZIA
+        if (currentSelectedId && !listHasSelected && fetchedData.length === 0) {
+            console.log(`[ConversationsPage] handleFetchedData: Conversa ${currentSelectedId} não está na nova lista vazia. Deselecionando.`);
             selectConversation(null);
-        } else if (!currentSelectedId && fetchedData.length > 0) {
+        } 
+        // Seleciona a primeira da nova lista APENAS se nada estiver selecionado OU se a selecionada não estiver na nova lista (e a nova lista não for vazia)
+        else if ((!currentSelectedId || !listHasSelected) && fetchedData.length > 0) {
+            console.log(`[ConversationsPage] handleFetchedData: Selecionando a primeira conversa da nova lista: ${fetchedData[0].id}`);
             selectConversation(fetchedData[0]);
+        } 
+        // Caso contrário (selecionada está na nova lista), não faz nada com a seleção.
+        else if (currentSelectedId && listHasSelected) {
+             console.log(`[ConversationsPage] handleFetchedData: Conversa ${currentSelectedId} encontrada na nova lista. Mantendo seleção.`);
         }
+        else {
+             console.log(`[ConversationsPage] handleFetchedData: Nenhuma ação de seleção necessária.`);
+        }
+
   }, [selectedConversation, selectConversation]);
 
   // Combinar a busca e o tratamento pós-busca
@@ -280,7 +294,6 @@ export default function ConversationsPage() {
                    onClick={() => {
                        if (activeFilter !== filter) {
                             setActiveFilter(filter);
-                            selectConversation(null);
                        }
                    }}
                    className={cn("h-8 px-3", activeFilter === filter ? "bg-primary/15 text-primary" : "text-muted-foreground")}
