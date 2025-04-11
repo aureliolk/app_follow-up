@@ -29,6 +29,7 @@ const ALLOWED_MIME_TYPES = [
   'audio/mpeg', // MP3
   'audio/amr',
   'audio/ogg; codecs=opus', // Opus audio in Ogg container
+  'audio/webm;codecs=opus', // Opus audio in WebM container
   'audio/opus', // Opus audio directly
   'audio/wav', // WAV (WhatsApp might have limitations)
   'audio/x-wav',

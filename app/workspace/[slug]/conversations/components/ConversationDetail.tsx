@@ -85,7 +85,14 @@ export default function ConversationDetail() {
   const prevIsSendingMessage = useRef(isSendingMessage);
   const fileInputRef = useRef<HTMLInputElement>(null); // <<< Ref para o input de arquivo
   const [isUploading, setIsUploading] = useState(false); // <<< Estado para loading do upload
-  // const { resolvedTheme } = useTheme(); // <<< REMOVE THIS LINE IF NOT USING
+  // <<< NOVOS ESTADOS E REFS PARA ÁUDIO >>>
+  const [isRecording, setIsRecording] = useState(false);
+  const [permissionStatus, setPermissionStatus] = useState<'idle' | 'prompting' | 'granted' | 'denied'>('idle');
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingStartTimeRef = useRef<number | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- Scroll Automático REFINADO ---
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -416,6 +423,154 @@ export default function ConversationDetail() {
     }
   };
 
+  // <<< NOVA FUNÇÃO PARA GRAVAÇÃO DE ÁUDIO >>>
+  const startRecording = async () => {
+    setPermissionStatus('prompting');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setPermissionStatus('granted');
+      audioChunksRef.current = []; // Limpa chunks anteriores
+      
+      // Determinar o tipo MIME preferido (Opus em WebM ou Ogg é geralmente bom)
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+          ? 'audio/ogg;codecs=opus'
+          : 'audio/webm'; // Fallback
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        console.log("[AudioRecord] Gravação parada. Processando blob...");
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+        }
+        setRecordingDuration(0);
+        setIsRecording(false);
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const filename = `audio_gravado_${format(new Date(), 'yyyyMMdd_HHmmss')}.${mimeType.split('/')[1].split(';')[0]}`;
+        const audioFile = new File([audioBlob], filename, { type: mimeType });
+        
+        // Reset stream tracks para parar o ícone de gravação do navegador
+        stream.getTracks().forEach(track => track.stop()); 
+
+        // Chamar função para enviar o arquivo (será criada depois)
+        await handleSendAudioFile(audioFile); 
+      };
+      
+      recorder.onerror = (event) => {
+        console.error("[AudioRecord] Erro no MediaRecorder:", event);
+        toast.error("Erro durante a gravação.");
+        setIsRecording(false);
+         if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+         setRecordingDuration(0);
+         stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      recordingStartTimeRef.current = Date.now();
+      recordingIntervalRef.current = setInterval(() => {
+        if (recordingStartTimeRef.current) {
+           setRecordingDuration(Math.floor((Date.now() - recordingStartTimeRef.current) / 1000));
+        }
+      }, 1000);
+      setIsRecording(true);
+      console.log("[AudioRecord] Gravação iniciada.");
+
+    } catch (err) {
+      console.error("[AudioRecord] Erro ao obter permissão ou iniciar gravação:", err);
+      setPermissionStatus('denied');
+      toast.error("Permissão de microfone negada ou dispositivo não encontrado.");
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop(); // Isso vai disparar o onstop
+      console.log("[AudioRecord] Comando stop enviado.");
+    } else {
+        console.warn("[AudioRecord] Tentativa de parar gravação, mas não estava gravando.");
+        setIsRecording(false); // Garantir que o estado está correto
+        if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+        setRecordingDuration(0);
+    }
+  };
+
+  const handleMicClick = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+  
+  // Placeholder para a função de envio (será similar a handleFileChange)
+  const handleSendAudioFile = async (audioFile: File) => {
+    console.log("[AudioSend] Enviando arquivo de áudio:", audioFile.name, audioFile.type, audioFile.size);
+    // TODO: Implementar lógica de envio usando FormData e /api/attachments
+    // Reutilizar estrutura de handleFileChange
+
+    if (!conversation?.id || !conversation?.workspace_id) {
+        toast.error("Conversa ou Workspace não selecionado.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', audioFile);
+    formData.append('conversationId', conversation.id);
+    formData.append('workspaceId', conversation.workspace_id);
+
+    const tempId = `temp-audio-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversation_id: conversation.id,
+      sender_type: 'AI', // Operador = AI?
+      content: `[Enviando áudio ${audioFile.name}...]`,
+      timestamp: new Date().toISOString(),
+      metadata: { 
+        status: 'uploading', 
+        originalFilename: audioFile.name,
+        mimeType: audioFile.type,
+        messageType: 'AUDIO'
+      }
+    };
+
+    addMessageOptimistically(optimisticMessage);
+    setIsUploading(true); // Usar o mesmo estado de upload?
+
+    try {
+      const response = await axios.post<{ success: boolean, data: Message, error?: string }>(
+        '/api/attachments',
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+
+      if (!response.data.success || !response.data.data) {
+        throw new Error(response.data.error || 'Falha no upload do áudio');
+      }
+      updateMessageStatus(tempId, response.data.data);
+      toast.success('Áudio enviado!');
+
+    } catch (error: any) {
+      const message = error.response?.data?.error || error.message || 'Erro ao enviar áudio.';
+      updateMessageStatus(tempId, null, message);
+      console.error("Erro no componente ao enviar áudio:", error);
+      toast.error(`Falha ao enviar: ${message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // --- Renderização ---
 
   if (!conversation) {
@@ -693,8 +848,19 @@ export default function ConversationDetail() {
               {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
             </label>
           </Button>
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Gravar Áudio">
-            <Mic className="h-5 w-5" />
+          {/* <<< ATUALIZAR BOTÃO MIC >>> */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className={cn(
+                "text-muted-foreground hover:text-foreground",
+                isRecording && "text-red-500 hover:text-red-600 bg-red-500/10"
+            )} 
+            title={isRecording ? `Parar gravação (${formatDuration(recordingDuration)})` : "Gravar Áudio"}
+            onClick={handleMicClick}
+            disabled={isUploading || isSendingMessage || !isConversationCurrentlyActive || permissionStatus === 'prompting'}
+          >
+            {isRecording ? <Mic className="h-5 w-5 animate-pulse" /> : <Mic className="h-5 w-5" />}
           </Button>
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Citar Mensagem">
             <Quote className="h-5 w-5" />
@@ -737,4 +903,11 @@ export default function ConversationDetail() {
       </div>
     </div>
   );
+}
+
+// <<< FUNÇÃO HELPER FORA DO COMPONENTE >>>
+function formatDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
 }
