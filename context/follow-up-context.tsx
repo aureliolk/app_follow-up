@@ -102,7 +102,15 @@ interface FollowUpContextType {
     setUnreadConversationIds: Dispatch<SetStateAction<Set<string>>>; // <<< ADICIONAR O SETTER
 
     // <<< Adicionar nova função para atualização >>>
-    updateRealtimeMessageContent: (messageId: string, newContent: string, newMetadata: any) => void;
+    updateRealtimeMessageContent: (messageData: {
+        id: string;
+        content?: string; // Content pode ser opcional ou o placeholder
+        media_url?: string | null;
+        media_mime_type?: string | null;
+        media_filename?: string | null;
+        status?: string | null;
+        metadata?: any;
+    }) => void;
 }
 
 // --- Context Creation ---
@@ -636,16 +644,49 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     }, [selectedConversation?.id]);
 
-    const updateRealtimeMessageContent = useCallback((messageId: string, newContent: string, newMetadata: any) => {
-       // ... (implementation kept as is) ...
-         const conversationId = selectedConversation?.id;
-        if (!conversationId) return;
-        const updateFn = (prevMessages: Message[]) => prevMessages.map(msg => msg.id === messageId ? { ...msg, content: newContent, metadata: newMetadata } : msg );
+    const updateRealtimeMessageContent = useCallback((messageData: {
+        id: string;
+        content?: string; // Content pode ser opcional ou o placeholder
+        media_url?: string | null;
+        media_mime_type?: string | null;
+        media_filename?: string | null;
+        status?: string | null;
+        metadata?: any;
+    }) => {
+        const { id: messageId, ...updates } = messageData;
+        console.log(`[FollowUpContext] updateRealtimeMessageContent called for msg ${messageId} with updates:`, updates);
+
+        const updateFn = (prevMessages: Message[]) => prevMessages.map(msg => {
+            if (msg.id === messageId) {
+                // Mescla a mensagem existente com as atualizações recebidas
+                // Garantir que não sobrescrevemos campos existentes com undefined
+                const updatedMsg = { ...msg };
+                Object.keys(updates).forEach(key => {
+                    const typedKey = key as keyof typeof updates;
+                    if (updates[typedKey] !== undefined) {
+                        (updatedMsg as any)[typedKey] = updates[typedKey];
+                    }
+                });
+                // Remover status de loading/processing dos metadados antigos se um novo status chegou
+                if (updates.status && updatedMsg.metadata?.status && 
+                    (updatedMsg.metadata.status === 'uploading' || updatedMsg.metadata.status === 'processing')) {
+                    delete updatedMsg.metadata.status; 
+                }
+                return updatedMsg;
+            } 
+            return msg;
+        });
+
+        // Atualizar tanto o estado principal quanto o cache
         setSelectedConversationMessages(updateFn);
         setMessageCache(prevCache => {
-            const currentCache = prevCache[conversationId];
-            if (!currentCache) return prevCache;
-            return { ...prevCache, [conversationId]: updateFn(currentCache) };
+            if (selectedConversation?.id && prevCache[selectedConversation.id]) {
+                return {
+                    ...prevCache,
+                    [selectedConversation.id]: updateFn(prevCache[selectedConversation.id]),
+                };
+            }
+            return prevCache;
         });
     }, [selectedConversation?.id]);
 

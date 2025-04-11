@@ -180,17 +180,20 @@ export default function ConversationDetail() {
         // Ouvir atualizações de conteúdo de mensagem (ex: quando mídia é processada)
         newEventSource.addEventListener('message_content_updated', (event) => {
           try {
-            const messageData = JSON.parse(event.data);
-             // <<< VERIFICAR DUPLICIDADE AQUI TAMBÉM? (se aplicável) >>>
-             // Se a atualização puder chegar múltiplas vezes, adicione lógica similar com processedMessageIds
-            console.log(`[ConvDetail SSE] Atualização de conteúdo recebida:`, messageData);
-            updateRealtimeMessageContent(
-              messageData.id,
-              messageData.content,
-              messageData.metadata
-            );
+            // <<< CORRIGIDO: event.data já é o payload >>>
+            const messagePayload = JSON.parse(event.data); // event.data contém o objeto enviado pelo servidor
+            console.log(`[ConvDetail SSE] Evento 'message_content_updated' recebido. Payload:`, messagePayload);
+
+            // <<< CORRIGIDO: Chamar diretamente com o payload, pois o tipo já está no nome do evento >>>
+            if (messagePayload && typeof messagePayload === 'object' && messagePayload.id) {
+              // Passa o objeto payload inteiro para a função do contexto
+              updateRealtimeMessageContent(messagePayload);
+            } else {
+              console.warn("[ConvDetail SSE] Payload de atualização inválido ou sem ID:", messagePayload);
+            }
+
           } catch (error) {
-            console.error("[ConvDetail SSE] Erro ao parsear atualização SSE:", error, "\nData:", event.data);
+            console.error("[ConvDetail SSE] Erro ao parsear dados do evento 'message_content_updated':", error, "\nData:", event.data);
           }
         });
 

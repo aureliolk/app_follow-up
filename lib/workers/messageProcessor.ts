@@ -57,6 +57,10 @@ async function processJob(job: Job<JobData>) {
             id: true,
             content: true,
             metadata: true,
+            media_url: true,
+            media_mime_type: true,
+            media_filename: true,
+            status: true,
             conversation: {
                 select: {
                     id: true,
@@ -198,57 +202,77 @@ async function processJob(job: Job<JobData>) {
                 const minioUrl = `${storageEndpoint}/${s3BucketName}/${s3Key}`;
                 console.log(`[MsgProcessor ${jobId}] Upload S3 concluído. URL: ${minioUrl}`);
 
-                // Atualizar mensagem no banco com a URL do Minio
+                // Determinar o nome original do arquivo
+                let originalFilename: string | undefined = undefined;
+                if (metadata?.whatsappMessage?.document?.filename) {
+                  originalFilename = metadata.whatsappMessage.document.filename;
+                } else if (metadata?.whatsappMessage?.image?.filename) { // WhatsApp às vezes inclui para imagens
+                  originalFilename = metadata.whatsappMessage.image.filename;
+                } else if (metadata?.whatsappMessage?.video?.filename) {
+                   originalFilename = metadata.whatsappMessage.video.filename;
+                } else {
+                   // Se não houver nome, gerar um baseado no ID e extensão
+                   originalFilename = `${newMessageId}${fileExtension ? '.' + fileExtension : ''}`;
+                }
+
+                // Atualizar mensagem no banco com os dados corretos
                 const updatedMessage = await prisma.message.update({
                     where: { id: newMessageId },
                     data: {
-                        content: minioUrl, // Substitui placeholder pela URL
+                        // content: finalContentForHistory, // Manter o placeholder original ou limpar? Manter por enquanto.
+                        media_url: minioUrl,           // <<< CORRIGIDO: Salvar URL aqui
+                        media_mime_type: s3ContentType, // <<< CORRIGIDO: Salvar MIME Type aqui
+                        media_filename: originalFilename, // <<< CORRIGIDO: Salvar nome do arquivo aqui
+                        status: 'RECEIVED',             // <<< CORRIGIDO: Atualizar status
                         metadata: { // Atualiza metadata (preserva o original e adiciona/atualiza)
                             ...(metadata || {}),
                             s3Key: s3Key,
                             uploadedToS3: true,
-                            originalContentPlaceholder: finalContentForHistory // Guarda o placeholder original
+                            s3ContentType: s3ContentType, // Guardar o Content-Type usado no S3
+                            // Remover campos que agora estão no nível principal?
+                            // mediaId: undefined, 
+                            // mimeType: undefined,
                         }
                     },
                      // <<< Selecionar novamente dados COMPLETOS para Redis >>>
-                    // Reutilizar a mesma estrutura de select de findUnique para consistência
                     select: {
                         id: true,
                         conversation_id: true,
                         sender_type: true,
-                        content: true,
+                        content: true,         // Selecionar content original
                         timestamp: true,
                         channel_message_id: true,
                         metadata: true,
-                        // <<< Incluir a relação novamente se for usada para publicação >>>
-                        // (Embora messageToPublish seja atualizado, talvez não precise aqui se já temos conversationData)
-                        // conversation: { select: { ... } } // Redundante se `messageToPublish` for apenas para `chat-updates`
+                        media_url: true,       // Selecionar os novos campos
+                        media_mime_type: true,
+                        media_filename: true,
+                        status: true,
                     }
                 });
-                finalContentForHistory = `[${metadata.messageType || 'Mídia'} enviada pelo usuário: ${minioUrl}]`;
-                // Ajuste: messageToPublish precisa ser compatível com o payload do Redis
-                // Se chat-updates só precisa dos campos básicos, o select acima está OK.
-                // Se precisar de dados da conversa, teríamos que incluí-los aqui ou buscar separadamente.
-                // Por simplicidade, vamos assumir que o select acima é suficiente para chat-updates.
-                // A publicação workspace-updates usará `conversationData` e `newAiMessage` que já têm os dados.
-                messageToPublish = updatedMessage as any; // Cast temporário para evitar erro complexo de tipo
+                // Ajuste: Conteúdo para IA pode usar a URL
+                finalContentForHistory = `[${metadata.messageType || 'Mídia'} enviada pelo usuário: ${minioUrl}]`; 
+                messageToPublish = updatedMessage as any; // Cast temporário
 
                  // <<< RE-PUBLICAR MENSAGEM ATUALIZADA NO REDIS >>>
                  // Publicar no canal Redis da Conversa (com URL S3)
                 try {
                     const conversationChannel = `chat-updates:${conversationId}`;
-                    // <<< Enviar evento específico de atualização >>>
+                    // <<< Enviar evento específico de atualização COM DADOS DE MÍDIA >>>
                     const updatePayload = {
-                        type: "message_content_updated", // <<< Novo tipo de evento
-                        payload: {
+                        type: "message_content_updated", // <<< Usar este tipo de evento
+                        payload: { // <<< ENVIAR TODOS OS CAMPOS RELEVANTES >>>
                             id: messageToPublish.id,
-                            content: messageToPublish.content, // A URL do S3
-                            metadata: messageToPublish.metadata // O metadata atualizado
+                            content: messageToPublish.content, // Content original (placeholder)
+                            media_url: messageToPublish.media_url, // <<< Incluir URL
+                            media_mime_type: messageToPublish.media_mime_type, // <<< Incluir MimeType
+                            media_filename: messageToPublish.media_filename, // <<< Incluir Filename
+                            status: messageToPublish.status, // <<< Incluir Status
+                            metadata: messageToPublish.metadata // Metadata atualizado (com s3Key, etc)
                         }
                     };
                     const conversationPayloadString = JSON.stringify(updatePayload);
                     await redisConnection.publish(conversationChannel, conversationPayloadString);
-                    console.log(`[MsgProcessor ${jobId}] Evento message_content_updated para ${messageToPublish.id} publicado no canal Redis da CONVERSA.`);
+                    console.log(`[MsgProcessor ${jobId}] Evento message_content_updated para ${messageToPublish.id} (com media_url) publicado no canal Redis da CONVERSA.`);
                 } catch (publishConvError) {
                     console.error(`[MsgProcessor ${jobId}] Falha ao RE-publicar mensagem ${messageToPublish.id} no Redis (Canal Conversa):`, publishConvError);
                 }
