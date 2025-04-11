@@ -16,7 +16,12 @@ import {
   XCircle,
   Loader2,
   PlayCircle,
-  PauseCircle // Importar ícone PauseCircle
+  PauseCircle,
+  Smile,
+  Paperclip,
+  Mic,
+  Quote,
+  PenLine
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -67,6 +72,7 @@ export default function ConversationDetail() {
   const [newMessage, setNewMessage] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // --- Scroll Automático REFINADO ---
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -91,6 +97,8 @@ export default function ConversationDetail() {
   }, [messages, isLoadingMessages, conversation?.id, scrollToBottom]);
 
   const prevMessagesLengthRef = useRef(messages.length);
+  const prevIsSendingMessage = useRef(isSendingMessage); // <<< Ref para guardar estado anterior
+
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
       const scrollAreaElement = scrollAreaRef.current;
@@ -108,6 +116,9 @@ export default function ConversationDetail() {
 
   // --- <<< NOVO EFFECT PARA SSE >>> ---
   useEffect(() => {
+    // <<< Adicionar Set para rastrear IDs processados >>>
+    const processedMessageIds = new Set<string>();
+
     if (eventSourceRef.current) {
       console.log(`[ConvDetail SSE] Fechando conexão SSE anterior.`);
       eventSourceRef.current.close();
@@ -135,6 +146,18 @@ export default function ConversationDetail() {
         newEventSource.addEventListener('new_message', (event) => {
           try {
             const messageData = JSON.parse(event.data);
+            // <<< VERIFICAR DUPLICIDADE ANTES DE PROCESSAR >>>
+            if (!messageData.id || processedMessageIds.has(messageData.id)) {
+                 console.warn(`[ConvDetail SSE] Ignorando mensagem duplicada ou inválida: ID ${messageData.id}`);
+                 return; // Ignora se não tem ID ou já foi processado
+            }
+            processedMessageIds.add(messageData.id); // Marca como processado
+            // Limpar IDs antigos do Set periodicamente para evitar consumo de memória (opcional)
+            if (processedMessageIds.size > 50) {
+                 const oldestId = processedMessageIds.values().next().value;
+                 processedMessageIds.delete(oldestId);
+            }
+
             console.log(`[ConvDetail SSE] Nova mensagem recebida:`, messageData);
             addRealtimeMessage(messageData);
           } catch (error) {
@@ -146,6 +169,8 @@ export default function ConversationDetail() {
         newEventSource.addEventListener('message_content_updated', (event) => {
           try {
             const messageData = JSON.parse(event.data);
+             // <<< VERIFICAR DUPLICIDADE AQUI TAMBÉM? (se aplicável) >>>
+             // Se a atualização puder chegar múltiplas vezes, adicione lógica similar com processedMessageIds
             console.log(`[ConvDetail SSE] Atualização de conteúdo recebida:`, messageData);
             updateRealtimeMessageContent(
               messageData.id,
@@ -188,7 +213,18 @@ export default function ConversationDetail() {
         eventSourceRef.current = null;
       }
     };
-  }, [conversation?.id, addRealtimeMessage]);
+  }, [conversation?.id, addRealtimeMessage, updateRealtimeMessageContent]); // <<< Adicionar updateRealtimeMessageContent como dependencia
+
+  // <<< NOVO EFFECT PARA DEVOLVER O FOCO >>>
+  useEffect(() => {
+    // Foca apenas quando isSendingMessage mudou de true para false
+    if (prevIsSendingMessage.current === true && isSendingMessage === false) {
+      console.log("[ConvDetail Focus] Send finished. Attempting to focus textarea.");
+      textareaRef.current?.focus();
+    }
+    // Atualiza o valor anterior para a próxima renderização
+    prevIsSendingMessage.current = isSendingMessage;
+  }, [isSendingMessage]); // Depende do estado isSendingMessage
 
   // --- Handlers de Ação ---
 
@@ -510,8 +546,29 @@ export default function ConversationDetail() {
 
       {/* Input de Mensagem */}
       <div className="p-3 md:p-4 border-t border-border bg-card/30 dark:bg-background flex-shrink-0">
+        {/* <<< NOVA BARRA DE FERRAMENTAS >>> */}
+        <div className="flex items-center gap-1 mb-2">
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Emoji">
+            <Smile className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Anexar Arquivo">
+            <Paperclip className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Gravar Áudio">
+            <Mic className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Citar Mensagem">
+            <Quote className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Assinatura/Nota Rápida">
+            <PenLine className="h-5 w-5" />
+          </Button>
+          {/* Adicionar mais botões aqui se necessário */}
+        </div>
+
         <form onSubmit={handleSendMessage} className="flex items-center gap-2">
           <Textarea
+            ref={textareaRef}
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder={isConversationCurrentlyActive ? "Responder manualmente..." : "A conversa está fechada."}
