@@ -31,6 +31,13 @@ import ErrorMessage from '@/components/ui/ErrorMessage';
 import type { Message } from '@/app/types'; // Importar apenas Message, ClientConversation vem do contexto
 import { toast } from 'react-hot-toast';
 import { useFollowUp } from '@/context/follow-up-context'; // Importar o hook do contexto
+// <<< Importar Popover e EmojiPicker >>>
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-react';
 
 // Remover a interface de Props, pois não recebe mais a conversa via prop
 // interface ConversationDetailProps {
@@ -73,6 +80,8 @@ export default function ConversationDetail() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const prevIsSendingMessage = useRef(isSendingMessage);
 
   // --- Scroll Automático REFINADO ---
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -97,7 +106,6 @@ export default function ConversationDetail() {
   }, [messages, isLoadingMessages, conversation?.id, scrollToBottom]);
 
   const prevMessagesLengthRef = useRef(messages.length);
-  const prevIsSendingMessage = useRef(isSendingMessage); // <<< Ref para guardar estado anterior
 
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
@@ -225,6 +233,14 @@ export default function ConversationDetail() {
     // Atualiza o valor anterior para a próxima renderização
     prevIsSendingMessage.current = isSendingMessage;
   }, [isSendingMessage]); // Depende do estado isSendingMessage
+
+  // <<< NOVA FUNÇÃO PARA LIDAR COM CLIQUE NO EMOJI >>>
+  const handleEmojiClick = (emojiData: EmojiClickData) => {
+    setNewMessage(prevMessage => prevMessage + emojiData.emoji);
+    setShowEmojiPicker(false);
+    // Devolver foco ao textarea após selecionar emoji
+    textareaRef.current?.focus(); 
+  };
 
   // --- Handlers de Ação ---
 
@@ -546,11 +562,46 @@ export default function ConversationDetail() {
 
       {/* Input de Mensagem */}
       <div className="p-3 md:p-4 border-t border-border bg-card/30 dark:bg-background flex-shrink-0">
-        {/* <<< NOVA BARRA DE FERRAMENTAS >>> */}
+        {/* <<< BARRA DE FERRAMENTAS COM POPOVER DE EMOJI >>> */}
         <div className="flex items-center gap-1 mb-2">
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Emoji">
-            <Smile className="h-5 w-5" />
-          </Button>
+          <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Emoji">
+                <Smile className="h-5 w-5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 border-none shadow-none bg-background"
+              style={{
+                '--epr-hover-bg-color': 'hsl(var(--accent))' as React.CSSProperties['color'],
+                '--epr-focus-bg-color': 'hsl(var(--accent))' as React.CSSProperties['color'],
+                '--epr-search-input-bg-color': 'hsl(var(--input))' as React.CSSProperties['color'],
+                '--epr-category-label-bg-color': 'hsl(var(--background))' as React.CSSProperties['color'],
+                '--epr-bg-color': 'hsl(var(--background))' as React.CSSProperties['color'],
+                '--epr-text-color': 'hsl(var(--foreground))' as React.CSSProperties['color'],
+                '--epr-search-input-text-color': 'hsl(var(--foreground))' as React.CSSProperties['color'],
+                '--epr-category-label-text-color': 'hsl(var(--muted-foreground))' as React.CSSProperties['color'],
+                '--epr-border-color': 'hsl(var(--border))' as React.CSSProperties['color'],
+              } as React.CSSProperties}>
+              <EmojiPicker
+                onEmojiClick={handleEmojiClick}
+                theme={Theme.LIGHT}
+                searchPlaceholder="Buscar emojis..."
+                previewConfig={{ showPreview: false }}
+                categories={[
+                  { name: "Usados Recentemente", category: Categories.SUGGESTED },
+                  { name: "Rostos e Emoções", category: Categories.SMILEYS_PEOPLE },
+                  { name: "Animais e Natureza", category: Categories.ANIMALS_NATURE },
+                  { name: "Comida e Bebida", category: Categories.FOOD_DRINK },
+                  { name: "Viagens e Lugares", category: Categories.TRAVEL_PLACES },
+                  { name: "Atividades", category: Categories.ACTIVITIES },
+                  { name: "Objetos", category: Categories.OBJECTS },
+                  { name: "Símbolos", category: Categories.SYMBOLS },
+                  { name: "Bandeiras", category: Categories.FLAGS },
+                ]}
+              />
+            </PopoverContent>
+          </Popover>
+
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Anexar Arquivo">
             <Paperclip className="h-5 w-5" />
           </Button>
