@@ -400,48 +400,96 @@ export default function ConversationDetail() {
                     <XCircle size={14} />
                   </span>
                 )}
-                {/* <<< Renderização Condicional de Conteúdo >>> */}
-                {(msg.metadata as any)?.messageType === 'image' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
-                  // Renderizar Imagem
-                  <a href={msg.content} target="_blank" rel="noopener noreferrer" className="block max-w-xs" title="Abrir imagem em nova aba">
-                    <img 
-                      src={msg.content}
-                      alt="Imagem enviada"
-                      className="rounded-md object-cover w-full h-auto max-h-60 cursor-pointer"
-                      onError={(e) => (e.currentTarget.style.display = 'none')} // Esconder se a imagem falhar
-                    />
-                  </a>
-                ) : (msg.metadata as any)?.messageType === 'audio' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
-                  // Renderizar Áudio
-                  <audio controls src={msg.content} className="w-full max-w-xs">
-                     Seu navegador não suporta o elemento de áudio.
-                  </audio>
-                ) : (msg.metadata as any)?.messageType === 'video' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
-                  // Renderizar Vídeo
-                  <video controls src={msg.content} className="rounded-md w-full max-w-xs">
-                     Seu navegador não suporta o elemento de vídeo.
-                  </video>
-                ) : (msg.metadata as any)?.messageType === 'document' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
-                  // Renderizar Link para Documento
-                  <a 
-                    href={msg.content}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300 hover:underline break-all"
-                    title="Baixar documento"
-                  >
-                    {`Baixar: ${ (msg.metadata as any)?.whatsappMessage?.document?.filename || 'Documento'}`}
-                  </a>
-                ) : (msg.metadata as any)?.messageType === 'sticker' && (msg.metadata as any)?.uploadedToS3 && msg.content?.startsWith('http') ? (
-                 // Renderizar Sticker (como imagem)
-                 <img 
-                     src={msg.content}
-                     alt="Sticker enviado"
-                     className="max-w-[120px] max-h-[120px] object-contain"
-                     onError={(e) => (e.currentTarget.style.display = 'none')} // Esconder se falhar
-                 />
+                {/* Renderização de Mídia ou Texto CORRIGIDA */}
+                {/* Verifica se é mídia (tem messageType E NÃO é 'text') */}
+                {(msg.metadata as any)?.messageType && (msg.metadata as any)?.messageType !== 'text' ? (
+                  // É uma mensagem de mídia (imagem, video, audio, doc, sticker)
+                  <div className="relative min-h-[100px] min-w-[200px] flex items-center justify-center">
+                    
+                    {/* Estado de Loading (USA LoadingSpinner) */}
+                    {!(msg.metadata as any)?.uploadedToS3 && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10 backdrop-blur-sm rounded-md z-10 p-2">
+                        <LoadingSpinner 
+                          size="small" 
+                          message={`Processando ${(msg.metadata as any)?.messageType}...`} 
+                        />
+                      </div>
+                    )}
+
+                    {/* Conteúdo da Mídia Final */}
+                    <div className={cn(
+                      "w-full transition-opacity duration-300", // Suaviza a aparição
+                      (msg.metadata as any)?.uploadedToS3 ? "opacity-100" : "opacity-0" // Controla visibilidade
+                    )}>
+                      {/* Imagem */}
+                      {(msg.metadata as any)?.messageType === 'image' && (
+                        <a 
+                          href={msg.content || '#'} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="block max-w-xs"
+                          style={{ display: (msg.metadata as any)?.uploadedToS3 ? 'block' : 'none' }}
+                        >
+                          <img 
+                            src={msg.content || ''}
+                            alt="Imagem enviada"
+                            className="rounded-md object-cover w-full h-auto max-h-60"
+                            onError={(e) => (e.currentTarget.style.display = 'none')}
+                          />
+                        </a>
+                      )}
+                      {/* Vídeo */}
+                      {(msg.metadata as any)?.messageType === 'video' && (
+                        <video 
+                          controls 
+                          src={msg.content || ''} 
+                          className="rounded-md w-full max-w-xs"
+                          style={{ display: (msg.metadata as any)?.uploadedToS3 ? 'block' : 'none' }}
+                        >
+                          Seu navegador não suporta o elemento de vídeo.
+                        </video>
+                      )}
+                      {/* Áudio */}
+                      {(msg.metadata as any)?.messageType === 'audio' && (
+                        <audio 
+                          controls 
+                          src={msg.content || ''}
+                          className="w-full max-w-xs"
+                          style={{ display: (msg.metadata as any)?.uploadedToS3 ? 'block' : 'none' }}
+                        >
+                          Seu navegador não suporta o elemento de áudio.
+                        </audio>
+                      )}
+                      {/* Documento */}
+                      {(msg.metadata as any)?.messageType === 'document' && (
+                        <a 
+                          href={msg.content || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={cn(
+                            "text-blue-400 hover:text-blue-300 hover:underline break-all",
+                             // Desabilita link se não estiver carregado
+                            !(msg.metadata as any)?.uploadedToS3 && "pointer-events-none opacity-50"
+                          )}
+                          style={{ display: 'block' }} // Link sempre visível, mas desabilitado
+                        >
+                          {`${(msg.metadata as any)?.whatsappMessage?.document?.filename || 'Documento'}`}
+                        </a>
+                      )}
+                      {/* Sticker */}
+                      {(msg.metadata as any)?.messageType === 'sticker' && (
+                        <img 
+                          src={msg.content || ''}
+                          alt="Sticker enviado"
+                          className="max-w-[120px] max-h-[120px] object-contain"
+                          style={{ display: (msg.metadata as any)?.uploadedToS3 ? 'block' : 'none' }}
+                          onError={(e) => (e.currentTarget.style.display = 'none')}
+                        />
+                      )}
+                    </div>
+                  </div>
                 ) : (
-                  // Renderizar Texto Normal ou Placeholder
+                  // É uma mensagem de texto normal (ou mídia com tipo 'text')
                   <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                 )}
                 <div className="text-xs opacity-70 mt-1 text-right">

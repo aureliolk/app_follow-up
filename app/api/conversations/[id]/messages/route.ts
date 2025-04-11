@@ -228,7 +228,9 @@ export async function POST(
                         conversation_id: newMessage.conversation_id,
                         content: newMessage.content,
                         sender_type: newMessage.sender_type,
-                        timestamp: newMessage.timestamp.toISOString(),
+                        timestamp: newMessage.timestamp instanceof Date 
+                            ? newMessage.timestamp.toISOString() 
+                            : newMessage.timestamp,
                     }
                 };
                 await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));

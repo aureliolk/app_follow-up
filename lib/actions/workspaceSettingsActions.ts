@@ -44,7 +44,6 @@ export async function saveWhatsappCredentialsAction(
     phoneNumberId,
     businessAccountId,
     accessToken,
-    appSecret,
     webhookVerifyToken,
   } = validation.data;
 
@@ -68,18 +67,7 @@ export async function saveWhatsappCredentialsAction(
       console.log(`[ACTION] Mantendo Access Token existente para Workspace ${workspaceId}.`);
     }
 
-    // Criptografar e adicionar appSecret SOMENTE se um novo valor foi fornecido
-    if (appSecret && appSecret !== 'PRESERVE_EXISTING') { // Verifica se não é vazio e não é o placeholder
-      console.log(`[ACTION] Criptografando novo App Secret para Workspace ${workspaceId}...`);
-      updateData.whatsappAppSecret = encrypt(appSecret);
-      console.log(`[ACTION] Novo App Secret criptografado.`);
-    } else {
-      console.log(`[ACTION] Mantendo App Secret existente para Workspace ${workspaceId}.`);
-    }
-    
-    // Remover a geração duplicada do routeToken que estava abaixo
-    // console.log(`[ACTION] Gerado webhookRouteToken: ${updateData.whatsappWebhookRouteToken}`);
-
+   
     // Atualizar o workspace com os dados construídos
     await prisma.workspace.update({
       where: { id: workspaceId },

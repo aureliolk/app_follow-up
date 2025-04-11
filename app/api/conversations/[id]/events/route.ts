@@ -28,11 +28,12 @@ function createRedisSubscriber() {
     return subscriber;
 }
 
+// GET Handler for Server-Sent Events
 export async function GET(
     request: NextRequest,
     { params }: { params: { id: string } }
 ) {
-    const conversationId = params.id;
+    const { id: conversationId } = await params;
 
     if (!conversationId) {
         return new NextResponse('Conversation ID is required', { status: 400 });

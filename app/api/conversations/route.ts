@@ -46,49 +46,21 @@ export async function GET(req: NextRequest) {
     const prismaStatusesToFilter = mapUiStatusToPrisma(filterStatus);
     console.log(`API GET Conversations: Filtering by Prisma FollowUp Statuses: ${prismaStatusesToFilter.join(', ')}`);
 
-    // --- QUERY MODIFICADA PARA FILTRAR PELO STATUS DO FOLLOWUP ---
+    console.log(`API GET Conversations: Filtering based on Conversation status: ACTIVE`);
+
+    // --- QUERY SIMPLIFICADA: Filtrar por Conversation.status --- 
     const conversations = await prisma.conversation.findMany({
       where: {
         workspace_id: workspaceId,
-        OR: [
-          {
-            client: {
-              follow_ups: {
-                some: {
-                  workspace_id: workspaceId,
-                  status: { in: prismaStatusesToFilter }
-                }
-              }
-            }
-          },
-          {
-            client: {
-              follow_ups: {
-                none: {
-                  workspace_id: workspaceId
-                }
-              }
-            }
-          }
-        ]
+        status: ConversationStatus.ACTIVE // <<< FILTRAR DIRETAMENTE AQUI
       },
       include: {
         client: {
-          select: {
-            id: true, name: true, phone_number: true,
-            follow_ups: {
-              where: {
-                workspace_id: workspaceId,
-                status: { in: prismaStatusesToFilter }
-              },
-              orderBy: { started_at: 'desc' },
-              select: { id: true, status: true },
-              take: 1
-            }
-          }
+          select: { id: true, name: true, phone_number: true }
+          // Remover include desnecessário de follow_ups aqui
         },
         messages: {
-          select: { content: true, timestamp: true, sender_type: true },
+          select: { id: true, content: true, timestamp: true, sender_type: true }, // Incluir ID da msg
           orderBy: { timestamp: 'desc' },
           take: 1,
         },
@@ -98,37 +70,35 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // Formatação da resposta (ajustada para pegar o follow-up incluído)
+    // Formatação da resposta (simplificada)
     const formattedData: ClientConversation[] = conversations.map(convo => ({
       id: convo.id,
       workspace_id: convo.workspace_id,
       client_id: convo.client_id,
       channel: convo.channel,
       channel_conversation_id: convo.channel_conversation_id,
-      status: convo.status, // Status da CONVERSA (pode ser útil manter)
+      status: convo.status, // Status da CONVERSA
       is_ai_active: convo.is_ai_active,
       last_message_at: convo.last_message_at,
       created_at: convo.created_at,
       updated_at: convo.updated_at,
       metadata: convo.metadata,
-      client: {
+      client: convo.client ? { // Adicionar verificação se client existe
         id: convo.client.id,
         name: convo.client.name,
         phone_number: convo.client.phone_number,
-      },
+      } : null, // Retornar null se o cliente não for encontrado (improvável mas seguro)
       last_message: convo.messages[0] ? {
+        id: convo.messages[0].id, // Adicionar ID
         content: convo.messages[0].content,
-        timestamp: convo.messages[0].timestamp,
+        timestamp: convo.messages[0].timestamp.toISOString(), // Converter para string ISO
         sender_type: convo.messages[0].sender_type,
       } : null,
-      // Pega o follow-up que foi incluído baseado no filtro de status
-      activeFollowUp: convo.client.follow_ups[0] ? {
-        id: convo.client.follow_ups[0].id,
-        status: convo.client.follow_ups[0].status // Passa o status encontrado
-      } : null, // Pode ser null se a query não retornar (improvável com 'some')
+      // activeFollowUp não é mais garantido pela query, definir como null ou buscar separadamente se necessário
+      activeFollowUp: null, 
     }));
 
-    console.log(`API GET Conversations: Found ${formattedData.length} conversations matching filter.`);
+    console.log(`API GET Conversations: Found ${formattedData.length} conversations with status ACTIVE.`);
     return NextResponse.json({ success: true, data: formattedData });
 
   } catch (error) {
