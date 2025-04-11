@@ -104,7 +104,8 @@ interface FollowUpContextType {
     // <<< Adicionar nova função para atualização >>>
     updateRealtimeMessageContent: (messageData: {
         id: string;
-        content?: string; // Content pode ser opcional ou o placeholder
+        content?: string | null; // Permite null
+        ai_media_analysis?: string | null; // <<< Campo existe no tipo Message agora
         media_url?: string | null;
         media_mime_type?: string | null;
         media_filename?: string | null;
@@ -496,199 +497,88 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, []);
 
     const updateMessageStatus = useCallback((tempId: string, finalMessage: Message | null, error?: string) => {
-        setSelectedConversationMessages(prevMessages => {
-            let updatedMessages = [...prevMessages];
-            const tempMessageIndex = updatedMessages.findIndex(msg => msg.id === tempId);
-
-            // 1. Handle message not found (shouldn't happen often)
-            if (tempMessageIndex === -1) {
-                console.warn(`[FollowUpContext] updateMessageStatus: Temp message ${tempId} not found.`);
-                // If finalMessage exists and IS NOT already in the list, add it? (Edge case)
-                if (finalMessage && !updatedMessages.some(m => m.id === finalMessage.id)){
-                    console.warn(`[FollowUpContext] updateMessageStatus: Temp not found, but adding final message ${finalMessage.id} as it was missing.`);
-                    return [...updatedMessages, finalMessage].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        setSelectedConversationMessages(prev => prev.map(msg => {
+            if (msg.id === tempId) {
+                if (error) {
+                    return { ...msg, metadata: { ...msg.metadata, status: 'failed', error } };
                 }
-                return prevMessages; 
-            }
-
-            // 2. Handle Error Case (Mark temporary as failed)
-            if (error || !finalMessage) {
-                console.log(`[FollowUpContext] updateMessageStatus: Marking temp message ${tempId} as failed.`);
-                updatedMessages[tempMessageIndex] = {
-                    ...updatedMessages[tempMessageIndex],
-                    metadata: { ...updatedMessages[tempMessageIndex].metadata, status: 'failed', error: error || 'Falha desconhecida' }
-                };
-                return updatedMessages;
-            }
-
-            // 3. Handle Success Case (finalMessage exists)
-            
-            // First, *remove* the temporary message unconditionally
-            const tempMessage = updatedMessages.splice(tempMessageIndex, 1)[0];
-            console.log(`[FollowUpContext] updateMessageStatus: Removed temp message ${tempId}.`);
-
-            // Now, check AGAIN if the final message ALREADY exists in the list (after removing temp)
-            const finalMessageExists = updatedMessages.some(msg => msg.id === finalMessage.id);
-
-            if (finalMessageExists) {
-                // Already added by SSE, do nothing further
-                console.log(`[FollowUpContext] updateMessageStatus: Final message ${finalMessage.id} already present after removing temp. No addition needed.`);
-                return updatedMessages; // Return list with only temp removed
-            } else {
-                // Final message doesn't exist, add it now and sort
-                console.log(`[FollowUpContext] updateMessageStatus: Adding final message ${finalMessage.id}.`);
-                return [...updatedMessages, finalMessage].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-            }
-        });
-
-        // --- Update Cache (Apply similar robust logic) ---
-        if (finalMessage?.conversation_id) {
-            setMessageCache(prevCache => {
-                const conversationId = finalMessage.conversation_id;
-                const currentCache = prevCache[conversationId] || [];
-                let updatedCache = [...currentCache];
-                const tempCacheIndex = updatedCache.findIndex(msg => msg.id === tempId);
-
-                if (tempCacheIndex === -1) return prevCache; // Temp not in cache
-
-                // Remove temp message from cache
-                updatedCache.splice(tempCacheIndex, 1);
-
-                // Check if final message already exists in the updated cache list
-                const finalCacheExists = updatedCache.some(msg => msg.id === finalMessage.id);
-
-                if (!finalCacheExists) {
-                    // Add final message and sort
-                    updatedCache = [...updatedCache, finalMessage].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                } // Else: final already exists, do nothing more
-
-                return { ...prevCache, [conversationId]: updatedCache };
-            });
-        } else if (tempId && error) {
-            // Update cache for error status?
-            setMessageCache(prevCache => {
-                // Find conversation ID based on tempId might be needed here.
-                 // For now, potentially mark the temp message in cache as failed if found.
-                const conversationId = Object.keys(prevCache).find(cid => 
-                    prevCache[cid]?.some(msg => msg.id === tempId)
-                );
-                if (conversationId) {
-                    const currentCache = prevCache[conversationId];
-                    const updatedCache = currentCache.map(msg => 
-                         msg.id === tempId 
-                            ? { ...msg, metadata: { ...msg.metadata, status: 'failed', error: error || 'Falha desconhecida' } }
-                            : msg
-                    );
-                    return { ...prevCache, [conversationId]: updatedCache };
+                if (finalMessage) {
+                    // Replace temp message with final message, keeping local timestamp for ordering if needed?
+                    // Or just use the final message entirely if timestamp is reliable
+                    return finalMessage;
                 }
-                return prevCache;
-            });
-        }
+            }
+            return msg;
+        }));
     }, []);
 
     const addRealtimeMessage = useCallback((message: Message) => {
-        // Validação básica da mensagem
-        if (!message.id || !message.conversation_id) {
-            console.error('[FollowUpContext] Mensagem SSE inválida (sem ID ou conversation_id):', message);
-            return;
-        }
-
-        const isSelectedConversation = message.conversation_id === selectedConversation?.id;
-
-        // --- Atualizar Mensagens da Conversa Selecionada --- 
-        if (isSelectedConversation) {
-            setSelectedConversationMessages(prevMessages => {
-                // Verifica se a mensagem JÁ EXISTE no estado atual
-                const messageExists = prevMessages.some(m => m.id === message.id);
-
-                if (messageExists) {
-                    console.warn(`[FollowUpContext] addRealtimeMessage: Mensagem ${message.id} já existe no estado selecionado. Ignorando adição.`);
-                    return prevMessages; // Retorna estado anterior sem modificação
-                }
-
-                console.log(`[FollowUpContext] addRealtimeMessage: Adicionando mensagem ${message.id} ao estado selecionado.`);
-                // Adiciona a nova mensagem e re-ordena
-                const updatedMessages = [...prevMessages, message].sort((a, b) =>
-                    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-                );
-                return updatedMessages;
-            });
-        }
-
-        // --- Atualizar Cache de Mensagens (para conversa selecionada OU não) --- 
-        setMessageCache(prevCache => {
-            const currentConversationCache = prevCache[message.conversation_id] || [];
-            
-            // Verifica se a mensagem JÁ EXISTE no cache atual para essa conversa
-            const messageExistsInCache = currentConversationCache.some(m => m.id === message.id);
-
-            if (messageExistsInCache) {
-                // console.warn(`[FollowUpContext] addRealtimeMessage: Mensagem ${message.id} já existe no cache de ${message.conversation_id}. Ignorando adição ao cache.`);
-                return prevCache; // Retorna cache anterior sem modificação
+        // Check if the message is already in the list (might happen with optimistic UI)
+        setSelectedConversationMessages(prev => {
+            if (prev.some(msg => msg.id === message.id)) {
+                console.warn(`[FollowUpContext] addRealtimeMessage: Message ${message.id} já existe. Atualizando.`);
+                return prev.map(msg => msg.id === message.id ? message : msg);
             }
-            
-            // console.log(`[FollowUpContext] addRealtimeMessage: Adicionando mensagem ${message.id} ao cache de ${message.conversation_id}.`);
-             // Adiciona a nova mensagem ao cache específico e re-ordena
-            const updatedConversationCache = [...currentConversationCache, message].sort((a, b) =>
-                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-            );
-            // Retorna o cache geral com a lista específica atualizada
-            return { 
-                ...prevCache, 
-                [message.conversation_id]: updatedConversationCache 
-            };
+            return [...prev, message];
         });
-
-        // A lógica de unread/atualização da lista geral é tratada por updateOrAddConversationInList
-        // Não precisamos mais marcar como não lido aqui.
-
+        // Marcar como não lida se não for a conversa selecionada
+        if (message.conversation_id !== selectedConversation?.id) {
+            setUnreadConversationIds(prev => new Set(prev).add(message.conversation_id));
+        }
     }, [selectedConversation?.id]);
 
     const updateRealtimeMessageContent = useCallback((messageData: {
         id: string;
-        content?: string; // Content pode ser opcional ou o placeholder
+        content?: string | null; // Permite null
+        ai_media_analysis?: string | null; // <<< Campo existe no tipo Message agora
         media_url?: string | null;
         media_mime_type?: string | null;
         media_filename?: string | null;
         status?: string | null;
         metadata?: any;
     }) => {
-        const { id: messageId, ...updates } = messageData;
-        console.log(`[FollowUpContext] updateRealtimeMessageContent called for msg ${messageId} with updates:`, updates);
+        console.log("[FollowUpContext] updateRealtimeMessageContent: Tentando atualizar msg ID:", messageData.id, " com payload:", messageData); // <<< LOG 1: Entry
 
-        const updateFn = (prevMessages: Message[]) => prevMessages.map(msg => {
-            if (msg.id === messageId) {
-                // Mescla a mensagem existente com as atualizações recebidas
-                // Garantir que não sobrescrevemos campos existentes com undefined
-                const updatedMsg = { ...msg };
-                Object.keys(updates).forEach(key => {
-                    const typedKey = key as keyof typeof updates;
-                    if (updates[typedKey] !== undefined) {
-                        (updatedMsg as any)[typedKey] = updates[typedKey];
-                    }
-                });
-                // Remover status de loading/processing dos metadados antigos se um novo status chegou
-                if (updates.status && updatedMsg.metadata?.status && 
-                    (updatedMsg.metadata.status === 'uploading' || updatedMsg.metadata.status === 'processing')) {
-                    delete updatedMsg.metadata.status; 
-                }
-                return updatedMsg;
-            } 
-            return msg;
-        });
+        setSelectedConversationMessages(prevMessages => {
+            console.log(`[FollowUpContext] updateRealtimeMessageContent: Estado ANTERIOR (${prevMessages.length} msgs):`, prevMessages.slice(-5)); // <<< LOG 2: Previous State
+            const messageIndex = prevMessages.findIndex(msg => msg.id === messageData.id);
 
-        // Atualizar tanto o estado principal quanto o cache
-        setSelectedConversationMessages(updateFn);
-        setMessageCache(prevCache => {
-            if (selectedConversation?.id && prevCache[selectedConversation.id]) {
-                return {
-                    ...prevCache,
-                    [selectedConversation.id]: updateFn(prevCache[selectedConversation.id]),
+            if (messageIndex === -1) {
+                console.warn(`[FollowUpContext] updateRealtimeMessageContent: Mensagem ${messageData.id} não encontrada no estado atual.`); // <<< LOG 3: Not Found
+                return prevMessages; // Mensagem não encontrada, retorna estado inalterado
+            }
+
+            const updatedMessages = [...prevMessages];
+            // <<< Acessar com segurança, prevMessages[messageIndex] pode ser undefined? Não com findIndex check.
+            const messageToUpdate = { ...updatedMessages[messageIndex] }; 
+            console.log(`[FollowUpContext] updateRealtimeMessageContent: Mensagem encontrada para atualizar (ANTES):`, messageToUpdate); // <<< LOG ANTES
+
+            // Atualiza os campos fornecidos no payload
+            // Atribui diretamente se a chave existe em messageData, permitindo que null sobrescreva.
+            // <<< LOG DETALHADO DAS ATUALIZAÇÕES >>>
+            console.log(`[FollowUpContext] updateRealtimeMessageContent: Atualizando com payload:`, messageData);
+            if ('content' in messageData) { console.log(' -> content'); messageToUpdate.content = messageData.content; }
+            if ('ai_media_analysis' in messageData) { console.log(' -> ai_media_analysis'); messageToUpdate.ai_media_analysis = messageData.ai_media_analysis; }
+            if ('media_url' in messageData) { console.log(' -> media_url'); messageToUpdate.media_url = messageData.media_url; }
+            if ('media_mime_type' in messageData) { console.log(' -> media_mime_type'); messageToUpdate.media_mime_type = messageData.media_mime_type; }
+            if ('media_filename' in messageData) { console.log(' -> media_filename'); messageToUpdate.media_filename = messageData.media_filename; }
+            if ('status' in messageData) { console.log(' -> status'); messageToUpdate.status = messageData.status; }
+            
+            // Merge metadata: preserves existing, adds/overwrites from payload if metadata exists in messageData
+            if ('metadata' in messageData) {
+                console.log(' -> metadata');
+                messageToUpdate.metadata = {
+                    ...(typeof messageToUpdate.metadata === 'object' && messageToUpdate.metadata !== null ? messageToUpdate.metadata : {}),
+                    ...(typeof messageData.metadata === 'object' && messageData.metadata !== null ? messageData.metadata : {})
                 };
             }
-            return prevCache;
+
+            updatedMessages[messageIndex] = messageToUpdate;
+            console.log(`[FollowUpContext] updateRealtimeMessageContent: Mensagem atualizada (DEPOIS):`, messageToUpdate); // <<< LOG DEPOIS
+            console.log(`[FollowUpContext] updateRealtimeMessageContent: Estado DEPOIS da atualização (array completo):`, updatedMessages.slice(-5)); 
+            return updatedMessages;
         });
-    }, [selectedConversation?.id]);
+    }, []);
 
 
     // --- FollowUp Status/Action ---

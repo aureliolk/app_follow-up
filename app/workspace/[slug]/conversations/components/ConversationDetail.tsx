@@ -211,12 +211,11 @@ export default function ConversationDetail() {
         // Ouvir atualizações de conteúdo de mensagem (ex: quando mídia é processada)
         newEventSource.addEventListener('message_content_updated', (event) => {
           try {
-            // <<< CORRIGIDO: event.data já é o payload >>>
             const messagePayload = JSON.parse(event.data); // event.data contém o objeto enviado pelo servidor
-            console.log(`[ConvDetail SSE] Evento 'message_content_updated' recebido. Payload:`, messagePayload);
+            console.log(`[ConvDetail SSE] Evento 'message_content_updated' RECEBIDO. Payload Bruto:`, messagePayload); // <<< LOG 1: Payload recebido
 
-            // <<< CORRIGIDO: Chamar diretamente com o payload, pois o tipo já está no nome do evento >>>
             if (messagePayload && typeof messagePayload === 'object' && messagePayload.id) {
+              console.log(`[ConvDetail SSE] Chamando updateRealtimeMessageContent com o payload acima.`); // <<< LOG 2: Chamada da função
               // Passa o objeto payload inteiro para a função do contexto
               updateRealtimeMessageContent(messagePayload);
             } else {
@@ -627,322 +626,263 @@ export default function ConversationDetail() {
 
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Header da Conversa */}
-      <div className="flex items-center justify-between p-3 md:p-4 border-b border-border flex-shrink-0">
-        <div className="flex items-center gap-3 overflow-hidden">
-          <Avatar className="h-9 w-9 md:h-10 md:w-10 border flex-shrink-0">
-            <AvatarFallback className="bg-muted text-muted-foreground text-sm">
-              {clientName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || '?'}
-            </AvatarFallback>
-          </Avatar>
-          <div className="overflow-hidden">
-            <h2 className="font-semibold text-foreground truncate text-sm md:text-base">{clientName}</h2>
-            <div className="text-xs text-muted-foreground flex items-center flex-wrap gap-x-2">
-              {conversation.channel && <span>{conversation.channel}</span>}
-              {conversation.channel && <span>•</span>}
-              <span>{isConversationCurrentlyActive ? 'Ativa' : 'Fechada'}</span>
-              {/* Badge de Status do FollowUp */}
-              {followUpStatus && (
-                <Badge variant={showPauseButton ? "default" : "secondary"}
-                  className={cn("ml-2 text-[10px] px-1.5 py-0",
-                    showPauseButton ? "bg-blue-600/20 border-blue-500/50 text-blue-300" :
-                      showResumeButton ? "bg-yellow-600/20 border-yellow-500/50 text-yellow-300" :
-                        "bg-gray-600/20 border-gray-500/50 text-gray-300" // Outros status
-                  )}>
-                  Seq: {followUpStatus}
-                </Badge>
+    <div className={cn(
+      "flex flex-col h-full bg-background",
+      !conversation && "items-center justify-center" // Center content if no conversation selected
+    )}>
+      {!conversation ? (
+        <div className="text-center text-muted-foreground">
+          <MessageSquareText className="mx-auto h-12 w-12 mb-4 opacity-50" />
+          <p>Selecione uma conversa para ver as mensagens.</p>
+        </div>
+      ) : (
+        <>
+          {/* Header */}
+          <div className="flex items-center p-3 border-b border-border bg-card/60 flex-shrink-0">
+            {/* Back button for mobile? Or just rely on layout */}
+            <Avatar className="h-9 w-9 mr-3">
+              <AvatarFallback>{conversation.client?.name?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+              {/* Add AvatarImage if URL exists */}
+            </Avatar>
+            <div className="flex-grow">
+              <h2 className="font-semibold text-card-foreground truncate">{conversation.client?.name || 'Conversa'}</h2>
+              <p className="text-xs text-muted-foreground">{conversation.client?.phone_number}</p>
+            </div>
+            {/* Action buttons (Pause, Resume, etc.) */}
+            <div className="flex items-center space-x-2">
+              {conversation.status === 'ACTIVE' && (
+                <Button variant="outline" size="sm" onClick={handlePause} disabled={isPausingFollowUp}>
+                  {isPausingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <PauseCircle className="h-4 w-4 mr-1" />}
+                  Pausar IA
+                </Button>
               )}
-              {conversation.is_ai_active && (
-                <Badge variant="outline" className="ml-2 text-[10px] px-1.5 py-0 border-green-500/50 text-green-400">
-                  IA Ativa
-                </Badge>
+              {(conversation.status === 'PAUSED_BY_AI' || conversation.status === 'PAUSED_BY_USER') && (
+                <Button variant="outline" size="sm" onClick={handleResume} disabled={isResumingFollowUp}>
+                  {isResumingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <PlayCircle className="h-4 w-4 mr-1" />}
+                  Retomar IA
+                </Button>
               )}
+               <Button variant="secondary" size="sm" onClick={handleMarkConverted} disabled={isConvertingFollowUp}>
+                 {isConvertingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+                 Convertido
+               </Button>
+               <Button variant="destructive" size="sm" onClick={handleCancelSequence} disabled={isCancellingFollowUp}>
+                 {isCancellingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
+                 Cancelar
+               </Button>
             </div>
           </div>
-        </div>
-        {/* Botões de Ação */}
-        <div className="flex gap-1.5 md:gap-2 flex-shrink-0">
-          {showPauseButton && (
-            <Button size="sm" variant="outline" onClick={handlePause} title="Pausar Sequência" disabled={isStatusActionLoading}>
-              {isPausingFollowUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4" />}
-              <span className="hidden sm:inline ml-1.5">Pausar</span>
-            </Button>
-          )}
-          {showResumeButton && (
-            <Button size="sm" variant="outline" onClick={handleResume} title="Retomar Sequência" disabled={isStatusActionLoading}>
-              {isResumingFollowUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-              <span className="hidden sm:inline ml-1.5">Retomar</span>
-            </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={handleMarkConverted} title="Marcar Convertido" disabled={isStatusActionLoading || !followUpExistsAndIsActionable}>
-            {isConvertingFollowUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 text-green-500" />}
-            <span className="hidden sm:inline ml-1.5">Convertido</span>
-          </Button>
-          <Button
-            size="sm" variant="outline"
-            className="text-destructive border-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={handleCancelSequence} title="Cancelar Sequência" disabled={isStatusActionLoading || !followUpExistsAndIsActionable}
-          >
-            {isCancellingFollowUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-            <span className="hidden sm:inline ml-1.5">Cancelar</span>
-          </Button>
-        </div>
-      </div>
 
-      {/* Área de Mensagens */}
-      <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
-        {isLoadingMessages && !messages.length && (
-          <div className="flex justify-center items-center h-32">
-            <LoadingSpinner message="Carregando histórico..."  />
-          </div>
-        )}
-        {messageError && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
+          {/* Message Area */}
+          <ScrollArea ref={scrollAreaRef} className="flex-grow p-4 overflow-y-auto">
+              {isLoadingMessages && messages.length === 0 && <LoadingSpinner message="Carregando mensagens..." />}
+              {messageError && messages.length === 0 && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
+              {messages.map((message, index) => {
+                // <<< LOG ANTES DE RENDERIZAR >>>
+                console.log(`[ConvDetail Render] Rendering msg ID: ${message.id}, Content: "${message.content}", MediaURL: ${message.media_url}, MimeType: ${message.media_mime_type}`);
+                return (
+                  <div
+                    key={message.id || `msg-${index}`}
+                    className={cn(
+                      "flex mb-4",
+                      message.sender_type === 'CLIENT' ? 'justify-start' : 'justify-end'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "rounded-lg px-4 py-2 max-w-[75%] break-words",
+                        message.sender_type === 'CLIENT' ? 'bg-muted text-foreground' : 'bg-primary text-primary-foreground'
+                      )}
+                    >
+                      {/* --- Conditional Rendering --- */}
+                      {/* Render text content ONLY if media_url is NOT present */}
+                      {!message.media_url && message.content && (
+                        <p className="whitespace-pre-wrap">{message.content}</p>
+                      )}
 
-        <div className="space-y-4 pb-4">
-          {messages.map((msg) => {
-            // <<< ADICIONAR LOG PARA DEBUG >>>
-            console.log("[ConvDetail Render Msg]:", JSON.stringify(msg, null, 2));
-            return (
-              <div
-                key={msg.id}
-                className={cn(
-                  'flex items-end gap-2 max-w-[85%] sm:max-w-[75%]',
-                  msg.sender_type === 'CLIENT' ? 'justify-start' : 'ml-auto flex-row-reverse'
-                )}
-              >
-                <div
-                  className={cn(
-                    'p-2 px-3 rounded-lg text-sm relative group shadow-sm',
-                    msg.sender_type === 'CLIENT'
-                      ? 'bg-muted text-foreground rounded-bl-none'
-                      : 'bg-primary text-primary-foreground rounded-br-none',
-                    msg.metadata?.status === 'sending' ? 'opacity-60 italic' : '',
-                    msg.metadata?.status === 'failed' ? 'bg-destructive/90 text-destructive-foreground border border-destructive' : '',
-                  )}
-                >
-                  {msg.metadata?.status === 'failed' && (
-                    <span className="absolute -top-1.5 -right-1.5 text-red-400" title={msg.metadata.error || 'Falha ao enviar'}>
-                      <XCircle size={14} />
-                    </span>
-                  )}
-                  {/* Renderização de Mídia ou Texto REVISADA NOVAMENTE */}
-                  {(typeof msg.media_url === 'string' && msg.media_url.length > 0 && 
-                    typeof msg.media_mime_type === 'string' && msg.media_mime_type.length > 0) ? (
-                    // --- CASO 1: TEMOS media_url e media_mime_type VÁLIDOS --- 
-                    <div className="relative min-w-[200px] max-w-xs"> {/* Container para mídia */}
-                      
-                      {/* --- Renderização Específica da Mídia --- */} 
-                      
-                      {/* Imagem */} 
-                      {msg.media_mime_type.startsWith('image/') && (
-                        <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block">
-                          <img 
-                            src={msg.media_url} 
-                            alt={msg.media_filename || 'Imagem enviada'} 
-                            className="rounded-md object-cover w-full h-auto max-h-60" 
-                            loading="lazy"
-                          />
-                        </a>
-                      )}
-  
-                      {/* Vídeo */} 
-                      {msg.media_mime_type.startsWith('video/') && (
-                        <video controls src={msg.media_url} className="rounded-md w-full" preload="metadata">
-                          Seu navegador não suporta vídeo.
-                        </video>
-                      )}
-  
-                      {/* Áudio */} 
-                      {msg.media_mime_type.startsWith('audio/') && (
-                        <audio controls src={msg.media_url} className="w-full" preload="metadata">
-                          Seu navegador não suporta áudio.
-                        </audio>
-                      )}
-                      
-                      {/* Documento (ou outros tipos) */} 
-                      {!msg.media_mime_type.startsWith('image/') && 
-                       !msg.media_mime_type.startsWith('video/') && 
-                       !msg.media_mime_type.startsWith('audio/') && (
-                        <a 
-                          href={msg.media_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="text-blue-400 hover:text-blue-300 hover:underline break-words flex items-center gap-2 p-2 bg-muted/50 rounded-md" 
-                          download={msg.media_filename || true}
-                        >
-                           <Paperclip className="h-4 w-4 flex-shrink-0" />
-                           <span className="truncate">{msg.media_filename || msg.media_url.split('/').pop() || 'Download Anexo'}</span>
-                        </a>
-                      )}
-                      
-                      {/* Legenda (Renderiza se content existe e não é o placeholder padrão) */} 
-                      {msg.content && msg.content !== `[Anexo: ${msg.media_filename}]` && (
-                        <p className="text-xs opacity-90 mt-1 pt-1 border-t border-white/10 whitespace-pre-wrap break-words">{msg.content}</p>
-                      )}
-  
-                       {/* Overlay de Loading/Processing (Mostrado se status específico está no metadata) */} 
-                       {(msg.metadata?.status === 'uploading' || msg.metadata?.status === 'processing') && (
-                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm rounded-md z-10 p-2">
-                          <LoadingSpinner 
-                            size="small" 
-                            message={msg.metadata?.status === 'uploading' ? `Enviando ${msg.media_filename || 'anexo'}...` : `Processando...`}
-                          />
+                      {/* Render media component ONLY if media_url IS present */}
+                      {message.media_url && (
+                        <div className="mt-1"> {/* Add margin-top only if media exists */}
+                          {message.media_mime_type?.startsWith('image/') ? (
+                            <img
+                              src={message.media_url}
+                              alt={message.media_filename || 'Imagem anexada'}
+                              className="rounded-lg max-w-full h-auto max-h-60 object-contain cursor-pointer"
+                              onClick={() => window.open(message.media_url, '_blank')}
+                              loading="lazy"
+                            />
+                          ) : message.media_mime_type?.startsWith('audio/') ? (
+                            <audio controls src={message.media_url} className="w-full" preload="metadata">
+                              Seu navegador não suporta o elemento de áudio.
+                            </audio>
+                          ) : message.media_mime_type?.startsWith('video/') ? (
+                            <video controls src={message.media_url} className="rounded-lg max-w-full h-auto max-h-60 object-contain" preload="metadata">
+                               Seu navegador não suporta o elemento de vídeo.
+                            </video>
+                          ) : (
+                            // Generic link for other file types
+                            <a
+                              href={message.media_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn(
+                                "flex items-center gap-2 p-2 rounded-md text-sm",
+                                message.sender_type === 'CLIENT' ? "text-blue-600 dark:text-blue-400 hover:bg-black/5" : "text-primary-foreground/90 hover:bg-white/10"
+                              )}
+                            >
+                              <Paperclip className="h-4 w-4 flex-shrink-0" />
+                              <span className="underline truncate">{message.media_filename || 'Ver Anexo'}</span>
+                            </a>
+                          )}
                         </div>
                       )}
-  
+                      {/* --- Timestamp and Status (Common) --- */}
+                      <div className={cn(
+                        "text-xs mt-1 flex items-center",
+                         message.sender_type === 'CLIENT' ? 'text-muted-foreground/80 justify-start' : 'text-primary-foreground/80 justify-end'
+                      )}>
+                        <span title={format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>{format(new Date(message.timestamp), 'HH:mm', { locale: ptBR })}</span>
+                        {message.sender_type !== 'CLIENT' && (
+                            <span className="ml-2">
+                              {message.status === 'PENDING' && <span title="Pendente"><Loader2 className="h-3 w-3 animate-spin" /></span>}
+                              {message.status === 'SENT' && <span title="Enviado"><CheckCircle className="h-3 w-3 text-green-400" /></span>}
+                              {message.status === 'FAILED_PROCESSING' && <span title="Falha no processamento"><XCircle className="h-3 w-3 text-yellow-400" /></span>}
+                              {message.status === 'FAILED' && <span title={message.metadata?.errorMessage || 'Falha no envio'}><XCircle className="h-3 w-3 text-red-400" /></span>}
+                              {/* Add DELIVERED/READ later based on webhooks */} 
+                            </span>
+                          )}
+                      </div>
                     </div>
-                  ) : (
-                    // --- CASO 2: NÃO TEM media_url/mime_type VÁLIDOS -> Renderizar content como texto --- 
-                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                  )}
-                  {/* Timestamp (Comum para ambos os casos) */} 
-                  <div className="text-xs opacity-70 mt-1 text-right">
-                    <span title={format(new Date(msg.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>
-                      {format(new Date(msg.timestamp), 'HH:mm')}
-                    </span>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-          {isLoadingMessages && messages.length > 0 && (
-            <div className="flex justify-center items-center pt-4">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+                );
+              })}
+          </ScrollArea>
 
-      {/* Input de Mensagem */}
-      <div className="p-3 md:p-4 border-t border-border bg-card/30 dark:bg-background flex-shrink-0">
-        {/* <<< BARRA DE FERRAMENTAS COM POPOVER DE EMOJI >>> */}
-        <div className="flex items-center gap-1 mb-2">
-          <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Emoji">
-                <Smile className="h-5 w-5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 border-none shadow-none bg-background"
-              style={{
-                '--epr-hover-bg-color': 'hsl(var(--accent))' as React.CSSProperties['color'],
-                '--epr-focus-bg-color': 'hsl(var(--accent))' as React.CSSProperties['color'],
-                '--epr-search-input-bg-color': 'hsl(var(--input))' as React.CSSProperties['color'],
-                '--epr-category-label-bg-color': 'hsl(var(--background))' as React.CSSProperties['color'],
-                '--epr-bg-color': 'hsl(var(--background))' as React.CSSProperties['color'],
-                '--epr-text-color': 'hsl(var(--foreground))' as React.CSSProperties['color'],
-                '--epr-search-input-text-color': 'hsl(var(--foreground))' as React.CSSProperties['color'],
-                '--epr-category-label-text-color': 'hsl(var(--muted-foreground))' as React.CSSProperties['color'],
-                '--epr-border-color': 'hsl(var(--border))' as React.CSSProperties['color'],
-              } as React.CSSProperties}>
-              <EmojiPicker
-                onEmojiClick={handleEmojiClick}
-                theme={Theme.LIGHT}
-                searchPlaceholder="Buscar emojis..."
-                previewConfig={{ showPreview: false }}
-                categories={[
-                  { name: "Usados Recentemente", category: Categories.SUGGESTED },
-                  { name: "Rostos e Emoções", category: Categories.SMILEYS_PEOPLE },
-                  { name: "Animais e Natureza", category: Categories.ANIMALS_NATURE },
-                  { name: "Comida e Bebida", category: Categories.FOOD_DRINK },
-                  { name: "Viagens e Lugares", category: Categories.TRAVEL_PLACES },
-                  { name: "Atividades", category: Categories.ACTIVITIES },
-                  { name: "Objetos", category: Categories.OBJECTS },
-                  { name: "Símbolos", category: Categories.SYMBOLS },
-                  { name: "Bandeiras", category: Categories.FLAGS },
-                ]}
-              />
-            </PopoverContent>
-          </Popover>
+          {/* Input Area */}
+          <div className="p-4 border-t border-border bg-card/60 flex-shrink-0">
+             {/* Exibição de erro de templates */}
+             {templateError && (
+               <ErrorMessage message={templateError} onDismiss={clearTemplateError} />
+             )}
+             <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
+               {/* Botão de Microfone */}
+               <Button
+                 type="button"
+                 variant={isRecording ? "destructive" : "ghost"}
+                 size="icon"
+                 onClick={handleMicClick}
+                 disabled={isUploading} // Desabilitar se estiver fazendo upload de outro arquivo
+                 title={isRecording ? "Parar Gravação" : "Gravar Áudio"}
+               >
+                 {isRecording ? (
+                   <PauseCircle className="h-5 w-5" />
+                 ) : (
+                   <Mic className="h-5 w-5" />
+                 )}
+               </Button>
+               {/* Exibir Duração da Gravação */}
+               {isRecording && (
+                 <div className="text-xs text-muted-foreground font-mono w-12 text-center">
+                   {formatDuration(recordingDuration)}
+                 </div>
+               )}
 
-          {/* <<< ACIONAR INPUT DE ARQUIVO COM LABEL >>> */}
-          <input
-            type="file"
-            id="file-upload-input" // <<< Adicionar ID
-            ref={fileInputRef} // Manter ref se precisar resetar
-            onChange={handleFileChange}
-            className="hidden"
-            // accept="image/*,video/*,audio/*,application/pdf,..." 
-          />
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="text-muted-foreground hover:text-foreground" 
-            title="Anexar Arquivo"
-            // onClick={() => { ... }} // <<< REMOVER onClick do Button
-            disabled={isUploading || isSendingMessage || !isConversationCurrentlyActive} 
-            asChild // <<< Permitir que o Label dentro seja o elemento clicável
-          >
-            <label htmlFor="file-upload-input" className="cursor-pointer">
-              {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
-            </label>
-          </Button>
-          {/* <<< ATUALIZAR BOTÃO MIC >>> */}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className={cn(
-                "text-muted-foreground hover:text-foreground",
-                isRecording && "text-red-500 hover:text-red-600 bg-red-500/10"
-            )} 
-            title={isRecording ? `Parar gravação (${formatDuration(recordingDuration)})` : "Gravar Áudio"}
-            onClick={handleMicClick}
-            disabled={isUploading || isSendingMessage || !isConversationCurrentlyActive || permissionStatus === 'prompting'}
-          >
-            {isRecording ? <Mic className="h-5 w-5 animate-pulse" /> : <Mic className="h-5 w-5" />}
-          </Button>
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Citar Mensagem">
-            <Quote className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Assinatura/Nota Rápida" disabled={isSendingMessage || !isConversationCurrentlyActive}>
-            <PenLine className="h-5 w-5" />
-          </Button>
-          {/* <<< BOTÃO E DIÁLOGO DE TEMPLATES >>> */}
-          <WhatsappTemplateDialog
-            onTemplateInsert={handleFinalTemplateInsert}
-            disabled={isSendingMessage || !isConversationCurrentlyActive}
-          />
-          {/* Adicionar mais botões aqui se necessário */}
-        </div>
+               {/* Botão de Anexo */}
+               <Button
+                 type="button"
+                 variant="ghost"
+                 size="icon"
+                 onClick={() => fileInputRef.current?.click()} // <<< Abrir seletor de arquivo
+                 disabled={isUploading || isRecording} // <<< Desabilitar durante upload ou gravação
+                 title="Anexar Arquivo"
+               >
+                  {isUploading ? <Loader2 className="h-5 w-5 animate-spin"/> : <Paperclip className="h-5 w-5" />}
+               </Button>
+               {/* Input de arquivo oculto */}
+               <input
+                 type="file"
+                 ref={fileInputRef}
+                 onChange={handleFileChange}
+                 className="hidden"
+                 accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" // <<< Definir tipos aceitos
+               />
 
-        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-          <Textarea
-            ref={textareaRef}
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder={isConversationCurrentlyActive ? "Responder manualmente..." : "A conversa está fechada."}
-            className="flex-grow resize-none bg-background border-input min-h-[40px] max-h-[150px] text-sm py-2 px-3 rounded-lg"
-            rows={1}
-            disabled={isSendingMessage || !isConversationCurrentlyActive}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !isSendingMessage && isConversationCurrentlyActive) {
-                e.preventDefault();
-                handleSendMessage();
-              }
-            }}
-          />
-          <Button
-            type="submit"
-            size="icon"
-            className="flex-shrink-0"
-            disabled={!newMessage.trim() || isSendingMessage || !isConversationCurrentlyActive}
-            aria-label="Enviar mensagem"
-          >
-            {isSendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
-        </form>
-        {!isConversationCurrentlyActive && (
-          <p className="text-xs text-muted-foreground text-center mt-1.5">Reative a conversa ou aguarde o cliente para enviar novas mensagens.</p>
-        )}
-      </div>
+               {/* Botão de Emoji */}
+               <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="ghost" size="icon" title="Inserir Emoji">
+                      <Smile className="h-5 w-5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 border-0" side="top" align="start">
+                    <EmojiPicker
+                       onEmojiClick={handleEmojiClick}
+                       // theme={Theme.DARK} // Ajustar tema se necessário
+                       searchDisabled
+                       skinTonesDisabled
+                       categories={[
+                          Categories.SMILEYS_PEOPLE,
+                          Categories.ANIMALS_NATURE,
+                          Categories.FOOD_DRINK,
+                          Categories.TRAVEL_PLACES,
+                          Categories.ACTIVITIES,
+                          Categories.OBJECTS,
+                          Categories.SYMBOLS
+                       ]}
+                     />
+                  </PopoverContent>
+               </Popover>
+
+                {/* Botão de Templates */}
+               <WhatsappTemplateDialog
+                  trigger={
+                     <Button type="button" variant="ghost" size="icon" title="Inserir Template HSM"
+                     disabled={loadingTemplates || isUploading || isRecording}
+                     >
+                       {loadingTemplates ? <Loader2 className="h-4 w-4 animate-spin" /> : <Quote className="h-5 w-5" />}
+                     </Button>
+                  }
+                  onInsertTemplate={handleFinalTemplateInsert}
+               />
+
+               <Textarea
+                 ref={textareaRef}
+                 value={newMessage}
+                 onChange={(e) => setNewMessage(e.target.value)}
+                 placeholder={isRecording ? "Gravando áudio..." : "Digite sua mensagem..."}
+                 className="flex-grow resize-none bg-input border-input text-foreground placeholder:text-muted-foreground min-h-[40px] max-h-[120px]"
+                 rows={1}
+                 onKeyDown={(e) => {
+                   if (e.key === 'Enter' && !e.shiftKey) {
+                     e.preventDefault(); // Evita nova linha
+                     handleSendMessage();
+                   }
+                 }}
+                 disabled={isSendingMessage || isUploading || isRecording}
+               />
+               <Button
+                 type="submit"
+                 size="icon"
+                 disabled={!newMessage.trim() || isSendingMessage || isUploading || isRecording}
+                 title="Enviar Mensagem"
+               >
+                 {isSendingMessage ? (
+                   <Loader2 className="h-4 w-4 animate-spin" />
+                 ) : (
+                   <Send className="h-4 w-4" />
+                 )}
+               </Button>
+             </form>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-// <<< FUNÇÃO HELPER FORA DO COMPONENTE >>>
+// Helper para formatar duração (manter no final ou mover para utils)
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  const remainingSeconds = seconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 }

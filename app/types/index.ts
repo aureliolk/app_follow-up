@@ -132,12 +132,13 @@ export interface Message {
   id: string;
   conversation_id: string;
   sender_type: 'CLIENT' | 'AI' | 'SYSTEM'; // Do Prisma Enum
-  content: string;
+  content: string | null;
   timestamp: string | Date; // Vem como string da API, converter para Date se necessário
   channel_message_id?: string | null;
   metadata?: any | null;
 
   // --- Campos adicionados do schema.prisma --- 
+  ai_media_analysis?: string | null;
   media_url?: string | null;
   media_mime_type?: string | null;
   media_filename?: string | null;

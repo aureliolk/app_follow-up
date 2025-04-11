@@ -454,18 +454,15 @@ model Conversation {
 
 // Modelo para cada mensagem individual
 model Message {
-  id              String       @id @default(uuid())
-  conversation_id String // A qual conversa pertence
-  conversation    Conversation @relation("ConversationToMessage", fields: [conversation_id], references: [id], onDelete: Cascade)
-
-  sender_type MessageSenderType // Quem enviou: CLIENT, AI, SYSTEM
-  content     String            @db.Text // Conteúdo da mensagem
-  timestamp   DateTime // Quando foi criada/recebida
-
-  channel_message_id String? // ID da mensagem no sistema de origem (ex: body.id ou body.source_id)
-
-  // JSON para dados adicionais (ex: content_attributes, status da mensagem no canal)
-  metadata Json?
+  id                 String    @id @default(uuid())
+  conversation_id    String
+  conversation       Conversation @relation("ConversationToMessage", fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender_type        MessageSenderType // CLIENT, AI, SYSTEM
+  content            String?    @db.Text // Text content or placeholder like [Imagem Recebida]
+  ai_media_analysis  String?    @db.Text // AI-generated description/transcription
+  timestamp          DateTime  @default(now())
+  channel_message_id String?    // ID from the external channel (e.g., WhatsApp WAMID)
+  metadata           Json?     // Any additional metadata (e.g., webhook payload, AI confidence)
 
   // --- Campos para Anexos ---
   media_url        String?  @default("") // URL do anexo (ex: S3)
