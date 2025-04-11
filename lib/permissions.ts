@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 
-type Role = 'ADMIN' | 'MEMBER' | 'VIEWER';
+export type Role = 'ADMIN' | 'MEMBER' | 'VIEWER';
 
 // Hierarchy of roles for permission checks
 const roleHierarchy: Record<Role, number> = {

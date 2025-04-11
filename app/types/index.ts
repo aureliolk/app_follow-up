@@ -136,6 +136,15 @@ export interface Message {
   timestamp: string | Date; // Vem como string da API, converter para Date se necessário
   channel_message_id?: string | null;
   metadata?: any | null;
+
+  // --- Campos adicionados do schema.prisma --- 
+  media_url?: string | null;
+  media_mime_type?: string | null;
+  media_filename?: string | null;
+  status?: string | null; // Ex: PENDING, SENT, FAILED
+  providerMessageId?: string | null;
+  sentAt?: string | Date | null; // Timestamp de envio
+  errorMessage?: string | null;
 }
 
 // Representa uma conversa como vinda da API de listagem (/api/conversations)

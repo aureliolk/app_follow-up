@@ -59,6 +59,13 @@ export async function GET(
         timestamp: true,
         channel_message_id: true,
         metadata: true,
+        media_url: true,
+        media_mime_type: true,
+        media_filename: true,
+        status: true,
+        providerMessageId: true,
+        sentAt: true,
+        errorMessage: true,
       },
     });
 

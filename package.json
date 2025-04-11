@@ -11,7 +11,8 @@
     "workers:dev": "concurrently \"tsx lib/workers/messageProcessor.ts\" \"tsx lib/workers/sequenceStepProcessor.ts\"",
     "start:message": "tsx lib/workers/messageProcessor.ts",
     "start:sequence": "tsx lib/workers/sequenceStepProcessor.ts",
-    "start:campaign": "tsx lib/workers/campaignWorker.ts"
+    "start:campaign": "tsx lib/workers/campaignWorker.ts",
+    "start:media": "tsx lib/workers/whatsappMediaSenderWorker.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.5",

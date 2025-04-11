@@ -467,6 +467,17 @@ model Message {
   // JSON para dados adicionais (ex: content_attributes, status da mensagem no canal)
   metadata Json?
 
+  // --- Campos para Anexos ---
+  media_url        String?  @default("") // URL do anexo (ex: S3)
+  media_mime_type  String?  @default("") // Tipo MIME do anexo (ex: image/jpeg)
+  media_filename   String?  @default("") // Nome original do arquivo (útil para documentos)
+
+  // --- Campos para Status de Envio (para mensagens enviadas pelo sistema/AI) ---
+  status             String?   @default("PENDING") // PENDING, SENT, FAILED, DELIVERED (opcional), READ (opcional)
+  providerMessageId  String?   @map("provider_message_id") // ID da mensagem no provedor (ex: WhatsApp ID)
+  sentAt             DateTime? @map("sent_at") // Quando foi enviada pela nossa API
+  errorMessage       String?   @db.Text @map("error_message") // Mensagem de erro se o envio falhar
+
   @@index([conversation_id])
   @@index([timestamp])
   @@map("messages")

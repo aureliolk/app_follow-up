@@ -38,6 +38,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-react';
+import axios from 'axios'; // <<< Importar Axios para o upload
 
 // Remover a interface de Props, pois não recebe mais a conversa via prop
 // interface ConversationDetailProps {
@@ -82,6 +83,9 @@ export default function ConversationDetail() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const prevIsSendingMessage = useRef(isSendingMessage);
+  const fileInputRef = useRef<HTMLInputElement>(null); // <<< Ref para o input de arquivo
+  const [isUploading, setIsUploading] = useState(false); // <<< Estado para loading do upload
+  // const { resolvedTheme } = useTheme(); // <<< REMOVE THIS LINE IF NOT USING
 
   // --- Scroll Automático REFINADO ---
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -242,8 +246,87 @@ export default function ConversationDetail() {
     textareaRef.current?.focus(); 
   };
 
-  // --- Handlers de Ação ---
+  // <<< NOVO HANDLER PARA SELEÇÃO DE ARQUIVO >>>
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !conversation?.id || !conversation?.workspace_id) {
+      // Limpa o input para permitir selecionar o mesmo arquivo novamente se necessário
+      if(event.target) event.target.value = "";
+      return;
+    }
 
+    // Validar tamanho/tipo no frontend (opcional, mas bom para UX)
+    // const MAX_SIZE = 16 * 1024 * 1024; // 16MB
+    // if (file.size > MAX_SIZE) {
+    //   toast.error('Arquivo muito grande. Máximo 16MB.');
+    //   if(event.target) event.target.value = "";
+    //   return;
+    // }
+    // TODO: Adicionar validação de tipo MIME no frontend se desejado
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('conversationId', conversation.id);
+    formData.append('workspaceId', conversation.workspace_id);
+
+    const tempId = `temp-upload-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      conversation_id: conversation.id,
+      sender_type: 'AI', // Ou o tipo que representa o operador
+      content: `[Enviando ${file.name}...]`,
+      timestamp: new Date().toISOString(),
+      metadata: { 
+        status: 'uploading', // Novo status
+        originalFilename: file.name,
+        mimeType: file.type,
+        messageType: getMessageTypeFromMime(file.type) // Use helper (needs to be defined or imported)
+      }
+    };
+
+    addMessageOptimistically(optimisticMessage);
+    setIsUploading(true);
+
+    try {
+      const response = await axios.post<{ success: boolean, data: Message, error?: string }>(
+        '/api/attachments',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (!response.data.success || !response.data.data) {
+        throw new Error(response.data.error || 'Falha no upload do anexo');
+      }
+
+      updateMessageStatus(tempId, response.data.data); // Atualiza com a msg real da API (com URL)
+      toast.success('Anexo enviado!');
+
+    } catch (error: any) {
+      const message = error.response?.data?.error || error.message || 'Erro ao enviar anexo.';
+      updateMessageStatus(tempId, null, message); // Marca como falha
+      console.error("Erro no componente ao enviar anexo:", error);
+      toast.error(`Falha ao enviar: ${message}`);
+    } finally {
+      setIsUploading(false);
+      // Limpa o input para permitir selecionar o mesmo arquivo novamente
+      if(event.target) event.target.value = "";
+    }
+  };
+
+   // <<< NOVA FUNÇÃO HELPER (ou importar de utils) >>>
+   function getMessageTypeFromMime(mimeType: string): string {
+      if (mimeType.startsWith('image/')) return 'IMAGE';
+      if (mimeType.startsWith('video/')) return 'VIDEO';
+      if (mimeType.startsWith('audio/')) return 'AUDIO';
+      return 'DOCUMENT'; // Default to document
+    }
+
+  // --- Handlers de Ação ---
+  // <<< RESTAURAR handlePause >>>
   const handlePause = async () => {
     if (!conversation?.activeFollowUp?.id || !conversation?.workspace_id) {
       toast.error("Não é possível pausar: sequência não encontrada ou informações incompletas.");
@@ -429,129 +512,112 @@ export default function ConversationDetail() {
         {messageError && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
 
         <div className="space-y-4 pb-4">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={cn(
-                'flex items-end gap-2 max-w-[85%] sm:max-w-[75%]',
-                msg.sender_type === 'CLIENT' ? 'justify-start' : 'ml-auto flex-row-reverse'
-              )}
-            >
+          {messages.map((msg) => {
+            // <<< ADICIONAR LOG PARA DEBUG >>>
+            console.log("[ConvDetail Render Msg]:", JSON.stringify(msg, null, 2));
+            return (
               <div
+                key={msg.id}
                 className={cn(
-                  'p-2 px-3 rounded-lg text-sm relative group shadow-sm',
-                  msg.sender_type === 'CLIENT'
-                    ? 'bg-muted text-foreground rounded-bl-none'
-                    : 'bg-primary text-primary-foreground rounded-br-none',
-                  msg.metadata?.status === 'sending' ? 'opacity-60 italic' : '',
-                  msg.metadata?.status === 'failed' ? 'bg-destructive/90 text-destructive-foreground border border-destructive' : '',
+                  'flex items-end gap-2 max-w-[85%] sm:max-w-[75%]',
+                  msg.sender_type === 'CLIENT' ? 'justify-start' : 'ml-auto flex-row-reverse'
                 )}
               >
-                {msg.metadata?.status === 'failed' && (
-                  <span className="absolute -top-1.5 -right-1.5 text-red-400" title={msg.metadata.error || 'Falha ao enviar'}>
-                    <XCircle size={14} />
-                  </span>
-                )}
-                {/* Renderização de Mídia ou Texto CORRIGIDA */}
-                {/* Verifica se é mídia (tem messageType E NÃO é 'text') */}
-                {(msg.metadata as any)?.messageType && (msg.metadata as any)?.messageType !== 'text' ? (
-                  // É uma mensagem de mídia (imagem, video, audio, doc, sticker)
-                  <div className="relative min-h-[100px] min-w-[200px] flex items-center justify-center">
-                    
-                    {/* Estado de Loading (USA LoadingSpinner) */}
-                    {!(msg.metadata as any)?.uploadedToS3 && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/10 backdrop-blur-sm rounded-md z-10 p-2">
-                        <LoadingSpinner 
-                          size="small" 
-                          message={`Processando ${(msg.metadata as any)?.messageType}...`} 
-                        />
-                      </div>
-                    )}
-
-                    {/* Conteúdo da Mídia Final */}
-                    <div className={cn(
-                      "w-full transition-opacity duration-300", // Suaviza a aparição
-                      (msg.metadata as any)?.uploadedToS3 ? "opacity-100" : "opacity-0" // Controla visibilidade
-                    )}>
-                      {/* Imagem */}
-                      {(msg.metadata as any)?.messageType === 'image' && (
-                        <a 
-                          href={msg.content || '#'} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="block max-w-xs"
-                          style={{ display: (msg.metadata as any)?.uploadedToS3 ? 'block' : 'none' }}
-                        >
+                <div
+                  className={cn(
+                    'p-2 px-3 rounded-lg text-sm relative group shadow-sm',
+                    msg.sender_type === 'CLIENT'
+                      ? 'bg-muted text-foreground rounded-bl-none'
+                      : 'bg-primary text-primary-foreground rounded-br-none',
+                    msg.metadata?.status === 'sending' ? 'opacity-60 italic' : '',
+                    msg.metadata?.status === 'failed' ? 'bg-destructive/90 text-destructive-foreground border border-destructive' : '',
+                  )}
+                >
+                  {msg.metadata?.status === 'failed' && (
+                    <span className="absolute -top-1.5 -right-1.5 text-red-400" title={msg.metadata.error || 'Falha ao enviar'}>
+                      <XCircle size={14} />
+                    </span>
+                  )}
+                  {/* Renderização de Mídia ou Texto REVISADA NOVAMENTE */}
+                  {(typeof msg.media_url === 'string' && msg.media_url.length > 0 && 
+                    typeof msg.media_mime_type === 'string' && msg.media_mime_type.length > 0) ? (
+                    // --- CASO 1: TEMOS media_url e media_mime_type VÁLIDOS --- 
+                    <div className="relative min-w-[200px] max-w-xs"> {/* Container para mídia */}
+                      
+                      {/* --- Renderização Específica da Mídia --- */} 
+                      
+                      {/* Imagem */} 
+                      {msg.media_mime_type.startsWith('image/') && (
+                        <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block">
                           <img 
-                            src={msg.content || ''}
-                            alt="Imagem enviada"
-                            className="rounded-md object-cover w-full h-auto max-h-60"
-                            onError={(e) => (e.currentTarget.style.display = 'none')}
+                            src={msg.media_url} 
+                            alt={msg.media_filename || 'Imagem enviada'} 
+                            className="rounded-md object-cover w-full h-auto max-h-60" 
+                            loading="lazy"
                           />
                         </a>
                       )}
-                      {/* Vídeo */}
-                      {(msg.metadata as any)?.messageType === 'video' && (
-                        <video 
-                          controls 
-                          src={msg.content || ''} 
-                          className="rounded-md w-full max-w-xs"
-                          style={{ display: (msg.metadata as any)?.uploadedToS3 ? 'block' : 'none' }}
-                        >
-                          Seu navegador não suporta o elemento de vídeo.
+  
+                      {/* Vídeo */} 
+                      {msg.media_mime_type.startsWith('video/') && (
+                        <video controls src={msg.media_url} className="rounded-md w-full" preload="metadata">
+                          Seu navegador não suporta vídeo.
                         </video>
                       )}
-                      {/* Áudio */}
-                      {(msg.metadata as any)?.messageType === 'audio' && (
-                        <audio 
-                          controls 
-                          src={msg.content || ''}
-                          className="w-full max-w-xs"
-                          style={{ display: (msg.metadata as any)?.uploadedToS3 ? 'block' : 'none' }}
-                        >
-                          Seu navegador não suporta o elemento de áudio.
+  
+                      {/* Áudio */} 
+                      {msg.media_mime_type.startsWith('audio/') && (
+                        <audio controls src={msg.media_url} className="w-full" preload="metadata">
+                          Seu navegador não suporta áudio.
                         </audio>
                       )}
-                      {/* Documento */}
-                      {(msg.metadata as any)?.messageType === 'document' && (
+                      
+                      {/* Documento (ou outros tipos) */} 
+                      {!msg.media_mime_type.startsWith('image/') && 
+                       !msg.media_mime_type.startsWith('video/') && 
+                       !msg.media_mime_type.startsWith('audio/') && (
                         <a 
-                          href={msg.content || '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={cn(
-                            "text-blue-400 hover:text-blue-300 hover:underline break-all",
-                             // Desabilita link se não estiver carregado
-                            !(msg.metadata as any)?.uploadedToS3 && "pointer-events-none opacity-50"
-                          )}
-                          style={{ display: 'block' }} // Link sempre visível, mas desabilitado
+                          href={msg.media_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="text-blue-400 hover:text-blue-300 hover:underline break-words flex items-center gap-2 p-2 bg-muted/50 rounded-md" 
+                          download={msg.media_filename || true}
                         >
-                          {`${(msg.metadata as any)?.whatsappMessage?.document?.filename || 'Documento'}`}
+                           <Paperclip className="h-4 w-4 flex-shrink-0" />
+                           <span className="truncate">{msg.media_filename || msg.media_url.split('/').pop() || 'Download Anexo'}</span>
                         </a>
                       )}
-                      {/* Sticker */}
-                      {(msg.metadata as any)?.messageType === 'sticker' && (
-                        <img 
-                          src={msg.content || ''}
-                          alt="Sticker enviado"
-                          className="max-w-[120px] max-h-[120px] object-contain"
-                          style={{ display: (msg.metadata as any)?.uploadedToS3 ? 'block' : 'none' }}
-                          onError={(e) => (e.currentTarget.style.display = 'none')}
-                        />
+                      
+                      {/* Legenda (Renderiza se content existe e não é o placeholder padrão) */} 
+                      {msg.content && msg.content !== `[Anexo: ${msg.media_filename}]` && (
+                        <p className="text-xs opacity-90 mt-1 pt-1 border-t border-white/10 whitespace-pre-wrap break-words">{msg.content}</p>
                       )}
+  
+                       {/* Overlay de Loading/Processing (Mostrado se status específico está no metadata) */} 
+                       {(msg.metadata?.status === 'uploading' || msg.metadata?.status === 'processing') && (
+                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm rounded-md z-10 p-2">
+                          <LoadingSpinner 
+                            size="small" 
+                            message={msg.metadata?.status === 'uploading' ? `Enviando ${msg.media_filename || 'anexo'}...` : `Processando...`}
+                          />
+                        </div>
+                      )}
+  
                     </div>
+                  ) : (
+                    // --- CASO 2: NÃO TEM media_url/mime_type VÁLIDOS -> Renderizar content como texto --- 
+                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  )}
+                  {/* Timestamp (Comum para ambos os casos) */} 
+                  <div className="text-xs opacity-70 mt-1 text-right">
+                    <span title={format(new Date(msg.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>
+                      {format(new Date(msg.timestamp), 'HH:mm')}
+                    </span>
                   </div>
-                ) : (
-                  // É uma mensagem de texto normal (ou mídia com tipo 'text')
-                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                )}
-                <div className="text-xs opacity-70 mt-1 text-right">
-                  <span title={format(new Date(msg.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>
-                    {format(new Date(msg.timestamp), 'HH:mm')}
-                  </span>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {isLoadingMessages && messages.length > 0 && (
             <div className="flex justify-center items-center pt-4">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -602,8 +668,27 @@ export default function ConversationDetail() {
             </PopoverContent>
           </Popover>
 
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Anexar Arquivo">
-            <Paperclip className="h-5 w-5" />
+          {/* <<< ACIONAR INPUT DE ARQUIVO COM LABEL >>> */}
+          <input
+            type="file"
+            id="file-upload-input" // <<< Adicionar ID
+            ref={fileInputRef} // Manter ref se precisar resetar
+            onChange={handleFileChange}
+            className="hidden"
+            // accept="image/*,video/*,audio/*,application/pdf,..." 
+          />
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="text-muted-foreground hover:text-foreground" 
+            title="Anexar Arquivo"
+            // onClick={() => { ... }} // <<< REMOVER onClick do Button
+            disabled={isUploading || isSendingMessage || !isConversationCurrentlyActive} 
+            asChild // <<< Permitir que o Label dentro seja o elemento clicável
+          >
+            <label htmlFor="file-upload-input" className="cursor-pointer">
+              {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Paperclip className="h-5 w-5" />}
+            </label>
           </Button>
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Gravar Áudio">
             <Mic className="h-5 w-5" />
