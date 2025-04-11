@@ -8,6 +8,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { ArrowLeft } from 'lucide-react';
 import {
   Send,
   Bot,
@@ -21,7 +25,8 @@ import {
   Paperclip,
   Mic,
   Quote,
-  PenLine
+  PenLine,
+  MessageSquareText
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -30,7 +35,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import type { Message } from '@/app/types'; // Importar apenas Message, ClientConversation vem do contexto
 import { toast } from 'react-hot-toast';
-import { useFollowUp } from '@/context/follow-up-context'; // Importar o hook do contexto
+import { useFollowUp } from '@/context/follow-up-context'; // Importar o hook
 // <<< Importar Popover e EmojiPicker >>>
 import {
   Popover,
@@ -39,11 +44,23 @@ import {
 } from "@/components/ui/popover"
 import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-react';
 import axios from 'axios'; // <<< Importar Axios para o upload
+import { useWhatsappTemplates } from '@/context/whatsapp-template-context'; // <<< Importar o hook
+import WhatsappTemplateDialog from './WhatsappTemplateDialog'; // <<< IMPORTAR NOVO COMPONENTE
 
 // Remover a interface de Props, pois não recebe mais a conversa via prop
 // interface ConversationDetailProps {
 //   conversation: ClientConversation | null;
 // }
+
+// Mock/Placeholder para tipo de Template (definir melhor depois)
+interface WhatsappTemplate {
+  id: string; // ID do template na Meta ou no nosso sistema
+  name: string;
+  language: string;
+  category: string;
+  body: string; // Corpo do template (pode ter variáveis)
+  // Adicionar outras propriedades se necessário (header, footer, buttons, variables)
+}
 
 // Remover o parâmetro de props da função
 export default function ConversationDetail() {
@@ -76,6 +93,8 @@ export default function ConversationDetail() {
     updateRealtimeMessageContent, // <<< OBTER A NOVA FUNÇÃO
   } = useFollowUp();
 
+  const { templates, loadingTemplates, templateError, clearTemplateError } = useWhatsappTemplates(); // <<< Usar o hook
+
   // --- Estado Local ---
   const [newMessage, setNewMessage] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -93,6 +112,11 @@ export default function ConversationDetail() {
   const recordingStartTimeRef = useRef<number | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // <<< ESTADOS PARA TEMPLATES >>>
+  // const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  // const [selectedTemplateForEditing, setSelectedTemplateForEditing] = useState<WhatsappTemplate | null>(null);
+  // const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  // const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   // --- Scroll Automático REFINADO ---
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -571,6 +595,12 @@ export default function ConversationDetail() {
     }
   };
 
+   // <<< NOVA FUNÇÃO PARA RECEBER O TEMPLATE DO DIÁLOGO >>>
+   const handleFinalTemplateInsert = (templateBody: string) => {
+    setNewMessage(prev => prev + templateBody);
+    textareaRef.current?.focus();
+  };
+
   // --- Renderização ---
 
   if (!conversation) {
@@ -664,7 +694,7 @@ export default function ConversationDetail() {
       <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
         {isLoadingMessages && !messages.length && (
           <div className="flex justify-center items-center h-32">
-            <LoadingSpinner message="Carregando histórico... asda"  />
+            <LoadingSpinner message="Carregando histórico..."  />
           </div>
         )}
         {messageError && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
@@ -865,9 +895,14 @@ export default function ConversationDetail() {
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Citar Mensagem">
             <Quote className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Assinatura/Nota Rápida">
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" title="Assinatura/Nota Rápida" disabled={isSendingMessage || !isConversationCurrentlyActive}>
             <PenLine className="h-5 w-5" />
           </Button>
+          {/* <<< BOTÃO E DIÁLOGO DE TEMPLATES >>> */}
+          <WhatsappTemplateDialog
+            onTemplateInsert={handleFinalTemplateInsert}
+            disabled={isSendingMessage || !isConversationCurrentlyActive}
+          />
           {/* Adicionar mais botões aqui se necessário */}
         </div>
 
@@ -908,6 +943,6 @@ export default function ConversationDetail() {
 // <<< FUNÇÃO HELPER FORA DO COMPONENTE >>>
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }

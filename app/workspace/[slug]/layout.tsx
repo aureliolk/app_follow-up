@@ -30,6 +30,7 @@ import {
 import WorkspaceHeader from './components/WorkspaceHeader'; // <<< Importar
 import WorkspaceFooter from './components/WorkspaceFooter'; // <<< Importar (opcional)
 import LoadingSpinner from '@/components/ui/LoadingSpinner'; // << Adicionar import
+import { WhatsappTemplateProvider } from '@/context/whatsapp-template-context'; // <<< Importar o novo provider
 
 // Interface para os itens de navegação
 interface NavItem {
@@ -288,8 +289,11 @@ export default function WorkspaceLayout({
           {/* Área de conteúdo principal rolável */}
           <main className="flex-1 overflow-y-auto bg-muted/30">
             {/* Padding aplicado aqui para o conteúdo */}
-            <div className="p-4 md:p-6 h-full">
-              {children}
+            <div className="h-full">
+              {/* <<< Envolver children com o Provider >>> */}
+              <WhatsappTemplateProvider>
+                {children}
+              </WhatsappTemplateProvider>
             </div>
           </main>
           {/* Footer específico do Workspace (opcional) */}

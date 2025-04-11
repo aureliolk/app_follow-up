@@ -147,6 +147,21 @@ export interface Message {
   errorMessage?: string | null;
 }
 
+// <<< INÍCIO DA NOVA INTERFACE >>>
+// Representa um template de mensagem do WhatsApp
+export interface WhatsappTemplate {
+  id: string;       // ID único do template (pode ser o da Meta ou interno)
+  name: string;     // Nome do template (ex: "pedido_confirmado")
+  language: string; // Código do idioma (ex: "pt_BR")
+  category: string; // Categoria do template (ex: "UTILITY", "MARKETING")
+  body: string;     // Corpo principal do template, pode conter variáveis como {{1}}
+  // Opcional: Adicionar mais campos se a API retornar (header, footer, botões, etc.)
+  // header?: { type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT', content: string | { link: string } };
+  // footer?: { text: string };
+  // buttons?: { type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER', text: string, value?: string }[];
+}
+// <<< FIM DA NOVA INTERFACE >>>
+
 // Representa uma conversa como vinda da API de listagem (/api/conversations)
 export interface ClientConversation {
   id: string; // Conversation ID
@@ -170,7 +185,15 @@ export interface ClientConversation {
     timestamp: string | Date;
     sender_type: 'CLIENT' | 'AI' | 'SYSTEM';
   } | null;
-  // Campos adicionais que a API pode agregar (opcional)
+
+  // <<< CAMPO ADICIONADO >>>
+  // Guarda o ID e status do follow-up ativo/pausado encontrado pela API
+  activeFollowUp: {
+    id: string;
+    status: string; // Ou FollowUpStatus se usar Enum
+  } | null;
+
+  // Campos opcionais
   unread_count?: number;
 }
 
@@ -205,43 +228,6 @@ export interface Campaign {
   followUpId?: string | null;      // Adicionado
   steps?: CampaignStep[] | FunnelStep[]; // Adicionado (usando tipos existentes)
 }
-
-// --- ATUALIZE ClientConversation ---
-export interface ClientConversation {
-  id: string; // Conversation ID
-  workspace_id: string;
-  client_id: string;
-  channel?: string | null;
-  channel_conversation_id?: string | null;
-  status: string; // Ex: 'ACTIVE', 'CLOSED' (do Prisma Enum ConversationStatus)
-  is_ai_active: boolean;
-  last_message_at: string | Date | null;
-  created_at: string | Date;
-  updated_at: string | Date;
-  metadata?: any | null;
-  client: { // Dados do cliente incluídos
-    id: string;
-    name?: string | null;
-    phone_number?: string | null;
-    // Não inclua follow_ups aqui para evitar redundância com activeFollowUp
-  };
-  last_message?: { // Última mensagem incluída
-    content: string;
-    timestamp: string | Date;
-    sender_type: 'CLIENT' | 'AI' | 'SYSTEM';
-  } | null;
-
-  // <<< CAMPO ADICIONADO >>>
-  // Guarda o ID e status do follow-up ativo/pausado encontrado pela API
-  activeFollowUp: {
-    id: string;
-    status: string; // Ou FollowUpStatus se usar Enum
-  } | null;
-
-  // Campos opcionais
-  unread_count?: number;
-}
-
 
 // --- DEFINIÇÃO DE CampaignFormData ---
 // Cria um tipo baseado em Campaign, omitindo campos não editáveis no formulário.
