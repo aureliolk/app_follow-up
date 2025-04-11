@@ -1,5 +1,7 @@
 // lib/channel/whatsappSender.ts
 import axios, { AxiosError } from 'axios'; // Importar Axios
+import FormData from 'form-data'; // <<< Adicionar import para FormData
+import { Readable } from 'stream'; // <<< Adicionar import para Stream
 
 const WHATSAPP_API_VERSION = 'v19.0'; // Ou a versão que você estiver usando
 
@@ -28,6 +30,88 @@ interface SendResult {
   messageId?: string;
   error?: WhatsAppApiErrorData | { message: string }; // Tipo de erro mais específico
 }
+
+// <<< INÍCIO NOVA FUNÇÃO >>>
+interface UploadMediaResult {
+    success: boolean;
+    mediaId?: string;
+    error?: WhatsAppApiErrorData | { message: string };
+}
+
+/**
+ * Faz upload de um arquivo de mídia para a API do WhatsApp Cloud.
+ * @param fileBuffer Buffer do arquivo a ser enviado.
+ * @param filename Nome do arquivo (usado no FormData).
+ * @param mimeType Tipo MIME do arquivo (ex: 'audio/webm', 'image/png').
+ * @param phoneNumberId ID do número de telefone da Meta que está enviando.
+ * @param accessToken Token de acesso da API (descriptografado).
+ * @returns Objeto indicando sucesso e o ID da mídia ou erro.
+ */
+export async function uploadWhatsappMedia(
+    fileBuffer: Buffer,
+    filename: string,
+    mimeType: string,
+    phoneNumberId: string,
+    accessToken: string
+): Promise<UploadMediaResult> {
+    const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phoneNumberId}/media`;
+    const formData = new FormData();
+
+    formData.append('messaging_product', 'whatsapp');
+    formData.append('file', fileBuffer, {
+        filename: filename,
+        contentType: mimeType,
+    });
+    // O parâmetro 'type' (mimeType) não é mais enviado aqui, o WhatsApp infere do contentType.
+
+    console.log(`[WhatsappSender] Uploading media (${mimeType}, ${filename}, size: ${fileBuffer.length} bytes) to Meta API for number ${phoneNumberId}`);
+
+    try {
+        const response = await axios.post<{ id: string }>(apiUrl, formData, {
+            headers: {
+                ...formData.getHeaders(), // Inclui Content-Type: multipart/form-data; boundary=...
+                'Authorization': `Bearer ${accessToken}`,
+            },
+            maxContentLength: Infinity, // Necessário para arquivos maiores
+            maxBodyLength: Infinity,    // Necessário para arquivos maiores
+            timeout: 60000, // Timeout maior para upload (60 segundos)
+        });
+
+        const mediaId = response.data?.id;
+
+        if (!mediaId) {
+            console.error(`[WhatsappSender] Media upload for ${filename} succeeded but no media ID returned.`);
+            return { success: false, error: { message: 'Media upload succeeded but no media ID returned.' } };
+        }
+
+        console.log(`[WhatsappSender] Media ${filename} uploaded successfully. Media ID: ${mediaId}`);
+        return { success: true, mediaId: mediaId };
+
+    } catch (error: any) {
+        console.error(`[WhatsappSender] Error uploading media ${filename} (${mimeType}) for number ${phoneNumberId}:`);
+        // Reutilizar a lógica de tratamento de erro do Axios
+        if (axios.isAxiosError(error)) {
+            const axiosError = error as AxiosError<WhatsAppErrorResponse>;
+            const apiErrorData = axiosError.response?.data?.error;
+            if (apiErrorData) {
+                console.error(`  Status: ${axiosError.response?.status}`);
+                console.error(`  API Upload Error: ${apiErrorData.message} (Code: ${apiErrorData.code}, Type: ${apiErrorData.type}, Subcode: ${apiErrorData.error_subcode || 'N/A'})`);
+                console.error(`  Trace ID: ${apiErrorData.fbtrace_id}`);
+                return { success: false, error: apiErrorData };
+            } else if (axiosError.request) {
+                console.error('  Upload Error: No response received from API (network/timeout).');
+                return { success: false, error: { message: 'Network Error or Timeout during media upload' } };
+            } else {
+                console.error('  Upload Error: Axios setup error:', axiosError.message);
+                return { success: false, error: { message: `Axios setup error during media upload: ${axiosError.message}` } };
+            }
+        } else {
+            console.error('  Upload Error: Unexpected error:', error.message);
+            return { success: false, error: { message: error.message || 'Unknown error occurred during media upload' } };
+        }
+    }
+}
+// <<< FIM NOVA FUNÇÃO >>>
 
 /**
  * Envia uma mensagem de texto simples via WhatsApp Cloud API usando Axios.
@@ -110,17 +194,45 @@ export async function sendWhatsappMessage(
 }
 
 // Interface para os parâmetros de envio de mídia
-interface SendMediaParams {
+// <<< REMOVER INTERFACE ANTIGA >>>
+// interface SendMediaParams {
+//   phoneNumberId: string;
+//   toPhoneNumber: string;
+//   accessToken: string;
+//   mediaUrl: string;
+//   mimeType: string;
+//   filename?: string; // Opcional, útil para documentos
+//   caption?: string;  // Opcional, para adicionar legenda a imagens/vídeos
+// }
+
+// <<< NOVAS INTERFACES PARA PARÂMETROS >>>
+interface SendMediaParamsBase {
   phoneNumberId: string;
   toPhoneNumber: string;
   accessToken: string;
-  mediaUrl: string;
-  mimeType: string;
-  filename?: string; // Opcional, útil para documentos
-  caption?: string;  // Opcional, para adicionar legenda a imagens/vídeos
+  caption?: string; // Legenda comum
 }
 
-// Mapeamento de tipos MIME para tipos da API do WhatsApp e nomes de campo
+// Para envio usando ID de mídia pré-uploadado
+interface SendMediaByIdParams extends SendMediaParamsBase {
+  mediaId: string;
+  messageType: 'image' | 'audio' | 'video' | 'document'; // Tipo DEVE ser fornecido pelo chamador
+}
+
+// Para envio usando URL pública (principalmente imagens/docs)
+interface SendMediaByUrlParams extends SendMediaParamsBase {
+  mediaUrl: string;
+  mimeType: string; // Necessário para determinar o tipo E para documentos/links
+  filename?: string; // Opcional, mas necessário para documentos
+}
+
+// Type Guard para diferenciar os parâmetros em tempo de execução
+function isSendMediaByIdParams(params: any): params is SendMediaByIdParams {
+  return typeof params.mediaId === 'string' && typeof params.messageType === 'string';
+}
+
+// --- Mapeamento mimeToWhatsAppType ainda pode ser útil para URL ---
+// (O mapeamento mimeToWhatsAppType permanece o mesmo)
 const mimeToWhatsAppType: Record<string, { type: 'image' | 'document' | 'audio' | 'video'; fieldName: string }> = {
   // Imagens
   'image/jpeg': { type: 'image', fieldName: 'image' },
@@ -147,94 +259,121 @@ const mimeToWhatsAppType: Record<string, { type: 'image' | 'document' | 'audio' 
 };
 
 /**
- * Envia uma mensagem de mídia (imagem, documento, áudio, vídeo) via WhatsApp Cloud API.
- * A URL da mídia deve ser publicamente acessível.
- * @param params - Parâmetros contendo IDs, tokens, URL da mídia e tipo MIME.
+ * Envia uma mensagem de mídia (imagem, documento, áudio, vídeo) via WhatsApp Cloud API,
+ * usando um ID de mídia pré-uploadado OU uma URL pública.
+ * @param params - Parâmetros contendo IDs, tokens e detalhes da mídia (mediaId OU mediaUrl/mimeType).
  * @returns Um objeto indicando sucesso ou falha no envio.
  */
-export async function sendWhatsappMediaMessage({
-  phoneNumberId,
-  toPhoneNumber,
-  accessToken,
-  mediaUrl,
-  mimeType,
-  filename,
-  caption // Adicionado caption
-}: SendMediaParams): Promise<SendResult> {
+ // <<< MODIFICAR ASSINATURA E CORPO DA FUNÇÃO >>>
+export async function sendWhatsappMediaMessage(
+  params: SendMediaByIdParams | SendMediaByUrlParams // Aceita um dos dois tipos
+): Promise<SendResult> {
+  const { phoneNumberId, toPhoneNumber, accessToken, caption } = params;
   const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phoneNumberId}/messages`;
 
-  const mapping = mimeToWhatsAppType[mimeType.toLowerCase()];
+  let requestBody: any;
+  let logType: string; // Para logging
 
-  if (!mapping) {
-    console.error(`[WhatsappSender] Tipo MIME não suportado para envio de mídia: ${mimeType}`);
-    return { success: false, error: { message: `Unsupported MIME type: ${mimeType}` } };
+  // Verifica qual tipo de parâmetro foi passado usando o type guard
+  if (isSendMediaByIdParams(params)) {
+    // --- Envio por Media ID ---
+    const { mediaId, messageType } = params;
+    logType = `Media ID (${messageType})`;
+
+    // Validação básica
+    if (!['image', 'audio', 'video', 'document'].includes(messageType)) {
+        console.error(`[WhatsappSender] Invalid messageType provided for sending by ID: ${messageType}`);
+        return { success: false, error: { message: `Invalid messageType for sending by ID: ${messageType}` } };
+    }
+
+    requestBody = {
+      messaging_product: 'whatsapp',
+      to: toPhoneNumber,
+      type: messageType,
+      [messageType]: { // Usa o tipo como nome do campo (ex: 'image': { id: ... })
+        id: mediaId,
+        // Adiciona caption APENAS se for imagem ou vídeo
+        ...( (messageType === 'image' || messageType === 'video') && caption && { caption: caption } )
+        // Filename não é usado ao enviar por ID
+      },
+    };
+    console.log(`[WhatsappSender] Enviando ${logType} para ${toPhoneNumber}. ID: ${mediaId}`);
+
+  } else {
+    // --- Envio por URL ---
+    const { mediaUrl, mimeType, filename } = params;
+    logType = `Media URL (${mimeType})`;
+
+    const mapping = mimeToWhatsAppType[mimeType.toLowerCase()];
+    if (!mapping) {
+      console.error(`[WhatsappSender] Tipo MIME não suportado para envio de mídia por URL: ${mimeType}`);
+      return { success: false, error: { message: `Unsupported MIME type for sending by URL: ${mimeType}` } };
+    }
+    const { type, fieldName } = mapping; // fieldName é geralmente igual a type
+
+    requestBody = {
+      messaging_product: 'whatsapp',
+      to: toPhoneNumber,
+      type: type,
+      [fieldName]: {
+        link: mediaUrl,
+        // Adiciona filename se for documento e estiver disponível
+        ...(type === 'document' && filename && { filename: filename }),
+        // Adiciona caption se for imagem ou vídeo e estiver disponível
+        ...( (type === 'image' || type === 'video') && caption && { caption: caption } )
+      },
+    };
+     console.log(`[WhatsappSender] Enviando ${logType} para ${toPhoneNumber}. URL: ${mediaUrl}`);
+     if (filename) console.log(`  Filename: ${filename}`);
   }
 
-  const { type, fieldName } = mapping;
+  // Log da legenda, se houver (comum a ambos os métodos)
+  if (caption) {
+     console.log(`  Caption: "${caption.substring(0,50)}..."`);
+  }
 
-  const requestBody: any = {
-    messaging_product: 'whatsapp',
-    to: toPhoneNumber,
-    type: type,
-    [fieldName]: {
-      link: mediaUrl,
-      // Adiciona filename se for documento e estiver disponível
-      ...(type === 'document' && filename && { filename: filename }),
-      // Adiciona caption se for imagem ou vídeo e estiver disponível
-      ...( (type === 'image' || type === 'video') && caption && { caption: caption } )
-    },
-  };
-
-   console.log(`[WhatsappSender] Enviando mídia (${type}, ${mimeType}) para ${toPhoneNumber} via ${phoneNumberId}. URL: ${mediaUrl}`);
-   if (caption) {
-       console.log(`  Caption: "${caption.substring(0,50)}..."`);
-   }
-   if (filename) {
-        console.log(`  Filename: ${filename}`);
-   }
-
+  // --- Lógica de Envio (comum a ambos os métodos) ---
   try {
     const response = await axios.post<WhatsAppResponse>(apiUrl, requestBody, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      timeout: 20000, // Timeout maior para envio de mídia
+      timeout: 20000, // Timeout razoável para envio de mídia
     });
 
     const successData = response.data;
     const sentMessageId = successData.messages?.[0]?.id;
 
     if (!sentMessageId) {
-      console.warn(`[WhatsappSender] Mídia enviada para ${toPhoneNumber}, mas ID da mensagem não encontrado na resposta Axios.`);
+      console.warn(`[WhatsappSender] Mídia (${logType}) enviada para ${toPhoneNumber}, mas ID da mensagem não encontrado na resposta.`);
       return { success: true, messageId: undefined };
     }
 
-    console.log(`[WhatsappSender] Mídia enviada com sucesso para ${toPhoneNumber} via Axios. Message ID: ${sentMessageId}`);
+    console.log(`[WhatsappSender] Mídia (${logType}) enviada com sucesso para ${toPhoneNumber}. Message ID: ${sentMessageId}`);
     return { success: true, messageId: sentMessageId };
 
   } catch (error: any) {
-    console.error(`[WhatsappSender] Erro ao enviar mídia para ${toPhoneNumber} via Axios:`);
-
-    if (axios.isAxiosError(error)) {
-        const axiosError = error as AxiosError<WhatsAppErrorResponse>;
-        const apiErrorData = axiosError.response?.data?.error;
-
-        if (apiErrorData) {
-            console.error(`  Status: ${axiosError.response?.status}`);
-            console.error(`  API Error: ${apiErrorData.message} (Code: ${apiErrorData.code}, Type: ${apiErrorData.type}, Subcode: ${apiErrorData.error_subcode || 'N/A'})`);
-            console.error(`  Trace ID: ${apiErrorData.fbtrace_id}`);
-            return { success: false, error: apiErrorData };
-        } else if (axiosError.request) {
-            console.error('  Erro: Nenhuma resposta recebida da API (problema de rede ou timeout).');
-            return { success: false, error: { message: 'Network Error or Timeout sending media' } };
-        } else {
-            console.error('  Erro na configuração da requisição Axios:', axiosError.message);
-            return { success: false, error: { message: `Axios setup error sending media: ${axiosError.message}` } };
-        }
-    } else {
-        console.error('  Erro inesperado:', error.message);
-        return { success: false, error: { message: error.message || 'Unknown error occurred sending media' } };
-    }
+     // Reutiliza a lógica de tratamento de erro do Axios, ajustando a mensagem
+     console.error(`[WhatsappSender] Erro ao enviar ${logType} para ${toPhoneNumber}:`);
+     if (axios.isAxiosError(error)) {
+         const axiosError = error as AxiosError<WhatsAppErrorResponse>;
+         const apiErrorData = axiosError.response?.data?.error;
+         if (apiErrorData) {
+             console.error(`  Status: ${axiosError.response?.status}`);
+             console.error(`  API Error: ${apiErrorData.message} (Code: ${apiErrorData.code}, Type: ${apiErrorData.type}, Subcode: ${apiErrorData.error_subcode || 'N/A'})`);
+             console.error(`  Trace ID: ${apiErrorData.fbtrace_id}`);
+             return { success: false, error: apiErrorData };
+         } else if (axiosError.request) {
+             console.error('  Erro: Nenhuma resposta recebida da API (problema de rede ou timeout).');
+             return { success: false, error: { message: `Network Error or Timeout sending ${logType}` } };
+         } else {
+             console.error('  Erro na configuração da requisição Axios:', axiosError.message);
+             return { success: false, error: { message: `Axios setup error sending ${logType}: ${axiosError.message}` } };
+         }
+     } else {
+         console.error('  Erro inesperado:', error.message);
+         return { success: false, error: { message: error.message || `Unknown error occurred sending ${logType}` } };
+     }
   }
 }
