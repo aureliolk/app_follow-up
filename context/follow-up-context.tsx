@@ -658,7 +658,7 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
             async () => {
                 const response = await axios.post<{ success: boolean, data: Message, error?: string }>(
                     `/api/conversations/${conversationId}/messages`,
-                    { content, workspaceId: wsId, senderType: 'AI' }
+                    { content, workspaceId: wsId, senderType: 'SYSTEM' }
                 );
                 if (!response.data.success || !response.data.data) {
                     throw new Error(response.data.error || 'Falha ao enviar mensagem');

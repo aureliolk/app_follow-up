@@ -8,6 +8,7 @@ export interface ChatRequestPayload {
   messages: CoreMessage[];
   systemPrompt?: string;
   modelId: string;
+  nameIa?: string;
 }
 
 // Função unificada para gerar chat completion

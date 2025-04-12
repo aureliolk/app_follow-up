@@ -6,11 +6,11 @@ import { useWorkspace } from '@/context/workspace-context';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Info } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
 
 const AVAILABLE_MODELS = [
     { value: 'gpt-4o', label: 'OpenAI GPT-4o (Recomendado)' },
@@ -27,6 +27,7 @@ export default function AISettingsForm() {
       const initialValue = workspace?.ai_model_preference;
       return initialValue ?? AVAILABLE_MODELS[0].value;
   });
+  const [aiName, setAiName] = useState('Beatriz');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +43,11 @@ export default function AISettingsForm() {
           console.log(`[Effect] Model preference changed in workspace. Updating state from '${modelPreference}' to '${workspaceModelPref}'`);
           setModelPreference(workspaceModelPref);
       }
+      const workspaceAiName = workspace.ai_name || 'Beatriz';
+      if (workspaceAiName !== aiName) {
+          console.log(`[Effect] AI Name changed. Updating state from '${aiName}' to '${workspaceAiName}'`);
+          setAiName(workspaceAiName);
+      }
     }
   }, [workspace]);
 
@@ -52,31 +58,37 @@ export default function AISettingsForm() {
     setIsSaving(true);
     setError(null);
 
-    const dataToUpdate: { ai_default_system_prompt?: string | null; ai_model_preference?: string | null } = {};
+    const dataToUpdate: { ai_default_system_prompt?: string | null; ai_model_preference?: string | null; ai_name?: string | null } = {};
     let changed = false;
 
-    // <<< LÓGICA DE COMPARAÇÃO AJUSTADA >>>
     const currentPrompt = workspace.ai_default_system_prompt || '';
     const currentModel = workspace.ai_model_preference || AVAILABLE_MODELS[0].value;
+    const currentAiName = workspace.ai_name || 'Beatriz';
 
     console.log("AISettingsForm handleSubmit: Comparing values");
     console.log("  Current Prompt:", `"${currentPrompt}"`);
     console.log("  New Prompt:", `"${systemPrompt}"`);
     console.log("  Current Model:", `"${currentModel}"`);
     console.log("  New Model:", `"${modelPreference}"`);
+    console.log("  Current AI Name:", `"${currentAiName}"`);
+    console.log("  New AI Name:", `"${aiName}"`);
 
-    // Verifica se o prompt mudou (considerando null/undefined como string vazia para comparação)
     if (systemPrompt.trim() !== currentPrompt.trim()) {
       dataToUpdate.ai_default_system_prompt = systemPrompt.trim() === '' ? null : systemPrompt.trim();
       changed = true;
       console.log("  -> Prompt changed. Adding to update.");
     }
 
-    // Verifica se o modelo mudou
     if (modelPreference !== currentModel) {
       dataToUpdate.ai_model_preference = modelPreference;
       changed = true;
       console.log("  -> Model changed. Adding to update.");
+    }
+
+    if (aiName.trim() !== currentAiName.trim()) {
+      dataToUpdate.ai_name = aiName.trim() === '' ? 'Beatriz' : aiName.trim();
+      changed = true;
+      console.log("  -> AI Name changed. Adding to update.");
     }
 
     if (!changed) {
@@ -89,17 +101,13 @@ export default function AISettingsForm() {
     console.log("AISettingsForm handleSubmit: Sending update payload:", dataToUpdate);
 
     try {
-      // <<< USAR updateWorkspace DO CONTEXTO >>>
-      // A função do contexto já lida com a chamada API e o refresh
       await updateWorkspace(workspace.id, dataToUpdate);
       toast.success('Configurações de IA salvas com sucesso!');
-      // Não precisamos chamar refreshWorkspaces explicitamente aqui, pois updateWorkspace já deve fazer isso.
       console.log("AISettingsForm handleSubmit: Update successful via context.");
     } catch (err: any) {
       console.error("AISettingsForm handleSubmit: Erro ao salvar configurações de IA via contexto:", err);
-      // O erro já deve ser tratado e exibido pelo contexto, mas podemos adicionar um log extra
       const message = err.message || 'Ocorreu um erro ao salvar.';
-      setError(message); // Pode mostrar erro localmente também
+      setError(message);
       toast.error(`Erro ao salvar: ${message}`);
     } finally {
       setIsSaving(false);
@@ -125,6 +133,25 @@ export default function AISettingsForm() {
               {error}
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="ai_name" className="text-foreground">
+              Nome da IA
+            </Label>
+            <Input
+              id="ai_name"
+              name="ai_name"
+              value={aiName}
+              onChange={(e) => setAiName(e.target.value)}
+              placeholder="Ex: Beatriz, Atendente Virtual"
+              className="bg-input border-input w-full md:w-1/2"
+              disabled={isSaving || workspaceLoading}
+              maxLength={50}
+            />
+             <p className="text-xs text-muted-foreground">
+                Este nome será usado para assinar as mensagens enviadas pela IA.
+             </p>
+          </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="ai_model_preference" className="text-foreground">

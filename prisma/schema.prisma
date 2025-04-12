@@ -279,6 +279,10 @@ model Workspace {
   whatsappAppSecret          String? @map("whatsapp_app_secret") // Armazena o App Secret (criptografado)
   whatsappWebhookVerifyToken String? @map("whatsapp_webhook_verify_token") // Token para validar seu webhook
   whatsappWebhookRouteToken  String? @unique @map("whatsapp_webhook_route_token") // Token único para URL dinâmica do webhook
+  
+  // --- NOVO CAMPO PARA NOME DA IA ---
+  ai_name                    String? @default("Beatriz") @map("ai_name")
+
   // --- Fim Campos WhatsApp --- 
 
   @@map("workspaces")

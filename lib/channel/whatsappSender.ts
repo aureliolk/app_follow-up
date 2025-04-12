@@ -125,7 +125,8 @@ export async function sendWhatsappMessage(
   phoneNumberId: string,
   toPhoneNumber: string,
   accessToken: string,
-  messageText: string
+  messageText: string,
+  displayName?: string
 ): Promise<SendResult> {
   const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phoneNumberId}/messages`;
 
@@ -135,7 +136,7 @@ export async function sendWhatsappMessage(
     type: 'text',
     text: {
       preview_url: false, // Pode ajustar se quiser preview de links
-      body: messageText,
+      body: `*${displayName}*\n ${messageText}`,
     },
   };
 

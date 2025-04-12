@@ -421,7 +421,7 @@ export default function ConversationDetail() {
 
     const tempId = `temp-${Date.now()}`;
     // Define o tipo do remetente manual (pode ser 'AI' se o operador age como IA, ou 'SYSTEM')
-    const senderTypeManual: Message['sender_type'] = 'AI'; // Ou 'SYSTEM'
+    const senderTypeManual: Message['sender_type'] = 'SYSTEM'; // Ou 'SYSTEM'
 
     const optimisticMessage: Message = {
       id: tempId,

@@ -117,6 +117,7 @@ export async function POST(
                     id: true,
                     whatsappPhoneNumberId: true,
                     whatsappAccessToken: true, // Criptografado
+                    ai_name: true
                 }
             }
         }
@@ -175,7 +176,8 @@ export async function POST(
                 whatsappPhoneNumberId,
                 clientPhoneNumber,
                 decryptedAccessToken,
-                content
+                content,
+                session?.user?.name || 'Operador'
             );
 
             if (sendResult.success) {
@@ -200,22 +202,30 @@ export async function POST(
     let newMessage: Message | null = null;
     if (sendSuccess) {
         const messageTimestamp = new Date();
+        
+        // <<< OBTER NOME DO USUÁRIO E ADICIONAR PREFIXO >>>
+        const senderName = session?.user?.name || 'Operador'; // Usar "Operador" como fallback
+        const prefixedContent = `*${senderName}*\n ${content}`;
+        
         try {
             newMessage = await prisma.message.create({
                 data: {
                     conversation_id: conversationId,
-                    sender_type: senderType,
-                    content: content,
+                    sender_type: senderType, // Já definido como SYSTEM
+                    content: prefixedContent, // <<< SALVAR CONTEÚDO COM PREFIXO
                     timestamp: messageTimestamp,
                     channel_message_id: channelMessageIdFromApi,
-                    metadata: { manual_sender_id: userId }
+                    metadata: { manual_sender_id: userId },
+                    status: 'SENT' // <<< CONFIRMADO: Status já está sendo definido como SENT!
                 },
                 select: { // Selecionar dados para retornar e publicar
                     id: true, conversation_id: true, sender_type: true,
                     content: true, timestamp: true, channel_message_id: true, metadata: true,
+                    // <<< Adicionar status ao select para retornar/publicar >>>
+                    status: true 
                 }
             });
-            console.log(`API POST Messages (${conversationId}): Manual message saved to DB (ID: ${newMessage.id}).`);
+            console.log(`API POST Messages (${conversationId}): Manual message saved to DB (ID: ${newMessage.id}) with prefix.`);
 
             // 7. Atualizar last_message_at da Conversa
             await prisma.conversation.update({
@@ -233,11 +243,12 @@ export async function POST(
                     payload: {
                         id: newMessage.id,
                         conversation_id: newMessage.conversation_id,
-                        content: newMessage.content,
+                        content: newMessage.content, // <<< Enviar conteúdo com prefixo
                         sender_type: newMessage.sender_type,
                         timestamp: newMessage.timestamp instanceof Date 
                             ? newMessage.timestamp.toISOString() 
                             : newMessage.timestamp,
+                        status: newMessage.status // <<< Incluir status no payload do Redis
                     }
                 };
                 await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));

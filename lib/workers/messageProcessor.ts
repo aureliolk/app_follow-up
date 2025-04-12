@@ -103,6 +103,7 @@ async function processJob(job: Job<JobData>) {
                             id: true,
                             ai_default_system_prompt: true,
                             ai_model_preference: true,
+                            ai_name: true,
                             whatsappAccessToken: true,
                             whatsappPhoneNumberId: true,
                         }
@@ -152,13 +153,13 @@ async function processJob(job: Job<JobData>) {
      }
 
     // --- 4. Processar Mídia (Download, S3, IA) --- 
-    let updatedMessageData: MessageWithAnalysis | null = null; // Store the result of the update operation
+    let updatedMessageData: MessageWithAnalysis | null = null; // To store the updated message if media is processed
+    let aiAnalysisResult: string | null = null; // Stores AI description/transcription
+    let finalContentForDb: string | null = currentMessage.content; // Placeholder for DB, starts as original
+
     const metadata = currentMessage.metadata;
     const hasMedia = hasValidMetadata(metadata);
     const { whatsappAccessToken } = workspace;
-
-    let aiAnalysisResult: string | null = null; // Stores AI description/transcription
-    let finalContentForDb: string | null = currentMessage.content; // Placeholder for DB, starts as original
 
     if (hasMedia && whatsappAccessToken) {
         console.log(`[MsgProcessor ${jobId}] Mídia detectada (ID: ${metadata.mediaId}, Tipo: ${metadata.mimeType}). Iniciando processamento...`);
@@ -343,6 +344,7 @@ async function processJob(job: Job<JobData>) {
 
     // --- 6. Formatar Mensagens para Vercel AI SDK ---
     const aiMessages: CoreMessage[] = orderedHistory.map((msg) => {
+        
         const role = msg.sender_type === MessageSenderType.CLIENT ? 'user' : 'assistant';
         let contentForAI = msg.content || ''; // Default to content
 
@@ -377,17 +379,23 @@ async function processJob(job: Job<JobData>) {
       console.log(`[MsgProcessor ${jobId}] IA retornou conteúdo: "${aiResponseContent.substring(0, 100)}..."`);
       const newAiMessageTimestamp = new Date();
 
+      // <<< USAR AI_NAME DO WORKSPACE PARA O PREFIXO >>>
+      const aiDisplayName = workspace.ai_name || "*Beatriz*"; // Usar padrão se não definido
+      const prefixedAiContent = `*${aiDisplayName}:* \n${aiResponseContent}`;
+
       // Salvar resposta da IA
       const newAiMessage = await prisma.message.create({
           data: {
             conversation_id: conversationId,
             sender_type: MessageSenderType.AI,
-            content: aiResponseContent,
+            content: prefixedAiContent, // <<< USAR CONTEÚDO COM PREFIXO
             timestamp: newAiMessageTimestamp,
+            // <<< Definir Status inicial como PENDING >>>
+            status: 'PENDING' // Garante que começa como pendente antes do envio
           },
           select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true } // Select for publish
       });
-      console.log(`[MsgProcessor ${jobId}] Resposta da IA salva (ID: ${newAiMessage.id}).`);
+      console.log(`[MsgProcessor ${jobId}] Resposta da IA salva (ID: ${newAiMessage.id}) com prefixo.`);
 
       // Publicar nova mensagem IA no canal Redis da CONVERSA
       try {
@@ -471,18 +479,36 @@ async function processJob(job: Job<JobData>) {
                         whatsappPhoneNumberId,
                         clientPhoneNumber,
                         decryptedAccessTokenForSend,
-                        aiResponseContent
+                        aiResponseContent, // <<< ENVIAR CONTEÚDO ORIGINAL, SEM PREFIXO
+                        aiDisplayName
                     );
-                    console.log(`[MsgProcessor ${jobId}] STEP 9: sendWhatsappMessage call completed.`); // <<< LOG APÓS CHAMADA
+                    console.log(`[MsgProcessor ${jobId}] STEP 9: sendWhatsappMessage call completed.`);
                     if (sendResult.success && sendResult.messageId) {
                         console.log(`[MsgProcessor ${jobId}] STEP 9: WhatsApp send SUCCESS. Message ID: ${sendResult.messageId}`);
-                        // <<< LOG ANTES DE ATUALIZAR MSG COM channel_id >>>
-                        console.log(`[MsgProcessor ${jobId}] STEP 9: Attempting prisma.message.update with channel_message_id...`);
-                        await prisma.message.update({
-                            where: { id: newAiMessage.id },
-                            data: { channel_message_id: sendResult.messageId }
-                        }).catch(err => console.error(`[MsgProcessor ${jobId}] STEP 9: Falha (não crítica) ao atualizar channel_message_id:`, err));
-                        console.log(`[MsgProcessor ${jobId}] STEP 9: prisma.message.update for channel_message_id finished.`); // <<< LOG APÓS ATUALIZAÇÃO
+                        
+                        // <<< LOG DETALHADO ANTES DO UPDATE >>>
+                        const updateData = { 
+                            channel_message_id: sendResult.messageId, 
+                            status: 'SENT'
+                        };
+                        console.log(`[MsgProcessor ${jobId}] STEP 9: PREPARING to update message ${newAiMessage.id} with data:`, JSON.stringify(updateData));
+                        
+                        try {
+                            await prisma.message.update({
+                                where: { id: newAiMessage.id },
+                                data: updateData
+                            });
+                            // <<< LOG DE SUCESSO APÓS UPDATE >>>
+                            console.log(`[MsgProcessor ${jobId}] STEP 9: SUCCESS updating message ${newAiMessage.id} status to SENT.`);
+                        } catch (updateError: any) {
+                             // <<< LOG DETALHADO DO ERRO >>>
+                             console.error(`[MsgProcessor ${jobId}] STEP 9: ERROR updating message ${newAiMessage.id} status/channel_id. Data attempted: ${JSON.stringify(updateData)}`, updateError);
+                             // Log o erro completo, pode ter mais detalhes
+                             console.error(`[MsgProcessor ${jobId}] STEP 9: Full update error object:`, updateError);
+                        }
+                        // <<< LOG APÓS TENTATIVA (SEMPRE RODA) >>>
+                        console.log(`[MsgProcessor ${jobId}] STEP 9: Finished attempt to update status/channel_id for message ${newAiMessage.id}.`);
+
                     } else {
                         console.error(`[MsgProcessor ${jobId}] STEP 9: WhatsApp send FAILED:`, JSON.stringify(sendResult.error || 'Erro desconhecido'));
                     }
