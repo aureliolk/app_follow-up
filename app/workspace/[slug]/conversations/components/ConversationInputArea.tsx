@@ -27,7 +27,6 @@ interface ConversationInputAreaProps {
   addMessageOptimistically: (message: Message) => void;
   updateMessageStatus: (tempId: string, finalMessage: Message | null, errorMessage?: string) => void;
   loadingTemplates: boolean;
-  onInsertTemplate: (templateBody: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement>;
 }
 
@@ -59,7 +58,6 @@ export default function ConversationInputArea({
   addMessageOptimistically,
   updateMessageStatus,
   loadingTemplates,
-  onInsertTemplate,
   textareaRef,
 }: ConversationInputAreaProps) {
 
@@ -275,105 +273,139 @@ export default function ConversationInputArea({
     }
   };
 
-  // --- Renderização ---
+  const handleSendTemplate = async (templateData: { name: string; language: string; variables: Record<string, string> }) => {
+    console.log("Sending template:", templateData);
+    try {
+      const toastId = toast.loading('Enviando template...'); 
+
+      await axios.post(`/api/conversations/${conversationId}/send-template`, {
+          workspaceId: workspaceId,
+          templateName: templateData.name,
+          languageCode: templateData.language,
+          variables: templateData.variables 
+      });
+
+      toast.success('Template enviado com sucesso!', { id: toastId });
+    } catch (error: any) {
+      console.error("Erro ao enviar template:", error);
+      const errorMessage = error.response?.data?.error || 'Falha ao enviar template.';
+      toast.error(errorMessage);
+    } finally {
+    }
+  };
+
+  // --- JSX ---
   return (
-    <div className="p-4 border-t border-border bg-card/60 flex-shrink-0">
-       <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center space-x-2">
-         {/* Botão de Microfone */}
-         <Button
-           type="button"
-           variant={isRecording ? "destructive" : "ghost"}
-           size="icon"
-           onClick={handleMicClick}
-           disabled={isUploading}
-           title={isRecording ? "Parar Gravação" : "Gravar Áudio"}
-         >
-           {isRecording ? <PauseCircle className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-         </Button>
-         {/* Exibir Duração da Gravação */}
-         {isRecording && (
-           <div className="text-xs text-muted-foreground font-mono w-12 text-center">
-             {formatDuration(recordingDuration)}
-           </div>
-         )}
+    <div className="border-t bg-background p-3 sm:p-4">
+      {/* Área de gravação de áudio */}
+      {isRecording && (
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
+            <span className="text-sm font-medium text-muted-foreground">Gravando...</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-mono text-muted-foreground">{formatDuration(recordingDuration)}</span>
+            <Button variant="ghost" size="icon" onClick={stopRecording} title="Parar Gravação">
+              <PauseCircle className="h-5 w-5 text-red-500" />
+            </Button>
+          </div>
+        </div>
+      )}
 
-         {/* Botão de Anexo */}
-         <Button
-           type="button"
-           variant="ghost"
-           size="icon"
-           onClick={() => fileInputRef.current?.click()}
-           disabled={isUploading || isRecording}
-           title="Anexar Arquivo"
-         >
-            {isUploading ? <Loader2 className="h-5 w-5 animate-spin"/> : <Paperclip className="h-5 w-5" />}
-         </Button>
-         {/* Input de arquivo oculto */}
-         <input
-           type="file"
-           ref={fileInputRef}
-           onChange={handleFileChange}
-           className="hidden"
-           accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-         />
+      {/* Container Principal - Empilha Linhas */}
+      <div className={cn(
+        "flex flex-col gap-2", // Empilha verticalmente com espaçamento
+        isRecording && "hidden" // Esconde se estiver gravando
+      )}>
+        {/* Linha Superior: Botões de Ação */}
+        <div className="flex items-center gap-1"> {/* Botões alinhados horizontalmente */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isSendingMessage || isUploading}
+            aria-label="Anexar arquivo"
+            title="Anexar arquivo"
+          >
+            <Paperclip className="h-5 w-5 text-muted-foreground" />
+          </Button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
 
-         {/* Botão de Emoji */}
-         <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+          <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
             <PopoverTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" title="Inserir Emoji" disabled={isRecording || isUploading}>
-                <Smile className="h-5 w-5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 border-0" side="top" align="start">
-              <EmojiPicker
-                 onEmojiClick={handleEmojiClick}
-                 searchDisabled
-                 skinTonesDisabled
-                 // CORREÇÃO LINTER: Adicionar 'name' a todas as categorias
-                 categories={[
-                    { category: Categories.SMILEYS_PEOPLE, name:"Smileys & Pessoas" },
-                    { category: Categories.ANIMALS_NATURE, name: "Animais & Natureza" },
-                    { category: Categories.FOOD_DRINK, name: "Comida & Bebida" },
-                    { category: Categories.TRAVEL_PLACES, name: "Viagens & Lugares" },
-                    { category: Categories.ACTIVITIES, name: "Atividades" },
-                    { category: Categories.OBJECTS, name: "Objetos" },
-                    { category: Categories.SYMBOLS, name: "Símbolos" },
-                    // { category: Categories.FLAGS, name: "Bandeiras" }, // Adicionar se necessário
-                 ]}
-               />
-            </PopoverContent>
-         </Popover>
+               <Button
+                  variant="ghost"
+                  size="icon"
+                  disabled={isSendingMessage || isUploading}
+                  aria-label="Abrir seletor de emojis"
+                  title="Abrir seletor de emojis"
+                >
+                  <Smile className="h-5 w-5 text-muted-foreground" />
+                </Button>
+             </PopoverTrigger>
+             <PopoverContent className="w-full p-0 border-0" side="top" align="start">
+                <EmojiPicker
+                  onEmojiClick={handleEmojiClick}
+                  // @ts-ignore
+                  theme={Theme.AUTO}
+                  lazyLoadEmojis={true}
+                  searchPlaceholder="Buscar emoji..."
+                />
+             </PopoverContent>
+          </Popover>
 
-         {/* Botão de Templates */}
-         <WhatsappTemplateDialog
-           onTemplateInsert={onInsertTemplate}
-           disabled={loadingTemplates || isUploading || isRecording}
-         />
+          <WhatsappTemplateDialog
+               onSendTemplate={handleSendTemplate}
+               disabled={isSendingMessage || isUploading || isRecording || loadingTemplates}
+          />
+          {/* Fim dos botões de ação */}
+        </div> {/* Fim da Linha Superior */}
 
-         <Textarea
-           ref={textareaRef}
-           value={newMessage}
-           onChange={(e) => setNewMessage(e.target.value)}
-           placeholder={isRecording ? "Gravando áudio..." : "Digite sua mensagem..."}
-           className="flex-grow resize-none bg-input border-input text-foreground placeholder:text-muted-foreground min-h-[40px] max-h-[120px]"
-           rows={1}
-           onKeyDown={(e) => {
-             if (e.key === 'Enter' && !e.shiftKey) {
-               e.preventDefault();
-               handleSendMessage();
-             }
-           }}
-           disabled={isSendingMessage || isUploading || isRecording}
-         />
-         <Button
-           type="submit"
-           size="icon"
-           disabled={!newMessage.trim() || isSendingMessage || isUploading || isRecording}
-           title="Enviar Mensagem"
-         >
-           {isSendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-         </Button>
-       </form>
+        {/* Linha Inferior: Textarea e Botão Enviar/Mic */}
+        <div className="flex items-end gap-1 sm:gap-2"> {/* Itens alinhados na base */}
+          <Textarea
+            ref={textareaRef}
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!isSendingMessage) {
+                  handleSendMessage();
+                }
+              }
+            }}
+            placeholder="Digite sua mensagem..."
+            className="min-h-[40px] max-h-[150px] resize text-sm flex-grow" // flex-grow faz ocupar espaço
+            rows={1}
+            disabled={isSendingMessage || isUploading}
+            style={{ overflowY: textareaRef.current && textareaRef.current.scrollHeight > 150 ? 'scroll' : 'hidden' }}
+          />
+
+          <Button
+            size="icon"
+            onClick={newMessage ? handleSendMessage : handleMicClick}
+            disabled={isSendingMessage || isUploading || (!newMessage && permissionStatus === 'prompting')}
+            aria-label={newMessage ? 'Enviar mensagem' : 'Gravar áudio'}
+            title={newMessage ? 'Enviar mensagem' : 'Gravar áudio'}
+            className="flex-shrink-0" // Impede que o botão encolha
+          >
+            {isSendingMessage || isUploading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : newMessage ? (
+              <Send className="h-5 w-5" />
+            ) : (
+              <Mic className="h-5 w-5" />
+            )}
+          </Button>
+        </div> {/* Fim da Linha Inferior */}
+      </div> {/* Fim do Container Principal */}
     </div>
   );
 }

@@ -768,7 +768,6 @@ export default function ConversationDetail() {
              addMessageOptimistically={addMessageOptimistically}
              updateMessageStatus={updateMessageStatus}
              loadingTemplates={loadingTemplates}
-             onInsertTemplate={handleFinalTemplateInsert} // Corrigido para onTemplateInsert
              textareaRef={textareaRef}
           />
             {/* Exibição de erro de templates (MANTIDO AQUI) */}

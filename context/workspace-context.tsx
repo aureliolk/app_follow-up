@@ -22,6 +22,7 @@ import type { Workspace as PrismaWorkspace, WorkspaceAiFollowUpRule as PrismaAiF
 type Workspace = Omit<PrismaWorkspace, 'created_at' | 'updated_at' | 'lumibot_api_token'> & {
   created_at: Date;
   updated_at: Date;
+  ai_name?: string | null;
   // Incluir relações/contagens que a API retorna
    owner?: { id: string; name: string | null; email: string };
    _count?: { members: number };
@@ -48,6 +49,7 @@ type WorkspaceUpdateData = {
   lumibot_api_token?: string | null;
   ai_default_system_prompt?: string | null;
   ai_model_preference?: string | null;
+  ai_name?: string | null;
 };
 
 

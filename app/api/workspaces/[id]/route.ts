@@ -42,6 +42,7 @@ export async function GET(
             id: true, name: true, slug: true, owner_id: true, created_at: true, updated_at: true,
             ai_default_system_prompt: true,
             ai_model_preference: true,
+            ai_name: true,
             owner: { select: { id: true, name: true, email: true } },
             _count: { select: { members: true } },
             members: {
@@ -76,6 +77,7 @@ const workspaceUpdateSchema = z.object({
   slug: z.string().min(1).optional(),
   ai_default_system_prompt: z.string().optional().nullable(),
   ai_model_preference: z.string().optional().nullable(),
+  ai_name: z.string().min(1).max(50).optional().nullable(),
 });
 
 
@@ -113,7 +115,7 @@ export async function PATCH(
         return NextResponse.json({ message: 'Dados inválidos', errors: validation.error.flatten().fieldErrors }, { status: 400 });
     }
 
-    const { name, slug, ai_default_system_prompt, ai_model_preference } = validation.data;
+    const { name, slug, ai_default_system_prompt, ai_model_preference, ai_name } = validation.data;
 
     if (slug) {
       const existingWorkspace = await prisma.workspace.findUnique({ where: { slug } });
@@ -127,6 +129,7 @@ export async function PATCH(
     if (slug !== undefined) dataToUpdate.slug = slug;
     if (ai_default_system_prompt !== undefined) dataToUpdate.ai_default_system_prompt = ai_default_system_prompt;
     if (ai_model_preference !== undefined) dataToUpdate.ai_model_preference = ai_model_preference;
+    if (ai_name !== undefined) dataToUpdate.ai_name = ai_name;
 
     if (Object.keys(dataToUpdate).length === 0) {
          return NextResponse.json({ message: 'Nenhuma alteração detectada.' }, { status: 200 });
@@ -139,6 +142,7 @@ export async function PATCH(
          id: true, name: true, slug: true, owner_id: true, created_at: true, updated_at: true,
          ai_default_system_prompt: true,
          ai_model_preference: true,
+         ai_name: true,
          _count: { select: { members: true } },
          owner: { select: { id: true, name: true, email: true } }
       }

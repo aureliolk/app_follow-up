@@ -11,11 +11,13 @@ export interface ChatRequestPayload {
   nameIa?: string;
 }
 
+const extraInstructions = `Voce e capaz de Escutar audio e ver imagens. se o cliente pergunta se vc pode ver uma imagem, vc deve responder que sim. se o cliente pergunta se vc pode ouvir um audio, vc deve responder que sim.`;
+
 // Função unificada para gerar chat completion
 export async function generateChatCompletion({ messages, systemPrompt, modelId }: ChatRequestPayload) {
   try {
     console.log(`Gerando texto com IA. Modelo: ${modelId}, Mensagens: ${messages.length}`);
-    const systemMessage = systemPrompt || 'You are a helpful assistant.'; // Padrão genérico
+    const systemMessage = `${systemPrompt} ${extraInstructions}` || 'You are a helpful assistant.'; // Padrão genérico
 
     let modelInstance: LanguageModel;
 

@@ -11,7 +11,7 @@ RUN npm install -g pnpm
 WORKDIR /app
 
 # Instalar ffmpeg
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apk update && apk add --no-cache ffmpeg
 
 # Instalar dependências primeiro para aproveitar o cache do Docker
 COPY package.json pnpm-lock.yaml ./

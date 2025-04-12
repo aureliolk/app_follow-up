@@ -22,7 +22,7 @@ import type { WhatsappTemplate } from '@/app/types'; // <<< Assumindo que o tipo
 import { toast } from 'react-hot-toast';
 
 interface WhatsappTemplateDialogProps {
-  onTemplateInsert: (templateBody: string) => void;
+  onSendTemplate: (templateData: { name: string; language: string; variables: Record<string, string> }) => void;
   disabled?: boolean; // Para desabilitar o botão trigger
 }
 
@@ -36,7 +36,7 @@ interface WhatsappTemplateDialogProps {
 // }
 
 
-export default function WhatsappTemplateDialog({ onTemplateInsert, disabled }: WhatsappTemplateDialogProps) {
+export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: WhatsappTemplateDialogProps) {
   const { templates, loadingTemplates, templateError } = useWhatsappTemplates();
 
   // Estados internos do diálogo
@@ -68,8 +68,8 @@ export default function WhatsappTemplateDialog({ onTemplateInsert, disabled }: W
       }, {} as Record<string, string>));
       // Não fecha o diálogo
     } else {
-      // Template sem variáveis, chama onTemplateInsert diretamente e fecha
-      onTemplateInsert(template.body);
+      // Template sem variáveis, chama onSendTemplate diretamente e fecha
+      onSendTemplate({ name: template.name, language: template.language, variables: {} });
       resetDialogState();
       setShowTemplateDialog(false);
     }
@@ -79,16 +79,12 @@ export default function WhatsappTemplateDialog({ onTemplateInsert, disabled }: W
   const handleInsertTemplateWithVariables = () => {
     if (!selectedTemplateForEditing) return;
 
-    let populatedBody = selectedTemplateForEditing.body;
     let allVariablesFilled = true;
     templateVariables.forEach(variableKey => {
-      const regex = new RegExp(`{{\s*${variableKey}\s*}}`, 'g');
       const value = variableValues[variableKey];
        if (!value || value.trim() === '') {
             allVariablesFilled = false;
        }
-      const replacement = value || `{{${variableKey}}}`; // Mantém placeholder se vazio
-      populatedBody = populatedBody.replace(regex, replacement);
     });
 
     if (!allVariablesFilled) {
@@ -96,8 +92,11 @@ export default function WhatsappTemplateDialog({ onTemplateInsert, disabled }: W
         return;
     }
 
-
-    onTemplateInsert(populatedBody);
+    onSendTemplate({
+        name: selectedTemplateForEditing.name,
+        language: selectedTemplateForEditing.language,
+        variables: variableValues
+    });
     resetDialogState();
     setShowTemplateDialog(false);
   };
@@ -179,7 +178,7 @@ export default function WhatsappTemplateDialog({ onTemplateInsert, disabled }: W
             </DialogScrollArea>
             <DialogFooter className="mt-auto pt-4 border-t">
               <Button onClick={handleInsertTemplateWithVariables}>
-                Inserir Template Preenchido
+                Enviar Template
               </Button>
             </DialogFooter>
           </div>

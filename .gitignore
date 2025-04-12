@@ -15,3 +15,12 @@ pnpm-debug.log*
 README.md
 CLAUDE.md
 docs/
+
+docker-compose.yml
+redis-compose.yml
+
+# Logs
+logs/
+*.log
+*.log.*
+*.log.*.*
