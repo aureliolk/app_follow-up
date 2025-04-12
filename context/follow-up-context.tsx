@@ -112,6 +112,14 @@ interface FollowUpContextType {
         status?: string | null;
         metadata?: any;
     }) => void;
+
+    // <<< NOVA FUNÇÃO PARA ATUALIZAÇÃO DE STATUS VIA SSE >>>
+    updateRealtimeMessageStatus: (data: {
+        messageId: string;
+        newStatus: 'SENT' | 'FAILED' | 'DELIVERED' | 'READ'; // Use o tipo exato do seu backend
+        providerMessageId?: string | null;
+        errorMessage?: string | null;
+    }) => void;
 }
 
 // --- Context Creation ---
@@ -513,19 +521,25 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, []);
 
     const addRealtimeMessage = useCallback((message: Message) => {
-        // Check if the message is already in the list (might happen with optimistic UI)
-        setSelectedConversationMessages(prev => {
-            if (prev.some(msg => msg.id === message.id)) {
-                console.warn(`[FollowUpContext] addRealtimeMessage: Message ${message.id} já existe. Atualizando.`);
-                return prev.map(msg => msg.id === message.id ? message : msg);
-            }
-            return [...prev, message];
-        });
-        // Marcar como não lida se não for a conversa selecionada
-        if (message.conversation_id !== selectedConversation?.id) {
-            setUnreadConversationIds(prev => new Set(prev).add(message.conversation_id));
+        // <<< CORREÇÃO 2: Ignorar mensagens enviadas pelo próprio sistema/operador via SSE >>>
+        if (message.sender_type === 'SYSTEM') {
+            console.warn(`[RealtimeAdd ${message.id}] Ignoring SYSTEM message from SSE. Should be handled by API response.`);
+            return; // Não faz nada com mensagens do sistema vindas via SSE
         }
-    }, [selectedConversation?.id]);
+        
+        setSelectedConversationMessages(prevMessages => {
+            // Verifica se a mensagem (não-SYSTEM) JÁ EXISTE pelo ID final
+            if (prevMessages.some(m => m.id === message.id)) {
+                // Ignorar se já existe (Lógica anterior mantida para mensagens de CLIENT/AI)
+                console.warn(`[RealtimeAdd ${message.id}] ${message.sender_type} message already exists. Ignoring SSE update.`);
+                return prevMessages; // Retorna o array sem modificação
+            } else {
+                // Se não existe, ADICIONA a nova mensagem real (CLIENT ou AI)
+                console.log(`[RealtimeAdd ${message.id}] Adding new ${message.sender_type} message from SSE.`);
+                return [...prevMessages, message];
+            }
+        });
+    }, []);
 
     const updateRealtimeMessageContent = useCallback((messageData: {
         id: string;
@@ -580,6 +594,81 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         });
     }, []);
 
+    // <<< NOVA FUNÇÃO DE ATUALIZAÇÃO DE STATUS VIA SSE >>>
+    const updateRealtimeMessageStatus = useCallback((data: {
+        messageId: string;
+        newStatus: 'SENT' | 'FAILED' | 'DELIVERED' | 'READ';
+        providerMessageId?: string | null;
+        errorMessage?: string | null;
+    }) => {
+        const { messageId, newStatus, providerMessageId, errorMessage } = data;
+
+        setSelectedConversationMessages(prevMessages => {
+            // Garante que estamos trabalhando com as mensagens da conversa selecionada
+            // if (selectedConversation?.id && /* alguma validação se o evento pertence a esta conversa */) {
+                const messageIndex = prevMessages.findIndex(msg => msg.id === messageId);
+
+                if (messageIndex !== -1) {
+                    console.log(`[Context SSE Status] Atualizando status da msg ID: ${messageId} para ${newStatus}`);
+                    const updatedMessages = [...prevMessages];
+                    const messageToUpdate = { ...updatedMessages[messageIndex] };
+
+                    messageToUpdate.status = newStatus;
+                    // Atualiza providerMessageId se fornecido (útil para rastreamento)
+                    if (providerMessageId !== undefined) {
+                        messageToUpdate.providerMessageId = providerMessageId;
+                    }
+                    // Atualiza errorMessage se o status for FAILED e a mensagem de erro for fornecida
+                    if (newStatus === 'FAILED' && errorMessage !== undefined) {
+                         // Garante que metadata exista antes de tentar adicionar
+                         if (!messageToUpdate.metadata) {
+                             messageToUpdate.metadata = {};
+                         }
+                         messageToUpdate.metadata.errorMessage = errorMessage;
+                    } else if (messageToUpdate.metadata?.errorMessage) {
+                        // Limpa errorMessage se o status não for FAILED
+                        delete messageToUpdate.metadata.errorMessage;
+                    }
+
+                    updatedMessages[messageIndex] = messageToUpdate;
+                    return updatedMessages;
+                } else {
+                     console.warn(`[Context SSE Status] Mensagem com ID ${messageId} não encontrada no estado local para atualização de status.`);
+                }
+            // } else {
+            //      console.log(`[Context SSE Status] Evento de status para msg ${messageId} ignorado (conversa não selecionada ou evento não pertence).`);
+            // }
+            return prevMessages; // Retorna estado anterior se não houver atualização
+        });
+
+        // Atualizar cache se necessário (opcional, mas bom para consistência)
+        setMessageCache(prevCache => {
+             if (selectedConversation?.id && prevCache[selectedConversation.id]) {
+                 const cachedMessages = prevCache[selectedConversation.id];
+                 const messageIndex = cachedMessages.findIndex(msg => msg.id === messageId);
+                 if (messageIndex !== -1) {
+                     const updatedCacheMessages = [...cachedMessages];
+                     const messageToUpdate = { ...updatedCacheMessages[messageIndex] };
+
+                     messageToUpdate.status = newStatus;
+                     if (providerMessageId !== undefined) {
+                         messageToUpdate.providerMessageId = providerMessageId;
+                     }
+                     if (newStatus === 'FAILED' && errorMessage !== undefined) {
+                         if (!messageToUpdate.metadata) messageToUpdate.metadata = {};
+                         messageToUpdate.metadata.errorMessage = errorMessage;
+                     } else if (messageToUpdate.metadata?.errorMessage) {
+                         delete messageToUpdate.metadata.errorMessage;
+                     }
+
+                     updatedCacheMessages[messageIndex] = messageToUpdate;
+                     return { ...prevCache, [selectedConversation.id]: updatedCacheMessages };
+                 }
+             }
+             return prevCache;
+        });
+
+    }, [selectedConversation?.id]); // Depende do ID da conversa selecionada
 
     // --- FollowUp Status/Action ---
     const pauseFollowUp = useCallback(async (followUpId: string, workspaceId?: string): Promise<void> => {
@@ -692,7 +781,7 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         // Cache & Realtime
         clearMessageCache, addRealtimeMessage, updateRealtimeMessageContent,
         unreadConversationIds, setUnreadConversationIds,
-
+        updateRealtimeMessageStatus,
     }), [
         // State dependencies
         campaigns, loadingCampaigns, campaignsError,
@@ -710,6 +799,7 @@ export const FollowUpProvider: React.FC<{ children: ReactNode }> = ({ children }
         /* startFollowUpSequence, */ pauseFollowUp, resumeFollowUp, convertFollowUp, cancelFollowUp, sendManualMessage,
         clearMessageCache, addRealtimeMessage, updateRealtimeMessageContent,
         setUnreadConversationIds,
+        updateRealtimeMessageStatus,
     ]);
 
     return (

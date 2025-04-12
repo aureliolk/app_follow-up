@@ -437,6 +437,69 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                 } // Fim if message.from
                             } // Fim loop messages
                         } // Fim if change.field === 'messages'
+
+                        // <<< INÍCIO: Processamento de Statuses >>>
+                        if (change.field === 'messages' && change.value?.statuses?.length > 0) {
+                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Processando ${change.value.statuses.length} atualização(ões) de status.`);
+                            for (const statusUpdate of change.value.statuses) {
+                                const messageIdFromWhatsapp = statusUpdate.id; // ID da mensagem original (wamid)
+                                const newStatus = statusUpdate.status.toUpperCase(); // sent, delivered, read -> SENT, DELIVERED, READ
+                                const recipientId = statusUpdate.recipient_id; // Número do destinatário
+                                const timestamp = parseInt(statusUpdate.timestamp, 10) * 1000;
+
+                                // Validar status recebido para evitar processar tipos inesperados
+                                const validStatuses = ['SENT', 'DELIVERED', 'READ', 'FAILED']; // Adicionar FAILED se relevante
+                                if (!validStatuses.includes(newStatus)) {
+                                     console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Status Update: Status desconhecido '${newStatus}' para WAMID ${messageIdFromWhatsapp}. Ignorando.`);
+                                     continue;
+                                }
+
+                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Status Update: WAMID=${messageIdFromWhatsapp}, Status=${newStatus}, Recipient=${recipientId}`);
+
+                                // 1. Encontrar a mensagem no DB pelo provider_message_id (wamid)
+                                let messageInDb;
+                                try {
+                                    messageInDb = await prisma.message.findFirst({
+                                        where: { providerMessageId: messageIdFromWhatsapp },
+                                        select: { id: true, conversation_id: true, status: true } // Selecionar IDs e status atual
+                                    });
+                                } catch (dbError) {
+                                     console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Status Update: Erro ao buscar mensagem com WAMID ${messageIdFromWhatsapp} no DB:`, dbError);
+                                     continue; // Pular para o próximo status
+                                }
+
+                                if (!messageInDb) {
+                                    console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Status Update: Mensagem com WAMID ${messageIdFromWhatsapp} não encontrada no DB. Ignorando.`);
+                                    continue;
+                                }
+
+                                // 2. Opcional: Atualizar o status no DB (se necessário)
+                                // Por enquanto, vamos focar em apenas publicar no Redis para a UI
+                                // A lógica de não voltar status pode ser implementada na UI ou aqui se desejado.
+                                // Exemplo: if (statusOrder[newStatus] > statusOrder[messageInDb.status]) { update... }
+
+                                // 3. Publicar atualização no Redis (Canal da Conversa)
+                                try {
+                                    const conversationChannel = `chat-updates:${messageInDb.conversation_id}`;
+                                    const statusPayload = {
+                                        type: 'message_status_updated', // Tipo de evento para SSE
+                                        payload: {
+                                            messageId: messageInDb.id, // ID interno da mensagem
+                                            newStatus: newStatus,      // Status recebido (SENT, DELIVERED, READ)
+                                            providerMessageId: messageIdFromWhatsapp, // WAMID original
+                                            timestamp: new Date(timestamp).toISOString(),
+                                        }
+                                    };
+                                    // Publicar o objeto JSON stringificado
+                                    await redisConnection.publish(conversationChannel, JSON.stringify(statusPayload));
+                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Status Update (${newStatus}) para Msg ID ${messageInDb.id} publicado no canal Redis ${conversationChannel}`);
+                                } catch (publishError) {
+                                    console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar status update para Msg ID ${messageInDb.id} no Redis:`, publishError);
+                                }
+
+                            } // Fim loop statusUpdate
+                        } // <<< FIM: Processamento de Statuses >>>
+
                     } // Fim loop changes
                 } // Fim if entry.changes
             } // Fim loop entry

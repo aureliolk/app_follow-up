@@ -1,7 +1,7 @@
 // lib/ai/transcribeAudio.ts
-import { openai } from '@ai-sdk/openai';
-import { experimental_transcribe as transcribe } from 'ai';
 import { z } from 'zod';
+import axios from 'axios';
+import FormData from 'form-data';
 
 // Schema de validação para o buffer (opcional)
 const AudioBufferSchema = z.instanceof(Buffer).refine(
@@ -13,12 +13,12 @@ const AudioBufferSchema = z.instanceof(Buffer).refine(
 const MimeTypeSchema = z.string().min(1, "MIME type não pode estar vazio.");
 
 /**
- * Transcreve um buffer de áudio usando um modelo de transcrição (OpenAI Whisper por padrão).
+ * Transcreve um buffer de áudio usando a API OpenAI Whisper diretamente.
  *
  * @param audioBuffer O buffer contendo os dados de áudio.
- * @param mimeType O tipo MIME do áudio (ex: 'audio/webm', 'audio/ogg', 'audio/mpeg').
+ * @param mimeType O tipo MIME do áudio (usado para dar um nome ao arquivo).
  * @param modelId O ID do modelo de transcrição (ex: 'whisper-1'). Padrão: 'whisper-1'.
- * @param languageCode O código do idioma (opcional, ex: 'pt').
+ * @param languageCode O código do idioma (ex: 'pt').
  * @returns Uma Promise que resolve com o texto transcrito ou lança um erro.
  */
 export async function transcribeAudio(
@@ -27,47 +27,67 @@ export async function transcribeAudio(
     modelId: string = 'whisper-1',
     languageCode?: string
 ): Promise<string> {
-    console.log(`[transcribeAudio] Iniciando transcrição. Modelo: ${modelId}, MIME: ${mimeType}, Idioma: ${languageCode || 'auto'}, Tamanho: ${audioBuffer.length} bytes.`);
+    console.log(`[transcribeAudio Direct] Iniciando transcrição. Modelo: ${modelId}, MIME: ${mimeType}, Idioma: ${languageCode || 'N/A'}, Tamanho: ${audioBuffer.length} bytes.`);
 
     // Validação dos inputs (opcional)
     try {
         AudioBufferSchema.parse(audioBuffer);
         MimeTypeSchema.parse(mimeType);
     } catch (validationError) {
-         console.error("[transcribeAudio] Erro de validação dos parâmetros:", validationError);
+         console.error("[transcribeAudio Direct] Erro de validação dos parâmetros:", validationError);
          if (validationError instanceof z.ZodError) {
             throw new Error(`Parâmetros de transcrição inválidos: ${validationError.errors.map(e => e.message).join(', ')}`);
          }
          throw new Error("Parâmetros de transcrição inválidos.");
     }
 
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+        console.error("[transcribeAudio Direct] Chave da API OpenAI (OPENAI_API_KEY) não encontrada nas variáveis de ambiente.");
+        throw new Error("Configuração da API OpenAI ausente.");
+    }
+
     try {
-        let speechModel;
-        if (modelId.startsWith('whisper') || modelId.startsWith('gpt-4o-transcribe')) {
-             speechModel = openai(modelId as any);
-        } else {
-             console.error(`[transcribeAudio] Modelo de transcrição não suportado ou não configurado: ${modelId}. Use 'whisper-1'.`);
-             throw new Error(`Modelo de transcrição não suportado: ${modelId}`);
+        const formData = new FormData();
+        // A API precisa de um nome de arquivo, mesmo que o conteúdo venha do buffer
+        const filename = `audio.${mimeType.split('/')[1]?.split(';')[0] || 'bin'}`;
+        formData.append('file', audioBuffer, filename);
+        formData.append('model', modelId);
+        if (languageCode) {
+            formData.append('language', languageCode);
         }
-        
-        console.log(`[transcribeAudio] Enviando requisição para o modelo ${modelId} (OpenAI)...`);
+        // formData.append('response_format', 'json'); // Padrão já é json com 'text'
 
-        const { text } = await transcribe({
-            model: speechModel,
-            audio: audioBuffer,
-        });
+        console.log(`[transcribeAudio Direct] Enviando requisição para API OpenAI com arquivo: ${filename}, modelo: ${modelId}, idioma: ${languageCode || 'N/A'}`);
 
-        console.log(`[transcribeAudio] Transcrição (OpenAI): "${text}"`);
-        return text.trim();
+        const response = await axios.post(
+            'https://api.openai.com/v1/audio/transcriptions',
+            formData,
+            {
+                headers: {
+                    ...formData.getHeaders(), // Importante para Content-Type: multipart/form-data
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+                // Definir um timeout pode ser útil
+                // timeout: 60000, // 60 segundos
+            }
+        );
+
+        if (response.status === 200 && response.data?.text) {
+            const transcription = response.data.text;
+            console.log(`[transcribeAudio Direct] Transcrição recebida: "${transcription}"`);
+            return transcription.trim();
+        } else {
+            console.error("[transcribeAudio Direct] Resposta inesperada da API OpenAI:", response.status, response.data);
+            throw new Error(`Resposta inesperada da API OpenAI: ${response.status}`);
+        }
 
     } catch (error: any) {
-        // Tratar NoTranscriptGeneratedError especificamente, se necessário
-        if (error.name === 'NoTranscriptGeneratedError') { // Checar pelo nome do erro
-            console.error(`[transcribeAudio] Transcrição não gerada pelo modelo ${modelId}. Causa:`, error.cause);
-            throw new Error(`Não foi possível transcrever o áudio (modelo não gerou resultado).`);
-        }
-        console.error(`[transcribeAudio] Erro ao chamar a API de IA (${modelId}):`, error.message || error);
-        throw new Error(`Erro ao processar o áudio com IA: ${error.message}`);
+        console.error(`[transcribeAudio Direct] Erro ao chamar a API OpenAI (${modelId}):`, error.response?.data || error.message || error);
+        console.error("[transcribeAudio Direct] Full Error Object:", error);
+        // Tentar extrair mensagem de erro da resposta da API, se houver
+        const apiErrorMessage = error.response?.data?.error?.message || error.message;
+        throw new Error(`Erro ao processar o áudio com OpenAI API: ${apiErrorMessage}`);
     }
 }
 

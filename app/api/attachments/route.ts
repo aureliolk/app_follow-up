@@ -46,11 +46,11 @@ const ALLOWED_MIME_TYPES = [
 ];
 
 // Helper function to determine message type from MIME type
-function getMessageTypeFromMime(mimeType: string): string {
+function getMessageTypeFromMime(mimeType: string): 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' {
   if (mimeType.startsWith('image/')) return 'IMAGE';
   if (mimeType.startsWith('video/')) return 'VIDEO';
   if (mimeType.startsWith('audio/')) return 'AUDIO';
-  return 'DOCUMENT'; // Default to document
+  return 'DOCUMENT'; // Default
 }
 
 export async function POST(req: NextRequest) {
@@ -58,9 +58,11 @@ export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      console.warn("Attachments API: Unauthorized - No session found");
+      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
     const userId = session.user.id;
+    const senderName = session.user.name || 'Operador';
 
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
@@ -68,13 +70,15 @@ export async function POST(req: NextRequest) {
     const workspaceId = formData.get('workspaceId') as string | null; // Get workspaceId too
 
     if (!file || !conversationId || !workspaceId) {
-      return NextResponse.json({ success: false, error: 'Missing file, conversationId, or workspaceId' }, { status: 400 });
+      console.warn("Attachments API: Bad Request - Missing file, conversationId, or workspaceId");
+      return NextResponse.json({ success: false, error: 'Dados incompletos para upload' }, { status: 400 });
     }
 
     // Check user permission for the workspace
-    const hasAccess = await checkPermission(workspaceId, userId, 'VIEWER'); // Allow VIEWER and above
+    const hasAccess = await checkPermission(workspaceId, userId, 'MEMBER'); // Allow VIEWER and above
     if (!hasAccess) {
-        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+        console.warn(`Attachments API: Forbidden - User ${userId} lacks permission for workspace ${workspaceId}`);
+        return NextResponse.json({ success: false, error: 'Permissão negada para este workspace' }, { status: 403 });
     }
 
     // Validate conversation exists and belongs to the workspace
@@ -93,12 +97,12 @@ export async function POST(req: NextRequest) {
     // --- File Validation ---
     console.log(`[API POST /attachments] Validating file: ${file.name}, Size: ${file.size}, Type: ${file.type}`);
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      console.warn(`[API POST /attachments] File too large: ${file.size} bytes (Max: ${MAX_FILE_SIZE_BYTES})`);
-      return NextResponse.json({ success: false, error: `File too large. Maximum size: ${MAX_FILE_SIZE_MB}MB` }, { status: 413 });
+      console.warn(`Attachments API: File too large - Size: ${file.size} bytes`);
+      return NextResponse.json({ success: false, error: `Arquivo muito grande. Máximo ${MAX_FILE_SIZE_MB}MB` }, { status: 413 }); // 413 Payload Too Large
     }
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-        console.warn(`[API POST /attachments] Invalid file type: ${file.type}`);
-        return NextResponse.json({ success: false, error: `Invalid file type: ${file.type}` }, { status: 415 });
+        console.warn(`Attachments API: Invalid file type - Type: ${file.type}`);
+        return NextResponse.json({ success: false, error: `Tipo de arquivo inválido: ${file.type}` }, { status: 415 }); // 415 Unsupported Media Type
     }
 
     // --- S3 Upload --- 
@@ -110,9 +114,9 @@ export async function POST(req: NextRequest) {
     const fileExtension = file.name.split('.').pop() || 'bin';
     const uniqueFileName = `${randomUUID()}.${fileExtension}`;
     // Optional: Add conversation ID or workspace ID to the path for organization
-    const s3Key = `attachments/${conversationId}/${uniqueFileName}`;
+    const s3Key = `operator-uploads/${workspaceId}/${conversationId}/${uniqueFileName}`;
 
-    console.log(`[API POST /attachments] Uploading to S3: Bucket=${s3BucketName}, Key=${s3Key}`);
+    console.log(`Attachments API: Uploading to S3 - Bucket: ${s3BucketName}, Key: ${s3Key}`);
     const fileBuffer = Buffer.from(await file.arrayBuffer());
 
     const putCommand = new PutObjectCommand({
@@ -125,7 +129,7 @@ export async function POST(req: NextRequest) {
 
     try {
       await s3Client.send(putCommand);
-      console.log(`[API POST /attachments] Successfully uploaded ${s3Key} to S3.`);
+      console.log(`Attachments API: Upload to S3 successful for key ${s3Key}`);
     } catch (s3Error: any) {
       console.error(`[API POST /attachments] S3 Upload Error for key ${s3Key}:`, s3Error);
       return NextResponse.json({ success: false, error: 'Failed to upload file to storage' }, { status: 500 });
@@ -147,7 +151,8 @@ export async function POST(req: NextRequest) {
 
     // --- Save Message to Database --- 
     const messageType = getMessageTypeFromMime(file.type);
-    const contentPlaceholder = `[Anexo: ${file.name}]`; // Usar um placeholder no content
+    const placeholderContent = `[Enviando ${messageType.toLowerCase()} ${file.name}...]`;
+    const prefixedContent = `*${senderName}*\n${placeholderContent}`;
 
     try {
       const newMessage = await prisma.message.create({
@@ -157,9 +162,8 @@ export async function POST(req: NextRequest) {
               id: conversationId
             }
           },
-          sender_type: MessageSenderType.AI, // Marcando como AI ou SYSTEM?
-          // content: contentPlaceholder, // Usar placeholder ou deixar vazio? Vamos usar o placeholder.
-          content: contentPlaceholder, // Definindo o content com placeholder
+          sender_type: MessageSenderType.SYSTEM, // Marcando como AI ou SYSTEM?
+          content: prefixedContent,
           media_url: fileUrl,        // Corrigido: Salvar URL aqui
           media_mime_type: file.type, // Corrigido: Salvar MIME type aqui
           media_filename: file.name,   // Corrigido: Salvar filename aqui
@@ -177,18 +181,23 @@ export async function POST(req: NextRequest) {
           } as Prisma.JsonObject,
           timestamp: new Date(),
         },
+        select: { // Selecionar todos os campos necessários para retorno e UI
+          id: true, conversation_id: true, sender_type: true, content: true, timestamp: true,
+          channel_message_id: true, metadata: true, media_url: true, media_mime_type: true,
+          media_filename: true, status: true, providerMessageId: true, sentAt: true, errorMessage: true
+        }
       });
-      console.log(`[API POST /attachments] Message saved to DB: ID=${newMessage.id} with media_url.`); // Log atualizado
+      console.log(`Attachments API: Message record created (ID: ${newMessage.id}) with prefixed content.`);
       
       // <<< ENFILEIRAR JOB PARA ENVIO VIA WHATSAPP >>>
       try {
         const jobData = { messageId: newMessage.id };
         // Usar ID da mensagem como Job ID para possível idempotência/referência
-        const jobId = `send-media-${newMessage.id}`;
-        await whatsappOutgoingMediaQueue.add('sendWhatsappMedia', jobData, { jobId: jobId });
-        console.log(`[API POST /attachments] Job ${jobId} added to queue ${WHATSAPP_OUTGOING_MEDIA_QUEUE} for message ${newMessage.id}`);
+        const jobId = `media-${newMessage.id}`;
+        await whatsappOutgoingMediaQueue.add(WHATSAPP_OUTGOING_MEDIA_QUEUE, jobData, { jobId: jobId });
+        console.log(`Attachments API: Job added to queue ${WHATSAPP_OUTGOING_MEDIA_QUEUE} for message ${newMessage.id}`);
       } catch (queueError) {
-        console.error(`[API POST /attachments] Failed to add job to queue ${WHATSAPP_OUTGOING_MEDIA_QUEUE} for message ${newMessage.id}:`, queueError);
+        console.error(`Attachments API: Failed to add job to queue ${WHATSAPP_OUTGOING_MEDIA_QUEUE} for message ${newMessage.id}:`, queueError);
         // Continuar mesmo se falhar ao enfileirar? Ou retornar erro? 
         // Por enquanto, loga o erro mas retorna sucesso do upload/save.
       }
@@ -197,17 +206,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, data: newMessage }, { status: 201 });
 
     } catch (dbError: any) {
-      console.error(`[API POST /attachments] Database Error saving message for S3 key ${s3Key}:`, dbError);
+      console.error(`Attachments API: Database Error saving message for S3 key ${s3Key}:`, dbError);
        // TODO: Consider deleting the uploaded S3 object if DB save fails to avoid orphaned files
       return NextResponse.json({ success: false, error: 'Failed to save message details' }, { status: 500 });
     }
 
   } catch (error: any) {
-    console.error("[API POST /attachments] General Error:", error);
-    // Avoid exposing internal errors directly
-    if (error.code === 'ENOENT') { // Example specific error check
-      return NextResponse.json({ success: false, error: 'Invalid path or file not found' }, { status: 400 });
+    console.error("Attachments API: Unhandled error:", error);
+    const errorMessage = error.message || 'Erro interno do servidor ao processar anexo.';
+    // Tentar extrair um status code mais específico se possível (ex: S3 errors)
+    let statusCode = 500;
+    if (error.name === 'AccessDenied' || error.code === 'AccessDenied') {
+        statusCode = 503; // Service Unavailable (problema S3)
     }
-    return NextResponse.json({ success: false, error: 'An unexpected error occurred' }, { status: 500 });
+
+    return NextResponse.json({ success: false, error: errorMessage }, { status: statusCode });
   }
 } 

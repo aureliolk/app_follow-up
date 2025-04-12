@@ -42,7 +42,7 @@ export async function describeImage(
             {
                 role: 'user',
                 content: [
-                    { type: 'text', text: 'Descreva esta imagem de forma concisa (máximo 2 frases). Se for um documento ou captura de tela, mencione o tipo e talvez o tópico principal, se aparente. Não descreva texto ilegível.' },
+                    { type: 'text', text: 'Analise esta imagem no contexto de um atendimento ao cliente via chat. Descreva brevemente os elementos principais que podem ser relevantes para entender uma solicitação ou problema do cliente (ex: um erro em um print, um produto específico, um documento). Se for um documento, tente identificar o tipo (boleto, nota fiscal, etc.) e informações chave visíveis (valor, data). Se for um produto, descreva-o. Se for um erro, descreva a mensagem de erro. Seja objetivo.' },
                     { type: 'image', image: imageBuffer } // Passa o buffer diretamente
                 ]
             }

@@ -6,8 +6,12 @@ FROM node:20-alpine AS builder
 # <<< ADICIONE ESTA LINHA >>>
 RUN npm install -g pnpm
 
+
 # Definir diretório de trabalho
 WORKDIR /app
+
+# Instalar ffmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Instalar dependências primeiro para aproveitar o cache do Docker
 COPY package.json pnpm-lock.yaml ./

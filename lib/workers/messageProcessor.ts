@@ -12,12 +12,13 @@ import { decrypt } from '@/lib/encryption';
 // <<< Novas importações >>>
 import { getWhatsappMediaUrl } from '@/lib/channel/whatsappUtils';
 import { s3Client, s3BucketName } from '@/lib/s3Client';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import axios from 'axios';
 import { lookup } from 'mime-types'; // Para obter extensão do mime type
 // <<< Adicionar importações das funções de IA >>>
 import { describeImage } from '@/lib/ai/describeImage';
 import { transcribeAudio } from '@/lib/ai/transcribeAudio';
+import { Readable } from 'stream';
 
 const QUEUE_NAME = 'message-processing';
 const BUFFER_TIME_MS = 3000; // 3 segundos de buffer (ajuste se necessário)
@@ -206,7 +207,7 @@ async function processJob(job: Job<JobData>) {
                     aiAnalysisResult = await describeImage(mediaBuffer);
                     console.log(`[MsgProcessor ${jobId}] Imagem descrita pela IA.`);
                 } else if (mediaType === 'audio' && metadata.mimeType) {
-                    aiAnalysisResult = await transcribeAudio(mediaBuffer, metadata.mimeType, 'pt');
+                    aiAnalysisResult = await transcribeAudio(mediaBuffer, metadata.mimeType, undefined, 'pt');
                     console.log(`[MsgProcessor ${jobId}] Áudio transcrito pela IA.`);
                 } else {
                      console.warn(`[MsgProcessor ${jobId}] Tipo de mídia ${mediaType} não suportado para processamento IA.`);
@@ -342,28 +343,76 @@ async function processJob(job: Job<JobData>) {
     const orderedHistory = history.reverse();
     console.log(`[MsgProcessor ${jobId}] Histórico carregado com ${orderedHistory.length} mensagens.`);
 
-    // --- 6. Formatar Mensagens para Vercel AI SDK ---
-    const aiMessages: CoreMessage[] = orderedHistory.map((msg) => {
-        
-        const role = msg.sender_type === MessageSenderType.CLIENT ? 'user' : 'assistant';
-        let contentForAI = msg.content || ''; // Default to content
+    // --- 6. Formatar Mensagens para Vercel AI SDK (Multimodal) ---
+    // Mapeamento assíncrono necessário se precisarmos buscar/ler buffers de imagem aqui
+    const aiMessagesPromises = orderedHistory.map(async (msg): Promise<CoreMessage> => {
 
-        // Special formatting for media messages to include AI analysis context
-        if (msg.media_url && msg.ai_media_analysis) {
-             const mediaType = msg.media_mime_type?.split('/')[0] || 'Mídia';
-             // Start with placeholder (which should be in msg.content)
-             contentForAI = msg.content || `[${mediaType === 'image' ? 'Imagem' : mediaType === 'audio' ? 'Áudio' : mediaType === 'video' ? 'Vídeo' : 'Mídia'} Recebida]`;
-             // Append internal analysis for the AI's context
-             contentForAI += `\n[Análise Interna ${mediaType === 'image' ? 'da Imagem' : mediaType === 'audio' ? 'do Áudio' : 'da Mídia'}: ${msg.ai_media_analysis}]`;
+        if (msg.sender_type === MessageSenderType.CLIENT) {
+            // --- Mensagens do CLIENTE --- 
+            if (msg.media_url && msg.media_mime_type?.startsWith('image/')) {
+                 // Cliente enviou IMAGEM
+                console.log(`[MsgProcessor ${jobId}] Formatando msg CLIENTE ${msg.id} como multimodal (imagem). Buscando buffer...`);
+                try {
+                    const s3Url = msg.media_url;
+                    const urlParts = new URL(s3Url);
+                    const s3Key = urlParts.pathname.substring(1).replace(`${s3BucketName}/`, '');
+                    if (!s3Key) throw new Error(`Não foi possível extrair a chave S3 de ${s3Url}`);
+
+                    console.log(`[MsgProcessor ${jobId}] Baixando imagem ${s3Key} do S3 para IA...`);
+                    const command = new GetObjectCommand({ Bucket: s3BucketName, Key: s3Key });
+                    const { Body } = await s3Client.send(command);
+                    if (!Body || !(Body instanceof Readable)) throw new Error('Corpo do objeto S3 não é um stream legível.');
+                    const imageBuffer = await streamToBuffer(Body);
+                    console.log(`[MsgProcessor ${jobId}] Buffer da imagem ${s3Key} obtido (${imageBuffer.length} bytes).`);
+
+                    return {
+                        role: 'user', // Explicitamente 'user'
+                        content: [
+                            { type: 'text', text: msg.content || '[Imagem Enviada pelo Cliente]' },
+                            { type: 'image', image: imageBuffer }
+                        ]
+                    };
+                } catch (fetchError: any) {
+                    console.error(`[MsgProcessor ${jobId}] Falha ao buscar/processar imagem ${msg.media_url} do S3 para IA: ${fetchError.message}. Enviando apenas texto.`);
+                    return {
+                        role: 'user', // Explicitamente 'user'
+                        content: msg.content || '[Imagem Enviada pelo Cliente (Falha ao carregar para IA)]'
+                    };
+                }
+            } else if (msg.media_url && msg.media_mime_type?.startsWith('audio/')) {
+                // Cliente enviou ÁUDIO
+                if (msg.ai_media_analysis) {
+                     return {
+                         role: 'user', // Explicitamente 'user'
+                         content: `${msg.content || '[Áudio Enviado pelo Cliente]'}\n[Transcrição Interna: ${msg.ai_media_analysis}]`
+                     };
+                 } else {
+                     return {
+                         role: 'user', // Explicitamente 'user'
+                         content: msg.content || '[Áudio Enviado pelo Cliente (Sem transcrição)]'
+                     };
+                 }
+            } else {
+                 // Cliente enviou TEXTO
+                 return {
+                     role: 'user', // Explicitamente 'user'
+                     content: msg.content || ''
+                 };
+            }
+        } else {
+             // --- Mensagens do ASSISTENTE (IA ou Operador marcado como AI?) ---
+             // Por enquanto, apenas retorna o conteúdo textual.
+             // Se assistentes pudessem enviar imagens, precisaríamos de lógica multimodal aqui também.
+             return {
+                 role: 'assistant',
+                 content: msg.content || ''
+             };
         }
-        // Otherwise, just use the text content as is
-
-        return {
-            role: role,
-            content: contentForAI,
-        };
     });
-    console.log(`[MsgProcessor ${jobId}] Mensagens formatadas para IA:`, JSON.stringify(aiMessages.slice(-5), null, 2)); // Log last 5 formatted msgs
+
+    // Aguardar todas as promises de formatação (devido ao download S3 assíncrono)
+    const aiMessages = await Promise.all(aiMessagesPromises);
+    console.log(`[MsgProcessor ${jobId}] Mensagens formatadas para IA (multimodal):`, JSON.stringify(aiMessages.slice(-5).map(m => ({ role: m.role, content: Array.isArray(m.content) ? m.content.map(c => c.type === 'text' ? { type: 'text', text: c.text.substring(0, 50)+'...' } : { type: c.type }) : typeof m.content === 'string' ? m.content.substring(0,100)+'...' : m.content })), null, 2)); // Log formatado
 
     // --- 7. Obter Prompt e Modelo --- 
     const modelId = workspace.ai_model_preference || 'gpt-4o';
@@ -381,14 +430,13 @@ async function processJob(job: Job<JobData>) {
 
       // <<< USAR AI_NAME DO WORKSPACE PARA O PREFIXO >>>
       const aiDisplayName = workspace.ai_name || "*Beatriz*"; // Usar padrão se não definido
-      const prefixedAiContent = `*${aiDisplayName}:* \n${aiResponseContent}`;
 
       // Salvar resposta da IA
       const newAiMessage = await prisma.message.create({
           data: {
             conversation_id: conversationId,
             sender_type: MessageSenderType.AI,
-            content: prefixedAiContent, // <<< USAR CONTEÚDO COM PREFIXO
+            content: aiResponseContent, // <<< USAR CONTEÚDO COM PREFIXO
             timestamp: newAiMessageTimestamp,
             // <<< Definir Status inicial como PENDING >>>
             status: 'PENDING' // Garante que começa como pendente antes do envio
@@ -580,6 +628,16 @@ async function processJob(job: Job<JobData>) {
     console.log(`--- [MsgProcessor ${jobId}] FIM (Erro Crítico) ---`);
     throw error; // Re-lança para BullMQ tratar como falha
   }
+}
+
+// Helper para converter Stream para Buffer (precisa estar acessível)
+async function streamToBuffer(stream: Readable): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on('data', chunk => chunks.push(chunk instanceof Buffer ? chunk : Buffer.from(chunk)));
+      stream.on('error', reject);
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+    });
 }
 
 // --- Inicialização do Worker --- 
