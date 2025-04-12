@@ -1,17 +1,12 @@
-// apps/next-app/app/workspace/[slug]/conversations/components/ConversationDetail.tsx
+// app/workspace/[slug]/conversations/components/ConversationDetail.tsx
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 // Removido axios pois as chamadas são feitas pelo contexto
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { ArrowLeft } from 'lucide-react';
+
 import {
   Send,
   Bot,
@@ -42,10 +37,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+// <<< MODIFICAÇÃO: Importar apenas o necessário do emoji-picker >>>
 import EmojiPicker, { EmojiClickData, Theme, Categories } from 'emoji-picker-react';
 import axios from 'axios'; // <<< Importar Axios para o upload
 import { useWhatsappTemplates } from '@/context/whatsapp-template-context'; // <<< Importar o hook
 import WhatsappTemplateDialog from './WhatsappTemplateDialog'; // <<< IMPORTAR NOVO COMPONENTE
+import ConversationInputArea from './ConversationInputArea'; // <<< IMPORTAR NOVO COMPONENTE
 
 // Remover a interface de Props, pois não recebe mais a conversa via prop
 // interface ConversationDetailProps {
@@ -229,15 +226,15 @@ export default function ConversationDetail() {
 
         newEventSource.addEventListener('error', (error) => {
           console.error("[ConvDetail SSE] Erro na conexão EventSource:", error);
-          
+
           if (retryCount < maxRetries) {
             retryCount++;
             console.log(`[ConvDetail SSE] Tentativa ${retryCount} de ${maxRetries}. Reconectando em ${retryDelay}ms...`);
-            
+
             // Fechar conexão atual
             newEventSource.close();
             eventSourceRef.current = null;
-            
+
             // Tentar reconectar após delay
             setTimeout(connectSSE, retryDelay);
           } else {
@@ -276,7 +273,7 @@ export default function ConversationDetail() {
     setNewMessage(prevMessage => prevMessage + emojiData.emoji);
     setShowEmojiPicker(false);
     // Devolver foco ao textarea após selecionar emoji
-    textareaRef.current?.focus(); 
+    textareaRef.current?.focus();
   };
 
   // <<< NOVO HANDLER PARA SELEÇÃO DE ARQUIVO >>>
@@ -309,7 +306,7 @@ export default function ConversationDetail() {
       sender_type: 'AI', // Ou o tipo que representa o operador
       content: `[Enviando ${file.name}...]`,
       timestamp: new Date().toISOString(),
-      metadata: { 
+      metadata: {
         status: 'uploading', // Novo status
         originalFilename: file.name,
         mimeType: file.type,
@@ -453,7 +450,7 @@ export default function ConversationDetail() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setPermissionStatus('granted');
       audioChunksRef.current = []; // Limpa chunks anteriores
-      
+
       // Determinar o tipo MIME preferido (Opus em WebM ou Ogg é geralmente bom)
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -482,14 +479,14 @@ export default function ConversationDetail() {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         const filename = `audio_gravado_${format(new Date(), 'yyyyMMdd_HHmmss')}.${mimeType.split('/')[1].split(';')[0]}`;
         const audioFile = new File([audioBlob], filename, { type: mimeType });
-        
+
         // Reset stream tracks para parar o ícone de gravação do navegador
-        stream.getTracks().forEach(track => track.stop()); 
+        stream.getTracks().forEach(track => track.stop());
 
         // Chamar função para enviar o arquivo (será criada depois)
-        await handleSendAudioFile(audioFile); 
+        await handleSendAudioFile(audioFile);
       };
-      
+
       recorder.onerror = (event) => {
         console.error("[AudioRecord] Erro no MediaRecorder:", event);
         toast.error("Erro durante a gravação.");
@@ -536,7 +533,7 @@ export default function ConversationDetail() {
       startRecording();
     }
   };
-  
+
   // Placeholder para a função de envio (será similar a handleFileChange)
   const handleSendAudioFile = async (audioFile: File) => {
     console.log("[AudioSend] Enviando arquivo de áudio:", audioFile.name, audioFile.type, audioFile.size);
@@ -560,8 +557,8 @@ export default function ConversationDetail() {
       sender_type: 'AI', // Operador = AI?
       content: `[Enviando áudio ${audioFile.name}...]`,
       timestamp: new Date().toISOString(),
-      metadata: { 
-        status: 'uploading', 
+      metadata: {
+        status: 'uploading',
         originalFilename: audioFile.name,
         mimeType: audioFile.type,
         messageType: 'AUDIO'
@@ -619,7 +616,7 @@ export default function ConversationDetail() {
   const showPauseButton = followUpStatus === 'ACTIVE';
   const showResumeButton = followUpStatus === 'PAUSED';
   const followUpExistsAndIsActionable = !!conversation?.activeFollowUp && (conversation.activeFollowUp.status === 'ACTIVE' || conversation.activeFollowUp.status === 'PAUSED');
- 
+
 
   // Loader geral para ações que mudam o status do FollowUp
   const isStatusActionLoading = isPausingFollowUp || isResumingFollowUp || isConvertingFollowUp || isCancellingFollowUp;
@@ -748,7 +745,7 @@ export default function ConversationDetail() {
                               {message.status === 'SENT' && <span title="Enviado"><CheckCircle className="h-3 w-3 text-green-400" /></span>}
                               {message.status === 'FAILED_PROCESSING' && <span title="Falha no processamento"><XCircle className="h-3 w-3 text-yellow-400" /></span>}
                               {message.status === 'FAILED' && <span title={message.metadata?.errorMessage || 'Falha no envio'}><XCircle className="h-3 w-3 text-red-400" /></span>}
-                              {/* Add DELIVERED/READ later based on webhooks */} 
+                              {/* Add DELIVERED/READ later based on webhooks */}
                             </span>
                           )}
                       </div>
@@ -758,131 +755,29 @@ export default function ConversationDetail() {
               })}
           </ScrollArea>
 
-          {/* Input Area */}
-          <div className="p-4 border-t border-border bg-card/60 flex-shrink-0">
-             {/* Exibição de erro de templates */}
+          {/* <<< USAR O NOVO COMPONENTE ConversationInputArea >>> */}
+          <ConversationInputArea
+             conversationId={conversation.id}
+             workspaceId={conversation.workspace_id}
+             newMessage={newMessage}
+             setNewMessage={setNewMessage}
+             handleSendMessage={handleSendMessage}
+             isSendingMessage={isSendingMessage}
+             isUploading={isUploading}
+             setIsUploading={setIsUploading}
+             addMessageOptimistically={addMessageOptimistically}
+             updateMessageStatus={updateMessageStatus}
+             loadingTemplates={loadingTemplates}
+             onInsertTemplate={handleFinalTemplateInsert} // Corrigido para onTemplateInsert
+             textareaRef={textareaRef}
+          />
+            {/* Exibição de erro de templates (MANTIDO AQUI) */}
              {templateError && (
                <ErrorMessage message={templateError} onDismiss={clearTemplateError} />
              )}
-             <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
-               {/* Botão de Microfone */}
-               <Button
-                 type="button"
-                 variant={isRecording ? "destructive" : "ghost"}
-                 size="icon"
-                 onClick={handleMicClick}
-                 disabled={isUploading} // Desabilitar se estiver fazendo upload de outro arquivo
-                 title={isRecording ? "Parar Gravação" : "Gravar Áudio"}
-               >
-                 {isRecording ? (
-                   <PauseCircle className="h-5 w-5" />
-                 ) : (
-                   <Mic className="h-5 w-5" />
-                 )}
-               </Button>
-               {/* Exibir Duração da Gravação */}
-               {isRecording && (
-                 <div className="text-xs text-muted-foreground font-mono w-12 text-center">
-                   {formatDuration(recordingDuration)}
-                 </div>
-               )}
-
-               {/* Botão de Anexo */}
-               <Button
-                 type="button"
-                 variant="ghost"
-                 size="icon"
-                 onClick={() => fileInputRef.current?.click()} // <<< Abrir seletor de arquivo
-                 disabled={isUploading || isRecording} // <<< Desabilitar durante upload ou gravação
-                 title="Anexar Arquivo"
-               >
-                  {isUploading ? <Loader2 className="h-5 w-5 animate-spin"/> : <Paperclip className="h-5 w-5" />}
-               </Button>
-               {/* Input de arquivo oculto */}
-               <input
-                 type="file"
-                 ref={fileInputRef}
-                 onChange={handleFileChange}
-                 className="hidden"
-                 accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" // <<< Definir tipos aceitos
-               />
-
-               {/* Botão de Emoji */}
-               <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                  <PopoverTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon" title="Inserir Emoji">
-                      <Smile className="h-5 w-5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 border-0" side="top" align="start">
-                    <EmojiPicker
-                       onEmojiClick={handleEmojiClick}
-                       // theme={Theme.DARK} // Ajustar tema se necessário
-                       searchDisabled
-                       skinTonesDisabled
-                       categories={[
-                          Categories.SMILEYS_PEOPLE,
-                          Categories.ANIMALS_NATURE,
-                          Categories.FOOD_DRINK,
-                          Categories.TRAVEL_PLACES,
-                          Categories.ACTIVITIES,
-                          Categories.OBJECTS,
-                          Categories.SYMBOLS
-                       ]}
-                     />
-                  </PopoverContent>
-               </Popover>
-
-                {/* Botão de Templates */}
-               <WhatsappTemplateDialog
-                  trigger={
-                     <Button type="button" variant="ghost" size="icon" title="Inserir Template HSM"
-                     disabled={loadingTemplates || isUploading || isRecording}
-                     >
-                       {loadingTemplates ? <Loader2 className="h-4 w-4 animate-spin" /> : <Quote className="h-5 w-5" />}
-                     </Button>
-                  }
-                  onInsertTemplate={handleFinalTemplateInsert}
-               />
-
-               <Textarea
-                 ref={textareaRef}
-                 value={newMessage}
-                 onChange={(e) => setNewMessage(e.target.value)}
-                 placeholder={isRecording ? "Gravando áudio..." : "Digite sua mensagem..."}
-                 className="flex-grow resize-none bg-input border-input text-foreground placeholder:text-muted-foreground min-h-[40px] max-h-[120px]"
-                 rows={1}
-                 onKeyDown={(e) => {
-                   if (e.key === 'Enter' && !e.shiftKey) {
-                     e.preventDefault(); // Evita nova linha
-                     handleSendMessage();
-                   }
-                 }}
-                 disabled={isSendingMessage || isUploading || isRecording}
-               />
-               <Button
-                 type="submit"
-                 size="icon"
-                 disabled={!newMessage.trim() || isSendingMessage || isUploading || isRecording}
-                 title="Enviar Mensagem"
-               >
-                 {isSendingMessage ? (
-                   <Loader2 className="h-4 w-4 animate-spin" />
-                 ) : (
-                   <Send className="h-4 w-4" />
-                 )}
-               </Button>
-             </form>
-          </div>
+          {/* <<< FIM do novo componente >>> */}
         </>
       )}
     </div>
   );
-}
-
-// Helper para formatar duração (manter no final ou mover para utils)
-function formatDuration(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
