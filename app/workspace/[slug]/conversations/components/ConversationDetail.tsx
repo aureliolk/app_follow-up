@@ -659,14 +659,18 @@ export default function ConversationDetail() {
                   Retomar IA
                 </Button>
               )}
-               <Button variant="secondary" size="sm" onClick={handleMarkConverted} disabled={isConvertingFollowUp}>
-                 {isConvertingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle className="h-4 w-4 mr-1" />}
-                 Convertido
-               </Button>
-               <Button variant="destructive" size="sm" onClick={handleCancelSequence} disabled={isCancellingFollowUp}>
-                 {isCancellingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
-                 Cancelar
-               </Button>
+               {conversation.activeFollowUp && (
+                 <Button variant="secondary" size="sm" onClick={handleMarkConverted} disabled={isConvertingFollowUp}>
+                   {isConvertingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+                   Convertido
+                 </Button>
+               )}
+               {conversation.activeFollowUp && (
+                 <Button variant="destructive" size="sm" onClick={handleCancelSequence} disabled={isCancellingFollowUp}>
+                   {isCancellingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
+                   Cancelar
+                 </Button>
+               )}
             </div>
           </div>
 

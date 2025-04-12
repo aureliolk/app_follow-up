@@ -27,7 +27,6 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
   const [phoneNumberId, setPhoneNumberId] = useState(currentSettings.phoneNumberId);
   const [businessAccountId, setBusinessAccountId] = useState(currentSettings.businessAccountId);
   const [accessToken, setAccessToken] = useState(''); // Inicia vazio por segurança
-  const [appSecret, setAppSecret] = useState(''); // Inicia vazio por segurança
   const [verifyToken, setVerifyToken] = useState(currentSettings.webhookVerifyToken); // Token para verificar nosso webhook
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +52,6 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
       !phoneNumberId ||
       !businessAccountId ||
       (!currentSettings.isAccessTokenSet && !accessToken) || // Só exige accessToken se não estiver setado
-      (!currentSettings.isAppSecretSet && !appSecret) ||   // Só exige appSecret se não estiver setado
       !newVerifyToken // <<< USAR O NOVO TOKEN GERADO AQUI PARA VALIDAR
     ) {
       setError('Por favor, preencha todos os campos obrigatórios.');
@@ -72,7 +70,6 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
           phoneNumberId,
           businessAccountId,
           accessToken, // Enviando o token real (se fornecido)
-          appSecret,   // Enviando o segredo real (se fornecido)
           webhookVerifyToken: newVerifyToken, // <<< ENVIAR O NOVO TOKEN GERADO
        });
 
@@ -83,7 +80,6 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
         businessAccountId,
         // Enviar o valor do estado diretamente. A action preserva se estiver vazio.
         accessToken: accessToken, 
-        appSecret: appSecret, // A action também deve preservar se estiver vazio
         webhookVerifyToken: newVerifyToken, 
       });
 
@@ -91,19 +87,11 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
         toast.success('Credenciais do WhatsApp salvas com sucesso!', { id: 'save-whatsapp' });
         // Limpar campos sensíveis após salvar
         setAccessToken('');
-        setAppSecret('');
         // Pode atualizar o estado isSet para refletir que foram salvos
       } else {
         throw new Error(result?.error || 'Falha ao salvar credenciais.');
       }
       
-      // Simulação (remover depois)
-       await new Promise(resolve => setTimeout(resolve, 1500));
-       toast.success('Simulação: Credenciais salvas!', { id: 'save-whatsapp' });
-       setAccessToken('');
-       setAppSecret('');
-       // Fim Simulação
-
     } catch (err: any) {
       console.error("Erro ao salvar credenciais:", err);
       const errorMessage = err.message || 'Ocorreu um erro inesperado.';
@@ -162,21 +150,6 @@ export default function WhatsappSettingsForm({ currentSettings }: WhatsappSettin
             disabled={isLoading}
           />
            <p className="text-[0.8rem] text-muted-foreground">Token gerado no App Meta (usuário do sistema ou outro). Será armazenado de forma segura.</p>
-        </div>
-         <div className="space-y-2">
-          <Label htmlFor="appSecret">Segredo do Aplicativo (App Secret)</Label>
-          <Input
-            id="appSecret"
-            type="password" // Usar tipo password para mascarar
-            value={appSecret}
-            onChange={(e) => setAppSecret(e.target.value)}
-            // Placeholder indica que deixar em branco mantém o atual, se já estiver setado
-            placeholder={currentSettings.isAppSecretSet ? 'Atual: ******** (Deixe em branco para manter)' : 'Cole o segredo aqui'}
-            // Não é obrigatório se já estiver setado, permitindo preservar
-            required={!currentSettings.isAppSecretSet} 
-            disabled={isLoading}
-          />
-          <p className="text-[0.8rem] text-muted-foreground">Encontrado nas Configurações &gt; Básico do seu App Meta. Será armazenado de forma segura.</p>
         </div>
          
       </div>

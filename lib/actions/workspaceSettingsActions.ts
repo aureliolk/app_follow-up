@@ -14,7 +14,6 @@ const WhatsappCredentialsSchema = z.object({
   phoneNumberId: z.string().min(1, "ID do Número de Telefone é obrigatório."),
   businessAccountId: z.string().min(1, "ID da Conta Business é obrigatório."),
   accessToken: z.string().min(10, "Token de Acesso inválido."), // Validação básica
-  appSecret: z.string().min(10, "Segredo do Aplicativo inválido."), // Validação básica
   webhookVerifyToken: z.string().min(10, "Token de Verificação é obrigatório e deve ser seguro."),
 });
 

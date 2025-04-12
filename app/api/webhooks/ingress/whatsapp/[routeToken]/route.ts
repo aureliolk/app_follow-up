@@ -94,41 +94,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const rawBody = await request.clone().text();
     const signatureHeader = request.headers.get('X-Hub-Signature-256');
 
-    // 1. Buscar Workspace e App Secret específico
+    // 1. Buscar Workspace
     const workspace = await getWorkspaceByRouteToken(routeToken);
     
-    
-    if (!workspace || !workspace.whatsappAppSecret) {
-        console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Workspace ou App Secret não encontrado. Rejeitando.`);
-        return new NextResponse('Endpoint configuration not found or invalid.', { status: 404 });
+    // <<< ADICIONADO: Obter App Secret da variável de ambiente >>>
+    const appSecret = process.env.WHATSAPP_APP_SECRET;
+    if (!appSecret) {
+        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] ERRO CRÍTICO: Variável de ambiente WHATSAPP_APP_SECRET não está definida.`);
+        // Retornar 500 pois é um erro de configuração do servidor
+        return new NextResponse('Internal Server Error: App Secret configuration missing.', { status: 500 });
     }
 
-    // Descriptografar App Secret
-    let appSecret: string;
-    try {
-        if (!workspace.whatsappAppSecret) {
-            throw new Error("App Secret não configurado para este workspace.");
-        }
-        appSecret = decrypt(workspace.whatsappAppSecret);
-        if (!appSecret) throw new Error("App Secret descriptografado está vazio.");
-    } catch (decryptError: any) {
-        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro CRÍTICO ao descriptografar App Secret para Workspace ${workspace.id}:`, decryptError.message);
-        return new NextResponse('Internal Server Error: Failed to process credentials', { status: 500 });
-    }
-
-    // 2. Validar Assinatura
+    // 2. Validar Assinatura (usando appSecret do env)
     if (!signatureHeader) {
         console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura ausente (X-Hub-Signature-256). Rejeitando.`);
         return new NextResponse('Missing signature header', { status: 400 });
     }
     const expectedSignature = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
     const receivedSignatureHash = signatureHeader.split('=')[1];
-    // if (expectedSignature !== receivedSignatureHash) {
-    //     console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura inválida. Expected: ${expectedSignature}, Received Hash: ${receivedSignatureHash}. Rejeitando.`);
-    //     return new NextResponse('Invalid signature', { status: 403 });
-    // }
     
-    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura validada com sucesso para Workspace ${workspace.id}.`);
+    // <<< REATIVADO: Comparação da assinatura >>>
+    if (expectedSignature !== receivedSignatureHash) {
+        console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura inválida. Expected: ${expectedSignature}, Received Hash: ${receivedSignatureHash}. Rejeitando.`);
+        return new NextResponse('Invalid signature', { status: 403 });
+    }
+    
+    // <<< LOG AJUSTADO: Não menciona mais o workspace ID aqui, pois o segredo é global >>>
+    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura validada com sucesso.`);
 
     // --- INÍCIO: Processamento do Payload (APÓS validação) ---
     try {
