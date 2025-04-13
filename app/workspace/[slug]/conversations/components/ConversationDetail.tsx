@@ -38,7 +38,6 @@ export default function ConversationDetail() {
     isSendingMessage,
     sendManualMessage,
     addMessageOptimistically,
-    updateMessageStatus,
     clearMessagesError,
     addRealtimeMessage,
     updateRealtimeMessageContent,
@@ -104,43 +103,57 @@ export default function ConversationDetail() {
       const connectSSE = () => {
         const newEventSource = new EventSource(`/api/conversations/${conversationId}/events`);
         eventSourceRef.current = newEventSource;
-        newEventSource.addEventListener('connection_ready', () => { retryCount = 0; });
+        newEventSource.addEventListener('connection_ready', () => { 
+          console.log(`[SSE_LISTENER] Connection Ready for Conv ${conversationId}`);
+          retryCount = 0; 
+        });
         newEventSource.addEventListener('new_message', (event) => {
+          console.log(`[SSE_LISTENER] Received 'new_message' event for Conv ${conversationId}:`, event.data);
           try {
             const messageData = JSON.parse(event.data);
-            if (!messageData.id || processedMessageIds.has(messageData.id)) return;
+            if (!messageData.id || processedMessageIds.has(messageData.id)) {
+               console.log(`[SSE_LISTENER] 'new_message' ignored (missing ID or duplicate): ${messageData.id}`);
+               return;
+            }
             processedMessageIds.add(messageData.id);
             if (processedMessageIds.size > 50) { processedMessageIds.delete(processedMessageIds.values().next().value); }
+            console.log(`[SSE_LISTENER] Calling addRealtimeMessage with:`, messageData);
             addRealtimeMessage(messageData);
-          } catch (error) { console.error("SSE new_message parse error:", error, event.data); }
+          } catch (error) { console.error("[SSE_LISTENER] 'new_message' parse error:", error, event.data); }
         });
         newEventSource.addEventListener('message_content_updated', (event) => {
+           console.log(`[SSE_LISTENER] Received 'message_content_updated' event for Conv ${conversationId}:`, event.data);
            try {
              const payload = JSON.parse(event.data);
              if (payload && payload.id && payload.conversation_id) {
+               console.log(`[SSE_LISTENER] Calling updateRealtimeMessageContent with:`, payload);
                updateRealtimeMessageContent(payload);
-             } else { console.warn("Invalid SSE content update payload", payload); }
-           } catch (error) { console.error("SSE content update parse error:", error, event.data); }
+             } else { console.warn("[SSE_LISTENER] Invalid content update payload", payload); }
+           } catch (error) { console.error("[SSE_LISTENER] content update parse error:", error, event.data); }
         });
         newEventSource.addEventListener('message_status_updated', (event) => {
+           console.log(`[SSE_LISTENER] Received 'message_status_updated' event for Conv ${conversationId}:`, event.data);
            try {
              const payload = JSON.parse(event.data);
              if (payload && payload.messageId && payload.conversation_id && payload.newStatus) {
                // Renomear para messageId para consistência com o contexto
                const statusUpdatePayload = { ...payload, messageId: payload.messageId };
+               console.log(`[SSE_LISTENER] Calling updateRealtimeMessageStatus with:`, statusUpdatePayload);
                updateRealtimeMessageStatus(statusUpdatePayload);
-             } else { console.warn("Invalid SSE status update payload", payload); }
-           } catch (error) { console.error("SSE status update parse error:", error, event.data); }
+             } else { console.warn("[SSE_LISTENER] Invalid status update payload", payload); }
+           } catch (error) { console.error("[SSE_LISTENER] status update parse error:", error, event.data); }
         });
-        newEventSource.addEventListener('error', () => {
-          console.error("SSE Connection Error");
+        newEventSource.addEventListener('error', (errorEvent) => { // Capturar o objeto de erro
+          console.error(`[SSE_LISTENER] SSE Connection Error for Conv ${conversationId}:`, errorEvent);
           if (retryCount < maxRetries) {
             retryCount++;
+            console.log(`[SSE_LISTENER] Retrying SSE connection (Attempt ${retryCount}/${maxRetries}) in ${retryDelay}ms...`);
             newEventSource.close();
             eventSourceRef.current = null;
             setTimeout(connectSSE, retryDelay);
           } else {
-            toast.error('Erro na conexão real-time.');
+             console.error(`[SSE_LISTENER] Max retries reached. Giving up on SSE connection for Conv ${conversationId}.`);
+            toast.error('Erro na conexão real-time. Atualize a página.');
           }
         });
       };
@@ -160,33 +173,13 @@ export default function ConversationDetail() {
     const trimmedMessage = newMessage.trim();
     if (!trimmedMessage || !conversation?.id || !conversation.workspace_id || !conversation.client_id) return;
     
-    const tempMessageId = `temp_${Date.now()}`;
-    const optimisticMessage: Message = {
-        id: tempMessageId,
-        conversation_id: conversation.id,
-        sender_type: 'AGENT', 
-        message_type: 'TEXT', 
-        content: trimmedMessage,
-        status: 'PENDING',
-        timestamp: new Date().toISOString(), 
-        client_id: conversation.client_id, 
-        workspace_id: conversation.workspace_id,
-        llm_summary: null,
-        media_url: null,
-        media_mime_type: null,
-        media_filename: null,
-        provider_message_id: null,
-        metadata: null,
-    };
-    addMessageOptimistically(optimisticMessage);
-    setNewMessage(''); 
+    setNewMessage('');
 
     try {
       await sendManualMessage(conversation.id, trimmedMessage, conversation.workspace_id);
       scrollToBottom('smooth');
     } catch (error) {
-      // Error handled in context
-      console.error('[ConvDetail Send] Error sending message:', error);
+      console.error('[ConvDetail Send] Error sending message (already handled by context):', error);
     }
   };
 
@@ -195,8 +188,6 @@ export default function ConversationDetail() {
     console.log(`[ConvDetail] Tentando salvar cliente ${clientId} com dados:`, updatedData);
     try {
         await updateClient(clientId, updatedData);
-        // ATENÇÃO: Após salvar, precisamos atualizar os dados do cliente no contexto
-        // ou forçar um refetch da conversa/lista para refletir a mudança na UI.
         if (conversation) {
              console.log("[ConvDetail] Refetching conversation data after client update...");
              selectConversation(conversation);
@@ -317,11 +308,11 @@ export default function ConversationDetail() {
          workspaceId={conversation.workspace_id}
          newMessage={newMessage}
          setNewMessage={setNewMessage}
-         handleSendMessage={handleSendMessage} // Pass the send handler
+         handleSendMessage={handleSendMessage}
          isSendingMessage={isSendingMessage}
-         isUploading={false} // Not handled directly here anymore
-         setIsUploading={() => {}} // Placeholder, upload handled inside input area
-         loadingTemplates={false} // Not handled directly here anymore
+         isUploading={false}
+         setIsUploading={() => {}}
+         loadingTemplates={false}
          textareaRef={textareaRef}
          sendMediaMessage={sendMediaMessage}
          sendTemplateMessage={sendTemplateMessage}
@@ -331,7 +322,7 @@ export default function ConversationDetail() {
       <ClientInfoSidebar 
         isOpen={isClientSidebarOpen}
         onClose={() => setIsClientSidebarOpen(false)}
-        clientData={conversation.client} // Passa o objeto client inteiro
+        clientData={conversation.client}
         onSave={handleSaveClient}
         onDelete={handleDeleteClient}
       />

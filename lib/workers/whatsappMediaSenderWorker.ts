@@ -265,11 +265,12 @@ const processor = async (job: Job<MediaJobData>) => {
         },
       });
       // Publicar falha no Redis/SSE
-      await redisConnection.publish(`conversation:${conversation.id}`, JSON.stringify({
+      const conversationChannelFail = `chat-updates:${failedUpdate.conversation_id}`;
+      await redisConnection.publish(conversationChannelFail, JSON.stringify({
         type: 'message_status_updated',
         payload: {
-          messageId: messageId,
-          conversation_id: conversation.id,
+          messageId: failedUpdate.id,
+          conversation_id: failedUpdate.conversation_id,
           newStatus: 'FAILED',
           errorMessage: sendErrorMsg,
            // Include other fields for consistency, even on failure? Maybe not needed.
@@ -311,7 +312,8 @@ const processor = async (job: Job<MediaJobData>) => {
     console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Mensagem ${messageId} atualizada para SENT no DB (content: ${updatedMessage.content}).`);
 
     // 10. Publicar atualização de status no Redis/SSE (INCLUIR media_url e content)
-    await redisConnection.publish(`conversation:${updatedMessage.conversation_id}`, JSON.stringify({
+    const conversationChannel = `chat-updates:${updatedMessage.conversation_id}`;
+    await redisConnection.publish(conversationChannel, JSON.stringify({
       type: 'message_status_updated',
       payload: {
         messageId: updatedMessage.id,
@@ -324,7 +326,7 @@ const processor = async (job: Job<MediaJobData>) => {
         media_filename: updatedMessage.media_filename,
       }
     }));
-    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Evento message_status_updated (SENT) publicado para ${updatedMessage.conversation_id}`);
+    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Evento message_status_updated (SENT) publicado para ${conversationChannel}`);
 
     console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Job ${job.id} para messageId ${messageId} concluído com sucesso.`);
 
@@ -351,7 +353,8 @@ const processor = async (job: Job<MediaJobData>) => {
             });
             // Publicar falha no Redis/SSE
             if (workspaceId && clientPhoneNumber && messageDetails?.conversation?.id) {
-                 await redisConnection.publish(`conversation:${messageDetails.conversation.id}`, JSON.stringify({
+                 const conversationChannelFail = `chat-updates:${messageDetails.conversation.id}`;
+                 await redisConnection.publish(conversationChannelFail, JSON.stringify({
                     type: 'message_status_updated',
                     payload: {
                       messageId: messageId,

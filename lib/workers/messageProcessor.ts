@@ -531,12 +531,12 @@ async function processJob(job: Job<JobData>) {
                         aiDisplayName
                     );
                     console.log(`[MsgProcessor ${jobId}] STEP 9: sendWhatsappMessage call completed.`);
-                    if (sendResult.success && sendResult.messageId) {
-                        console.log(`[MsgProcessor ${jobId}] STEP 9: WhatsApp send SUCCESS. Message ID: ${sendResult.messageId}`);
+                    if (sendResult.success && sendResult.wamid) {
+                        console.log(`[MsgProcessor ${jobId}] STEP 9: WhatsApp send SUCCESS. Message ID: ${sendResult.wamid}`);
                         
                         // <<< LOG DETALHADO ANTES DO UPDATE >>>
                         const updateData = { 
-                            channel_message_id: sendResult.messageId, 
+                            channel_message_id: sendResult.wamid, 
                             status: 'SENT'
                         };
                         console.log(`[MsgProcessor ${jobId}] STEP 9: PREPARING to update message ${newAiMessage.id} with data:`, JSON.stringify(updateData));

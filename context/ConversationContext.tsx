@@ -60,7 +60,7 @@ interface ConversationContextType {
 
     // Action States & Handlers
     isSendingMessage: boolean;
-    sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<Message>;
+    sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<void>;
 
     // Cache Management
     clearMessageCache: (conversationId: string) => void;
@@ -105,6 +105,8 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [isSendingMessage, setIsSendingMessage] = useState(false);
     const [messageCache, setMessageCache] = useState<Record<string, Message[]>>({});
     const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set());
+    // <<< NOVO ESTADO para guardar atualizações de status pendentes >>>
+    const [pendingStatusUpdates, setPendingStatusUpdates] = useState<Record<string, string>>({});
 
     // --- Error/Cache Clear Functions ---
     const clearMessagesError = useCallback(() => setSelectedConversationError(null), []);
@@ -335,50 +337,44 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
     }, [selectedConversation?.id]);
 
-    const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string): Promise<Message> => {
+    // Modify sendManualMessage to remove optimistic updates
+    const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string): Promise<void> => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
-        if (!wsId) throw new Error('Workspace ID é necessário para enviar mensagem.');
-        const tempMessageId = `temp_${Date.now()}`;
-        const optimisticMessage: Message = {
-            id: tempMessageId,
-            conversation_id: conversationId,
-            sender_type: 'AGENT',
-            message_type: 'TEXT',
-            content: content,
-            status: 'PENDING',
-            timestamp: new Date().toISOString(),
-            client_id: selectedConversation?.client_id || '',
-            workspace_id: wsId,
-            llm_summary: null,
-            media_url: null,
-            media_mime_type: null,
-            media_filename: null,
-            provider_message_id: null,
-            metadata: null,
-        };
-        addMessageOptimistically(optimisticMessage);
-        return handleApiCall(
+        if (!wsId) {
+            toast.error('Workspace ID é necessário para enviar mensagem.');
+            throw new Error('Workspace ID é necessário para enviar mensagem.');
+        }
+
+        // Use handleApiCall to make the request and handle loading/error toasts
+        await handleApiCall(
             async () => {
-                console.log(`[ConversationContext] Sending message to Conv ${conversationId}`);
-                const response = await axios.post<{ success: boolean, data: Message, error?: string }>(
+                console.log(`[ConversationContext] Sending message non-optimistically to Conv ${conversationId}`);
+                const response = await axios.post<{ success: boolean; wamid?: string; error?: string }>(
                     `/api/conversations/${conversationId}/messages`,
-                    { content, workspaceId: wsId, senderType: 'AGENT' }
+                    { content, workspaceId: wsId }
                 );
-                if (!response.data.success || !response.data.data) {
-                    throw new Error(response.data.error || 'Falha ao enviar mensagem');
+
+                if (!response.data.success) {
+                    throw new Error(response.data.error || 'Falha ao enviar mensagem para a API');
                 }
-                updateMessageStatus(tempMessageId, response.data.data);
-                return response.data.data;
+
+                console.log(`[ConversationContext] Non-optimistic send API call successful (Wamid: ${response.data.wamid || 'N/A'}). Waiting for webhook update.`);
+                // No action needed here on success, webhook/SSE handles UI update.
             },
-            setIsSendingMessage,
-            setSelectedConversationError,
-            null,
-            undefined
+            setIsSendingMessage, // Manages loading state
+            setSelectedConversationError, // Manages error state
+            
         ).catch(err => {
-            updateMessageStatus(tempMessageId, null, err.message);
-            throw err;
+            // handleApiCall already shows an error toast.
+            // We just need to re-throw the error if calling code needs to handle it.
+            console.error(`[ConversationContext] Error sending non-optimistic message for Conv ${conversationId}:`, err);
+            // No optimistic message to update to FAILED status.
+            // updateMessageStatus(tempMessageId, null, err.message || 'Erro ao enviar');
+            throw err; // Re-throw so the caller knows about the failure
         });
-    }, [workspaceContext, handleApiCall, addMessageOptimistically, updateMessageStatus, selectedConversation?.client_id]);
+
+        // Function now returns void as there's no immediate message object to return
+    }, [workspaceContext, handleApiCall, setIsSendingMessage, setSelectedConversationError]); // Removed optimistic update dependencies
 
     // --- FUNÇÃO: Enviar Mídia >>>
     const sendMediaMessage = useCallback(async (conversationId: string, file: File) => {
@@ -467,40 +463,63 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     // --- Realtime Message Handling (SSE) ---
     const addRealtimeMessage = useCallback((message: Message) => {
-        console.log(`[ConversationContext] addRealtimeMessage received for Conv ${message.conversation_id}, Msg ${message.id}, Status: ${message.status}`, message);
+        console.log(`[CONTEXT_LOG] addRealtimeMessage: Received Msg ID ${message.id} for Conv ${message.conversation_id} with Status ${message.status}`, message);
+
+        // <<< VERIFICAR E APLICAR STATUS PENDENTE ANTES DE ADICIONAR >>>
+        let messageToAdd = { ...message }; // Copiar para modificar
+        const pendingStatus = pendingStatusUpdates[message.id];
+
+        if (pendingStatus) {
+            console.log(`[CONTEXT_LOG] addRealtimeMessage: Found pending status '${pendingStatus}' for Msg ID ${message.id}. Applying.`);
+            messageToAdd.status = pendingStatus;
+            // Remover a entrada do estado pendente APÓS aplicá-la
+            setPendingStatusUpdates(prev => {
+                const newState = { ...prev };
+                delete newState[message.id];
+                console.log(`[CONTEXT_LOG] addRealtimeMessage: Removed pending status for Msg ID ${message.id}. Remaining pending:`, Object.keys(newState));
+                return newState;
+            });
+        } else {
+             console.log(`[CONTEXT_LOG] addRealtimeMessage: No pending status found for Msg ID ${message.id}.`);
+        }
+        // <<< FIM da lógica de status pendente >>>
+        console.log(`[CONTEXT_LOG] addRealtimeMessage: Final messageToAdd for Msg ID ${message.id}:`, messageToAdd);
+
         const updateFn = (msgs: Message[]) => {
             // Avoid duplicates
-            if (msgs.some(m => m.id === message.id)) {
-                console.warn(`[ConversationContext] addRealtimeMessage: Duplicate message ID ${message.id} ignored.`);
+            if (msgs.some(m => m.id === messageToAdd.id)) {
+                console.warn(`[ConversationContext] addRealtimeMessage: Duplicate message ID ${messageToAdd.id} ignored.`);
                 return msgs;
             }
-            return [...msgs, message].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            // Usar messageToAdd (que pode ter o status atualizado)
+            return [...msgs, messageToAdd].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         };
 
         // Update selected conversation messages if it matches
-        if (selectedConversation?.id === message.conversation_id) {
+        if (selectedConversation?.id === messageToAdd.conversation_id) {
             setSelectedConversationMessages(updateFn);
         }
         // Update cache
         setMessageCache(prev => {
-            const currentCached = prev[message.conversation_id] || [];
-            return { ...prev, [message.conversation_id]: updateFn(currentCached) };
+            const currentCached = prev[messageToAdd.conversation_id] || [];
+            // Usar messageToAdd no cache também
+            return { ...prev, [messageToAdd.conversation_id]: updateFn(currentCached) };
         });
 
-        // Update conversation list preview
+        // Update conversation list preview (usar messageToAdd)
         updateOrAddConversationInList({
-          ...message,
-          last_message_timestamp: typeof message.timestamp === 'string'
-            ? message.timestamp
-            : (message.timestamp ? new Date(message.timestamp).toISOString() : undefined)
+          ...messageToAdd,
+          last_message_timestamp: typeof messageToAdd.timestamp === 'string'
+            ? messageToAdd.timestamp
+            : (messageToAdd.timestamp ? new Date(messageToAdd.timestamp).toISOString() : undefined)
         });
 
         // Handle unread count only if the conversation is not selected
-        if (selectedConversation?.id !== message.conversation_id) {
-            setUnreadConversationIds(prev => new Set(prev).add(message.conversation_id));
+        if (selectedConversation?.id !== messageToAdd.conversation_id) {
+            setUnreadConversationIds(prev => new Set(prev).add(messageToAdd.conversation_id));
         }
 
-    }, [selectedConversation?.id, updateOrAddConversationInList]);
+    }, [selectedConversation?.id, updateOrAddConversationInList, pendingStatusUpdates]); // <<< Adicionar pendingStatusUpdates às dependências >>>
 
     const updateRealtimeMessageContent = useCallback((messageData: Partial<Message> & { id: string; conversation_id: string; }) => {
         console.log(`[ConversationContext] updateRealtimeMessageContent for Msg ${messageData.id}`, messageData);
@@ -531,11 +550,14 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         media_mime_type?: string | null;
         media_filename?: string | null;
     }) => {
-        console.log(`[ConversationContext] updateRealtimeMessageStatus for Msg ${data.messageId}, Status: ${data.newStatus}`, data);
+        console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Called for Msg ID ${data.messageId} in Conv ${data.conversation_id} with New Status ${data.newStatus}`, data);
         const { messageId, conversation_id, newStatus, providerMessageId, media_url, content, media_mime_type, media_filename, errorMessage } = data; // Destructure new fields
 
+        let messageFound = false;
         const updateFn = (msgs: Message[]) => msgs.map(msg => {
             if (msg.id === messageId) {
+                console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Found Msg ID ${messageId} in state. Updating status to ${newStatus}.`);
+                messageFound = true; // Marcar que a mensagem foi encontrada na lista atual
                 const updatedMessage = { ...msg, status: newStatus };
                 if (providerMessageId !== undefined) updatedMessage.provider_message_id = providerMessageId;
                 // Apply new fields if they exist in the payload
@@ -553,6 +575,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             return msg;
         });
 
+        // Tentar aplicar a atualização nos estados existentes
         if (selectedConversation?.id === conversation_id) {
             setSelectedConversationMessages(updateFn);
         }
@@ -561,6 +584,29 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             // Ensure cache is updated correctly
             return { ...prev, [conversation_id]: updateFn(currentCached) };
         });
+
+        // <<< LÓGICA PARA GUARDAR STATUS PENDENTE SE NÃO ENCONTRADO >>>
+        if (!messageFound) {
+            console.warn(`[CONTEXT_LOG] updateRealtimeMessageStatus: Msg ID ${messageId} NOT FOUND in current state. Adding status '${newStatus}' to pending updates.`);
+            setPendingStatusUpdates(prev => {
+                 const newState = { ...prev, [messageId]: newStatus };
+                 console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Updated pending status. New pending:`, Object.keys(newState));
+                 return newState;
+            });
+        } else {
+             // Se a mensagem foi encontrada e atualizada, remover qualquer status pendente para ela
+             setPendingStatusUpdates(prev => {
+                 if (prev[messageId]) {
+                     console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Removing pending status for Msg ID ${messageId} as it was just updated.`);
+                     const newState = { ...prev };
+                     delete newState[messageId];
+                     console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Remaining pending after removal:`, Object.keys(newState));
+                     return newState;
+                 }
+                 return prev;
+             });
+        }
+        // <<< FIM da lógica de status pendente >>>
 
         // Also update the last message preview in the conversation list if this message is the latest one
          setConversations(prevConvs => prevConvs.map(conv => {
@@ -625,7 +671,8 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         unreadConversationIds, setUnreadConversationIds,
         // <<< Adicionar novas funções como dependências >>>
         sendMediaMessage, sendTemplateMessage,
-        selectConversation, fetchConversationMessages
+        // <<< Adicionar pendingStatusUpdates como dependência se usado em useMemo? Sim. >>>
+        pendingStatusUpdates // Adicionar pendingStatusUpdates como dependência do useMemo
     ]);
 
     return (

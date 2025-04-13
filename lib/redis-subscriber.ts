@@ -151,6 +151,7 @@ sharedSubscriber.on('message', (channel, message) => {
             // Envia para todos os controllers registrados para este canal
             controllers.forEach(controller => {
                 try {
+                    console.log(`[Shared Redis Subscriber SENDING] Attempting to enqueue for controller on channel ${channel}. Event type: ${eventType}`);
                     controller.enqueue(encodedMessage);
                 } catch (enqueueError: any) {
                     console.error(`[Shared Redis Subscriber] Erro ao enfileirar mensagem para um controller de ${channel}:`, enqueueError.message);
