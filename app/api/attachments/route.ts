@@ -10,6 +10,7 @@ import { ConversationStatus, MessageSenderType } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import type { Role } from '@/lib/permissions';
 import { whatsappOutgoingMediaQueue, WHATSAPP_OUTGOING_MEDIA_QUEUE } from '@/lib/queues/whatsappOutgoingMediaQueue';
+import { redisConnection } from '@/lib/redis';
 
 // Define allowed MIME types and max size (e.g., 16MB for WhatsApp images/videos)
 const MAX_FILE_SIZE_MB = 16;
@@ -162,7 +163,7 @@ export async function POST(req: NextRequest) {
               id: conversationId
             }
           },
-          sender_type: MessageSenderType.SYSTEM, // Marcando como AI ou SYSTEM?
+          sender_type: MessageSenderType.AGENT, // Usar AGENT para consistência com envio manual
           content: prefixedContent,
           media_url: fileUrl,        // Corrigido: Salvar URL aqui
           media_mime_type: file.type, // Corrigido: Salvar MIME type aqui
@@ -184,7 +185,9 @@ export async function POST(req: NextRequest) {
         select: { // Selecionar todos os campos necessários para retorno e UI
           id: true, conversation_id: true, sender_type: true, content: true, timestamp: true,
           channel_message_id: true, metadata: true, media_url: true, media_mime_type: true,
-          media_filename: true, status: true, providerMessageId: true, sentAt: true, errorMessage: true
+          media_filename: true, status: true, providerMessageId: true, sentAt: true, errorMessage: true,
+          // <<< ADICIONAR message_type AO SELECT se foi adicionado ao schema >>>
+          // message_type: true, 
         }
       });
       console.log(`Attachments API: Message record created (ID: ${newMessage.id}) with prefixed content.`);
@@ -200,6 +203,33 @@ export async function POST(req: NextRequest) {
         console.error(`Attachments API: Failed to add job to queue ${WHATSAPP_OUTGOING_MEDIA_QUEUE} for message ${newMessage.id}:`, queueError);
         // Continuar mesmo se falhar ao enfileirar? Ou retornar erro? 
         // Por enquanto, loga o erro mas retorna sucesso do upload/save.
+      }
+
+      // <<< PUBLICAR MENSAGEM NO REDIS/SSE (APÓS ENFILEIRAR) >>>
+      try {
+        // Canal da Conversa
+        const conversationChannel = `chat-updates:${conversationId}`;
+        const redisPayload = {
+            type: 'new_message',
+            payload: newMessage // Envia o objeto completo da mensagem criada
+        };
+        await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
+        console.log(`Attachments API: Published new_message to CONVERSATION channel ${conversationChannel}.`);
+
+        // Canal do Workspace (opcional)
+        const workspaceChannel = `workspace-updates:${workspaceId}`;
+        const workspacePayload = {
+            type: 'new_message', 
+            conversationId: conversationId,
+            lastMessageTimestamp: newMessage.timestamp.toISOString(),
+            // incluir outros dados se necessário
+        };
+        await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+        console.log(`Attachments API: Published notification to WORKSPACE channel ${workspaceChannel}.`);
+
+      } catch (publishError) {
+          console.error(`Attachments API: Error publishing message ${newMessage.id} to Redis:`, publishError);
+          // Não falhar a requisição por erro no Redis, apenas logar.
       }
 
       // Return the created message object (or a subset of it)

@@ -34,12 +34,17 @@ const getActiveWorkspaceId = (workspaceCtx: any, providedId?: string): string | 
 
 // --- Context Type Definition (Renomeado) ---
 interface ConversationContextType {
+    // Função para enviar mídia (File object)
+    sendMediaMessage: (conversationId: string, file: File) => Promise<void>; // Retorna void pois a atualização vem via SSE
+    // Função para enviar template (objeto com dados do template)
+    sendTemplateMessage: (conversationId: string, templateData: any) => Promise<void>; // Retorna void, atualização via SSE
+
     // Conversation List State & Actions
     conversations: ClientConversation[];
     loadingConversations: boolean;
     conversationsError: string | null;
     fetchConversations: (filter: string, workspaceId?: string) => Promise<void>;
-    updateOrAddConversationInList: (eventData: any) => void;
+    updateOrAddConversationInList: (messageData: Message & { last_message_timestamp?: string }) => void;
 
     // Selected Conversation State & Actions
     selectedConversation: ClientConversation | null;
@@ -63,7 +68,17 @@ interface ConversationContextType {
     // SSE related
     addRealtimeMessage: (message: Message) => void;
     updateRealtimeMessageContent: (messageData: Partial<Message> & { id: string; conversation_id: string; }) => void;
-    updateRealtimeMessageStatus: (data: { messageId: string; conversation_id: string; newStatus: string; providerMessageId?: string | null; errorMessage?: string | null; }) => void;
+    updateRealtimeMessageStatus: (data: {
+        messageId: string;
+        conversation_id: string;
+        newStatus: string;
+        providerMessageId?: string | null;
+        errorMessage?: string | null;
+        media_url?: string | null;
+        content?: string | null;
+        media_mime_type?: string | null;
+        media_filename?: string | null;
+    }) => void;
 
     // Unread Notifications
     unreadConversationIds: Set<string>;
@@ -79,6 +94,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     // --- State (Simplified) ---
     const [conversations, setConversations] = useState<ClientConversation[]>([]);
+    const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const [loadingConversations, setLoadingConversations] = useState(false);
     const [conversationsError, setConversationsError] = useState<string | null>(null);
     const [selectedConversation, setSelectedConversation] = useState<ClientConversation | null>(null);
@@ -101,7 +117,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         });
     }, []);
 
-    // --- API Call Utility ---
+    // --- API Call Utility (Mantido, pois sendManualMessage usa) ---
     const handleApiCall = useCallback(async <T,>(
         apiCall: () => Promise<T>,
         setLoading: React.Dispatch<React.SetStateAction<boolean>>,
@@ -130,6 +146,14 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             setLoading(false);
         }
     }, []);
+
+    // --- FUNÇÃO HELPER para tipo de mídia ---
+    const getMessageTypeFromMime = (mimeType: string): string => {
+        if (mimeType.startsWith('image/')) return 'IMAGE';
+        if (mimeType.startsWith('video/')) return 'VIDEO';
+        if (mimeType.startsWith('audio/')) return 'AUDIO';
+        return 'DOCUMENT'; // Default
+    };
 
     // --- Fetch Messages ---
     const fetchConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
@@ -231,25 +255,54 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, [workspaceContext, selectedConversation, selectConversation]);
 
     // --- Update/Add Conversation in List (for SSE) ---
-    const updateOrAddConversationInList = useCallback((eventData: any) => {
-        console.log("[ConversationContext] updateOrAddConversationInList called with:", eventData);
+    const updateOrAddConversationInList = useCallback((messageData: Message & { last_message_timestamp?: string }) => {
+        console.log("[ConversationContext] updateOrAddConversationInList called with message:", messageData);
+        if (!messageData || !messageData.conversation_id) {
+            console.warn("[ConversationContext] updateOrAddConversationInList: Invalid message data received.", messageData);
+            return;
+        }
+
         setConversations(prev => {
-            const existingIndex = prev.findIndex(c => c.id === eventData.id);
+            const conversationId = messageData.conversation_id;
+            const existingIndex = prev.findIndex(c => c.id === conversationId);
+
             let newList = [...prev];
+
             if (existingIndex !== -1) {
-                newList[existingIndex] = { ...newList[existingIndex], ...eventData };
-                console.log(`Updated conversation ${eventData.id} in list.`);
+                // Conversa EXISTE: Atualizar dados relevantes e mover para o topo
+                const existingConvo = newList[existingIndex];
+                const updatedConvo = {
+                    ...existingConvo,
+                    last_message: messageData, // Atualizar o objeto last_message inteiro
+                    // Reaplicar a conversão para string ISO ou null
+                    last_message_timestamp: messageData.timestamp ? new Date(messageData.timestamp).toISOString() : null,
+                };
+                // Remover da posição antiga e adicionar no início
+                newList.splice(existingIndex, 1);
+                newList.unshift(updatedConvo);
+                console.log(`[ConversationContext] Updated and moved conversation ${conversationId} to top.`);
             } else {
-                newList.unshift(eventData);
-                console.log(`Added new conversation ${eventData.id} to list.`);
+                // Conversa NÃO EXISTE: Disparar fetchConversations para buscar a lista atualizada
+                console.warn(`[ConversationContext] New conversation detected (ID: ${conversationId}) from incoming message. Triggering fetchConversations.`);
+                // Não adicionar item parcial. A lista será atualizada pela busca.
+                // Chamada assíncrona, não precisa de await aqui pois só dispara
+                fetchConversations();
+                // Retorna a lista anterior inalterada por enquanto, será substituída pelo fetch.
+                return prev;
             }
             return newList;
         });
-        if (selectedConversation?.id !== eventData.id && eventData.last_message_sender !== 'AGENT' && eventData.last_message_sender !== 'AUTOMATION') {
-            setUnreadConversationIds(prev => new Set(prev).add(eventData.id));
-            console.log(`Marked conversation ${eventData.id} as unread.`);
+
+        // Lógica de não lidos - Sempre marcar como não lido se não estiver selecionada
+        if (selectedConversation?.id !== messageData.conversation_id) {
+            setUnreadConversationIds(prev => {
+                const newSet = new Set(prev);
+                newSet.add(messageData.conversation_id);
+                return newSet;
+            });
+            console.log(`Marked conversation ${messageData.conversation_id} as unread.`);
         }
-    }, [selectedConversation?.id]);
+    }, [selectedConversation?.id, fetchConversations]); // Adicionar fetchConversations como dependência
 
     // --- Message Actions ---
     const addMessageOptimistically = useCallback((message: Message) => {
@@ -327,88 +380,197 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         });
     }, [workspaceContext, handleApiCall, addMessageOptimistically, updateMessageStatus, selectedConversation?.client_id]);
 
+    // --- FUNÇÃO: Enviar Mídia >>>
+    const sendMediaMessage = useCallback(async (conversationId: string, file: File) => {
+        const wsId = getActiveWorkspaceId(workspaceContext);
+        if (!wsId || !selectedConversation?.client_id) {
+            toast.error('Workspace ou Cliente não selecionado para enviar mídia.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('conversationId', conversationId);
+        formData.append('workspaceId', wsId);
+
+        console.log(`[ConversationContext] Sending media for Conv ${conversationId}: ${file.name}`);
+        // Mostrar um loading geral ou no botão enquanto a API é chamada?
+        const toastId = toast.loading(`Enviando ${file.name}...`);
+
+        try {
+            const response = await axios.post<{ success: boolean, data?: Message, error?: string }>(
+                '/api/attachments',
+                formData,
+                { headers: { 'Content-Type': 'multipart/form-data' } }
+            );
+            toast.dismiss(toastId);
+            if (!response.data.success) {
+                throw new Error(response.data.error || 'Falha ao iniciar upload do anexo');
+            }
+            console.log(`[ConversationContext] Media API call successful for ${file.name}. Waiting for SSE update...`);
+            // Mensagem real virá via SSE (`new_message` e depois `message_status_updated`)
+            toast.success(`${file.name} enviado para processamento.`);
+        } catch (error: any) {
+            toast.dismiss(toastId);
+            console.error("[ConversationContext] Erro ao enviar anexo via API:", error);
+            const message = error.response?.data?.error || error.message || 'Erro ao enviar anexo.';
+            // Não há mensagem otimista para atualizar para FAILED.
+            // Apenas mostrar erro.
+            toast.error(`Falha ao enviar ${file.name}: ${message}`);
+        } finally {
+           // setIsUploadingMedia(false); // Remover se o estado for removido
+        }
+    }, [workspaceContext, selectedConversation /* remover addMessageOptimistically e updateMessageStatus se não forem mais usados em outro lugar*/]);
+
+    // <<< FUNÇÃO: Enviar Template >>>
+    const sendTemplateMessage = useCallback(async (conversationId: string, templateData: any) => {
+        const wsId = getActiveWorkspaceId(workspaceContext);
+        if (!wsId) {
+            toast.error('Workspace ID não encontrado para enviar template.');
+            return;
+        }
+        const templateName = templateData.name || 'template_desconhecido';
+
+        console.log(`[ConversationContext] Sending template for Conv ${conversationId}:`, templateData);
+
+        // Montar payload para a API
+        const payload = {
+            workspaceId: wsId,
+            templateName: templateData.name,
+            languageCode: templateData.language, // Assumindo que templateData tem 'language'
+            variables: templateData.variables || {}, // Assumindo que templateData tem 'variables'
+        };
+
+        try {
+            const response = await axios.post(
+                `/api/conversations/${conversationId}/send-template`,
+                payload
+            );
+
+            if (!response.data.success) {
+                throw new Error(response.data.error || 'Falha ao enviar template');
+            }
+
+            console.log(`[ConversationContext] Template API call successful for Conv ${conversationId}. Message will arrive via SSE.`);
+            // Não adicionamos mensagem otimista, esperamos o SSE com a mensagem real criada pelo backend.
+            // Podemos mostrar um toast de sucesso aqui se desejado, mas o SSE é a confirmação final.
+            // toast.success(`Template ${templateName} enviado!`);
+
+        } catch (error: any) {
+             console.error("[ConversationContext] Erro ao enviar template:", error);
+            const message = error.response?.data?.error || error.message || 'Erro ao enviar template.';
+            // Não há mensagem otimista para atualizar o status para FAILED.
+            // Apenas mostramos o erro.
+            toast.error(`Falha ao enviar template: ${message}`);
+        }
+    }, [workspaceContext]); // Remover dependências otimistas
+
     // --- Realtime Message Handling (SSE) ---
     const addRealtimeMessage = useCallback((message: Message) => {
-        if (!message || !message.conversation_id) {
-             console.warn('[ConversationContext] Ignorando mensagem SSE inválida ou sem ID de conversa:', message);
-             return;
-         }
+        console.log(`[ConversationContext] addRealtimeMessage received for Conv ${message.conversation_id}, Msg ${message.id}, Status: ${message.status}`, message);
+        const updateFn = (msgs: Message[]) => {
+            // Avoid duplicates
+            if (msgs.some(m => m.id === message.id)) {
+                console.warn(`[ConversationContext] addRealtimeMessage: Duplicate message ID ${message.id} ignored.`);
+                return msgs;
+            }
+            return [...msgs, message].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        };
+
+        // Update selected conversation messages if it matches
         if (selectedConversation?.id === message.conversation_id) {
-            setSelectedConversationMessages(prev => {
-                 if (prev.some(m => m.id === message.id)) {
-                     return prev;
-                 }
-                return [...prev, message];
-            });
+            setSelectedConversationMessages(updateFn);
         }
-        setMessageCache(prevCache => {
-            const currentMessages = prevCache[message.conversation_id] || [];
-             if (currentMessages.some(m => m.id === message.id)) {
-                 return prevCache;
-             }
-            return {
-                ...prevCache,
-                [message.conversation_id]: [...currentMessages, message]
-            };
+        // Update cache
+        setMessageCache(prev => {
+            const currentCached = prev[message.conversation_id] || [];
+            return { ...prev, [message.conversation_id]: updateFn(currentCached) };
         });
-        if (selectedConversation?.id !== message.conversation_id && message.sender_type !== 'AGENT' && message.sender_type !== 'AUTOMATION') {
+
+        // Update conversation list preview
+        updateOrAddConversationInList({
+          ...message,
+          last_message_timestamp: typeof message.timestamp === 'string'
+            ? message.timestamp
+            : (message.timestamp ? new Date(message.timestamp).toISOString() : undefined)
+        });
+
+        // Handle unread count only if the conversation is not selected
+        if (selectedConversation?.id !== message.conversation_id) {
             setUnreadConversationIds(prev => new Set(prev).add(message.conversation_id));
         }
-    }, [selectedConversation?.id]);
 
-    const updateRealtimeMessageContent = useCallback((messageData: Partial<Message> & { id: string; conversation_id: string }) => {
-        if (!messageData || !messageData.id || !messageData.conversation_id) {
-            console.warn('[ConversationContext] Ignorando atualização SSE inválida (sem ID ou conversation_id):', messageData);
-            return;
-        }
-        const { id, conversation_id, ...updates } = messageData;
+    }, [selectedConversation?.id, updateOrAddConversationInList]);
+
+    const updateRealtimeMessageContent = useCallback((messageData: Partial<Message> & { id: string; conversation_id: string; }) => {
+        console.log(`[ConversationContext] updateRealtimeMessageContent for Msg ${messageData.id}`, messageData);
+        // Remove id and conversation_id as they are not part of the Message type fields to update directly
+        const { id, conversation_id, ...updateFields } = messageData;
 
         const updateFn = (msgs: Message[]) => msgs.map(msg =>
-             msg.id === id ? { ...msg, ...updates, updated_at: new Date().toISOString() } : msg
-         );
+            msg.id === id ? { ...msg, ...updateFields } : msg
+        );
 
         if (selectedConversation?.id === conversation_id) {
-             setSelectedConversationMessages(updateFn);
+            setSelectedConversationMessages(updateFn);
         }
-        setMessageCache(prevCache => {
-            const currentMessages = prevCache[conversation_id] || [];
-            if (currentMessages.some(m => m.id === id)) {
-                return { ...prevCache, [conversation_id]: updateFn(currentMessages) };
-            }
-            return prevCache;
+        setMessageCache(prev => {
+            const currentCached = prev[conversation_id] || [];
+            return { ...prev, [conversation_id]: updateFn(currentCached) };
         });
     }, [selectedConversation?.id]);
 
-    const updateRealtimeMessageStatus = useCallback((data: { messageId: string; conversation_id: string; newStatus: string; providerMessageId?: string | null; errorMessage?: string | null; }) => {
-        if (!data || !data.messageId || !data.conversation_id || !data.newStatus) {
-            console.warn('[ConversationContext] Ignorando atualização de status SSE inválida:', data);
-            return;
-        }
-        const { messageId, conversation_id, newStatus, providerMessageId, errorMessage } = data;
+    const updateRealtimeMessageStatus = useCallback((data: {
+        messageId: string;
+        conversation_id: string;
+        newStatus: string;
+        providerMessageId?: string | null;
+        errorMessage?: string | null;
+        media_url?: string | null;
+        content?: string | null;
+        media_mime_type?: string | null;
+        media_filename?: string | null;
+    }) => {
+        console.log(`[ConversationContext] updateRealtimeMessageStatus for Msg ${data.messageId}, Status: ${data.newStatus}`, data);
+        const { messageId, conversation_id, newStatus, providerMessageId, media_url, content, media_mime_type, media_filename, errorMessage } = data; // Destructure new fields
 
         const updateFn = (msgs: Message[]) => msgs.map(msg => {
             if (msg.id === messageId) {
-                return {
-                     ...msg,
-                     status: newStatus,
-                     ...(providerMessageId && { provider_message_id: providerMessageId }),
-                     ...(errorMessage && { metadata: { ...(msg.metadata || {}), errorMessage: errorMessage } }),
-                     updated_at: new Date().toISOString()
-                };
+                const updatedMessage = { ...msg, status: newStatus };
+                if (providerMessageId !== undefined) updatedMessage.provider_message_id = providerMessageId;
+                // Apply new fields if they exist in the payload
+                if (media_url !== undefined) updatedMessage.media_url = media_url;
+                if (content !== undefined) updatedMessage.content = content; // Update content (e.g., remove "[Sending...]")
+                if (media_mime_type !== undefined) updatedMessage.media_mime_type = media_mime_type;
+                if (media_filename !== undefined) updatedMessage.media_filename = media_filename;
+                if (errorMessage !== undefined) updatedMessage.metadata = { ...(updatedMessage.metadata || {}), error: errorMessage };
+                 if (newStatus === 'FAILED' && errorMessage) {
+                     updatedMessage.content = `Falha ao enviar: ${errorMessage}`; // Optionally update content on failure
+                 }
+
+                return updatedMessage;
             }
             return msg;
         });
 
         if (selectedConversation?.id === conversation_id) {
-             setSelectedConversationMessages(updateFn);
-         }
-        setMessageCache(prevCache => {
-            const currentMessages = prevCache[conversation_id] || [];
-            if (currentMessages.some(m => m.id === messageId)) {
-                return { ...prevCache, [conversation_id]: updateFn(currentMessages) };
-            }
-            return prevCache;
+            setSelectedConversationMessages(updateFn);
+        }
+        setMessageCache(prev => {
+            const currentCached = prev[conversation_id] || [];
+            // Ensure cache is updated correctly
+            return { ...prev, [conversation_id]: updateFn(currentCached) };
         });
+
+        // Also update the last message preview in the conversation list if this message is the latest one
+         setConversations(prevConvs => prevConvs.map(conv => {
+             if (conv.id === conversation_id && conv.last_message?.id === messageId) {
+                 // Return a new object to trigger re-render if necessary
+                 return { ...conv, last_message_status: newStatus };
+             }
+             return conv;
+         }));
+
 
     }, [selectedConversation?.id]);
 
@@ -447,7 +609,11 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
         // Unread
         unreadConversationIds,
-        setUnreadConversationIds
+        setUnreadConversationIds,
+
+        // New functions
+        sendMediaMessage: sendMediaMessage,
+        sendTemplateMessage: sendTemplateMessage,
 
     // Dependencies based on provided values
     }), [
@@ -457,6 +623,8 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         clearMessageCache,
         addRealtimeMessage, updateRealtimeMessageContent, updateRealtimeMessageStatus,
         unreadConversationIds, setUnreadConversationIds,
+        // <<< Adicionar novas funções como dependências >>>
+        sendMediaMessage, sendTemplateMessage,
         selectConversation, fetchConversationMessages
     ]);
 

@@ -249,152 +249,140 @@ const processor = async (job: Job<MediaJobData>) => {
       messageType: messageType,
     });
 
-    // 9. Processar o resultado final do envio
-    if (sendResult.success) {
-      console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Mensagem com Media ID ${mediaId} enviada com sucesso para ${recipientPhoneNumber}. Provider ID: ${sendResult.messageId}`);
-      // <<< ATUALIZAR e OBTER DADOS da mensagem para publicar >>>
-      const updatedMessage = await prisma.message.update({
+    if (!sendResult.success || !sendResult.wamid) {
+      const sendErrorMsg = sendResult.error?.message || 'Erro desconhecido ao enviar mensagem via Meta.';
+      console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Falha ao enviar mensagem: ${sendErrorMsg}`);
+      // Atualizar status para FAILED
+       const failedUpdate = await prisma.message.update({
         where: { id: messageId },
         data: {
-          status: "SENT",
-          providerMessageId: sendResult.messageId,
-          sentAt: new Date(),
-          errorMessage: null,
+          status: 'FAILED',
+          metadata: {
+            ...(message.metadata as object || {}),
+            error: sendErrorMsg,
+            failed_at: new Date().toISOString(),
+          },
         },
-        // <<< SELECIONAR dados para publicar >>>
-        select: {
-            id: true,
-            conversation_id: true, // Necessário para o canal Redis
-            status: true,
-            providerMessageId: true,
-        }
       });
-      console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} atualizado para SENT.`);
-
-      // <<< PUBLICAR ATUALIZAÇÃO DE STATUS (SUCESSO) >>>
-      if (updatedMessage.conversation_id) { // Verificar se temos o ID da conversa
-          const conversationChannel = `chat-updates:${updatedMessage.conversation_id}`;
-          const statusPayload = {
-              type: 'message_status_updated',
-              payload: {
-                  messageId: updatedMessage.id,
-                  newStatus: updatedMessage.status as 'SENT',
-                  providerMessageId: updatedMessage.providerMessageId,
-                  timestamp: new Date().toISOString(),
-              }
-          };
-          await redisConnection.publish(conversationChannel, JSON.stringify(statusPayload));
-          console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Publicado status SENT para ${updatedMessage.id} em ${conversationChannel}`);
-      } else {
-           console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Não foi possível publicar status SENT para msg ${messageId} pois conversation_id não foi encontrado após update.`);
-      }
-
-    } else {
-      const errorMessage = typeof sendResult.error?.message === 'string' ? sendResult.error.message : 'Erro desconhecido no envio final';
-      console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Falha ao enviar mensagem com Media ID ${mediaId} para ${recipientPhoneNumber}. Erro: ${errorMessage}`);
-      // Não lançar erro aqui necessariamente, apenas atualiza o status da msg
-      const updatedMessage = await prisma.message.update({ // <<< ATUALIZAR e OBTER DADOS da mensagem para publicar >>>
-            where: { id: messageId },
-            data: {
-              status: "FAILED",
-              errorMessage: errorMessage.substring(0, 255),
-            },
-            // <<< SELECIONAR dados para publicar >>>
-             select: {
-                id: true,
-                conversation_id: true, // Necessário para o canal Redis
-                status: true,
-                errorMessage: true
-            }
-       });
-       console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} atualizado para FAILED.`);
-
-       // <<< PUBLICAR ATUALIZAÇÃO DE STATUS (FALHA NO ENVIO FINAL) >>>
-        if (updatedMessage.conversation_id) { // Verificar se temos o ID da conversa
-            const conversationChannel = `chat-updates:${updatedMessage.conversation_id}`;
-            const statusPayload = {
-                type: 'message_status_updated',
-                payload: {
-                    messageId: updatedMessage.id,
-                    newStatus: updatedMessage.status as 'FAILED',
-                    errorMessage: updatedMessage.errorMessage,
-                    timestamp: new Date().toISOString(),
-                }
-            };
-            await redisConnection.publish(conversationChannel, JSON.stringify(statusPayload));
-            console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Publicado status FAILED (send error) para ${updatedMessage.id} em ${conversationChannel}`);
-        } else {
-             console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Não foi possível publicar status FAILED para msg ${messageId} pois conversation_id não foi encontrado após update.`);
+      // Publicar falha no Redis/SSE
+      await redisConnection.publish(`conversation:${conversation.id}`, JSON.stringify({
+        type: 'message_status_updated',
+        payload: {
+          messageId: messageId,
+          conversation_id: conversation.id,
+          newStatus: 'FAILED',
+          errorMessage: sendErrorMsg,
+           // Include other fields for consistency, even on failure? Maybe not needed.
         }
-
-       // Lançar erro para que o BullMQ registre a falha do job
-       throw new Error(`Falha no envio final da mídia (Media ID: ${mediaId}): ${errorMessage}`);
+      }));
+      throw new Error(`Falha ao enviar mensagem WhatsApp: ${sendErrorMsg}`);
     }
 
-  } catch (error: any) { // <<< Garantir que error seja 'any' ou 'unknown'
-    // Log aprimorado com mais contexto
-    console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Erro processando job ${job?.id} para messageId: ${messageId} (Workspace: ${workspaceId}, Cliente: ${clientPhoneNumber}):`, error.message);
-    console.error("Detalhes da Mensagem (se disponíveis):", JSON.stringify(messageDetails, null, 2)); // Logar detalhes da msg no erro
-    console.error("Stack do Erro:", error.stack); // <<< Adicionar log do stack trace
+    const wamid = sendResult.wamid;
+    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Mensagem enviada com sucesso. WAMID: ${wamid}`);
 
-    // Atualiza status da mensagem para FAILED se ainda não foi atualizado
-     try {
-        // Verifica se a mensagem já foi marcada como falha para evitar update desnecessário
-        const currentMessage = await prisma.message.findUnique({ 
-             where: { id: messageId }, 
-             // <<< SELECIONAR conversation_id para publicar no canal correto >>>
-             select: { status: true, conversation_id: true } 
-        });
+    // 9. Atualizar mensagem no banco para SENT
+    const updatedMessage = await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        status: 'SENT',
+        providerMessageId: wamid,
+        // Atualizar o content para o caption original ou null se não houver caption
+        content: caption || null,
+        // Se houve conversão, atualizamos os dados da mídia
+        ...(needsConversion && {
+            media_mime_type: finalMimeType,
+            media_filename: finalFilename,
+            // A URL do S3 continua a mesma, mas o conteúdo no S3 é o original.
+            // Se precisássemos da URL do arquivo convertido, teríamos que fazer upload dele.
+        })
+      },
+       select: {
+           id: true,
+           conversation_id: true,
+           status: true,
+           providerMessageId: true,
+           media_url: true,
+           content: true,
+           media_mime_type: true,
+           media_filename: true,
+       }
+    });
+    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Mensagem ${messageId} atualizada para SENT no DB (content: ${updatedMessage.content}).`);
 
-        if (currentMessage && currentMessage.status !== "FAILED" && currentMessage.conversation_id) { // Verifica se currentMessage não é null E TEM conversation_id
-            const updatedMessage = await prisma.message.update({
+    // 10. Publicar atualização de status no Redis/SSE (INCLUIR media_url e content)
+    await redisConnection.publish(`conversation:${updatedMessage.conversation_id}`, JSON.stringify({
+      type: 'message_status_updated',
+      payload: {
+        messageId: updatedMessage.id,
+        conversation_id: updatedMessage.conversation_id,
+        newStatus: 'SENT',
+        providerMessageId: updatedMessage.providerMessageId,
+        media_url: updatedMessage.media_url,
+        content: updatedMessage.content,
+        media_mime_type: updatedMessage.media_mime_type,
+        media_filename: updatedMessage.media_filename,
+      }
+    }));
+    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Evento message_status_updated (SENT) publicado para ${updatedMessage.conversation_id}`);
+
+    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Job ${job.id} para messageId ${messageId} concluído com sucesso.`);
+
+  } catch (error: any) {
+    console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Erro CRÍTICO no job ${job?.id} para messageId ${messageId}:`, error);
+    console.error(`Detalhes da mensagem no erro:`, messageDetails); // Log message details on error
+
+    // Tentativa de atualizar status para FAILED se ainda não foi feito
+    if (messageId) {
+      try {
+         const currentMessage = await prisma.message.findUnique({ where: { id: messageId }, select: { status: true } });
+         if (currentMessage && currentMessage.status !== 'FAILED') {
+            const errorMsgForDb = error.message || 'Erro desconhecido no worker.';
+            await prisma.message.update({
                 where: { id: messageId },
                 data: {
-                  status: "FAILED",
-                  errorMessage: (error.message || 'Erro inesperado no worker').substring(0, 255),
+                  status: 'FAILED',
+                  metadata: {
+                    ...(messageDetails?.metadata as object || {}),
+                    error: errorMsgForDb,
+                    failed_at: new Date().toISOString(),
+                  },
                 },
-                // <<< SELECIONAR dados para publicar >>>
-                select: {
-                    id: true,
-                    conversation_id: true, // <<< ADICIONAR AQUI TAMBÉM
-                    status: true,
-                    errorMessage: true
-                }
-              });
-             console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} atualizado para FAILED devido ao erro.`);
-
-             // <<< PUBLICAR ATUALIZAÇÃO DE STATUS (FALHA) >>>
-             const conversationChannel = `chat-updates:${updatedMessage.conversation_id}`; // Usa o ID da conversa do updatedMessage
-             const statusPayload = {
-                 type: 'message_status_updated',
-                 payload: {
-                    messageId: updatedMessage.id,
-                    newStatus: updatedMessage.status as 'FAILED',
-                    errorMessage: updatedMessage.errorMessage,
-                    timestamp: new Date().toISOString(),
-                 }
-             };
-             await redisConnection.publish(conversationChannel, JSON.stringify(statusPayload));
-             console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Publicado status FAILED (catch error) para ${updatedMessage.id} em ${conversationChannel}`);
-
-        } else if (!currentMessage) {
-             console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Mensagem ${messageId} não encontrada ao tentar atualizar status para FAILED.`);
-        }
-    } catch (updateError: any) {
-        console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Falha CRÍTICA ao tentar atualizar status da mensagem ${messageId} para FAILED após erro:`, updateError.message);
-    } finally {
-        // <<< Limpeza final dos arquivos temporários em caso de erro >>>
-        if (tempInputPath) {
-            try { await fs.unlink(tempInputPath); }
-            catch (unlinkError:any) { console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Aviso (Error Cleanup): Falha ao remover arquivo temporário de entrada ${tempInputPath}: ${unlinkError.message}`); }
-        }
-        if (tempOutputPath) {
-             try { await fs.unlink(tempOutputPath); }
-             catch (unlinkError:any) { console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Aviso (Error Cleanup): Falha ao remover arquivo temporário de saída ${tempOutputPath}: ${unlinkError.message}`); }
-        }
+            });
+            // Publicar falha no Redis/SSE
+            if (workspaceId && clientPhoneNumber && messageDetails?.conversation?.id) {
+                 await redisConnection.publish(`conversation:${messageDetails.conversation.id}`, JSON.stringify({
+                    type: 'message_status_updated',
+                    payload: {
+                      messageId: messageId,
+                      conversation_id: messageDetails.conversation.id,
+                      newStatus: 'FAILED',
+                      errorMessage: errorMsgForDb,
+                    }
+                }));
+                console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} atualizado para FAILED (catch geral) e evento publicado.`);
+            } else {
+                 console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Não foi possível publicar evento FAILED (catch geral) por falta de dados.`);
+            }
+         } else {
+             console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} já era FAILED ou mensagem não encontrada.`);
+         }
+      } catch (updateError: any) {
+        console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Falha ao tentar atualizar msg ${messageId} para FAILED no bloco catch: ${updateError.message}`);
+      }
     }
-    // Re-throw para que o BullMQ marque o job como falhado
+    // Rethrow para que BullMQ saiba que o job falhou
     throw error;
+  } finally {
+     // Limpeza final de arquivos temporários caso um erro ocorra após a criação e antes do finally no bloco de conversão
+     if (tempInputPath) {
+         try { await fs.unlink(tempInputPath); console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Arquivo temporário de entrada removido (finally): ${tempInputPath}`); }
+         catch (unlinkError:any) { console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Aviso: Falha ao remover arquivo temporário de entrada (finally) ${tempInputPath}: ${unlinkError.message}`); }
+     }
+     if (tempOutputPath) {
+          try { await fs.unlink(tempOutputPath); console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Arquivo temporário de saída removido (finally): ${tempOutputPath}`); }
+          catch (unlinkError:any) { console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Aviso: Falha ao remover arquivo temporário de saída (finally) ${tempOutputPath}: ${unlinkError.message}`); }
+     }
   }
 };
 

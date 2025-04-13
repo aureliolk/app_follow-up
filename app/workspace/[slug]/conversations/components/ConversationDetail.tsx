@@ -10,6 +10,8 @@ import {
   Loader2,
   Paperclip,
   UserCog,
+  Check,
+  CheckCheck,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -42,6 +44,8 @@ export default function ConversationDetail() {
     updateRealtimeMessageContent,
     updateRealtimeMessageStatus,
     selectConversation,
+    sendMediaMessage,
+    sendTemplateMessage,
   } = useConversationContext();
   const { updateClient, deleteClient } = useClient();
 
@@ -293,11 +297,12 @@ export default function ConversationDetail() {
               <div className={cn("text-xs mt-1 flex items-center", message.sender_type === 'CLIENT' ? 'text-muted-foreground/80 justify-start' : 'text-primary-foreground/80 justify-end')}>
                 <span title={format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>{format(new Date(message.timestamp), 'HH:mm', { locale: ptBR })}</span>
                 {message.sender_type !== 'CLIENT' && (
-                  <span className="ml-2">
-                    {message.status === 'PENDING' && <Loader2 className="h-3 w-3 animate-spin" />}
-                    {message.status === 'SENT' && <CheckCircle className="h-3 w-3 text-green-400" />}
-                    {/* Adicionar outros status como DELIVERED, READ, FAILED_PROCESSING */} 
-                    {message.status === 'FAILED' && <XCircle className="h-3 w-3 text-red-400" /> /* Tooltip pode ser adicionado no span pai se necessário */}
+                  <span className="ml-2 inline-flex items-center" title={`Status: ${message.status}`}>
+                    {message.status === 'PENDING' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    {message.status === 'SENT' && <Check className="h-4 w-4 text-primary-foreground/70" />}
+                    {message.status === 'DELIVERED' && <CheckCheck className="h-4 w-4 text-primary-foreground/70" />}
+                    {message.status === 'READ' && <CheckCheck className="h-4 w-4 text-blue-400" />}
+                    {message.status === 'FAILED' && <XCircle className="h-4 w-4 text-red-400" />}
                   </span>
                 )}
               </div>
@@ -314,12 +319,12 @@ export default function ConversationDetail() {
          setNewMessage={setNewMessage}
          handleSendMessage={handleSendMessage} // Pass the send handler
          isSendingMessage={isSendingMessage}
-         addMessageOptimistically={addMessageOptimistically} // Pass through for media uploads inside
-         updateMessageStatus={updateMessageStatus} // Pass through for media uploads inside
          isUploading={false} // Not handled directly here anymore
          setIsUploading={() => {}} // Placeholder, upload handled inside input area
          loadingTemplates={false} // Not handled directly here anymore
          textareaRef={textareaRef}
+         sendMediaMessage={sendMediaMessage}
+         sendTemplateMessage={sendTemplateMessage}
       />
       
       {/* Sidebar de Informações do Cliente */}

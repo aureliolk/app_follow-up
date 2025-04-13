@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import type { ClientConversation } from '@/app/types';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
+import { useConversationContext } from '@/context/ConversationContext';
 
 interface ConversationListProps {
   conversations: ClientConversation[];
@@ -18,25 +19,34 @@ export default function ConversationList({
   selectedConversationId,
   onSelectConversation,
 }: ConversationListProps) {
-
-  // const { unreadConversationIds } = useFollowUp();
-  const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set()); // Placeholder
+  const { unreadConversationIds } = useConversationContext(); // Get unread IDs
 
   useEffect(() => {
     console.log('[ConversationList] Unread IDs atualizado:', unreadConversationIds);
   }, [unreadConversationIds]);
 
-  // Função auxiliar para obter iniciais
   const getInitials = (name?: string | null): string => {
     if (!name) return '?';
     const names = name.split(' ');
     if (names.length === 1) return names[0].charAt(0).toUpperCase();
-    return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
+    return `${names[0].charAt(0)}${names[names.length - 1].charAt(0)}`.toUpperCase();
   };
 
+  console.log('[ConversationList] Rendering with conversations:', conversations);
+
+  if (!conversations || conversations.length === 0) {
+    return <div className="p-4 text-center text-muted-foreground text-sm">Nenhuma conversa encontrada.</div>;
+  }
+
   return (
-    <div className="flex flex-col">
+    <div className="overflow-y-auto h-full">
       {conversations.map((convo) => {
+        console.log('[ConversationList] Mapping convo ID:', convo?.id, 'Convo:', convo);
+        if (!convo || !convo.id) {
+          console.error('[ConversationList] Found conversation with missing ID:', convo);
+          return null; // Skip rendering this item if ID is missing
+        }
+
         const isActive = convo.id === selectedConversationId;
         const hasUnread = unreadConversationIds.has(convo.id);
 

@@ -27,7 +27,7 @@ interface WhatsAppErrorResponse {
 
 interface SendResult {
   success: boolean;
-  messageId?: string;
+  wamid?: string; // Add wamid (WhatsApp message ID)
   error?: WhatsAppApiErrorData | { message: string }; // Tipo de erro mais específico
 }
 
@@ -153,16 +153,17 @@ export async function sendWhatsappMessage(
     });
 
     const successData = response.data;
-    const sentMessageId = successData.messages?.[0]?.id;
+    const sentWamid = successData.messages?.[0]?.id;
 
-    if (!sentMessageId) {
-        console.warn(`[WhatsappSender] Mensagem enviada para ${toPhoneNumber}, mas ID da mensagem não encontrado na resposta Axios.`);
-        // Considerar sucesso mesmo sem ID
-        return { success: true, messageId: undefined };
+    if (!sentWamid) {
+        console.warn(`[WhatsappSender] Mensagem enviada para ${toPhoneNumber}, mas WAMID não encontrado na resposta Axios.`);
+        // Considerar sucesso mesmo sem WAMID? Ou retornar erro?
+        // Vamos retornar sucesso sem WAMID por enquanto.
+        return { success: true, wamid: undefined }; // <<< Usar wamid
     }
 
-    console.log(`[WhatsappSender] Mensagem enviada com sucesso para ${toPhoneNumber} via Axios. Message ID: ${sentMessageId}`);
-    return { success: true, messageId: sentMessageId };
+    console.log(`[WhatsappSender] Mensagem enviada com sucesso para ${toPhoneNumber} via Axios. WAMID: ${sentWamid}`);
+    return { success: true, wamid: sentWamid }; // <<< Usar wamid
 
   } catch (error: any) {
     console.error(`[WhatsappSender] Erro ao enviar mensagem para ${toPhoneNumber} via Axios:`);
@@ -344,15 +345,17 @@ export async function sendWhatsappMediaMessage(
     });
 
     const successData = response.data;
-    const sentMessageId = successData.messages?.[0]?.id;
+    const sentWamid = successData.messages?.[0]?.id;
 
-    if (!sentMessageId) {
-      console.warn(`[WhatsappSender] Mídia (${logType}) enviada para ${toPhoneNumber}, mas ID da mensagem não encontrado na resposta.`);
-      return { success: true, messageId: undefined };
+    if (!sentWamid) {
+      console.warn(`[WhatsappSender] Mídia (${logType}) enviada para ${toPhoneNumber}, mas WAMID não encontrado na resposta.`);
+       // Considerar sucesso mesmo sem WAMID? Ou retornar erro?
+       // Vamos retornar sucesso sem WAMID por enquanto.
+       return { success: true, wamid: undefined }; // <<< Usar wamid
     }
 
-    console.log(`[WhatsappSender] Mídia (${logType}) enviada com sucesso para ${toPhoneNumber}. Message ID: ${sentMessageId}`);
-    return { success: true, messageId: sentMessageId };
+    console.log(`[WhatsappSender] Mídia (${logType}) enviada com sucesso para ${toPhoneNumber}. WAMID: ${sentWamid}`);
+    return { success: true, wamid: sentWamid }; // <<< Usar wamid
 
   } catch (error: any) {
      // Reutiliza a lógica de tratamento de erro do Axios, ajustando a mensagem

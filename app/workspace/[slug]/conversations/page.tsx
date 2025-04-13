@@ -51,9 +51,16 @@ export default function ConversationsPage() {
                 const eventData = JSON.parse(event.data);
                 console.log('[ConversationsPage] SSE Message Received:', eventData);
 
-                if ((eventData.type === 'new_message' || eventData.type === 'conversation_updated') && eventData.conversationId) {
-                     console.log(`[ConversationsPage] SSE: Calling updateOrAddConversationInList for event type ${eventData.type}, conv ${eventData.conversationId}`);
-                     updateOrAddConversationInList(eventData);
+                // Chamar fetchConversations quando uma nova mensagem (ou atualização) chegar para QUALQUER conversa
+                if (eventData.type === 'new_message' || eventData.type === 'conversation_updated') {
+                  console.log(`[ConversationsPage] SSE Triggering fetchConversations due to event type: ${eventData.type}`);
+                  // Usar o workspaceId atual para garantir que o fetch use o ID correto,
+                  // especialmente se o workspace mudar rapidamente (improvável, mas seguro)
+                  if (wsId) {
+                    fetchConversations('ATIVAS', wsId); // Ou o filtro atual, se relevante
+                  } else {
+                     console.warn('[ConversationsPage] SSE: Tentando chamar fetchConversations sem wsId.');
+                  }
                 }
 
             } catch (error) { console.error("[ConversationsPage] SSE: Erro ao processar mensagem:", error); }
@@ -81,7 +88,7 @@ export default function ConversationsPage() {
         eventSourceRef.current = null;
     }
 
-  }, [workspace?.id, workspaceLoading, updateOrAddConversationInList]);
+  }, [workspace?.id, workspaceLoading, fetchConversations]);
 
   const handleSelectConversation = useCallback((conversation: ClientConversation | null) => {
     selectConversation(conversation);

@@ -498,6 +498,7 @@ enum MessageSenderType {
   CLIENT // Mensagem vinda do cliente final
   AI // Mensagem gerada pela IA do sistema
   SYSTEM // Mensagem interna do sistema (ex: "IA pausada", "Conversa iniciada")
+  AGENT
 
   @@schema("conversation_schema")
 }

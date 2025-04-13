@@ -21,11 +21,11 @@ interface ConversationInputAreaProps {
   newMessage: string;
   setNewMessage: (value: string) => void;
   handleSendMessage: () => Promise<void>;
+  sendMediaMessage: (conversationId: string, file: File) => Promise<void>;
+  sendTemplateMessage: (conversationId: string, templateData: any) => Promise<void>;
   isSendingMessage: boolean;
   isUploading: boolean;
   setIsUploading: (value: boolean) => void;
-  addMessageOptimistically: (message: Message) => void;
-  updateMessageStatus: (tempId: string, finalMessage: Message | null, errorMessage?: string) => void;
   loadingTemplates: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement>;
 }
@@ -52,11 +52,11 @@ export default function ConversationInputArea({
   newMessage,
   setNewMessage,
   handleSendMessage,
+  sendMediaMessage,
+  sendTemplateMessage,
   isSendingMessage,
   isUploading,
   setIsUploading,
-  addMessageOptimistically,
-  updateMessageStatus,
   loadingTemplates,
   textareaRef,
 }: ConversationInputAreaProps) {
@@ -82,108 +82,31 @@ export default function ConversationInputArea({
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !conversationId || !workspaceId) {
+    if (!file || !conversationId) {
       if(event.target) event.target.value = "";
       return;
     }
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('conversationId', conversationId);
-    formData.append('workspaceId', workspaceId);
-
-    const tempId = `temp-upload-${Date.now()}`;
-    const optimisticMessage: Message = {
-      id: tempId,
-      conversation_id: conversationId,
-      sender_type: 'AGENT',
-      content: `[Enviando ${file.name}...]`,
-      message_type: getMessageTypeFromMime(file.type),
-      timestamp: new Date().toISOString(),
-      metadata: {
-        status: 'uploading',
-        originalFilename: file.name,
-        mimeType: file.type,
-      }
-    };
-
-    addMessageOptimistically(optimisticMessage);
-    setIsUploading(true);
-
     try {
-      const response = await axios.post<{ success: boolean, data: Message, error?: string }>(
-        '/api/attachments',
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
-
-      if (!response.data.success || !response.data.data) {
-        throw new Error(response.data.error || 'Falha no upload do anexo');
-      }
-      updateMessageStatus(tempId, response.data.data);
-      toast.success('Anexo enviado!');
-
+      await sendMediaMessage(conversationId, file);
     } catch (error: any) {
-      const message = error.response?.data?.error || error.message || 'Erro ao enviar anexo.';
-      updateMessageStatus(tempId, null, message);
-      console.error("Erro no componente InputArea ao enviar anexo:", error);
-      toast.error(`Falha ao enviar: ${message}`);
+      console.error("Erro capturado no InputArea ao tentar enviar anexo:", error);
     } finally {
-      setIsUploading(false);
       if(event.target) event.target.value = "";
     }
   };
 
   const handleSendAudioFile = async (audioFile: File) => {
     console.log("[AudioSend] Enviando arquivo de áudio:", audioFile.name, audioFile.type, audioFile.size);
-    if (!conversationId || !workspaceId) {
-        toast.error("Conversa ou Workspace não selecionado.");
+    if (!conversationId) {
+        toast.error("Conversa não selecionada.");
         return;
     }
 
-    const formData = new FormData();
-    formData.append('file', audioFile);
-    formData.append('conversationId', conversationId);
-    formData.append('workspaceId', workspaceId);
-
-    const tempId = `temp-audio-${Date.now()}`;
-    const optimisticMessage: Message = {
-      id: tempId,
-      conversation_id: conversationId,
-      sender_type: 'AGENT',
-      content: `[Enviando áudio ${audioFile.name}...]`,
-      message_type: 'AUDIO',
-      timestamp: new Date().toISOString(),
-      metadata: {
-        status: 'uploading',
-        originalFilename: audioFile.name,
-        mimeType: audioFile.type,
-      }
-    };
-
-    addMessageOptimistically(optimisticMessage);
-    setIsUploading(true);
-
     try {
-      const response = await axios.post<{ success: boolean, data: Message, error?: string }>(
-        '/api/attachments',
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
-
-      if (!response.data.success || !response.data.data) {
-        throw new Error(response.data.error || 'Falha no upload do áudio');
-      }
-      updateMessageStatus(tempId, response.data.data);
-      toast.success('Áudio enviado!');
-
+      await sendMediaMessage(conversationId, audioFile);
     } catch (error: any) {
-      const message = error.response?.data?.error || error.message || 'Erro ao enviar áudio.';
-      updateMessageStatus(tempId, null, message);
-      console.error("Erro no componente InputArea ao enviar áudio:", error);
-      toast.error(`Falha ao enviar: ${message}`);
-    } finally {
-      setIsUploading(false);
+      console.error("Erro capturado no InputArea ao tentar enviar áudio:", error);
     }
   };
 
@@ -274,23 +197,16 @@ export default function ConversationInputArea({
   };
 
   const handleSendTemplate = async (templateData: { name: string; language: string; variables: Record<string, string> }) => {
-    console.log("Sending template:", templateData);
+    if (!conversationId) {
+        toast.error("Conversa não selecionada.");
+        return;
+    }
+    console.log("Input Area: Template selecionado, chamando contexto...", templateData);
     try {
-      const toastId = toast.loading('Enviando template...'); 
-
-      await axios.post(`/api/conversations/${conversationId}/send-template`, {
-          workspaceId: workspaceId,
-          templateName: templateData.name,
-          languageCode: templateData.language,
-          variables: templateData.variables 
-      });
-
-      toast.success('Template enviado com sucesso!', { id: toastId });
+      await sendTemplateMessage(conversationId, templateData);
+      toast(`Template ${templateData.name} sendo enviado...`);
     } catch (error: any) {
-      console.error("Erro ao enviar template:", error);
-      const errorMessage = error.response?.data?.error || 'Falha ao enviar template.';
-      toast.error(errorMessage);
-    } finally {
+      console.error("Erro capturado no InputArea ao tentar enviar template:", error);
     }
   };
 

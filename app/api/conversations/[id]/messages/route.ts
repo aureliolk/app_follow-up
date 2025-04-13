@@ -241,6 +241,9 @@ export async function POST(
             console.log(`API POST Messages (${conversationId}): Conversation last_message_at updated.`);
 
             // 8. Publicar no Redis (ambos os canais)
+
+            // <<< REMOVER/COMENTAR PUBLICAÇÃO REDUNDANTE NO CANAL DA CONVERSA >>>
+            /*
             // Canal da Conversa
             try {
                 const conversationChannel = `chat-updates:${conversationId}`;
@@ -248,43 +251,41 @@ export async function POST(
                     type: 'new_message',
                     payload: {
                         id: newMessage.id,
-                        conversation_id: newMessage.conversation_id,
-                        content: newMessage.content, // <<< Enviar conteúdo com prefixo
-                        sender_type: newMessage.sender_type,
-                        timestamp: newMessage.timestamp instanceof Date 
-                            ? newMessage.timestamp.toISOString() 
-                            : newMessage.timestamp,
-                        status: newMessage.status // <<< Incluir status no payload do Redis
+                        conversation_id: conversationId,
+                        sender_type: senderType,
+                        content: newMessage.content,
+                        timestamp: newMessage.timestamp,
+                        channel_message_id: newMessage.channel_message_id,
+                        metadata: newMessage.metadata,
+                        status: newMessage.status
                     }
                 };
                 await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
-                console.log(`API POST Messages (${conversationId}): Message ${newMessage.id} published to CONVERSATION channel ${conversationChannel}.`);
-            } catch (publishError) {
-                console.error(`API POST Messages (${conversationId}): Failed to publish to CONVERSATION channel:`, publishError);
+                console.log(`API POST Messages (${conversationId}): new_message published to CONVERSATION channel ${conversationChannel}.`);
+            } catch (redisError) {
+                console.error(`API POST Messages (${conversationId}): Failed to publish to CONVERSATION channel:`, redisError);
             }
-            // Canal do Workspace
+            */
+            console.log(`API POST Messages (${conversationId}): Skipping publish to CONVERSATION channel (handled by optimistic update).`);
+
+            // Manter publicação no Canal do Workspace (notificação enriquecida)
             try {
                 const workspaceChannel = `workspace-updates:${workspaceId}`;
-                // Garantir que é uma string ISO 8601
-                const timestampString = newMessage.timestamp instanceof Date 
-                    ? newMessage.timestamp.toISOString() 
-                    : String(newMessage.timestamp); // Converte para string se não for Date
-                
                 const workspacePayload = {
-                    type: 'new_message',
+                    type: 'new_message', // Ou 'conversation_updated'?
                     conversationId: conversationId,
-                    clientId: clientId,
-                    lastMessageTimestamp: timestampString, // Usa a string garantida
+                    lastMessageTimestamp: newMessage.timestamp.toISOString(),
+                     // Incluir outros dados úteis para preview se necessário
                 };
                 await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
                 console.log(`API POST Messages (${conversationId}): Notification published to WORKSPACE channel ${workspaceChannel}.`);
-            } catch (publishError) {
-                console.error(`API POST Messages (${conversationId}): Failed to publish to WORKSPACE channel:`, publishError);
+            } catch (redisError) {
+                 console.error(`API POST Messages (${conversationId}): Failed to publish to WORKSPACE channel:`, redisError);
             }
 
-        } catch (dbError) {
-             console.error(`API POST Messages (${conversationId}): Error saving message or updating conversation after successful send:`, dbError);
-             return NextResponse.json({ success: false, error: 'Mensagem enviada, mas ocorreu um erro ao registrar no sistema.' }, { status: 500 });
+        } catch (error: any) {
+            console.error(`API POST Messages (${conversationId}): Error saving message to DB:`, error);
+            return NextResponse.json({ success: false, error: 'Erro ao salvar mensagem no banco de dados' }, { status: 500 });
         }
     } else {
          // If sendSuccess is false, newMessage will be null
@@ -301,7 +302,7 @@ export async function POST(
     return NextResponse.json({ success: true, data: responseMessage as Message | null });
 
   } catch (error: any) {
-    console.error(`API POST Messages (${conversationId}): Unhandled Internal Server Error:`, error);
-    return NextResponse.json({ success: false, error: error.message || 'Erro interno do servidor ao enviar mensagem.' }, { status: 500 });
+    console.error(`API POST Messages (${conversationId}): Unhandled error:`, error);
+    return NextResponse.json({ success: false, error: 'Erro interno no servidor' }, { status: 500 });
   }
 }
