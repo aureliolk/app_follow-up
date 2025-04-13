@@ -113,17 +113,9 @@ export default function ConversationsPage() {
             onSelectConversation={handleSelectConversation}
             selectedConversationId={selectedConversation?.id}
           />
-          {!isLoading && conversations.length === 0 && !displayError && (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              Nenhuma conversa ativa encontrada.
-            </div>
-          )}
         </div>
 
         <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-background">
-          <div className="text-xs text-muted-foreground">
-            ID da conversa: {selectedConversation?.id ?? 'Nenhuma selecionada'}
-          </div>
           <ConversationDetail />
         </div>
       </div>

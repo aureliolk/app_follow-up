@@ -316,7 +316,7 @@ export default function ConversationInputArea({
 
           <Button
             size="icon"
-            onClick={safeHandleSendMessage}
+            onClick={newMessage ? safeHandleSendMessage : handleMicClick}
             disabled={isSendingMessage || isUploading || (!newMessage && permissionStatus === 'prompting')}
             aria-label={newMessage ? 'Enviar mensagem' : 'Gravar áudio'}
             title={newMessage ? 'Enviar mensagem' : 'Gravar áudio'}

@@ -355,7 +355,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     } else {
                                         console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} (Tipo: ${messageType}) não requer processamento pela IA/Worker. Job não enfileirado.`);
                                     }
-                       
+
 
                                 } // Fim if message.from
                             } // Fim loop messages
@@ -439,8 +439,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     } else { // Para DELIVERED, READ, FAILED - Tentar buscar por WAMID, com fallback
                                         try { // <<< Adicionar try/catch em volta da busca
                                             // <<< TENTATIVA 1: Buscar por WAMID >>>
-                                            messageInDb = await prisma.message.findFirst({
-                                                where: { providerMessageId: messageIdFromWhatsapp },
+                                    messageInDb = await prisma.message.findFirst({
+                                        where: { providerMessageId: messageIdFromWhatsapp },
                                                 select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, metadata: true } 
                                             }) as SelectedMessageInfo | null; 
 
@@ -614,8 +614,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                           console.log(`[WH_STATUS_LOG] DB update skipped for Msg ${messageInDb.id}, but proceeding to publish Redis event.`);
                                      } else {
                                          console.log(`[WH_STATUS_LOG] No DB update needed and no event to publish for Msg ${messageInDb.id}.`);
-                                         continue;
-                                     }
+                                    continue;
+                                }
 
                                      // Publicar no Redis (se evento foi preparado)
                                      if (eventTypeToPublish && payloadToPublish) {
@@ -627,7 +627,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                              };
                                              await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
                                              console.log(`[WH_STATUS_LOG] Published event '${eventTypeToPublish}' to ${conversationChannel} for Msg ID ${messageInDb.id}`);
-                                         } catch (publishError) {
+                                } catch (publishError) {
                                              console.error(`[WH_STATUS_LOG] Failed to publish event for Msg ID ${messageInDb.id} to Redis:`, publishError);
                                          }
                                      } else {

@@ -37,7 +37,6 @@ export default function ConversationDetail() {
     selectedConversationError: messageError,
     isSendingMessage,
     sendManualMessage,
-    addMessageOptimistically,
     clearMessagesError,
     addRealtimeMessage,
     updateRealtimeMessageContent,
