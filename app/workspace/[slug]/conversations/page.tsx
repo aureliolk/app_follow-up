@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useWorkspace } from '@/context/workspace-context';
-import { useFollowUp } from '@/context/follow-up-context';
+import { useConversationContext } from '@/context/ConversationContext';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
 import ConversationList from './components/ConversationList';
@@ -22,7 +22,7 @@ export default function ConversationsPage() {
     selectConversation,
     fetchConversations,
     updateOrAddConversationInList
-  } = useFollowUp();
+  } = useConversationContext();
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {

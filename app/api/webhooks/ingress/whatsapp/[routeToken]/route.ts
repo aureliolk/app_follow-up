@@ -5,15 +5,16 @@ import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { redisConnection } from '@/lib/redis'; // Importar conexão Redis
 import { addMessageProcessingJob } from '@/lib/queues/queueService'; // Importar função de enfileiramento
-import { ConversationStatus, FollowUpStatus, Prisma } from '@prisma/client'; // Importar tipos necessários
-import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // Importar a fila de sequência
+import { ConversationStatus, Prisma } from '@prisma/client'; // Importar tipos necessários
+// import { FollowUpStatus } from '@prisma/client'; // <<< REMOVER OU COMENTAR: Não será mais usado aqui
+// import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< REMOVER OU COMENTAR: Não será mais usado aqui
 
 // Interface para dados do job de sequência (pode estar em lib/types se usada em mais lugares)
-interface SequenceJobData {
-  followUpId: string;
-  stepRuleId: string;
-  workspaceId: string;
-}
+// interface SequenceJobData {
+//  followUpId: string;
+//  stepRuleId: string;
+//  workspaceId: string;
+// }
 
 // Define interface for route parameters if not already defined earlier
 interface RouteParams {
@@ -346,6 +347,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     }
 
                                     // --- INÍCIO: Lógica para Iniciar Follow-up ---
+                                    // TODO: Refatorizar e reativar lógica de Follow-up separadamente
+                                    /* <<< COMENTAR ESTE BLOCO INTEIRO >>>
                                     if (wasCreated) {
                                         console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nova conversa (${conversation.id}) detectada. Verificando regras de follow-up para Workspace ${workspace.id}...`);
                                         try {
@@ -424,6 +427,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     } else {
                                          console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa existente (${conversation.id}) atualizada. Não iniciando nova sequência de follow-up.`);
                                     }
+                                    */
                                     // --- FIM: Lógica para Iniciar Follow-up ---
 
                                 } // Fim if message.from

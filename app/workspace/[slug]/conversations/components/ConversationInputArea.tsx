@@ -96,14 +96,14 @@ export default function ConversationInputArea({
     const optimisticMessage: Message = {
       id: tempId,
       conversation_id: conversationId,
-      sender_type: 'AI', // Operador
+      sender_type: 'AGENT',
       content: `[Enviando ${file.name}...]`,
+      message_type: getMessageTypeFromMime(file.type),
       timestamp: new Date().toISOString(),
       metadata: {
         status: 'uploading',
         originalFilename: file.name,
         mimeType: file.type,
-        messageType: getMessageTypeFromMime(file.type)
       }
     };
 
@@ -150,14 +150,14 @@ export default function ConversationInputArea({
     const optimisticMessage: Message = {
       id: tempId,
       conversation_id: conversationId,
-      sender_type: 'AI', // Operador
+      sender_type: 'AGENT',
       content: `[Enviando áudio ${audioFile.name}...]`,
+      message_type: 'AUDIO',
       timestamp: new Date().toISOString(),
       metadata: {
         status: 'uploading',
         originalFilename: audioFile.name,
         mimeType: audioFile.type,
-        messageType: 'AUDIO'
       }
     };
 

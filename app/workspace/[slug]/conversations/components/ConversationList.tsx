@@ -5,8 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { ClientConversation } from '@/app/types';
 import { cn } from '@/lib/utils';
-import { useFollowUp } from '@/context/follow-up-context';
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 interface ConversationListProps {
   conversations: ClientConversation[];
@@ -20,7 +19,8 @@ export default function ConversationList({
   onSelectConversation,
 }: ConversationListProps) {
 
-  const { unreadConversationIds } = useFollowUp();
+  // const { unreadConversationIds } = useFollowUp();
+  const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set()); // Placeholder
 
   useEffect(() => {
     console.log('[ConversationList] Unread IDs atualizado:', unreadConversationIds);

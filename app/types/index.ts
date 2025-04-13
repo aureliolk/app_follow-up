@@ -119,8 +119,8 @@ export interface Client {
 
 // Adicionado: Tipo para o formulário de Cliente
 export type ClientFormData = {
-  name: string | null; // Nome é importante para a UI
-  phone_number: string | null; // Telefone também
+  name?: string | null; // Tornar opcional para corresponder ao update
+  phone_number?: string | null; // Tornar opcional para corresponder ao update
   external_id?: string | null; // Opcional no form?
   channel?: string | null; // Opcional no form?
   // Metadata não será editável via form simples
@@ -131,21 +131,23 @@ export type ClientFormData = {
 export interface Message {
   id: string;
   conversation_id: string;
-  sender_type: 'CLIENT' | 'AI' | 'SYSTEM'; // Do Prisma Enum
+  sender_type: 'CLIENT' | 'AI' | 'SYSTEM' | 'AGENT' | 'AUTOMATION';
+  message_type: string;
   content: string | null;
-  timestamp: string | Date; // Vem como string da API, converter para Date se necessário
+  timestamp: string | Date;
   channel_message_id?: string | null;
   metadata?: any | null;
 
-  // --- Campos adicionados do schema.prisma --- 
+  // --- Campos adicionados do schema.prisma ---
   ai_media_analysis?: string | null;
   media_url?: string | null;
   media_mime_type?: string | null;
   media_filename?: string | null;
-  status?: string | null; // Ex: PENDING, SENT, FAILED
-  providerMessageId?: string | null;
-  sentAt?: string | Date | null; // Timestamp de envio
-  errorMessage?: string | null;
+  status?: string | null; // Ex: PENDING, SENT, FAILED, DELIVERED, READ
+  provider_message_id?: string | null;
+  client_id?: string;
+  workspace_id?: string;
+  llm_summary?: string | null;
 }
 
 // <<< INÍCIO DA NOVA INTERFACE >>>
@@ -170,75 +172,66 @@ export interface ClientConversation {
   client_id: string;
   channel?: string | null;
   channel_conversation_id?: string | null;
-  status: string; // Ex: 'ACTIVE', 'CLOSED' (do Prisma Enum ConversationStatus)
+  status: string; // Ex: 'ACTIVE', 'CLOSED'
   is_ai_active: boolean;
   last_message_at: string | Date | null;
   created_at: string | Date;
   updated_at: string | Date;
   metadata?: any | null;
-  client: { // Dados do cliente incluídos
+  client: { 
     id: string;
     name?: string | null;
     phone_number?: string | null;
   };
-  last_message?: { // Última mensagem incluída
-    content: string;
+  last_message?: { 
+    content: string | null; // Permitir null para mídia sem texto
     timestamp: string | Date;
-    sender_type: 'CLIENT' | 'AI' | 'SYSTEM';
+    sender_type: 'CLIENT' | 'AI' | 'SYSTEM' | 'AGENT' | 'AUTOMATION'; // Atualizado
+    id?: string; // Adicionado ID opcional para referência rápida
   } | null;
 
-  // <<< CAMPO ADICIONADO >>>
-  // Guarda o ID e status do follow-up ativo/pausado encontrado pela API
-  activeFollowUp: {
-    id: string;
-    status: string; // Ou FollowUpStatus se usar Enum
-  } | null;
+  // Campo de Follow-up removido
+  // activeFollowUp: { ... } | null;
 
-  // Campos opcionais
   unread_count?: number;
 }
 
-// --- Tipo Campaign Atualizado (com FormData) ---
+// --- Tipos de Follow-up/Campanha Removidos ---
+// export interface FollowUpMessage { ... }
+// export interface FollowUp { ... }
+// export interface FunnelStage { ... }
+// export interface FunnelStep { ... }
+// export interface CampaignStep { ... }
+// export interface Campaign { ... }
+// export type CampaignFormData = Omit<...>;
+
+// +++ RE-ADICIONAR TIPOS DE CAMPANHA NECESSÁRIOS +++
 export interface Campaign {
   id: string;
+  workspace_id: string;
   name: string;
   description?: string | null;
-  createdAt: string | Date; // Vem como string/Date da API
   active: boolean;
-
-  // Campos de IA
   ai_prompt_product_name?: string | null;
   ai_prompt_target_audience?: string | null;
   ai_prompt_pain_point?: string | null;
   ai_prompt_main_benefit?: string | null;
   ai_prompt_tone_of_voice?: string | null;
-  ai_prompt_extra_instructions?: string | null;
-  ai_prompt_cta_link?: string | null;
-  ai_prompt_cta_text?: string | null;
-
-  // Campos Lumibot (se aplicável)
-  idLumibot?: string | null;
-  tokenAgentLumibot?: string | null;
-
-  // Campos agregados (geralmente não no form)
-  stepsCount?: number;
-  activeFollowUps?: number;
-
-  // Relações e campos necessários no formulário/initialData
-  funnel_stage_id?: string | null; // Adicionado
-  followUpId?: string | null;      // Adicionado
-  steps?: CampaignStep[] | FunnelStep[]; // Adicionado (usando tipos existentes)
+  funnel_stage_id?: string | null; // ID do estágio de funil (ou poderia ser um nome/tipo?)
+  followUpId?: string; // Se houver relacionamento com FollowUp
+  idLumibot?: string | null; // Adicionado
+  tokenAgentLumibot?: string | null; // Adicionado
+  createdAt: string | Date; // Ajustado para não opcional
+  updatedAt: string | Date; // Ajustado para não opcional
+  // Relações opcionais que podem ser úteis
+  // funnelStage?: FunnelStage | null;
+  // steps?: FunnelStep[] // Ou CampaignStep[]?
 }
 
-// --- DEFINIÇÃO DE CampaignFormData ---
-// Cria um tipo baseado em Campaign, omitindo campos não editáveis no formulário.
-export type CampaignFormData = Omit<Campaign,
-  // 'id' |                // NÃO OMITIR ID - necessário para update
-  'createdAt' |        // Gerado pelo banco
-  'stepsCount' |        // Calculado/Agregado
-  'activeFollowUps' |    // Calculado/Agregado
-  'steps'                // Relação complexa, não editada diretamente no form principal
-  // Não omitir funnel_stage_id e followUpId se forem parte do form
->;
+// Tipo para o formulário de Campanha
+export type CampaignFormData = Omit<Campaign, 'id' | 'createdAt' | 'updatedAt' | 'workspace_id'> & {
+  id?: string; // ID opcional para edição
+};
+// +++ FIM RE-ADICIONAR TIPOS DE CAMPANHA +++
 
 

@@ -9,34 +9,49 @@ import Link from 'next/link';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 // <<< IMPORTAR O CONTEXTO DE FOLLOW-UP >>>
-import { useFollowUp } from '@/context/follow-up-context';
+import { useConversationContext } from '@/context/ConversationContext'; // <<< Importar hook correto
+import type { Campaign, ClientConversation } from '@/app/types'; // <<< Importar tipos se necessário
 
 export default function WorkspaceDashboard() {
   const { workspace, isLoading: workspaceIsLoading } = useWorkspace(); // Renomear isLoading para evitar conflito
-  // <<< OBTER FUNÇÕES E ESTADOS DO CONTEXTO >>>
-  const {
-    campaigns,
-    followUps,
-    fetchCampaigns,
-    fetchFollowUps,
-    loadingCampaigns,
-    loadingFollowUps,
-    followUpsError, // <<< Obter estado de erro também
-    campaignsError
-  } = useFollowUp();
+  // State for dashboard data (will be fetched locally)
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [activeConversations, setActiveConversations] = useState<ClientConversation[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(true); // Start loading
+  const [loadingConversations, setLoadingConversations] = useState(true); // Start loading
+  const [campaignsError, setCampaignsError] = useState<string | null>(null);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
 
   // Opcional: manter um estado de loading combinado se preferir
-  const isLoadingData = loadingCampaigns || loadingFollowUps || workspaceIsLoading;
-  const dataError = campaignsError || followUpsError; // Combinar erros para exibição
+  const isLoadingData = loadingCampaigns || loadingConversations || workspaceIsLoading;
+  const dataError = campaignsError || conversationsError; // Combinar erros para exibição
 
   useEffect(() => {
     if (workspace?.id && !workspaceIsLoading) {
-      console.log(`[WorkspaceDashboard] Workspace ID ${workspace.id} disponível. Buscando dados do contexto...`);
-      // <<< CHAMAR FUNÇÕES DO CONTEXTO >>>
-      fetchCampaigns(workspace.id);
-      fetchFollowUps('active', workspace.id); // Buscar apenas os ativos para este card
+      console.log(`[WorkspaceDashboard] Workspace ID ${workspace.id} disponível. Buscando dados do dashboard...`);
+      // TODO: Implement direct API calls to fetch campaigns and active conversations
+      const fetchData = async () => {
+        setLoadingCampaigns(true);
+        setLoadingConversations(true);
+        try {
+          // Simulate API calls
+          await new Promise(resolve => setTimeout(resolve, 500));
+          setCampaigns([]); // Placeholder
+          setActiveConversations([]); // Placeholder
+          setCampaignsError(null);
+          setConversationsError(null);
+        } catch (error: any) {
+          const msg = error.message || "Erro ao buscar dados";
+          setCampaignsError(msg);
+          setConversationsError(msg);
+        } finally {
+          setLoadingCampaigns(false);
+          setLoadingConversations(false);
+        }
+      };
+      fetchData();
     }
-  }, [workspace?.id, workspaceIsLoading, fetchCampaigns, fetchFollowUps]); // Incluir funções do contexto como dependência
+  }, [workspace?.id, workspaceIsLoading]); // Removed context fetch functions from dependencies
 
   // Loading inicial do WORKSPACE
   if (workspaceIsLoading) {
@@ -54,7 +69,7 @@ export default function WorkspaceDashboard() {
   }
 
   // <<< ADICIONAR VERIFICAÇÃO DE LOADING DOS DADOS >>>
-  if (loadingCampaigns || loadingFollowUps) {
+  if (loadingCampaigns || loadingConversations) {
     return (
       <div className="flex items-center justify-center h-full">
         {/* Pode usar a mesma mensagem ou uma diferente */}
@@ -83,12 +98,12 @@ export default function WorkspaceDashboard() {
           </CardHeader>
           <CardContent>
             {/* <<< USAR loadingFollowUps DIRETAMENTE >>> */}
-            {loadingFollowUps ? (
+            {loadingConversations ? (
               <LoadingSpinner size="small" message="" />
-            ) : followUps.length > 0 ? (
+            ) : activeConversations.length > 0 ? (
               <div>
                 {/* <<< USAR followUps do contexto >>> */}
-                <p className="text-2xl font-bold text-foreground mb-2">{followUps.length}</p>
+                <p className="text-2xl font-bold text-foreground mb-2">{activeConversations.length}</p>
                 <Link
                   href={`/workspace/${workspace.slug}/conversations`} // Link para a página de conversas
                   className="text-primary text-sm flex items-center hover:underline"

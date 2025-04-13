@@ -69,8 +69,14 @@ export async function GET(
       },
     });
 
-    console.log(`API GET Messages: Found ${messages.length} messages for conversation ${conversationId}.`);
-    return NextResponse.json({ success: true, data: messages as Message[] }); // Cast para Message
+    // Add the required message_type before casting
+    const messagesWithType = messages.map(msg => ({
+        ...msg,
+        message_type: 'TEXT', // Assign default 'TEXT' since it's missing from DB
+    }));
+
+    console.log(`API GET Messages: Found ${messagesWithType.length} messages for conversation ${conversationId}.`);
+    return NextResponse.json({ success: true, data: messagesWithType as Message[] }); // Cast should be safer now
 
   } catch (error) {
     console.error(`API GET Messages: Internal error for conversation ${conversationId}:`, error);
@@ -199,7 +205,7 @@ export async function POST(
     }
 
     // 6. Salvar Mensagem no Banco de Dados (APÓS envio bem-sucedido)
-    let newMessage: Message | null = null;
+    let newMessage = null;
     if (sendSuccess) {
         const messageTimestamp = new Date();
         
@@ -281,11 +287,18 @@ export async function POST(
              return NextResponse.json({ success: false, error: 'Mensagem enviada, mas ocorreu um erro ao registrar no sistema.' }, { status: 500 });
         }
     } else {
+         // If sendSuccess is false, newMessage will be null
          return NextResponse.json({ success: false, error: 'Falha no envio da mensagem, não foi salva.' }, { status: 500 });
     }
 
     // 9. Retornar Sucesso com a Mensagem Criada
-    return NextResponse.json({ success: true, data: newMessage as Message });
+    // Add the required message_type before returning
+    const responseMessage = newMessage ? {
+        ...newMessage,
+        message_type: 'TEXT' // Add default type
+    } : null;
+
+    return NextResponse.json({ success: true, data: responseMessage as Message | null });
 
   } catch (error: any) {
     console.error(`API POST Messages (${conversationId}): Unhandled Internal Server Error:`, error);
