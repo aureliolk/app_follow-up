@@ -56,8 +56,20 @@ export async function GET(req: NextRequest) {
       },
       include: {
         client: {
-          select: { id: true, name: true, phone_number: true }
-          // Remover include desnecessário de follow_ups aqui
+          select: { 
+            id: true, 
+            name: true, 
+            phone_number: true,
+            follow_ups: { 
+              where: {
+                status: { 
+                  in: [PrismaFollowUpStatus.ACTIVE, PrismaFollowUpStatus.PAUSED] 
+                },
+              },
+              orderBy: { started_at: 'desc' },
+              take: 1
+            }
+          }
         },
         messages: {
           select: { id: true, content: true, timestamp: true, sender_type: true }, // Incluir ID da msg
@@ -94,8 +106,7 @@ export async function GET(req: NextRequest) {
         timestamp: convo.messages[0].timestamp.toISOString(), // Converter para string ISO
         sender_type: convo.messages[0].sender_type,
       } : null,
-      // activeFollowUp não é mais garantido pela query, definir como null ou buscar separadamente se necessário
-      activeFollowUp: null, 
+      activeFollowUp: convo.client?.follow_ups?.[0] || null, 
     }));
 
     console.log(`API GET Conversations: Found ${formattedData.length} conversations with status ACTIVE.`);

@@ -12,7 +12,7 @@ const pauseSchema = z.object({
 });
 
 export async function POST(req: NextRequest, { params }: { params: { followUpId: string } }) {
-    const { followUpId } = params;
+    const { followUpId } = await params;
     console.log(`API POST /api/follow-up/${followUpId}/pause: Request received`);
 
     try {

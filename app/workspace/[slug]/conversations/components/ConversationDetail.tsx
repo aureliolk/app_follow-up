@@ -615,12 +615,10 @@ export default function ConversationDetail() {
   // Lógica dos Botões
   const showPauseButton = followUpStatus === 'ACTIVE';
   const showResumeButton = followUpStatus === 'PAUSED';
-  const followUpExistsAndIsActionable = !!conversation?.activeFollowUp && (conversation.activeFollowUp.status === 'ACTIVE' || conversation.activeFollowUp.status === 'PAUSED');
-
+  const isFollowUpActionable = conversation?.activeFollowUp?.status === 'ACTIVE' || conversation?.activeFollowUp?.status === 'PAUSED';
 
   // Loader geral para ações que mudam o status do FollowUp
   const isStatusActionLoading = isPausingFollowUp || isResumingFollowUp || isConvertingFollowUp || isCancellingFollowUp;
-
 
   return (
     <div className={cn(
@@ -647,25 +645,25 @@ export default function ConversationDetail() {
             </div>
             {/* Action buttons (Pause, Resume, etc.) */}
             <div className="flex items-center space-x-2">
-              {conversation.status === 'ACTIVE' && (
+              {conversation.activeFollowUp?.status === 'ACTIVE' && (
                 <Button variant="outline" size="sm" onClick={handlePause} disabled={isPausingFollowUp}>
                   {isPausingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <PauseCircle className="h-4 w-4 mr-1" />}
                   Pausar IA
                 </Button>
               )}
-              {(conversation.status === 'PAUSED_BY_AI' || conversation.status === 'PAUSED_BY_USER') && (
+              {conversation.activeFollowUp?.status === 'PAUSED' && (
                 <Button variant="outline" size="sm" onClick={handleResume} disabled={isResumingFollowUp}>
                   {isResumingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <PlayCircle className="h-4 w-4 mr-1" />}
                   Retomar IA
                 </Button>
               )}
-               {conversation.activeFollowUp && (
+               {isFollowUpActionable && (
                  <Button variant="secondary" size="sm" onClick={handleMarkConverted} disabled={isConvertingFollowUp}>
                    {isConvertingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle className="h-4 w-4 mr-1" />}
                    Convertido
                  </Button>
                )}
-               {conversation.activeFollowUp && (
+               {isFollowUpActionable && (
                  <Button variant="destructive" size="sm" onClick={handleCancelSequence} disabled={isCancellingFollowUp}>
                    {isCancellingFollowUp ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="h-4 w-4 mr-1" />}
                    Cancelar
