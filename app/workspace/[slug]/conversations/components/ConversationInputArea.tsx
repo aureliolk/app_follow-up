@@ -71,6 +71,7 @@ export default function ConversationInputArea({
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const sendingRef = useRef(false);
 
   // --- Handlers Locais ---
 
@@ -210,6 +211,17 @@ export default function ConversationInputArea({
     }
   };
 
+  // Handler seguro para evitar duplo envio
+  const safeHandleSendMessage = useCallback(async () => {
+    if (isSendingMessage || sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      await handleSendMessage();
+    } finally {
+      sendingRef.current = false;
+    }
+  }, [handleSendMessage, isSendingMessage]);
+
   // --- JSX ---
   return (
     <div className="border-t bg-background p-3 sm:p-4">
@@ -292,9 +304,7 @@ export default function ConversationInputArea({
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                if (!isSendingMessage) {
-                  handleSendMessage();
-                }
+                safeHandleSendMessage();
               }
             }}
             placeholder="Digite sua mensagem..."
@@ -306,7 +316,7 @@ export default function ConversationInputArea({
 
           <Button
             size="icon"
-            onClick={newMessage ? handleSendMessage : handleMicClick}
+            onClick={safeHandleSendMessage}
             disabled={isSendingMessage || isUploading || (!newMessage && permissionStatus === 'prompting')}
             aria-label={newMessage ? 'Enviar mensagem' : 'Gravar áudio'}
             title={newMessage ? 'Enviar mensagem' : 'Gravar áudio'}

@@ -19,26 +19,39 @@ function generateToken() {
 // Função auxiliar para processar requisições de listagem de tokens
 async function processListTokensRequest(req: NextRequest, workspaceId: string) {
   try {
-    const userId = await getCurrentUserId(req);
+    const session = await getSession(); // Get the full session
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+    }
 
-    // Verificar se o usuário tem acesso ao workspace
-    const memberAccess = await prisma.workspaceMember.findFirst({
-      where: {
-        workspace_id: workspaceId,
-        user_id: userId as string,
-      },
-    });
+    const userId = session.user.id;
+    const isSuperAdmin = session.user.isSuperAdmin;
 
-    const workspaceOwner = await prisma.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        owner_id: userId as string,
-      }
-    });
+    // Verificar se o usuário tem acesso ao workspace (se não for super admin)
+    let hasAccess = false;
+    if (isSuperAdmin) {
+        hasAccess = true;
+    } else {
+        const memberAccess = await prisma.workspaceMember.findFirst({
+          where: {
+            workspace_id: workspaceId,
+            user_id: userId as string,
+            // TODO: Consider checking for specific roles (e.g., ADMIN, OWNER) if needed
+          },
+        });
 
-    if (!memberAccess && !workspaceOwner) {
+        const workspaceOwner = await prisma.workspace.findFirst({
+          where: {
+            id: workspaceId,
+            owner_id: userId as string,
+          }
+        });
+        hasAccess = !!memberAccess || !!workspaceOwner;
+    }
+
+    if (!hasAccess) {
       return NextResponse.json(
-        { success: false, error: "Acesso negado a este workspace" },
+        { success: false, error: "Acesso negado a este workspace ou operação não permitida" },
         { status: 403 }
       );
     }
@@ -80,10 +93,17 @@ async function processListTokensRequest(req: NextRequest, workspaceId: string) {
     );
   }
 }
+
 // Função auxiliar para processar requisições de criação de tokens
 async function processCreateTokenRequest(req: NextRequest, workspaceId: string) {
   try {
-    const userId = await getCurrentUserId(req);
+    const session = await getSession(); // Get the full session
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+    }
+
+    const userId = session.user.id;
+    const isSuperAdmin = session.user.isSuperAdmin;
     const body = await req.json();
 
     // Validar o corpo da requisição
@@ -96,24 +116,31 @@ async function processCreateTokenRequest(req: NextRequest, workspaceId: string) 
       );
     }
 
-    // Verificar se o usuário tem acesso ao workspace
-    const memberAccess = await prisma.workspaceMember.findFirst({
-      where: {
-        workspace_id: workspaceId,
-        user_id: userId as string,
-      },
-    });
+    // Verificar se o usuário tem acesso ao workspace (se não for super admin)
+    let hasAccess = false;
+    if (isSuperAdmin) {
+        hasAccess = true;
+    } else {
+        const memberAccess = await prisma.workspaceMember.findFirst({
+            where: {
+                workspace_id: workspaceId,
+                user_id: userId as string,
+                 // TODO: Consider checking for specific roles (e.g., ADMIN, OWNER) if needed
+            },
+        });
 
-    const workspaceOwner = await prisma.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        owner_id: userId as string,
-      }
-    });
+        const workspaceOwner = await prisma.workspace.findFirst({
+            where: {
+                id: workspaceId,
+                owner_id: userId as string,
+            }
+        });
+         hasAccess = !!memberAccess || !!workspaceOwner;
+    }
 
-    if (!memberAccess && !workspaceOwner) {
+    if (!hasAccess) {
       return NextResponse.json(
-        { success: false, error: "Acesso negado a este workspace" },
+        { success: false, error: "Acesso negado a este workspace ou operação não permitida" },
         { status: 403 }
       );
     }
@@ -162,31 +189,18 @@ async function processCreateTokenRequest(req: NextRequest, workspaceId: string) 
 
 // Listar todos os tokens de API para o workspace
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
-  // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
-  await Promise.resolve(); // Operação assíncrona simples
+  // Simplified access check, relies on processListTokensRequest for detailed checks
+  const session = await getSession();
+  if (!session?.user) {
+    return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+  }
 
-  // Agora é seguro acessar os parâmetros dinâmicos
+  const params = await props.params;
+  await Promise.resolve(); // Workaround for params issue
   const workspaceId = params.id;
 
-  try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json(
-        { success: false, error: "Não autorizado" },
-        { status: 401 }
-      );
-    }
-
-    return processListTokensRequest(request, workspaceId);
-  } catch (error) {
-    console.error("Erro de autenticação:", error);
-    return NextResponse.json(
-      { success: false, error: "Erro de autenticação" },
-      { status: 500 }
-    );
-  }
+  // A função processListTokensRequest já contém a lógica de autenticação e autorização
+  return processListTokensRequest(request, workspaceId);
 }
 
 // Função auxiliar para obter a sessão atual
@@ -201,6 +215,12 @@ async function getSession() {
 
 // Criar um novo token de API
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  // Simplified access check, relies on processCreateTokenRequest for detailed checks
+  const session = await getSession();
+  if (!session?.user) {
+    return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+  }
+
   const params = await props.params;
   // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
   // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
@@ -209,21 +229,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   // Agora é seguro acessar os parâmetros dinâmicos
   const workspaceId = params.id;
 
-  try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json(
-        { success: false, error: "Não autorizado" },
-        { status: 401 }
-      );
-    }
-
-    return processCreateTokenRequest(request, workspaceId);
-  } catch (error) {
-    console.error("Erro de autenticação:", error);
-    return NextResponse.json(
-      { success: false, error: "Erro de autenticação" },
-      { status: 500 }
-    );
-  }
+  // A função processCreateTokenRequest já contém a lógica de autenticação e autorização
+  return processCreateTokenRequest(request, workspaceId);
 }

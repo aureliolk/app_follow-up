@@ -18,26 +18,39 @@ async function getSession() {
 // Função auxiliar para processar requisições de exclusão permanente do token
 async function processPermanentDeleteRequest(req: NextRequest, workspaceId: string, tokenId: string) {
   try {
-    const userId = await getCurrentUserId(req);
+    const session = await getSession(); // Get the full session
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+    }
 
-    // Verificar se o usuário tem acesso ao workspace
-    const memberAccess = await prisma.workspaceMember.findFirst({
-      where: {
-        workspace_id: workspaceId,
-        user_id: userId as string,
-      },
-    });
+    const userId = session.user.id;
+    const isSuperAdmin = session.user.isSuperAdmin;
 
-    const workspaceOwner = await prisma.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        owner_id: userId as string,
-      }
-    });
+    // Verificar se o usuário tem acesso ao workspace (se não for super admin)
+    let hasAccess = false;
+    if (isSuperAdmin) {
+        hasAccess = true;
+    } else {
+        const memberAccess = await prisma.workspaceMember.findFirst({
+            where: {
+                workspace_id: workspaceId,
+                user_id: userId as string,
+                 // TODO: Consider checking for specific roles (e.g., ADMIN, OWNER) if needed
+            },
+        });
 
-    if (!memberAccess && !workspaceOwner) {
+        const workspaceOwner = await prisma.workspace.findFirst({
+            where: {
+                id: workspaceId,
+                owner_id: userId as string,
+            }
+        });
+        hasAccess = !!memberAccess || !!workspaceOwner;
+    }
+
+    if (!hasAccess) {
       return NextResponse.json(
-        { success: false, error: "Acesso negado a este workspace" },
+        { success: false, error: "Acesso negado a este workspace ou operação não permitida" },
         { status: 403 }
       );
     }
@@ -88,26 +101,39 @@ async function processPermanentDeleteRequest(req: NextRequest, workspaceId: stri
 // Função auxiliar para processar requisições de revogação de token
 async function processRevokeTokenRequest(req: NextRequest, workspaceId: string, tokenId: string) {
   try {
-    const userId = await getCurrentUserId(req);
+    const session = await getSession(); // Get the full session
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+    }
 
-    // Verificar se o usuário tem acesso ao workspace
-    const memberAccess = await prisma.workspaceMember.findFirst({
-      where: {
-        workspace_id: workspaceId,
-        user_id: userId as string,
-      },
-    });
+    const userId = session.user.id;
+    const isSuperAdmin = session.user.isSuperAdmin;
 
-    const workspaceOwner = await prisma.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        owner_id: userId as string,
-      }
-    });
+    // Verificar se o usuário tem acesso ao workspace (se não for super admin)
+    let hasAccess = false;
+    if (isSuperAdmin) {
+        hasAccess = true;
+    } else {
+        const memberAccess = await prisma.workspaceMember.findFirst({
+            where: {
+                workspace_id: workspaceId,
+                user_id: userId as string,
+                 // TODO: Consider checking for specific roles (e.g., ADMIN, OWNER) if needed
+            },
+        });
 
-    if (!memberAccess && !workspaceOwner) {
+        const workspaceOwner = await prisma.workspace.findFirst({
+            where: {
+                id: workspaceId,
+                owner_id: userId as string,
+            }
+        });
+        hasAccess = !!memberAccess || !!workspaceOwner;
+    }
+
+    if (!hasAccess) {
       return NextResponse.json(
-        { success: false, error: "Acesso negado a este workspace" },
+        { success: false, error: "Acesso negado a este workspace ou operação não permitida" },
         { status: 403 }
       );
     }
@@ -155,32 +181,18 @@ export async function DELETE(
   request: NextRequest,
   props: { params: Promise<{ id: string; tokenId: string }> }
 ) {
-  const params = await props.params;
-  // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
-  // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
-  await Promise.resolve(); // Operação assíncrona simples
+  const session = await getSession();
+  if (!session?.user) {
+    return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+  }
 
-  // Agora é seguro acessar os parâmetros dinâmicos
+  const params = await props.params;
+  await Promise.resolve(); // Workaround for params issue
+
   const workspaceId = params.id;
   const tokenId = params.tokenId;
 
-  try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json(
-        { success: false, error: "Não autorizado" },
-        { status: 401 }
-      );
-    }
-
-    return processRevokeTokenRequest(request, workspaceId, tokenId);
-  } catch (error) {
-    console.error("Erro de autenticação:", error);
-    return NextResponse.json(
-      { success: false, error: "Erro de autenticação" },
-      { status: 500 }
-    );
-  }
+  return processRevokeTokenRequest(request, workspaceId, tokenId);
 }
 
 // Excluir permanentemente um token (hard delete)
@@ -188,24 +200,18 @@ export async function PATCH(
   request: NextRequest,
   props: { params: Promise<{ id: string; tokenId: string }> }
 ) {
-  const params = await props.params;
-  // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
-  // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
-  await Promise.resolve(); // Operação assíncrona simples
+  const session = await getSession();
+  if (!session?.user) {
+    return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+  }
 
-  // Agora é seguro acessar os parâmetros dinâmicos
+  const params = await props.params;
+  await Promise.resolve(); // Workaround for params issue
+
   const workspaceId = params.id;
   const tokenId = params.tokenId;
 
   try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json(
-        { success: false, error: "Não autorizado" },
-        { status: 401 }
-      );
-    }
-    
     // Verificar se o cabeçalho de exclusão permanente foi fornecido
     const permanentDelete = request.headers.get('x-permanent-delete');
     

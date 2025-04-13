@@ -10,78 +10,108 @@ import { decrypt } from '@/lib/encryption';
 import { redisConnection } from '@/lib/redis';
 import { MessageSenderType, ConversationStatus } from '@prisma/client';
 import type { Message } from "@/app/types";
+import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // 'id' aqui é o conversationId
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const awaitedParams = await params;
-  const conversationId = awaitedParams.id;
-  console.log(`API GET /api/conversations/${conversationId}/messages: Request received.`);
+  return withApiTokenAuth(req, async (authedReq, workspaceIdFromToken) => {
+    const awaitedParams = await params;
+    const conversationId = awaitedParams.id;
+    console.log(`API GET /api/conversations/${conversationId}/messages: Request received (API Token Auth: ${!!workspaceIdFromToken}).`);
 
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.warn(`API GET Messages: Unauthorized - Invalid session for conv ${conversationId}.`);
-      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
+    let userId: string | undefined = undefined; // To store user ID if session-based auth
+    let hasAccess = false;
+    let conversationWorkspaceId: string | undefined = undefined;
+
+    try {
+        // 1. Fetch conversation to get its workspace ID
+        const conversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { workspace_id: true }
+        });
+
+        if (!conversation) {
+            console.warn(`API GET Messages: Conversation ${conversationId} not found.`);
+            return NextResponse.json({ success: false, error: 'Conversa não encontrada' }, { status: 404 });
+        }
+        conversationWorkspaceId = conversation.workspace_id;
+
+        // 2. Determine Authentication Method and Check Permissions
+        if (workspaceIdFromToken) {
+            // API Token Authentication
+            console.log(`API GET Messages: Authenticating via API Token for Workspace ${workspaceIdFromToken}. Checking against Conversation Workspace ${conversationWorkspaceId}.`);
+            if (workspaceIdFromToken === conversationWorkspaceId) {
+                hasAccess = true;
+                console.log(`API GET Messages: API Token access granted for Conv ${conversationId} in Workspace ${workspaceIdFromToken}.`);
+            } else {
+                 console.warn(`API GET Messages: API Token Mismatch. Token Workspace ${workspaceIdFromToken} vs Conversation Workspace ${conversationWorkspaceId} for Conv ${conversationId}.`);
+                // Return 403 Forbidden, as the token is valid but not for this conversation's workspace
+                 return NextResponse.json({ success: false, error: 'Token de API não autorizado para acessar esta conversa' }, { status: 403 });
+            }
+        } else {
+            // Session-based Authentication
+            console.log(`API GET Messages: Authenticating via User Session for Conv ${conversationId} (Workspace ${conversationWorkspaceId}).`);
+            const session = await getServerSession(authOptions);
+            if (!session?.user?.id) {
+                console.warn(`API GET Messages: Unauthorized - Invalid session for conv ${conversationId}.`);
+                return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
+            }
+            userId = session.user.id;
+
+            // Check user permission within the conversation's actual workspace
+            hasAccess = await checkPermission(conversationWorkspaceId, userId, 'VIEWER');
+            if (hasAccess) {
+                 console.log(`API GET Messages: User ${userId} has permission for Conv ${conversationId} in Workspace ${conversationWorkspaceId}.`);
+            } else {
+                 console.warn(`API GET Messages: User ${userId} permission denied for Conv ${conversationId} in Workspace ${conversationWorkspaceId}.`);
+            }
+        }
+
+        // 3. Final Access Check
+        if (!hasAccess) {
+            console.warn(`API GET Messages: Final access check failed for Conv ${conversationId}.`);
+            return NextResponse.json({ success: false, error: 'Permissão negada para acessar esta conversa' }, { status: 403 });
+        }
+
+        // 4. Fetch Messages (If access granted)
+        console.log(`API GET Messages: Access granted. Fetching messages for conversation ${conversationId}.`);
+        const messages = await prisma.message.findMany({
+            where: { conversation_id: conversationId },
+            orderBy: { timestamp: 'asc' }, // Ordenar da mais antiga para a mais recente
+            select: { // Selecionar campos necessários para a UI
+                id: true,
+                conversation_id: true,
+                sender_type: true,
+                content: true,
+                timestamp: true,
+                channel_message_id: true,
+                metadata: true,
+                media_url: true,
+                media_mime_type: true,
+                media_filename: true,
+                status: true,
+                providerMessageId: true,
+                sentAt: true,
+                errorMessage: true,
+            },
+        });
+
+        // Add the required message_type before casting
+        const messagesWithType = messages.map(msg => ({
+            ...msg,
+            message_type: 'TEXT', // Assign default 'TEXT' since it's missing from DB
+        }));
+
+        console.log(`API GET Messages: Found ${messagesWithType.length} messages for conversation ${conversationId}.`);
+        return NextResponse.json({ success: true, data: messagesWithType as Message[] }); // Cast should be safer now
+
+    } catch (error) {
+        console.error(`API GET Messages (${conversationId}): Error processing request:`, error);
+        return NextResponse.json({ success: false, error: 'Erro interno do servidor' }, { status: 500 });
     }
-    const userId = session.user.id;
-
-    // 1. Buscar a conversa para obter o workspaceId e verificar existência
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: { workspace_id: true } // Só precisamos do workspace_id
-    });
-
-    if (!conversation) {
-      console.error(`API GET Messages: Conversation ${conversationId} not found.`);
-      return NextResponse.json({ success: false, error: 'Conversa não encontrada' }, { status: 404 });
-    }
-    const workspaceId = conversation.workspace_id;
-
-    // 2. Verificar permissão no workspace da conversa
-    const hasAccess = await checkPermission(workspaceId, userId, 'VIEWER');
-    if (!hasAccess) {
-      console.warn(`API GET Messages: Permission denied for User ${userId} on Workspace ${workspaceId} (Conv: ${conversationId})`);
-      return NextResponse.json({ success: false, error: 'Permissão negada para acessar esta conversa' }, { status: 403 });
-    }
-    console.log(`API GET Messages: User ${userId} has permission for Conv ${conversationId}`);
-
-    // 3. Buscar as mensagens da conversa
-    const messages = await prisma.message.findMany({
-      where: { conversation_id: conversationId },
-      orderBy: { timestamp: 'asc' }, // Ordenar da mais antiga para a mais recente
-      select: { // Selecionar campos necessários para a UI
-        id: true,
-        conversation_id: true,
-        sender_type: true,
-        content: true,
-        timestamp: true,
-        channel_message_id: true,
-        metadata: true,
-        media_url: true,
-        media_mime_type: true,
-        media_filename: true,
-        status: true,
-        providerMessageId: true,
-        sentAt: true,
-        errorMessage: true,
-      },
-    });
-
-    // Add the required message_type before casting
-    const messagesWithType = messages.map(msg => ({
-        ...msg,
-        message_type: 'TEXT', // Assign default 'TEXT' since it's missing from DB
-    }));
-
-    console.log(`API GET Messages: Found ${messagesWithType.length} messages for conversation ${conversationId}.`);
-    return NextResponse.json({ success: true, data: messagesWithType as Message[] }); // Cast should be safer now
-
-  } catch (error) {
-    console.error(`API GET Messages: Internal error for conversation ${conversationId}:`, error);
-    return NextResponse.json({ success: false, error: 'Erro interno ao buscar mensagens' }, { status: 500 });
-  }
+  });
 }
 
 
@@ -188,7 +218,7 @@ export async function POST(
 
             if (sendResult.success) {
                 sendSuccess = true;
-                channelMessageIdFromApi = sendResult.messageId;
+                channelMessageIdFromApi = sendResult.wamid;
                 console.log(`API POST Messages (${conversationId}): Message sent successfully via WhatsApp (API Msg ID: ${channelMessageIdFromApi}).`);
             } else {
                 console.error(`API POST Messages (${conversationId}): Failed to send message via WhatsApp.`, sendResult.error);
@@ -240,32 +270,6 @@ export async function POST(
             });
             console.log(`API POST Messages (${conversationId}): Conversation last_message_at updated.`);
 
-            // 8. Publicar no Redis (ambos os canais)
-
-            // <<< REMOVER/COMENTAR PUBLICAÇÃO REDUNDANTE NO CANAL DA CONVERSA >>>
-            /*
-            // Canal da Conversa
-            try {
-                const conversationChannel = `chat-updates:${conversationId}`;
-                const redisPayload = {
-                    type: 'new_message',
-                    payload: {
-                        id: newMessage.id,
-                        conversation_id: conversationId,
-                        sender_type: senderType,
-                        content: newMessage.content,
-                        timestamp: newMessage.timestamp,
-                        channel_message_id: newMessage.channel_message_id,
-                        metadata: newMessage.metadata,
-                        status: newMessage.status
-                    }
-                };
-                await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
-                console.log(`API POST Messages (${conversationId}): new_message published to CONVERSATION channel ${conversationChannel}.`);
-            } catch (redisError) {
-                console.error(`API POST Messages (${conversationId}): Failed to publish to CONVERSATION channel:`, redisError);
-            }
-            */
             console.log(`API POST Messages (${conversationId}): Skipping publish to CONVERSATION channel (handled by optimistic update).`);
 
             // Manter publicação no Canal do Workspace (notificação enriquecida)

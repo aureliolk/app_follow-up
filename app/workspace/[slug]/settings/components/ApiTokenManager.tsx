@@ -4,6 +4,15 @@ import { Key, Trash2, Copy, Clock, AlertCircle, CheckCircle, RefreshCw, Eye, Eye
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'react-hot-toast';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from '@/lib/utils';
 
 type ApiToken = {
   id: string;
@@ -29,17 +38,16 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
   const [newTokenValue, setNewTokenValue] = useState<string | null>(null);
   const [showTokenValue, setShowTokenValue] = useState(false);
   const [creatingToken, setCreatingToken] = useState(false);
-  const [expirationDays, setExpirationDays] = useState(30);
-  const [generating, setGenerating] = useState(false);
-  
-  // Buscar tokens existentes
+  const [expirationDays, setExpirationDays] = useState('30');
+  const [deletingTokenId, setDeletingTokenId] = useState<string | null>(null);
+
   useEffect(() => {
     async function fetchTokens() {
       try {
         setLoading(true);
         setError(null);
-        
-        // Simular tokens para exibição inicial enquanto endpoint está sendo implementado
+        setSuccessMessage(null);
+
         const mockTokens = [
           {
             id: '1',
@@ -61,567 +69,513 @@ export default function ApiTokenManager({ workspaceId }: { workspaceId: string }
             revoked: true,
             creator: { name: 'Bob', email: 'bob@example.com' },
           },
+          {
+            id: '3',
+            name: 'Token Expirado',
+            token: 'mock_token_3...def',
+            created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+            expires_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+            last_used_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+            revoked: false,
+            creator: { name: 'Charlie', email: 'charlie@example.com' },
+          },
         ];
-        
+
         try {
           const response = await fetch(`/api/workspaces/${workspaceId}/api-tokens`);
-          
+
           if (response.ok) {
             const data = await response.json();
             if (data.tokens && Array.isArray(data.tokens)) {
-              setTokens(data.tokens);
+              const sortedTokens = data.tokens.sort((a: ApiToken, b: ApiToken) => {
+                const aIsActive = !a.revoked && (!a.expires_at || new Date(a.expires_at) > new Date());
+                const bIsActive = !b.revoked && (!b.expires_at || new Date(b.expires_at) > new Date());
+                if (aIsActive && !bIsActive) return -1;
+                if (!aIsActive && bIsActive) return 1;
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              });
+              setTokens(sortedTokens);
+              setLoading(false);
               return;
+            } else {
+               throw new Error("Formato de resposta da API inválido.");
             }
+          } else {
+             const errorData = await response.json().catch(() => ({ error: "Erro ao buscar tokens" }));
+             throw new Error(errorData.error || `Erro ${response.status}: ${response.statusText}`);
           }
         } catch (fetchError) {
-          console.error("Erro na API, usando dados mockados:", fetchError);
+          console.error("Erro ao buscar tokens da API, usando dados mockados:", fetchError);
+          const sortedMockTokens = mockTokens.sort((a, b) => {
+            const aIsActive = !a.revoked && (!a.expires_at || new Date(a.expires_at) > new Date());
+            const bIsActive = !b.revoked && (!b.expires_at || new Date(b.expires_at) > new Date());
+            if (aIsActive && !bIsActive) return -1;
+            if (!aIsActive && bIsActive) return 1;
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          });
+          setTokens(sortedMockTokens);
+          setError('Falha ao carregar tokens da API. Exibindo dados de exemplo.');
         }
-        
-        // Usar dados mockados se a API falhar
-        setTokens(mockTokens);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Erro desconhecido');
+        setError(err instanceof Error ? err.message : 'Erro desconhecido ao carregar tokens.');
+        setTokens([]);
       } finally {
         setLoading(false);
       }
     }
-    
+
     fetchTokens();
   }, [workspaceId]);
-  
-  // Criar novo token
+
   const handleCreateToken = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!newTokenName.trim()) {
-      setError('Nome do token é obrigatório');
+      setError('Nome do token é obrigatório.');
+      toast.error('Nome do token é obrigatório.');
       return;
     }
-    
+
+    setCreatingToken(true);
+    setError(null);
+    setSuccessMessage(null);
+    setNewTokenValue(null);
+
+    let expires_at_iso: string | null = null;
+    if (expirationDays !== 'never') {
+       const expires_at = new Date();
+       expires_at.setDate(expires_at.getDate() + parseInt(expirationDays, 10));
+       expires_at_iso = expires_at.toISOString();
+    }
+
     try {
-      setCreatingToken(true);
-      setError(null);
-      
-      // Calcular data de expiração
-      const expires_at = new Date();
-      expires_at.setDate(expires_at.getDate() + expirationDays);
-      
-      try {
-        const response = await fetch(`/api/workspaces/${workspaceId}/api-tokens`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: newTokenName,
-            expires_at: expires_at.toISOString(),
-          }),
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          
-          // Mostrar o token para o usuário copiar
-          setNewTokenValue(data.token);
-          
-          // Atualizar a lista de tokens
-          setTokens(prev => [data.tokenInfo, ...prev]);
-          
-          // Limpar o formulário
-          setNewTokenName('');
-          setShowTokenForm(false);
-          return;
-        }
-      } catch (apiError) {
-        console.error("Erro na API ao criar token:", apiError);
+      const response = await fetch(`/api/workspaces/${workspaceId}/api-tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newTokenName.trim(),
+          expires_at: expires_at_iso,
+        }),
+      });
+
+       const data = await response.json();
+
+      if (response.ok) {
+        if (data.token && data.tokenInfo) {
+            setNewTokenValue(data.token);
+            setTokens(prev => [data.tokenInfo, ...prev]);
+            setNewTokenName('');
+            setExpirationDays('30');
+            setShowTokenForm(false);
+            setShowTokenValue(false);
+            toast.success('Token criado com sucesso!');
+         } else {
+            throw new Error("Resposta da API ao criar token incompleta.");
+         }
+      } else {
+         throw new Error(data.error || `Erro ${response.status} ao criar token.`);
       }
-      
-      // Mock para demonstração caso API falhe
-      const mockToken = `wsat_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-      setNewTokenValue(mockToken);
-      
-      // Adicionar token mockado à lista
-      const mockTokenInfo = {
-        id: Date.now().toString(),
-        name: newTokenName,
-        token: mockToken,
-        created_at: new Date().toISOString(),
-        expires_at: expires_at.toISOString(),
-        last_used_at: null,
-        revoked: false,
-        creator: {
-          name: "Usuário atual",
-          email: "user@exemplo.com"
-        }
-      };
-      
-      setTokens(prev => [mockTokenInfo, ...prev]);
-      
-      // Limpar o formulário
-      setNewTokenName('');
-      setShowTokenForm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro desconhecido');
+       console.error("Erro ao criar token:", err);
+       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido ao criar o token.';
+       setError(errorMessage);
+       toast.error(`Falha ao criar token: ${errorMessage}`);
     } finally {
       setCreatingToken(false);
     }
   };
-  
-  // Revogar token
+
   const handleRevokeToken = async (tokenId: string) => {
-    if (!confirm('Tem certeza que deseja revogar este token? Esta ação não pode ser desfeita.')) {
-      return;
-    }
-    
+     if (!confirm('Tem certeza que deseja revogar este token? Aplicações usando este token perderão o acesso.')) {
+       return;
+     }
+
+    setError(null);
+    setSuccessMessage(null);
+    const originalTokens = [...tokens];
+
+    setTokens(prev => prev.map(token =>
+      token.id === tokenId ? { ...token, revoked: true } : token
+    ));
+
     try {
-      try {
-        const response = await fetch(`/api/workspaces/${workspaceId}/api-tokens/${tokenId}`, {
-          method: 'DELETE',
-        });
-        
-        if (response.ok) {
-          // Atualizar a lista de tokens
-          setTokens(prev => prev.map(token => 
-            token.id === tokenId ? { ...token, revoked: true } : token
-          ));
-          return;
-        }
-      } catch (apiError) {
-        console.error("Erro na API ao revogar token:", apiError);
+       const response = await fetch(`/api/workspaces/${workspaceId}/api-tokens/${tokenId}`, {
+        method: 'DELETE',
+      });
+
+       const data = await response.json();
+
+      if (!response.ok) {
+         throw new Error(data.error || `Erro ${response.status} ao revogar token.`);
       }
-      
-      // Se a API falhar, simular sucesso na interface
-      setTokens(prev => prev.map(token => 
-        token.id === tokenId ? { ...token, revoked: true } : token
-      ));
+
+      setSuccessMessage(data.message || 'Token revogado com sucesso.');
+      toast.success('Token revogado.');
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro desconhecido');
+      console.error("Erro ao revogar token:", err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido ao revogar token.';
+      setError(errorMessage);
+      toast.error(`Falha ao revogar token: ${errorMessage}`);
+      setTokens(originalTokens);
     }
   };
 
-  // Excluir token revogado
   const handleDeleteToken = async (tokenId: string) => {
-    if (!confirm('Tem certeza que deseja excluir permanentemente este token?')) {
-      return;
-    }
-    
-    try {
-      // Adicionar um indicador visual de carregamento
-      setLoading(true);
-      setError(null);
-      setSuccessMessage(null);
-      
-      try {
-        // Chamar a API para exclusão permanente
-        console.log(`Excluindo token permanentemente: ${tokenId}`);
-        
-        // Usamos PATCH com um cabeçalho especial para indicar exclusão permanente
-        const response = await fetch(`/api/workspaces/${workspaceId}/api-tokens/${tokenId}`, {
-          method: 'PATCH',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-permanent-delete': 'true'
-          }
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-          console.log("Resposta da API:", data);
-          
-          // Remover o token da lista local (UI)
-          setTokens(prev => {
-            const updated = prev.filter(token => token.id !== tokenId);
-            console.log('Tokens atualizados após exclusão:', updated);
-            return updated;
-          });
-          
-          // Feedback para o usuário
-          setSuccessMessage(data.message || "Token excluído com sucesso");
-        } else {
-          throw new Error(data.error || "Erro ao excluir token");
-        }
-      } catch (apiError) {
-        console.error("Erro na API ao excluir token:", apiError);
-        setError(apiError instanceof Error ? apiError.message : "Erro ao excluir token");
-        
-        // Não remover o token da UI caso houver erro
-        return;
-      }
-      
-      // Limpar a mensagem de sucesso após 3 segundos
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro desconhecido');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Copiar token para a área de transferência
-  const copyToClipboard = (text: string) => {
-    // Verificar se estamos em um ambiente de navegador e se a API Clipboard está disponível
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(text)
-        .then(() => {
-          // Opcional: feedback visual para o usuário que o texto foi copiado
-          console.log('Token copiado para a área de transferência');
-        })
-        .catch(err => {
-          console.error('Erro ao copiar o token:', err);
-        });
-    } else {
-      // Alternativa para ambientes onde a API Clipboard não está disponível
-      console.warn('API Clipboard não disponível - usando método fallback');
-      
-      // Criar um elemento de texto temporário
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      
-      // Esconder o elemento do campo de visão
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      textArea.style.top = '-999999px';
-      document.body.appendChild(textArea);
-      
-      // Selecionar e copiar o texto
-      textArea.focus();
-      textArea.select();
-      
-      try {
-        const successful = document.execCommand('copy');
-        console.log(successful ? 'Token copiado com sucesso' : 'Falha ao copiar o token');
-      } catch (err) {
-        console.error('Erro ao copiar o texto:', err);
-      }
-      
-      // Limpar
-      document.body.removeChild(textArea);
-    }
-  };
-  
-  const handleGenerateToken = async () => {
-    // Simulação
-    setGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const mockTokenInfo: ApiToken = {
-      id: Math.random().toString(36).substring(7),
-      name: `Novo Token ${new Date().toLocaleTimeString()}`,
-      token: `wsat_${Math.random().toString(36).substring(2)}`,
-      created_at: new Date().toISOString(),
-      expires_at: null,
-      last_used_at: null,
-      revoked: false,
-      creator: { name: 'Usuário Atual', email: 'current@example.com' },
-    };
-    // setTokens(prev => [mockTokenInfo, ...prev]); // Comentado pois causava erro de tipo
-    console.log('Token gerado (simulado):', mockTokenInfo);
-    setGenerating(false);
-    toast.success('Novo token de API gerado (simulação)!');
-  };
-  
-  return (
-    <div className="space-y-6">
-      <div className="bg-[#161616] rounded-lg p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">Tokens de API</h2>
-          
-          {!showTokenForm && (
-            <button
-              onClick={() => setShowTokenForm(true)}
-              className="px-4 py-2 bg-[#F54900] text-white rounded-md hover:bg-[#D93C00] transition-colors"
-            >
-              Criar Novo Token
-            </button>
-          )}
-        </div>
-        
-        <p className="text-gray-400 mb-6">
-          Tokens de API permitem que aplicações externas acessem esta workspace através da API. 
-          Trate os tokens como senhas e nunca os compartilhe em ambientes públicos.
-        </p>
-        
-        {/* Alerta de novo token criado */}
-        {newTokenValue && (
-          <div className="mb-6 bg-green-900/20 border border-green-700 rounded-md p-4">
-            <h3 className="text-green-400 font-medium mb-2 flex items-center">
-              <CheckCircle className="h-5 w-5 mr-2" />
-              Token criado com sucesso!
-            </h3>
-            <p className="text-gray-300 mb-2 text-sm">
-              Este token será exibido apenas uma vez. Copie-o agora e armazene em um local seguro.
-            </p>
-            <div className="flex items-center bg-[#111111] p-3 rounded-md">
-              <div className="flex-1 font-mono text-sm overflow-x-auto">
-                {showTokenValue ? newTokenValue : '•'.repeat(Math.min(40, newTokenValue.length))}
-              </div>
-              <button 
-                onClick={() => setShowTokenValue(!showTokenValue)}
-                className="text-gray-400 hover:text-white mx-2"
-                title={showTokenValue ? "Ocultar token" : "Mostrar token"}
-              >
-                {showTokenValue ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              </button>
-              <button 
-                onClick={() => copyToClipboard(newTokenValue)}
-                className="text-gray-400 hover:text-white"
-                title="Copiar para área de transferência"
-              >
-                <Copy className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="mt-4 text-right">
-              <button 
-                onClick={() => setNewTokenValue(null)}
-                className="text-gray-400 text-sm hover:text-white"
-              >
-                Compreendi, não mostrar novamente
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {/* Formulário para criar novo token */}
-        {showTokenForm && (
-          <div className="mb-6 bg-[#0F0F0F] border border-[#333333] rounded-md p-4">
-            <h3 className="font-medium mb-4">Criar Novo Token de API</h3>
-            <form onSubmit={handleCreateToken} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">
-                  Nome do Token
-                </label>
-                <input
-                  type="text"
-                  value={newTokenName}
-                  onChange={(e) => setNewTokenName(e.target.value)}
-                  placeholder="Ex: Sistema de CRM, Integração com Website"
-                  className="w-full px-3 py-2 bg-[#111111] border border-[#333333] rounded-md text-white"
-                  required
-                />
-                <p className="text-gray-500 text-xs mt-1">
-                  Escolha um nome descritivo para identificar onde este token será usado.
-                </p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">
-                  Expiração
-                </label>
-                <select
-                  value={expirationDays}
-                  onChange={(e) => setExpirationDays(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-[#111111] border border-[#333333] rounded-md text-white"
-                >
-                  <option value={7}>7 dias</option>
-                  <option value={30}>30 dias</option>
-                  <option value={90}>90 dias</option>
-                  <option value={365}>1 ano</option>
-                </select>
-              </div>
-              
-              <div className="flex justify-end space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowTokenForm(false)}
-                  className="px-4 py-2 border border-[#333333] text-gray-300 rounded-md hover:bg-[#1a1a1a]"
-                  disabled={creatingToken}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-[#F54900] text-white rounded-md hover:bg-[#D93C00] disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                  disabled={creatingToken}
-                >
-                  {creatingToken ? (
-                    <>
-                      <RefreshCw className="animate-spin h-4 w-4 mr-2" />
-                      Criando...
-                    </>
-                  ) : (
-                    <>Criar Token</>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-        
-        {/* Erro */}
-        {error && (
-          <div className="mb-6 bg-red-900/20 border border-red-700 text-red-400 p-4 rounded-md flex items-start">
-            <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-            <div>
-              <strong className="font-medium">Erro: </strong>
-              {error}
-            </div>
-          </div>
-        )}
+     if (!confirm('Tem certeza que deseja excluir permanentemente este token revogado? Esta ação não pode ser desfeita.')) {
+       return;
+     }
 
-        {/* Mensagem de sucesso */}
-        {successMessage && (
-          <div className="mb-6 bg-green-900/20 border border-green-700 text-green-400 p-4 rounded-md flex items-start">
-            <CheckCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-            <div>
-              <strong className="font-medium">Sucesso: </strong>
-              {successMessage}
-            </div>
-          </div>
-        )}
-        
-        {/* Tabela de tokens */}
-        {loading ? (
-          <div className="text-center py-8">
-            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-[#F54900]" />
-            <p className="mt-2 text-gray-400">Carregando tokens...</p>
-          </div>
-        ) : tokens.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead>
-                <tr className="bg-[#0F0F0F] border-b border-[#333333]">
-                  <th className="py-3 px-4 text-left text-sm font-medium text-gray-400">Nome</th>
-                  <th className="py-3 px-4 text-left text-sm font-medium text-gray-400">Último uso</th>
-                  <th className="py-3 px-4 text-left text-sm font-medium text-gray-400">Expiração</th>
-                  <th className="py-3 px-4 text-left text-sm font-medium text-gray-400">Status</th>
-                  <th className="py-3 px-4 text-right text-sm font-medium text-gray-400">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tokens.map((token) => (
-                  <tr key={token.id} className="border-b border-[#333333]">
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-white">{token.name}</div>
-                      <div className="text-xs text-gray-500">
-                        Criado {formatDistanceToNow(new Date(token.created_at), { addSuffix: true, locale: ptBR })}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      {token.last_used_at ? (
-                        <span className="text-gray-300">
-                          {formatDistanceToNow(new Date(token.last_used_at), { addSuffix: true, locale: ptBR })}
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">Nunca usado</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      {token.expires_at ? (
-                        <div className="flex items-center">
-                          <Clock className="h-4 w-4 mr-1 text-gray-500" />
-                          <span className="text-gray-300">
-                            {formatDistanceToNow(new Date(token.expires_at), { addSuffix: true, locale: ptBR })}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-500">Não expira</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      {token.revoked ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-900/30 text-red-400">
-                          Revogado
-                        </span>
-                      ) : new Date(token.expires_at as string) < new Date() ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-900/30 text-yellow-400">
-                          Expirado
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400">
-                          Ativo
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      {!token.revoked ? (
-                        <button
-                          onClick={() => handleRevokeToken(token.id)}
-                          className="text-gray-400 hover:text-red-500 transition-colors"
-                          title="Revogar token"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
-                      ) : (
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => {
-                              console.log("Excluindo token:", token.id);
-                              handleDeleteToken(token.id);
-                            }}
-                            className="px-2 py-1 text-xs bg-red-900/40 text-red-400 rounded hover:bg-red-800/60 transition-colors flex items-center"
-                            title="Excluir token permanentemente"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Excluir
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-center py-8 border border-dashed border-[#333333] rounded-md">
-            <Key className="h-8 w-8 mx-auto text-gray-500 mb-2" />
-            <h3 className="text-lg font-medium text-gray-300">Nenhum token encontrado</h3>
-            <p className="text-gray-500 mt-1">
-              Crie seu primeiro token de API para integrar aplicações externas.
-            </p>
+    setDeletingTokenId(tokenId);
+    setError(null);
+    setSuccessMessage(null);
+    const originalTokens = [...tokens];
+
+    try {
+      const response = await fetch(`/api/workspaces/${workspaceId}/api-tokens/${tokenId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Permanent-Delete': 'true'
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setTokens(prev => prev.filter(token => token.id !== tokenId));
+        setSuccessMessage(data.message || "Token excluído permanentemente.");
+        toast.success("Token excluído permanentemente.");
+      } else {
+        throw new Error(data.error || `Erro ${response.status} ao excluir token.`);
+      }
+    } catch (err) {
+      console.error("Erro ao excluir token permanentemente:", err);
+       const errorMessage = err instanceof Error ? err.message : "Erro desconhecido ao excluir token.";
+       setError(errorMessage);
+       toast.error(`Falha ao excluir token: ${errorMessage}`);
+    } finally {
+      setDeletingTokenId(null);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        toast.success('Token copiado para a área de transferência!');
+      })
+      .catch(err => {
+        console.error('Erro ao copiar o token:', err);
+        toast.error('Falha ao copiar o token.');
+      });
+  };
+
+  const getTokenStatus = (token: ApiToken): { text: string; colorClass: string; variant: "default" | "destructive" | "warning" | "success" } => {
+    if (token.revoked) {
+      return { text: 'Revogado', colorClass: 'text-red-500 bg-red-500/10', variant: 'destructive' };
+    }
+    if (token.expires_at && new Date(token.expires_at) < new Date()) {
+      return { text: 'Expirado', colorClass: 'text-yellow-500 bg-yellow-500/10', variant: 'warning' };
+    }
+    return { text: 'Ativo', colorClass: 'text-green-500 bg-green-500/10', variant: 'success' };
+  };
+
+  return (
+    <div className="space-y-8">
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle>Gerenciar Tokens</CardTitle>
             {!showTokenForm && (
-              <button
-                onClick={() => setShowTokenForm(true)}
-                className="mt-4 px-4 py-2 bg-[#F54900] text-white rounded-md hover:bg-[#D93C00] transition-colors"
-              >
-                Criar Novo Token
-              </button>
+              <Button onClick={() => setShowTokenForm(true)}>
+                <Key className="mr-2 h-4 w-4" /> Criar Novo Token
+              </Button>
             )}
           </div>
-        )}
-      </div>
-      
-      <div className="bg-[#161616] rounded-lg p-6">
-        <h2 className="text-xl font-semibold mb-4">Como usar os tokens</h2>
-        <div className="space-y-4 text-gray-300">
-          <p>
-            Os tokens de API permitem autenticar requisições à API de follow-up a partir de sistemas externos.
-            Para usar um token, inclua-o no cabeçalho de suas requisições:
-          </p>
-          
-          <div className="bg-[#0F0F0F] p-4 rounded-md">
-            <code className="block font-mono text-sm overflow-x-auto">
-              <span className="text-blue-400">const</span> <span className="text-green-400">response</span> = <span className="text-blue-400">await</span> fetch(<span className="text-yellow-300">'https://seu-dominio.com/api/follow-up'</span>, {'{'}<br/>
-              &nbsp;&nbsp;method: <span className="text-yellow-300">'POST'</span>,<br/>
-              &nbsp;&nbsp;headers: {'{'}<br/>
-              &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-yellow-300">'Content-Type'</span>: <span className="text-yellow-300">'application/json'</span>,<br/>
-              &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-yellow-300">'x-api-key'</span>: <span className="text-yellow-300">'seu-token-aqui'</span><br/>
-              &nbsp;&nbsp;{'}'},<br/>
-              &nbsp;&nbsp;body: <span className="text-blue-400">JSON</span>.stringify({'{'}<br/>
-              &nbsp;&nbsp;&nbsp;&nbsp;clientId: <span className="text-yellow-300">'cliente123'</span>,<br/>
-              &nbsp;&nbsp;&nbsp;&nbsp;workspaceId: <span className="text-yellow-300">'{workspaceId}'</span><br/>
-              &nbsp;&nbsp;{'}'})<br/>
-              {'}'});
-            </code>
-          </div>
-          
-          <div className="bg-blue-900/20 border border-blue-700 text-blue-400 p-4 rounded-md flex items-start">
-            <AlertCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-            <div>
-              <strong className="font-medium">Dica de segurança: </strong>
-              Sempre armazene seus tokens de maneira segura e nunca os compartilhe em repositórios públicos de código, 
-              variáveis de ambiente não protegidas ou logs do sistema.
+          <CardDescription>
+            Crie e gerencie tokens de API para permitir acesso externo seguro.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+           {newTokenValue && (
+             <Alert variant="default" className="mb-6 border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400">
+               <CheckCircle className="h-5 w-5" />
+               <AlertTitle>Token Criado com Sucesso!</AlertTitle>
+               <AlertDescription>
+                 <p className="mb-3">Copie este token agora. Ele não será exibido novamente por motivos de segurança.</p>
+                 <div className="flex items-center bg-muted p-3 rounded-md border">
+                   <span className={cn(
+                     "flex-1 font-mono text-sm overflow-x-auto mr-2",
+                     !showTokenValue && "blur-sm select-none"
+                   )}>
+                     {newTokenValue}
+                   </span>
+                   <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowTokenValue(!showTokenValue)}
+                      className="mr-1"
+                      title={showTokenValue ? "Ocultar token" : "Mostrar token"}
+                    >
+                      {showTokenValue ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                   <Button
+                     variant="ghost"
+                     size="icon"
+                     onClick={() => copyToClipboard(newTokenValue)}
+                     title="Copiar para área de transferência"
+                   >
+                     <Copy className="h-4 w-4" />
+                   </Button>
+                 </div>
+                 <div className="mt-4 text-right">
+                   <Button variant="link" onClick={() => setNewTokenValue(null)} className="text-muted-foreground h-auto p-0">
+                     Entendido, fechar
+                   </Button>
+                 </div>
+               </AlertDescription>
+             </Alert>
+           )}
+
+          {showTokenForm && (
+            <Card className="mb-6 bg-muted/50 border">
+               <CardHeader>
+                  <CardTitle className="text-base">Criar Novo Token de API</CardTitle>
+               </CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreateToken} className="space-y-4">
+                  <div>
+                    <Label htmlFor="tokenName">Nome do Token</Label>
+                    <Input
+                      id="tokenName"
+                      type="text"
+                      value={newTokenName}
+                      onChange={(e) => setNewTokenName(e.target.value)}
+                      placeholder="Ex: Integração CRM, Script de Backup"
+                      required
+                      className="mt-1"
+                      disabled={creatingToken}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Um nome descritivo para identificar o uso do token.
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="tokenExpiration">Expiração</Label>
+                     <Select
+                        value={expirationDays}
+                        onValueChange={setExpirationDays}
+                        disabled={creatingToken}
+                      >
+                        <SelectTrigger id="tokenExpiration" className="mt-1">
+                          <SelectValue placeholder="Selecione a expiração" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="7">7 dias</SelectItem>
+                          <SelectItem value="30">30 dias</SelectItem>
+                          <SelectItem value="90">90 dias</SelectItem>
+                          <SelectItem value="365">1 ano</SelectItem>
+                           <SelectItem value="never">Nunca expira</SelectItem>
+                        </SelectContent>
+                      </Select>
+                  </div>
+
+                  <div className="flex justify-end space-x-3 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowTokenForm(false)}
+                      disabled={creatingToken}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={creatingToken || !newTokenName.trim()}
+                    >
+                      {creatingToken ? (
+                        <>
+                          <RefreshCw className="animate-spin h-4 w-4 mr-2" />
+                          Criando...
+                        </>
+                      ) : (
+                        'Criar Token'
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+           {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-5 w-5" />
+              <AlertTitle>Erro</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {successMessage && !newTokenValue && (
+            <Alert variant="default" className="mb-6 border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400">
+              <CheckCircle className="h-5 w-5" />
+              <AlertTitle>Sucesso</AlertTitle>
+              <AlertDescription>{successMessage}</AlertDescription>
+            </Alert>
+          )}
+
+           {loading ? (
+             <div className="space-y-4 mt-6">
+               <Skeleton className="h-10 w-full" />
+               <Skeleton className="h-10 w-full" />
+               <Skeleton className="h-10 w-full" />
+             </div>
+           ) : tokens.length > 0 ? (
+            <div className="border rounded-lg overflow-hidden mt-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Último Uso</TableHead>
+                    <TableHead>Expiração</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tokens.map((token) => {
+                     const status = getTokenStatus(token);
+                     const isExpired = status.text === 'Expirado';
+                     const isRevoked = status.text === 'Revogado';
+                     const isBeingDeleted = deletingTokenId === token.id;
+
+                     return (
+                      <TableRow key={token.id} className={cn(isRevoked && "opacity-60")}>
+                        <TableCell>
+                          <div className="font-medium">{token.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Criado {formatDistanceToNow(new Date(token.created_at), { addSuffix: true, locale: ptBR })}
+                            {token.creator?.name && ` por ${token.creator.name}`}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {token.last_used_at ? (
+                            formatDistanceToNow(new Date(token.last_used_at), { addSuffix: true, locale: ptBR })
+                          ) : (
+                            'Nunca'
+                          )}
+                        </TableCell>
+                         <TableCell className="text-sm text-muted-foreground">
+                          {token.expires_at ? (
+                             <span className={cn(isExpired && "text-yellow-600 dark:text-yellow-500")}>
+                               {formatDistanceToNow(new Date(token.expires_at), { addSuffix: true, locale: ptBR })}
+                             </span>
+                          ) : (
+                            'Não expira'
+                          )}
+                        </TableCell>
+                        <TableCell>
+                           <span className={cn(
+                             "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                              status.colorClass
+                           )}>
+                             {status.text}
+                           </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                           {isRevoked || isExpired ? (
+                             <Button
+                               variant="destructive"
+                               size="sm"
+                               onClick={() => handleDeleteToken(token.id)}
+                               disabled={isBeingDeleted}
+                               title="Excluir token permanentemente"
+                              >
+                               {isBeingDeleted ? (
+                                 <RefreshCw className="h-4 w-4 animate-spin mr-1" />
+                               ) : (
+                                  <Trash2 className="h-4 w-4 mr-1" />
+                               )}
+                               Excluir
+                             </Button>
+                           ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRevokeToken(token.id)}
+                              className="text-muted-foreground hover:text-destructive"
+                              title="Revogar token"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
-          </div>
-          
-          <p>
-            Para mais informações sobre os endpoints disponíveis e exemplos de uso, 
-            consulte a <a href="/api/docs" target="_blank" className="text-[#F54900] hover:underline">documentação da API</a>.
+          ) : (
+             <Card className="mt-6 border-dashed text-center py-12">
+               <CardHeader className="items-center">
+                  <Key className="h-10 w-10 text-muted-foreground mb-3" />
+                  <CardTitle>Nenhum Token de API Encontrado</CardTitle>
+                  <CardDescription>
+                     Crie seu primeiro token para começar a usar a API.
+                  </CardDescription>
+               </CardHeader>
+                <CardContent>
+                  {!showTokenForm && (
+                     <Button onClick={() => setShowTokenForm(true)} className="mt-2">
+                       <Key className="mr-2 h-4 w-4" /> Criar Primeiro Token
+                     </Button>
+                  )}
+                </CardContent>
+             </Card>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Como Usar os Tokens</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <p className="text-muted-foreground">
+            Para autenticar requisições à API, inclua seu token no cabeçalho HTTP <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">x-api-key</code>.
           </p>
-        </div>
-      </div>
+
+          <div className="bg-muted p-4 rounded-md border">
+            <pre className="overflow-x-auto">
+              <code className="text-xs font-mono">
+                {`fetch('/api/some-endpoint', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'SEU_TOKEN_AQUI'
+  },
+  body: JSON.stringify({ /* seu payload */ })
+});`}
+              </code>
+            </pre>
+          </div>
+
+          <Alert variant="default" className="border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400">
+            <AlertCircle className="h-5 w-5" />
+            <AlertTitle>Dica de Segurança</AlertTitle>
+            <AlertDescription>
+              Mantenha seus tokens seguros como senhas. Nunca os exponha em código-fonte público ou em logs. Revogue tokens comprometidos imediatamente.
+            </AlertDescription>
+          </Alert>
+
+          <p className="text-muted-foreground">
+            Consulte a <a href="/api/docs" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">documentação completa da API</a> para mais detalhes e endpoints disponíveis.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

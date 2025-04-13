@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils';
 import { formatMsToDelayString, parseDelayStringToMs } from '@/lib/timeUtils';
 import { WorkspaceAiFollowUpRule as PrismaRule } from '@prisma/client';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import ErrorMessage from '@/components/ui/ErrorMessage';
 
 // Interface para os dados do formulário (o que o usuário digita)
 interface RuleFormData {

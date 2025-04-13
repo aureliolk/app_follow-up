@@ -38,54 +38,54 @@ export default function ConversationsPage() {
     const wsId = workspace?.id;
 
     if (wsId && !workspaceLoading) {
-        console.log(`[ConversationsPage] SSE Effect Setup: Conectando para Workspace ${wsId}`);
-        if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-        }
+      console.log(`[ConversationsPage] SSE Effect Setup: Conectando para Workspace ${wsId}`);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
 
-        const eventSource = new EventSource(`/api/workspaces/${wsId}/subscribe`);
-        eventSourceRef.current = eventSource;
+      const eventSource = new EventSource(`/api/workspaces/${wsId}/subscribe`);
+      eventSourceRef.current = eventSource;
 
-        eventSource.onmessage = (event) => {
-            try {
-                const eventData = JSON.parse(event.data);
-                console.log('[ConversationsPage] SSE Message Received:', eventData);
+      eventSource.onmessage = (event) => {
+        try {
+          const eventData = JSON.parse(event.data);
+          console.log('[ConversationsPage] SSE Message Received:', eventData);
 
-                // Chamar fetchConversations quando uma nova mensagem (ou atualização) chegar para QUALQUER conversa
-                if (eventData.type === 'new_message' || eventData.type === 'conversation_updated') {
-                  console.log(`[ConversationsPage] SSE Triggering fetchConversations due to event type: ${eventData.type}`);
-                  // Usar o workspaceId atual para garantir que o fetch use o ID correto,
-                  // especialmente se o workspace mudar rapidamente (improvável, mas seguro)
-                  if (wsId) {
-                    fetchConversations('ATIVAS', wsId); // Ou o filtro atual, se relevante
-                  } else {
-                     console.warn('[ConversationsPage] SSE: Tentando chamar fetchConversations sem wsId.');
-                  }
-                }
-
-            } catch (error) { console.error("[ConversationsPage] SSE: Erro ao processar mensagem:", error); }
-        };
-
-        eventSource.onerror = (error) => {
-            console.error("[ConversationsPage] SSE Error:", error);
-            eventSource.close();
-            eventSourceRef.current = null;
-        };
-
-        eventSource.onopen = () => { console.log(`[ConversationsPage] SSE Connection OPENED para Workspace ${wsId}`); };
-
-        return () => {
-            console.log(`[ConversationsPage] SSE Effect Cleanup: Fechando conexão SSE para Workspace ${wsId}`);
-            if (eventSourceRef.current) {
-                eventSourceRef.current.close();
-                eventSourceRef.current = null;
+          // Chamar fetchConversations quando uma nova mensagem (ou atualização) chegar para QUALQUER conversa
+          if (eventData.type === 'new_message' || eventData.type === 'conversation_updated') {
+            console.log(`[ConversationsPage] SSE Triggering fetchConversations due to event type: ${eventData.type}`);
+            // Usar o workspaceId atual para garantir que o fetch use o ID correto,
+            // especialmente se o workspace mudar rapidamente (improvável, mas seguro)
+            if (wsId) {
+              fetchConversations('ATIVAS', wsId); // Ou o filtro atual, se relevante
+            } else {
+              console.warn('[ConversationsPage] SSE: Tentando chamar fetchConversations sem wsId.');
             }
-        };
+          }
+
+        } catch (error) { console.error("[ConversationsPage] SSE: Erro ao processar mensagem:", error); }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error("[ConversationsPage] SSE Error:", error);
+        eventSource.close();
+        eventSourceRef.current = null;
+      };
+
+      eventSource.onopen = () => { console.log(`[ConversationsPage] SSE Connection OPENED para Workspace ${wsId}`); };
+
+      return () => {
+        console.log(`[ConversationsPage] SSE Effect Cleanup: Fechando conexão SSE para Workspace ${wsId}`);
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
+      };
     }
     else if (eventSourceRef.current) {
-        console.log("[ConversationsPage] SSE Effect Cleanup: Workspace ID indisponível, fechando conexão SSE.");
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      console.log("[ConversationsPage] SSE Effect Cleanup: Workspace ID indisponível, fechando conexão SSE.");
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
     }
 
   }, [workspace?.id, workspaceLoading, fetchConversations]);
@@ -98,10 +98,10 @@ export default function ConversationsPage() {
   const displayError = conversationsError || workspaceError;
 
   if (isLoading && conversations.length === 0) {
-      return <LoadingSpinner message="Carregando conversas..." />
+    return <LoadingSpinner message="Carregando conversas..." />
   }
   if (displayError) {
-      return <ErrorMessage message={displayError} />
+    return <ErrorMessage message={displayError} />
   }
 
   return (
@@ -114,13 +114,16 @@ export default function ConversationsPage() {
             selectedConversationId={selectedConversation?.id}
           />
           {!isLoading && conversations.length === 0 && !displayError && (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                  Nenhuma conversa ativa encontrada.
-              </div>
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              Nenhuma conversa ativa encontrada.
+            </div>
           )}
         </div>
 
         <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-background">
+          <div className="text-xs text-muted-foreground">
+            ID da conversa: {selectedConversation?.id ?? 'Nenhuma selecionada'}
+          </div>
           <ConversationDetail />
         </div>
       </div>
