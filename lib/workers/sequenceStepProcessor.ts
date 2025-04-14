@@ -140,9 +140,9 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
             decryptedAccessToken,
             messageToSend
         );
-        if (sendResult.success && sendResult.messageId) {
+        if (sendResult.success && sendResult.wamid) {
             sendSuccess = true;
-            sentMessageIdFromWhatsapp = sendResult.messageId;
+            sentMessageIdFromWhatsapp = sendResult.wamid;
         } else {
             errorMessage = JSON.stringify(sendResult.error || 'Erro desconhecido no envio WhatsApp');
         }

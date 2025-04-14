@@ -227,13 +227,13 @@ export default function ConversationDetail() {
   return (
     <div className="flex flex-col h-full bg-card border-l border-border relative">
       {/* Header */} 
-      <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
+      <div className="flex items-center justify-between p-[12px] border-b border-border flex-shrink-0">
         <div className="flex items-center space-x-3">
           <Avatar className="h-9 w-9">
             <AvatarFallback>{conversation.client?.name?.charAt(0)?.toUpperCase() || 'C'}</AvatarFallback>
           </Avatar>
           <div>
-            <div className="font-semibold text-white">{conversation.client?.name || 'Desconhecido'}</div>
+            <div className="font-semibold  dark:text-white">{conversation.client?.name || 'Desconhecido'}</div>
             <div className="text-xs text-muted-foreground">{conversation.client?.phone_number || 'Sem telefone'}</div>
           </div>
         </div>
@@ -264,7 +264,7 @@ export default function ConversationDetail() {
             >
               {/* Text Content */} 
               {!message.media_url && message.content && (
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                <p className="whitespace-pre-wrap text-sm">{message.content}</p>
               )}
               {/* Media Content */} 
               {message.media_url && (
@@ -284,14 +284,14 @@ export default function ConversationDetail() {
                 </div>
               )}
               {/* Timestamp & Status */} 
-              <div className={cn("text-xs mt-1 flex items-center", message.sender_type === 'CLIENT' ? 'text-muted-foreground/80 justify-start' : 'text-primary-foreground/80 justify-end')}>
+              <div className={cn("text-[10px] mt-1 flex items-center", message.sender_type === 'CLIENT' ? 'text-muted-foreground/80 justify-start' : 'text-primary-foreground/80 justify-end')}>
                 <span title={format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>{format(new Date(message.timestamp), 'HH:mm', { locale: ptBR })}</span>
                 {message.sender_type !== 'CLIENT' && (
                   <span className="ml-2 inline-flex items-center" title={`Status: ${message.status}`}>
                     {message.status === 'PENDING' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    {message.status === 'SENT' && <Check className="h-4 w-4 text-primary-foreground/70" />}
+                    {message.status === 'SENT' && <Check className="h-3 w-3 text-primary-foreground/70" />}
                     {message.status === 'DELIVERED' && <CheckCheck className="h-4 w-4 text-primary-foreground/70" />}
-                    {message.status === 'READ' && <CheckCheck className="h-4 w-4 text-blue-400" />}
+                    {message.status === 'READ' && <CheckCheck className="h-3 w-3 text-blue-400" />}
                     {message.status === 'FAILED' && <XCircle className="h-4 w-4 text-red-400" />}
                   </span>
                 )}
@@ -321,7 +321,10 @@ export default function ConversationDetail() {
       <ClientInfoSidebar 
         isOpen={isClientSidebarOpen}
         onClose={() => setIsClientSidebarOpen(false)}
-        clientData={conversation.client}
+        clientData={conversation.client ? {
+            ...conversation.client,
+            workspace_id: conversation.workspace_id
+        } : undefined}
         onSave={handleSaveClient}
         onDelete={handleDeleteClient}
       />

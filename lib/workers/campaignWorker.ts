@@ -179,7 +179,7 @@ const processCampaignJob = async (job: Job<CampaignJobData>) => {
 
             if (sendResult.success) {
                 sendSuccess = true;
-                console.log(`[WORKER ${job.id}] Mensagem enviada com sucesso via WhatsApp para contato ${nextContact.id}. Message ID: ${sendResult.messageId}`);
+                console.log(`[WORKER ${job.id}] Mensagem enviada com sucesso via WhatsApp para contato ${nextContact.id}. Message ID: ${sendResult.wamid}`);
             } else {
                 errorMessage = JSON.stringify(sendResult.error || 'Erro desconhecido no envio WhatsApp');
                 console.error(`[WORKER ${job.id}] Falha ao enviar mensagem via WhatsApp para contato ${nextContact.id}. Erro:`, errorMessage);

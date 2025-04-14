@@ -51,20 +51,21 @@ async function getWorkspaceWhatsappSettings(slug: string) {
 export default async function WhatsappIntegrationPage({ params }: WhatsappIntegrationPageProps) {
   const settings = await getWorkspaceWhatsappSettings((await params).slug);
   // Construir URL base corretamente (você pode ter isso em .env)
-  const appBaseUrl = process.env.NEXTAUTH_URL || 'https://SUA_URL_BASE'; 
+  const appBaseUrl = process.env.NEXTAUTH_URL || 'https://app.lumibot.com.br'; // Usar URL real ou variável de ambiente
   // Construir URL dinâmica do webhook (USANDO "webhooks" no plural)
-  const webhookUrl = settings.whatsappWebhookRouteToken 
+  const webhookUrl = settings.whatsappWebhookRouteToken
     ? `${appBaseUrl}/api/webhooks/ingress/whatsapp/${settings.whatsappWebhookRouteToken}`
     : null; // Será null se o token ainda não foi gerado
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium">Integração WhatsApp Cloud API</h3>
-        <p className="text-sm text-muted-foreground">
-          Conecte sua Conta Oficial do WhatsApp Business (WABA) para enviar e receber mensagens.
-        </p>
-      </div>
+    // Aplicar padding e espaçamento padrão
+    <div className="p-4 md:p-6 space-y-8"> 
+      {/* Título principal da página */}
+      <h1 className="text-2xl font-bold text-foreground">
+        Integração WhatsApp Cloud API
+      </h1>
+
+      {/* Alert de Atenção */}
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>Atenção: Informações Sensíveis</AlertTitle>
@@ -73,24 +74,33 @@ export default async function WhatsappIntegrationPage({ params }: WhatsappIntegr
         </AlertDescription>
       </Alert>
 
-      <Card>
+      {/* Card para Informações do Webhook */}
+      <Card className="border-border bg-card shadow rounded-lg">
         <CardHeader>
-          <CardTitle>Configuração da API</CardTitle>
+          <CardTitle className="text-card-foreground text-lg font-semibold">Configuração do Webhook</CardTitle>
+          <CardDescription>
+            Use as seguintes informações ao configurar o Webhook dentro do seu Aplicativo Meta (na seção WhatsApp &gt; Configuração da API):
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* O componente WebhookInfoDisplay renderiza a UI específica */}
+          <WebhookInfoDisplay
+            webhookUrl={webhookUrl}
+            verifyToken={settings.webhookVerifyToken}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Card para o Formulário de Configuração da API */}
+      <Card className="border-border bg-card shadow rounded-lg">
+        <CardHeader>
+          <CardTitle className="text-card-foreground text-lg font-semibold">Configuração da API</CardTitle>
           <CardDescription>
             Preencha as informações obtidas do seu Aplicativo e Conta na plataforma Meta Developers.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-6 p-4 border rounded-md bg-muted/50">
-             <h4 className="font-semibold mb-2">Informações do Webhook</h4>
-             <p className="text-sm text-muted-foreground mb-2">
-               Use as seguintes informações ao configurar o Webhook dentro do seu Aplicativo Meta (na seção WhatsApp &gt; Configuração da API):
-             </p>
-             <WebhookInfoDisplay 
-               webhookUrl={webhookUrl} 
-               verifyToken={settings.webhookVerifyToken}
-             />
-          </div>
+          {/* O componente WhatsappSettingsForm contém os campos do formulário */}
           <WhatsappSettingsForm currentSettings={settings} />
         </CardContent>
       </Card>
