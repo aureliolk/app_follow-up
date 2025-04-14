@@ -5,6 +5,11 @@ import AiFollowUpRules from "./components/AiFollowUpRules"; // <<< Importar o no
 export default function IaPage() { // Renomear para IaPage para clareza
     return (
         <div className="p-4 md:p-6 space-y-8"> {/* Adiciona espaçamento entre os cards */}
+            {/* Título principal da página */}
+            <h1 className="text-2xl font-bold text-foreground">
+                Configurações de Inteligência Artificial
+            </h1>
+
             {/* Card de Configurações Gerais da IA */}
             <div>
                 {/* Não precisa de título extra aqui se AISettingsForm já tem um CardHeader */}
