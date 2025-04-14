@@ -2,7 +2,6 @@
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
 import { prisma } from '@/lib/db';
-import { generateChatCompletion } from '@/lib/ai/chatService';
 // Importar a função de envio do WhatsApp (deve existir em lib/channel/whatsappSender.ts)
 import { sendWhatsappMessage } from '@/lib/channel/whatsappSender';
 import { MessageSenderType, ConversationStatus, Prisma } from '@prisma/client'; // Adicionar Prisma
@@ -19,6 +18,7 @@ import { lookup } from 'mime-types'; // Para obter extensão do mime type
 import { describeImage } from '@/lib/ai/describeImage';
 import { transcribeAudio } from '@/lib/ai/transcribeAudio';
 import { Readable } from 'stream';
+import { generateChatCompletion } from '../ai/chatService';
 
 const QUEUE_NAME = 'message-processing';
 const BUFFER_TIME_MS = 3000; // 3 segundos de buffer (ajuste se necessário)
@@ -421,7 +421,8 @@ async function processJob(job: Job<JobData>) {
 
     // --- 8. Chamar o Serviço de IA --- 
     console.log(`[MsgProcessor ${jobId}] Chamando generateChatCompletion...`);
-    const aiResponseContent = await generateChatCompletion({ messages: aiMessages, systemPrompt, modelId });
+    
+    const aiResponseContent = await generateChatCompletion({ messages: aiMessages, systemPrompt, modelId, conversationId });
 
     // --- 9. Salvar e Enviar Resposta da IA ---
     if (aiResponseContent && aiResponseContent.trim() !== '') {

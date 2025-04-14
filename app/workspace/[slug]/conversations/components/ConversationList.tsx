@@ -93,6 +93,9 @@ export default function ConversationList({
                  {senderPrefix && <span className="font-medium">{senderPrefix}</span>}
                  {lastMessageText}
               </p>
+              <p className="text-xs text-muted-foreground truncate leading-snug">
+                {convo.id}
+              </p>
             </div>
           </button>
         );

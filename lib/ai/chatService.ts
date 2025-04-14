@@ -1,7 +1,10 @@
 // lib/ai/chatService.ts
 import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
-import { generateText, CoreMessage, LanguageModel } from 'ai';
+import { generateText, CoreMessage, tool, LanguageModel } from 'ai';
+import { z } from 'zod';
+import { deactivateConversationAI } from '@/lib/actions/conversationActions';
+
 
 // Tipagem para as mensagens, adicionando modelId
 export interface ChatRequestPayload {
@@ -9,14 +12,31 @@ export interface ChatRequestPayload {
   systemPrompt?: string;
   modelId: string;
   nameIa?: string;
+  conversationId: string;
 }
 
-const extraInstructions = `Voce e capaz de Escutar audio e ver imagens. se o cliente pergunta se vc pode ver uma imagem, vc deve responder que sim. se o cliente pergunta se vc pode ouvir um audio, vc deve responder que sim.`;
+const humanTransferTool = tool({
+  description: 'Transfere a conversa para um atendente humano',
+  parameters: z.object({
+    conversationId: z.string().describe('ID da conversa'),
+  }),
+  execute: async ({ conversationId }) => {
+    deactivateConversationAI(conversationId);
+    console.log(`[Tool] Transfere a conversa para um atendente humano: ${conversationId}`);
+    return { success: true };
+  },
+});
+
 
 // Função unificada para gerar chat completion
-export async function generateChatCompletion({ messages, systemPrompt, modelId }: ChatRequestPayload) {
+export async function generateChatCompletion({ messages, systemPrompt, modelId, conversationId }: ChatRequestPayload) {
   try {
+    const extraInstructions = `
+    Id da conversa: ${conversationId}
+    Voce e capaz de Escutar audio e ver imagens. se o cliente pergunta se vc pode ver uma imagem, vc deve responder que sim. se o cliente pergunta se vc pode ouvir um audio, vc deve responder que sim.
+    `;
     console.log(`Gerando texto com IA. Modelo: ${modelId}, Mensagens: ${messages.length}`);
+    
     const systemMessage = `${systemPrompt} ${extraInstructions}` || 'You are a helpful assistant.'; // Padrão genérico
 
     let modelInstance: LanguageModel;
@@ -41,6 +61,9 @@ export async function generateChatCompletion({ messages, systemPrompt, modelId }
       maxTokens: 1500,
       system: systemMessage,
       messages,
+      tools: {
+        humanTransfer: humanTransferTool,
+      },
     });
 
     console.log("Texto gerado pela IA:", text);

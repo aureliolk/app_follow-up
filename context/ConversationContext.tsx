@@ -18,7 +18,7 @@ import type {
     Message,
     ClientConversation,
 } from '@/app/types';
-import { toast } from 'react-hot-toast';
+import { toast, Toast, DefaultToastOptions } from 'react-hot-toast';
 
 // --- Helper Function ---
 const getActiveWorkspaceId = (workspaceCtx: any, providedId?: string): string | null => {
@@ -622,7 +622,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
          }));
 
 
-    }, [selectedConversation?.id]);
+    }, [selectedConversation, setConversations]); // Adicionado setConversations
 
     // --- Função para alternar o status da IA --- 
     const toggleAIStatus = useCallback(async (conversationId: string, currentAiState: boolean) => {
@@ -667,7 +667,86 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         } finally {
             setIsTogglingAIStatus(false); // Finaliza loading específico
         }
-    }, [setSelectedConversationError]); // Adicionar dependências se usar mais estados/funções do contexto
+    }, [workspaceContext, setSelectedConversationError, setConversations, setSelectedConversation]); // Adicionado setters
+
+    useEffect(() => {
+        // Obter o workspaceId DENTRO do useEffect ou garantir que ele seja estável
+        const workspaceId = workspaceContext.workspace?.id;
+
+        if (workspaceId) {
+            console.log('[ConversationContext] Setting up SSE listener for workspace:', workspaceId);
+            const eventSource = new EventSource(`/api/sse?workspaceId=${workspaceId}`);
+
+            eventSource.onopen = () => {
+                console.log('[ConversationContext] SSE Connection Opened');
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('[ConversationContext] SSE Error:', error);
+                eventSource.close();
+            };
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const eventData = JSON.parse(event.data);
+                    console.log('[CONTEXT_LOG] SSE Received Event:', eventData);
+
+                    if (eventData.type === 'new_message') {
+                        addRealtimeMessage(eventData.payload as Message);
+                    } else if (eventData.type === 'message_status_updated') {
+                        updateRealtimeMessageStatus(eventData.payload);
+                    } else if (eventData.type === 'message_content_updated') {
+                        updateRealtimeMessageContent(eventData.payload);
+                    }
+                    // <<< HANDLER PARA ai_status_updated >>>
+                    else if (eventData.type === 'ai_status_updated') {
+                        console.log(`[CONTEXT_LOG] Handling ai_status_updated:`, eventData.payload);
+                        const { conversationId, is_ai_active } = eventData.payload;
+
+                        // Atualizar a conversa selecionada
+                        setSelectedConversation(prevSelected => {
+                            if (prevSelected && prevSelected.id === conversationId) {
+                                console.log(`[CONTEXT_LOG] Updating selected conversation ${conversationId} AI status to ${is_ai_active}`);
+                                return { ...prevSelected, is_ai_active: is_ai_active };
+                            }
+                            return prevSelected;
+                        });
+
+                        // Atualizar a lista geral de conversas
+                        setConversations(prevList => {
+                            console.log(`[CONTEXT_LOG] Updating conversations list for ${conversationId} AI status to ${is_ai_active}`);
+                            return prevList.map(convo =>
+                                convo.id === conversationId
+                                    ? { ...convo, is_ai_active: is_ai_active }
+                                    : convo
+                            );
+                        });
+
+                        // Mostrar toast
+                        if (selectedConversation?.id === conversationId) {
+                            // Usar toast.success ou outra variante disponível
+                            toast.success(`IA foi ${is_ai_active ? 'reativada' : 'pausada'} automaticamente.`);
+                        }
+
+                    } else {
+                        console.warn('[ConversationContext] Received unknown SSE event type:', eventData.type);
+                    }
+
+                } catch (error) {
+                    console.error('[ConversationContext] Error parsing SSE message:', error, 'Data:', event.data);
+                }
+            };
+
+            // Cleanup
+            return () => {
+                console.log('[ConversationContext] Closing SSE connection.');
+                eventSource.close();
+            };
+        } else {
+             console.log('[ConversationContext] Workspace ID not available, SSE listener not started.');
+        }
+    // Dependências: funções de callback e IDs que podem mudar e recriar a conexão/handler
+    }, [workspaceContext.workspace?.id, addRealtimeMessage, updateRealtimeMessageStatus, updateRealtimeMessageContent, selectedConversation?.id]);
 
     // --- Context Value (Simplified) ---
     const contextValue = useMemo(() => ({
@@ -696,12 +775,8 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         setUnreadConversationIds,
         sendMediaMessage,
         sendTemplateMessage,
-
-        // AI Status Toggle
         toggleAIStatus,
         isTogglingAIStatus,
-
-    // Dependencies based on provided values
     }), [
         conversations, loadingConversations, conversationsError, fetchConversations, updateOrAddConversationInList,
         selectedConversation, loadingSelectedConversation, selectedConversationMessages, loadingSelectedConversationMessages,
@@ -709,7 +784,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         addMessageOptimistically, updateMessageStatus, isSendingMessage, sendManualMessage,
         clearMessageCache, addRealtimeMessage, updateRealtimeMessageContent, updateRealtimeMessageStatus,
         unreadConversationIds, setUnreadConversationIds, sendMediaMessage, sendTemplateMessage,
-        // Dependencies for AI status toggle
+        // toggleAIStatus e isTogglingAIStatus são estáveis se definidos com useCallback corretamente
         toggleAIStatus, isTogglingAIStatus,
     ]);
 
