@@ -128,8 +128,8 @@ export default function WorkspaceClientsPage() {
           </div>
       )}
 
-      {/* Card para a Lista de Clientes */}
-      <Card className="border-border bg-card shadow rounded-lg">
+      {/* Card para a Lista de Clientes - Aplicar rounded-xl e shadow-md */}
+      <Card className="border-border bg-card shadow-md rounded-xl">
          {/* Opcional: Adicionar CardHeader se desejar um título/descrição para a tabela */}
          {/* <CardHeader>
            <CardTitle>Lista de Clientes</CardTitle>

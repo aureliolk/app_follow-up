@@ -209,7 +209,7 @@ export default function WorkspaceMembers() {
         </div>
       )}
 
-      <Card className="border-border bg-card">
+      <Card className="border-border bg-card rounded-xl shadow-md">
         <CardHeader>
           <CardTitle className="text-xl text-card-foreground">Convidar Novo Membro</CardTitle>
         </CardHeader>
@@ -254,7 +254,7 @@ export default function WorkspaceMembers() {
         </CardContent>
       </Card>
 
-      <Card className="border-border bg-card">
+      <Card className="border-border bg-card rounded-xl shadow-md">
         <CardHeader>
           <CardTitle className="text-xl text-card-foreground">Membros Atuais</CardTitle>
         </CardHeader>
@@ -317,7 +317,7 @@ export default function WorkspaceMembers() {
       </Card>
 
       {invitations.length > 0 && (
-        <Card className="border-border bg-card">
+        <Card className="border-border bg-card rounded-xl shadow-md">
           <CardHeader>
             <CardTitle className="text-xl text-card-foreground">Convites Pendentes</CardTitle>
           </CardHeader>

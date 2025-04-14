@@ -91,7 +91,7 @@ export default function WorkspaceDashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Card Follow-ups Ativos */}
-        <Card className="border-border">
+        <Card className="border-border rounded-xl shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg font-medium">Follow-ups Ativos</CardTitle>
             <BarChart2 className="text-primary h-5 w-5" />
@@ -118,7 +118,7 @@ export default function WorkspaceDashboard() {
         </Card>
 
         {/* Card Campanhas */}
-        <Card className="border-border">
+        <Card className="border-border rounded-xl shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg font-medium">Campanhas</CardTitle>
             <BarChart2 className="text-primary h-5 w-5" />
@@ -153,7 +153,7 @@ export default function WorkspaceDashboard() {
         </Card>
 
         {/* Card Equipe */}
-        <Card className="border-border">
+        <Card className="border-border rounded-xl shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg font-medium">Equipe</CardTitle>
             <Users className="text-primary h-5 w-5" />

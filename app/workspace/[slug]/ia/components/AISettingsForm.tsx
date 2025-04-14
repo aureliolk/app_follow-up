@@ -119,7 +119,7 @@ export default function AISettingsForm() {
   }
 
   return (
-    <Card className="border-border bg-card w-full">
+    <Card className="border-border bg-card w-full rounded-xl shadow-md">
       <CardHeader>
         <CardTitle className="text-card-foreground">Configurações da Inteligência Artificial</CardTitle>
         <CardDescription>

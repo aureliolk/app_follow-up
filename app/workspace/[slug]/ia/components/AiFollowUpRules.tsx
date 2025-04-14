@@ -171,7 +171,7 @@ export default function AiFollowUpRules() {
 
   // --- RENDERIZAÇÃO ---
   return (
-    <Card className="border-border bg-card w-full mt-6">
+    <Card className="border-border bg-card w-full mt-6 rounded-xl shadow-md">
       <CardHeader>
         <CardTitle className="text-card-foreground">Acompanhamento por Inatividade</CardTitle>
         <CardDescription>

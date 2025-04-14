@@ -34,7 +34,7 @@ export default function WorkspaceSettingsPage() {
       <div className="space-y-8">
 
         {/* Card de Informações Gerais */}
-        <Card className="border-border bg-card shadow rounded-lg">
+        <Card className="border-border bg-card shadow-md rounded-xl">
           <CardHeader>
             <CardTitle className="text-card-foreground text-lg font-semibold">Informações Gerais</CardTitle>
           </CardHeader>

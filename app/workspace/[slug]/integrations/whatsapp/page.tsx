@@ -75,7 +75,7 @@ export default async function WhatsappIntegrationPage({ params }: WhatsappIntegr
       </Alert>
 
       {/* Card para Informações do Webhook */}
-      <Card className="border-border bg-card shadow rounded-lg">
+      <Card className="border-border bg-card shadow-md rounded-xl">
         <CardHeader>
           <CardTitle className="text-card-foreground text-lg font-semibold">Configuração do Webhook</CardTitle>
           <CardDescription>
@@ -92,7 +92,7 @@ export default async function WhatsappIntegrationPage({ params }: WhatsappIntegr
       </Card>
 
       {/* Card para o Formulário de Configuração da API */}
-      <Card className="border-border bg-card shadow rounded-lg">
+      <Card className="border-border bg-card shadow-md rounded-xl">
         <CardHeader>
           <CardTitle className="text-card-foreground text-lg font-semibold">Configuração da API</CardTitle>
           <CardDescription>
