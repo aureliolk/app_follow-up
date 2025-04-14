@@ -675,72 +675,72 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
         if (workspaceId) {
             console.log('[ConversationContext] Setting up SSE listener for workspace:', workspaceId);
-            const eventSource = new EventSource(`/api/sse?workspaceId=${workspaceId}`);
+            // const eventSource = new EventSource(`/api/sse?workspaceId=${workspaceId}`); // <<< COMENTADO
 
-            eventSource.onopen = () => {
-                console.log('[ConversationContext] SSE Connection Opened');
-            };
+            // eventSource.onopen = () => { // <<< Todo o bloco relacionado a eventSource pode ser comentado se necessário
+            //     console.log('[ConversationContext] SSE Connection Opened');
+            // };
 
-            eventSource.onerror = (error) => {
-                console.error('[ConversationContext] SSE Error:', error);
-                eventSource.close();
-            };
+            // eventSource.onerror = (error) => {
+            //     console.error('[ConversationContext] SSE Error:', error);
+            //     eventSource.close();
+            // };
 
-            eventSource.onmessage = (event) => {
-                try {
-                    const eventData = JSON.parse(event.data);
-                    console.log('[CONTEXT_LOG] SSE Received Event:', eventData);
+            // eventSource.onmessage = (event) => {
+            //     try {
+            //         const eventData = JSON.parse(event.data);
+            //         console.log('[CONTEXT_LOG] SSE Received Event:', eventData);
 
-                    if (eventData.type === 'new_message') {
-                        addRealtimeMessage(eventData.payload as Message);
-                    } else if (eventData.type === 'message_status_updated') {
-                        updateRealtimeMessageStatus(eventData.payload);
-                    } else if (eventData.type === 'message_content_updated') {
-                        updateRealtimeMessageContent(eventData.payload);
-                    }
-                    // <<< HANDLER PARA ai_status_updated >>>
-                    else if (eventData.type === 'ai_status_updated') {
-                        console.log(`[CONTEXT_LOG] Handling ai_status_updated:`, eventData.payload);
-                        const { conversationId, is_ai_active } = eventData.payload;
+            //         if (eventData.type === 'new_message') {
+            //             addRealtimeMessage(eventData.payload as Message);
+            //         } else if (eventData.type === 'message_status_updated') {
+            //             updateRealtimeMessageStatus(eventData.payload);
+            //         } else if (eventData.type === 'message_content_updated') {
+            //             updateRealtimeMessageContent(eventData.payload);
+            //         }
+            //         // <<< HANDLER PARA ai_status_updated >>>
+            //         else if (eventData.type === 'ai_status_updated') {
+            //             console.log(`[CONTEXT_LOG] Handling ai_status_updated:`, eventData.payload);
+            //             const { conversationId, is_ai_active } = eventData.payload;
 
-                        // Atualizar a conversa selecionada
-                        setSelectedConversation(prevSelected => {
-                            if (prevSelected && prevSelected.id === conversationId) {
-                                console.log(`[CONTEXT_LOG] Updating selected conversation ${conversationId} AI status to ${is_ai_active}`);
-                                return { ...prevSelected, is_ai_active: is_ai_active };
-                            }
-                            return prevSelected;
-                        });
+            //             // Atualizar a conversa selecionada
+            //             setSelectedConversation(prevSelected => {
+            //                 if (prevSelected && prevSelected.id === conversationId) {
+            //                     console.log(`[CONTEXT_LOG] Updating selected conversation ${conversationId} AI status to ${is_ai_active}`);
+            //                     return { ...prevSelected, is_ai_active: is_ai_active };
+            //                 }
+            //                 return prevSelected;
+            //             });
 
-                        // Atualizar a lista geral de conversas
-                        setConversations(prevList => {
-                            console.log(`[CONTEXT_LOG] Updating conversations list for ${conversationId} AI status to ${is_ai_active}`);
-                            return prevList.map(convo =>
-                                convo.id === conversationId
-                                    ? { ...convo, is_ai_active: is_ai_active }
-                                    : convo
-                            );
-                        });
+            //             // Atualizar a lista geral de conversas
+            //             setConversations(prevList => {
+            //                 console.log(`[CONTEXT_LOG] Updating conversations list for ${conversationId} AI status to ${is_ai_active}`);
+            //                 return prevList.map(convo =>
+            //                     convo.id === conversationId
+            //                         ? { ...convo, is_ai_active: is_ai_active }
+            //                         : convo
+            //                 );
+            //             });
 
-                        // Mostrar toast
-                        if (selectedConversation?.id === conversationId) {
-                            // Usar toast.success ou outra variante disponível
-                            toast.success(`IA foi ${is_ai_active ? 'reativada' : 'pausada'} automaticamente.`);
-                        }
+            //             // Mostrar toast
+            //             if (selectedConversation?.id === conversationId) {
+            //                 // Usar toast.success ou outra variante disponível
+            //                 toast.success(`IA foi ${is_ai_active ? 'reativada' : 'pausada'} automaticamente.`);
+            //             }
 
-                    } else {
-                        console.warn('[ConversationContext] Received unknown SSE event type:', eventData.type);
-                    }
+            //         } else {
+            //             console.warn('[ConversationContext] Received unknown SSE event type:', eventData.type);
+            //         }
 
-                } catch (error) {
-                    console.error('[ConversationContext] Error parsing SSE message:', error, 'Data:', event.data);
-                }
-            };
+            //     } catch (error) {
+            //         console.error('[ConversationContext] Error parsing SSE message:', error, 'Data:', event.data);
+            //     }
+            // };
 
             // Cleanup
             return () => {
-                console.log('[ConversationContext] Closing SSE connection.');
-                eventSource.close();
+                console.log('[ConversationContext] Closing SSE connection (commented out).');
+                // eventSource.close(); // <<< COMENTADO
             };
         } else {
              console.log('[ConversationContext] Workspace ID not available, SSE listener not started.');
