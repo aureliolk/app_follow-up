@@ -285,6 +285,13 @@ model Workspace {
 
   // --- Fim Campos WhatsApp --- 
 
+  // --- Campos para Google Calendar Auth ---
+  google_refresh_token         String?   @map("google_refresh_token") // Criptografado no banco
+  google_access_token_expires_at DateTime? @map("google_access_token_expires_at")
+  google_calendar_scopes       String[]  @map("google_calendar_scopes") // Lista de escopos autorizados
+  google_account_email         String?   @map("google_account_email") // Email da conta Google conectada
+  // --- Fim Campos Google Calendar Auth ---
+
   tags    WorkspaceTag[]
 
   @@map("workspaces")

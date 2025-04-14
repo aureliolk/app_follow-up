@@ -4,6 +4,12 @@ import { google } from '@ai-sdk/google';
 import { generateText, CoreMessage, tool, LanguageModel } from 'ai';
 import { z } from 'zod';
 import { deactivateConversationAI } from '@/lib/actions/conversationActions';
+import { 
+  checkCalendarAvailabilityTool, 
+  scheduleCalendarEventTool,
+  setCurrentWorkspaceId 
+} from '@/lib/ai/tools/googleCalendarTools';
+import { prisma } from '@/lib/db';
 
 
 // Tipagem para as mensagens, adicionando modelId
@@ -13,6 +19,7 @@ export interface ChatRequestPayload {
   modelId: string;
   nameIa?: string;
   conversationId: string;
+  workspaceId: string; // Adicionando workspaceId aqui
 }
 
 const humanTransferTool = tool({
@@ -28,14 +35,52 @@ const humanTransferTool = tool({
 });
 
 
-// Função unificada para gerar chat completion
-export async function generateChatCompletion({ messages, systemPrompt, modelId, conversationId }: ChatRequestPayload) {
+// Função para verificar se o workspace tem uma conexão Google válida
+async function hasGoogleConnection(workspaceId: string): Promise<boolean> {
   try {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { google_refresh_token: true }
+    });
+    
+    return !!workspace?.google_refresh_token;
+  } catch (error) {
+    console.error('Erro ao verificar conexão Google:', error);
+    return false;
+  }
+}
+
+
+// Função unificada para gerar chat completion
+export async function generateChatCompletion({ 
+  messages, 
+  systemPrompt, 
+  modelId, 
+  conversationId,
+  workspaceId 
+}: ChatRequestPayload) {
+  try {
+    // Configurar o ID do workspace atual para as ferramentas de calendário
+    if (workspaceId) {
+      setCurrentWorkspaceId(workspaceId);
+    }
+    
+    // Verificar se o workspace tem conexão com o Google
+    const hasGoogleCalendar = workspaceId ? await hasGoogleConnection(workspaceId) : false;
+    
+    let calendarInstructions = '';
+    if (hasGoogleCalendar) {
+      calendarInstructions = 'Você pode verificar a agenda do Google Calendar e agendar eventos quando o cliente solicitar.';
+    } else {
+      calendarInstructions = 'Se o cliente perguntar sobre agendamento ou verificação de calendário, informe que ele precisa conectar sua conta do Google no menu de integrações primeiro.';
+    }
+    
     const extraInstructions = `
     Id da conversa: ${conversationId}
     Voce e capaz de Escutar audio e ver imagens. se o cliente pergunta se vc pode ver uma imagem, vc deve responder que sim. se o cliente pergunta se vc pode ouvir um audio, vc deve responder que sim.
+    ${calendarInstructions}
     `;
-    console.log(`Gerando texto com IA. Modelo: ${modelId}, Mensagens: ${messages.length}`);
+    console.log(`Gerando texto com IA. Modelo: ${modelId}, Mensagens: ${messages.length}, Google Conectado: ${hasGoogleCalendar}`);
     
     const systemMessage = `${systemPrompt} ${extraInstructions}` || 'You are a helpful assistant.'; // Padrão genérico
 
@@ -56,14 +101,23 @@ export async function generateChatCompletion({ messages, systemPrompt, modelId, 
       // throw new Error(`Modelo de IA não suportado: ${modelId}`);
     }
 
+    // Preparar as ferramentas disponíveis
+    const tools: Record<string, any> = {
+      humanTransfer: humanTransferTool,
+    };
+    
+    // Adicionar ferramentas de calendário apenas se o Google estiver conectado
+    if (hasGoogleCalendar) {
+      tools.checkCalendarAvailability = checkCalendarAvailabilityTool;
+      tools.scheduleCalendarEvent = scheduleCalendarEventTool;
+    }
+
     const { text } = await generateText({
       model: modelInstance,
       maxTokens: 1500,
       system: systemMessage,
       messages,
-      tools: {
-        humanTransfer: humanTransferTool,
-      },
+      tools,
     });
 
     console.log("Texto gerado pela IA:", text);

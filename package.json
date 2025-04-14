@@ -50,6 +50,8 @@
     "date-fns": "^4.1.0",
     "emoji-picker-react": "^4.12.2",
     "form-data": "^4.0.2",
+    "google-auth-library": "^9.15.1",
+    "googleapis": "^148.0.0",
     "ioredis": "^5.6.0",
     "js-cookie": "^3.0.5",
     "lucide-react": "^0.485.0",

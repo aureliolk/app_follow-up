@@ -422,7 +422,13 @@ async function processJob(job: Job<JobData>) {
     // --- 8. Chamar o Serviço de IA --- 
     console.log(`[MsgProcessor ${jobId}] Chamando generateChatCompletion...`);
     
-    const aiResponseContent = await generateChatCompletion({ messages: aiMessages, systemPrompt, modelId, conversationId });
+    const aiResponseContent = await generateChatCompletion({ 
+      messages: aiMessages, 
+      systemPrompt, 
+      modelId, 
+      conversationId,
+      workspaceId: workspace.id 
+    });
 
     // --- 9. Salvar e Enviar Resposta da IA ---
     if (aiResponseContent && aiResponseContent.trim() !== '') {
