@@ -83,6 +83,10 @@ interface ConversationContextType {
     // Unread Notifications
     unreadConversationIds: Set<string>;
     setUnreadConversationIds: Dispatch<SetStateAction<Set<string>>>;
+
+    // AI Status Toggle
+    toggleAIStatus: (conversationId: string, currentAiState: boolean) => Promise<void>;
+    isTogglingAIStatus: boolean;
 }
 
 // --- Context Creation (Renomeado) ---
@@ -103,9 +107,9 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [loadingSelectedConversationMessages, setLoadingSelectedConversationMessages] = useState(false);
     const [selectedConversationError, setSelectedConversationError] = useState<string | null>(null);
     const [isSendingMessage, setIsSendingMessage] = useState(false);
+    const [isTogglingAIStatus, setIsTogglingAIStatus] = useState(false);
     const [messageCache, setMessageCache] = useState<Record<string, Message[]>>({});
     const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set());
-    // <<< NOVO ESTADO para guardar atualizações de status pendentes >>>
     const [pendingStatusUpdates, setPendingStatusUpdates] = useState<Record<string, string>>({});
 
     // --- Error/Cache Clear Functions ---
@@ -620,16 +624,58 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     }, [selectedConversation?.id]);
 
+    // --- Função para alternar o status da IA --- 
+    const toggleAIStatus = useCallback(async (conversationId: string, currentAiState: boolean) => {
+        const newAiState = !currentAiState;
+        console.log(`[ConversationContext] Toggling AI status for Conv ${conversationId} from ${currentAiState} to ${newAiState}`);
+        setIsTogglingAIStatus(true); // Inicia loading específico
+        setSelectedConversationError(null); // Limpa erro anterior
+
+        try {
+            // Chamar a API PATCH
+            const response = await axios.patch<{ success: boolean, data?: ClientConversation, error?: string }>(
+                `/api/conversations/${conversationId}`,
+                { is_ai_active: newAiState } // Envia o novo estado
+            );
+
+            if (!response.data.success || !response.data.data) {
+                throw new Error(response.data.error || 'Falha ao atualizar status da IA');
+            }
+
+            const updatedConversationData = response.data.data;
+            console.log(`[ConversationContext] AI status updated for Conv ${conversationId}. New state: ${updatedConversationData.is_ai_active}`);
+
+            // Atualizar o estado da conversa selecionada (se for a mesma)
+            setSelectedConversation(prev => 
+                prev?.id === conversationId ? updatedConversationData : prev
+            );
+
+            // Atualizar a lista de conversas
+            setConversations(prevList => 
+                prevList.map(convo => 
+                    convo.id === conversationId ? updatedConversationData : convo
+                )
+            );
+            toast.success(`IA ${newAiState ? 'iniciada' : 'pausada'} para esta conversa.`);
+
+        } catch (error: any) {
+            console.error(`[ConversationContext] Erro ao alternar status da IA para Conv ${conversationId}:`, error);
+            const message = error.response?.data?.error || error.message || 'Erro ao alterar status da IA.';
+            setSelectedConversationError(message); // Pode mostrar erro no contexto da conversa
+            toast.error(message);
+            throw new Error(message); // Propaga o erro se necessário
+        } finally {
+            setIsTogglingAIStatus(false); // Finaliza loading específico
+        }
+    }, [setSelectedConversationError]); // Adicionar dependências se usar mais estados/funções do contexto
+
     // --- Context Value (Simplified) ---
-    const value = useMemo(() => ({
-        // Conversation list
+    const contextValue = useMemo(() => ({
         conversations,
         loadingConversations,
         conversationsError,
         fetchConversations,
         updateOrAddConversationInList,
-
-        // Selected conversation
         selectedConversation,
         loadingSelectedConversation,
         selectedConversationMessages,
@@ -640,43 +686,35 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         clearMessagesError,
         addMessageOptimistically,
         updateMessageStatus,
-
-        // Actions
         isSendingMessage,
         sendManualMessage,
-
-        // Cache
         clearMessageCache,
-
-        // SSE
         addRealtimeMessage,
         updateRealtimeMessageContent,
         updateRealtimeMessageStatus,
-
-        // Unread
         unreadConversationIds,
         setUnreadConversationIds,
+        sendMediaMessage,
+        sendTemplateMessage,
 
-        // New functions
-        sendMediaMessage: sendMediaMessage,
-        sendTemplateMessage: sendTemplateMessage,
+        // AI Status Toggle
+        toggleAIStatus,
+        isTogglingAIStatus,
 
     // Dependencies based on provided values
     }), [
         conversations, loadingConversations, conversationsError, fetchConversations, updateOrAddConversationInList,
-        selectedConversation, loadingSelectedConversation, selectedConversationMessages, loadingSelectedConversationMessages, selectedConversationError, selectConversation, fetchConversationMessages, clearMessagesError, addMessageOptimistically, updateMessageStatus,
-        isSendingMessage, sendManualMessage,
-        clearMessageCache,
-        addRealtimeMessage, updateRealtimeMessageContent, updateRealtimeMessageStatus,
-        unreadConversationIds, setUnreadConversationIds,
-        // <<< Adicionar novas funções como dependências >>>
-        sendMediaMessage, sendTemplateMessage,
-        // <<< Adicionar pendingStatusUpdates como dependência se usado em useMemo? Sim. >>>
-        pendingStatusUpdates // Adicionar pendingStatusUpdates como dependência do useMemo
+        selectedConversation, loadingSelectedConversation, selectedConversationMessages, loadingSelectedConversationMessages,
+        selectedConversationError, selectConversation, fetchConversationMessages, clearMessagesError,
+        addMessageOptimistically, updateMessageStatus, isSendingMessage, sendManualMessage,
+        clearMessageCache, addRealtimeMessage, updateRealtimeMessageContent, updateRealtimeMessageStatus,
+        unreadConversationIds, setUnreadConversationIds, sendMediaMessage, sendTemplateMessage,
+        // Dependencies for AI status toggle
+        toggleAIStatus, isTogglingAIStatus,
     ]);
 
     return (
-        <ConversationContext.Provider value={value}>
+        <ConversationContext.Provider value={contextValue}>
             {children}
         </ConversationContext.Provider>
     );

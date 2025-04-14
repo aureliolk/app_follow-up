@@ -12,6 +12,9 @@ import {
   UserCog,
   Check,
   CheckCheck,
+  Bot,
+  Play,
+  Pause,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -25,6 +28,7 @@ import { useClient } from '@/context/client-context';
 import ConversationInputArea from './ConversationInputArea';
 import ClientInfoSidebar from './ClientInfoSidebar';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function ConversationDetail() {
   console.log('[ConvDetail LIFECYCLE] Rendering/Mounting (Simplified)...');
@@ -44,6 +48,8 @@ export default function ConversationDetail() {
     selectConversation,
     sendMediaMessage,
     sendTemplateMessage,
+    toggleAIStatus,
+    isTogglingAIStatus,
   } = useConversationContext();
   const { updateClient, deleteClient } = useClient();
 
@@ -221,6 +227,19 @@ export default function ConversationDetail() {
     }
   };
 
+  // --- Handler for AI Toggle ---
+  const handleToggleAI = async () => {
+    if (!conversation || !conversation.id || isTogglingAIStatus) return;
+
+    try {
+      await toggleAIStatus(conversation.id, !!conversation.is_ai_active);
+      // Toast de sucesso já é mostrado no contexto
+    } catch (error) {
+      // Toast de erro já é mostrado no contexto
+      console.error("[ConvDetail] Erro ao alternar status da IA (tratado no contexto):", error);
+    }
+  };
+
   // --- Render ---
   if (!conversation) {
     return (
@@ -229,6 +248,9 @@ export default function ConversationDetail() {
       </div>
     );
   }
+
+  // Determinar estado da IA para o botão
+  const isAIActive = conversation.is_ai_active;
 
   return (
     <div className="flex flex-col h-full bg-card border-l border-border relative">
@@ -243,10 +265,43 @@ export default function ConversationDetail() {
             <div className="text-xs text-muted-foreground">{conversation.client?.phone_number || 'Sem telefone'}</div>
           </div>
         </div>
-        <div>
-          <Button variant="ghost" size="icon" onClick={() => setIsClientSidebarOpen(true)} title="Editar Informações do Contato">
-            <UserCog className="h-5 w-5 text-muted-foreground hover:text-foreground" />
-          </Button>
+        <div className="flex items-center space-x-1">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleToggleAI}
+                  disabled={isTogglingAIStatus}
+                  title={isAIActive ? "Pausar IA" : "Iniciar IA"}
+                >
+                  {isTogglingAIStatus ? (
+                    <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+                  ) : isAIActive ? (
+                    <Pause className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <Play className="h-5 w-5 text-red-500" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>{isAIActive ? "IA está ativa" : "IA está pausada"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => setIsClientSidebarOpen(true)} title="Editar Informações do Contato">
+                  <UserCog className="h-5 w-5 text-muted-foreground hover:text-foreground" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Ver/Editar Informações do Cliente</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 

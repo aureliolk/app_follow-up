@@ -2,7 +2,10 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth-options';
+import { checkPermission } from '@/lib/permissions';
+import type { ClientConversation } from "@/app/types";
 import { ConversationStatus, FollowUpStatus, Prisma } from '@prisma/client';
+import { z } from 'zod';
 
 interface RouteParams {
   params: Promise<{ id: string }>; // Next.js 15+ params são Promises
@@ -111,5 +114,86 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
     // Erro genérico
     return NextResponse.json({ success: false, error: 'Erro interno do servidor' }, { status: 500 });
+  }
+}
+
+// Schema para validação do corpo do PATCH
+const conversationPatchSchema = z.object({
+  is_ai_active: z.boolean(), // Espera explicitamente o novo estado booleano
+});
+
+// --- PATCH: Atualizar status da IA da conversa ---
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } } // Assinatura padrão para rotas dinâmicas
+) {
+  try {
+    const conversationId = params.id;
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
+    }
+    const userId = session.user.id;
+
+    const body = await req.json();
+    console.log(`PATCH /api/conversations/${conversationId}: Request body:`, body);
+
+    // Validar o corpo da requisição
+    const validation = conversationPatchSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json({ success: false, error: 'Dados inválidos', details: validation.error.errors }, { status: 400 });
+    }
+    const { is_ai_active } = validation.data;
+
+    // Buscar o workspace ID da conversa para checar permissão
+    const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { workspace_id: true }
+    });
+
+    if (!conversation) {
+         return NextResponse.json({ success: false, error: 'Conversa não encontrada' }, { status: 404 });
+    }
+    const workspaceId = conversation.workspace_id;
+
+    // Verificar permissão (ex: MEMBER ou superior)
+    const hasPermission = await checkPermission(workspaceId, userId, 'MEMBER');
+    if (!hasPermission) {
+      return NextResponse.json({ success: false, error: 'Permissão negada' }, { status: 403 });
+    }
+
+    // Atualizar a conversa
+    const updatedConversation = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        is_ai_active: is_ai_active,
+        // Opcional: adicionar uma mensagem do sistema informando a mudança?
+        // messages: {
+        //   create: {
+        //     sender_type: 'SYSTEM',
+        //     content: `IA ${is_ai_active ? 'reiniciada' : 'pausada'} pelo operador.`
+        //   }
+        // }
+      },
+      // Incluir dados necessários para atualizar o contexto
+      include: {
+          client: { 
+              select: { id: true, name: true, phone_number: true, metadata: true }
+          },
+          messages: { 
+              select: { id: true, content: true, timestamp: true, sender_type: true },
+              orderBy: { timestamp: 'desc' },
+              take: 1
+          }
+      }
+    });
+
+    console.log(`PATCH /api/conversations/${conversationId}: Status da IA atualizado para ${is_ai_active}.`);
+    // Retornar a conversa atualizada completa para o contexto
+    return NextResponse.json({ success: true, data: updatedConversation });
+
+  } catch (error) {
+    console.error(`PATCH /api/conversations/[id]: Error updating conversation:`, error);
+    return NextResponse.json({ success: false, error: 'Erro interno ao atualizar conversa' }, { status: 500 });
   }
 } 
