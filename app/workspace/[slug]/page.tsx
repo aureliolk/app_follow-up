@@ -84,8 +84,8 @@ export default function WorkspaceDashboard() {
   }
 
   return (
-    <div className="container mx-auto">
-      <h1 className="text-3xl font-bold mb-6 text-foreground">
+    <div className="p-4 md:p-6 space-y-8">
+      <h1 className="text-3xl font-bold text-foreground">
         Bem-vindo ao {workspace.name}
       </h1>
 

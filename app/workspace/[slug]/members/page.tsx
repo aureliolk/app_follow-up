@@ -192,7 +192,11 @@ export default function WorkspaceMembers() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="p-4 md:p-6 space-y-8">
+      <h1 className="text-2xl font-bold text-foreground">
+        Gerenciar Membros
+      </h1>
+
       {error && (
         <div className="bg-destructive/10 text-destructive p-3 border border-destructive/30 rounded-md">
           {error}

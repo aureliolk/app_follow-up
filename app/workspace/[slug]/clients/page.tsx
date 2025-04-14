@@ -12,6 +12,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { toast } from 'react-hot-toast';
 import type { Client } from '@/app/types';
 import { useClient } from '@/context/client-context';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function WorkspaceClientsPage() {
   const { workspace, isLoading: workspaceLoading } = useWorkspace();
@@ -108,9 +109,10 @@ export default function WorkspaceClientsPage() {
 
   return (
     <div className="p-4 md:p-6">
+      {/* Cabeçalho da página (Título e Botão) - Fora do Card */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Clientes</h1>
+          <h1 className="text-2xl font-bold text-foreground">Clientes</h1> {/* Ajustado para font-bold */}
           <p className="text-muted-foreground text-sm">Gerencie os clientes do workspace: {workspace.name}</p>
         </div>
         <Button onClick={handleOpenCreateModal} className="w-full sm:w-auto">
@@ -120,19 +122,35 @@ export default function WorkspaceClientsPage() {
       </div>
 
       {/* Exibe erro geral da página ou do contexto */}
-      <ErrorMessage message={displayError} onDismiss={() => { setPageError(null); clearClientsError(); }} />
-
-       {/* Usa loadingClients do contexto */}
-      {loadingClients && clients.length === 0 ? ( // Mostra spinner inicial
-        <LoadingSpinner message="Carregando clientes..." />
-      ) : (
-        <ClientList
-          // clients={clients} // Não precisa passar, ClientList usa o hook
-          onEdit={handleOpenEditModal}
-          onDelete={handleDeleteClient}
-          deletingId={isDeleting}
-        />
+      {displayError && (
+          <div className="mb-6"> {/* Adiciona margem abaixo se houver erro */}
+              <ErrorMessage message={displayError} onDismiss={() => { setPageError(null); clearClientsError(); }} />
+          </div>
       )}
+
+      {/* Card para a Lista de Clientes */}
+      <Card className="border-border bg-card shadow rounded-lg">
+         {/* Opcional: Adicionar CardHeader se desejar um título/descrição para a tabela */}
+         {/* <CardHeader>
+           <CardTitle>Lista de Clientes</CardTitle>
+           <CardDescription>Clientes cadastrados neste workspace.</CardDescription>
+         </CardHeader> */}
+         <CardContent className="p-0"> {/* Remover padding do CardContent se a tabela já tiver */}
+            {/* Usa loadingClients do contexto */}
+           {loadingClients && clients.length === 0 ? ( // Mostra spinner inicial
+             <div className="p-6"> {/* Adicionar padding interno para o spinner */}
+                <LoadingSpinner message="Carregando clientes..." />
+             </div>
+           ) : (
+             <ClientList
+               // clients={clients} // Não precisa passar, ClientList usa o hook
+               onEdit={handleOpenEditModal}
+               onDelete={handleDeleteClient}
+               deletingId={isDeleting}
+             />
+           )}
+         </CardContent>
+      </Card>
 
       {/* Renderiza o Modal */}
       <ClientFormModal
