@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, PlusCircle, Search } from 'lucide-react';
+import { X, PlusCircle, Search, Loader2, UserCog, Check, CheckCheck } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -25,21 +25,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
+import axios from 'axios';
 import type { Client } from '@/app/types';
 import { toast } from 'react-hot-toast';
-import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-    Command,
-    CommandEmpty,
-    CommandGroup,
-    CommandInput,
-    CommandItem,
-    CommandList,
-    CommandSeparator,
-} from "@/components/ui/command";
-import axios from 'axios';
 
 // Tipo para o formulário interno, incluindo tags como string
 type ClientSidebarFormData = {
@@ -78,7 +75,7 @@ export default function ClientInfoSidebar({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>(MOCK_AVAILABLE_TAGS);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const [isTagDialogOpen, setIsTagDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Estados para controle de API de Tags
@@ -141,8 +138,8 @@ export default function ClientInfoSidebar({
     if (!selectedTags.includes(tag)) {
       setSelectedTags([...selectedTags, tag]);
     }
-    setSearchTerm(''); // Limpa busca após selecionar
-    setIsPopoverOpen(false); // Fecha popover
+    setSearchTerm('');
+    setIsTagDialogOpen(false);
   };
 
   const handleTagRemove = (tagToRemove: string) => {
@@ -177,7 +174,7 @@ export default function ClientInfoSidebar({
       }
     }
     setSearchTerm('');
-    setIsPopoverOpen(false);
+    setIsTagDialogOpen(false);
   };
 
   // Filtra tags disponíveis baseado na busca e nas já selecionadas
@@ -302,9 +299,9 @@ export default function ClientInfoSidebar({
                       </Badge>
                   ))}
 
-                  {/* Popover para adicionar/buscar/criar tags */} 
-                  <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-                      <PopoverTrigger asChild>
+                  {/* Dialog para adicionar/buscar/criar tags */} 
+                  <Dialog open={isTagDialogOpen} onOpenChange={setIsTagDialogOpen}>
+                      <DialogTrigger asChild>
                           <Button
                               variant="outline"
                               size="sm"
@@ -313,49 +310,54 @@ export default function ClientInfoSidebar({
                           >
                               <PlusCircle className="mr-1 h-3 w-3" /> Add Tag
                           </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[250px] p-0" align="start">
-                          <Command>
-                              <CommandInput
-                                  placeholder="Buscar ou criar tag..."
-                                  value={searchTerm}
-                                  onValueChange={setSearchTerm}
-                              />
-                              <CommandList>
-                                  <CommandEmpty>
-                                      {searchTerm && !filteredAvailableTags.length && !isLoadingTags ? (
-                                          <Button
-                                              variant="ghost"
-                                              className="w-full justify-start text-left h-8 px-2 py-1.5 text-sm"
-                                              onClick={() => handleCreateTag(searchTerm)}
-                                              disabled={isCreatingTag}
-                                          >
-                                              {isCreatingTag ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} 
-                                              Criar "{searchTerm}"
-                                          </Button>
-                                      ) : !isLoadingTags ? (
-                                          <span className="py-6 text-center text-sm block">
-                                              Nenhuma tag encontrada.
-                                          </span>
-                                      ) : null}
-                                  </CommandEmpty>
-                                  {filteredAvailableTags.length > 0 && (
-                                      <CommandGroup heading="Tags Disponíveis">
-                                          {filteredAvailableTags.map((tag) => (
-                                              <CommandItem
-                                                  key={tag}
-                                                  value={tag} // Adicionar value para melhor controle
-                                                  onSelect={() => handleTagSelect(tag)}
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[350px] p-0">
+                          <DialogHeader className="p-4 pb-2">
+                            <DialogTitle>Selecionar ou Criar Tags</DialogTitle>
+                          </DialogHeader>
+                          <div className="px-4 pb-4">
+                              <Command>
+                                  <CommandInput
+                                      placeholder="Buscar ou criar tag..."
+                                      value={searchTerm}
+                                      onValueChange={setSearchTerm}
+                                  />
+                                  <CommandList>
+                                      <CommandEmpty>
+                                          {searchTerm && !filteredAvailableTags.length && !isLoadingTags ? (
+                                              <Button
+                                                  variant="ghost"
+                                                  className="w-full justify-start text-left h-8 px-2 py-1.5 text-sm"
+                                                  onClick={() => handleCreateTag(searchTerm)}
+                                                  disabled={isCreatingTag}
                                               >
-                                                  {tag}
-                                              </CommandItem>
-                                          ))}
-                                      </CommandGroup>
-                                  )}
-                              </CommandList>
-                          </Command>
-                      </PopoverContent>
-                  </Popover>
+                                                  {isCreatingTag ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlusCircle className="mr-2 h-4 w-4" />} 
+                                                  Criar "{searchTerm}"
+                                              </Button>
+                                          ) : !isLoadingTags ? (
+                                              <span className="py-6 text-center text-sm block">
+                                                  Nenhuma tag encontrada.
+                                              </span>
+                                          ) : null}
+                                      </CommandEmpty>
+                                      {filteredAvailableTags.length > 0 && (
+                                          <CommandGroup heading="Tags Disponíveis">
+                                              {filteredAvailableTags.map((tag) => (
+                                                  <CommandItem
+                                                      key={tag}
+                                                      value={tag} 
+                                                      onSelect={() => handleTagSelect(tag)}
+                                                  >
+                                                      {tag}
+                                                  </CommandItem>
+                                              ))}
+                                          </CommandGroup>
+                                      )}
+                                  </CommandList>
+                              </Command>
+                          </div>
+                      </DialogContent>
+                  </Dialog>
               </div>
             </div>
 

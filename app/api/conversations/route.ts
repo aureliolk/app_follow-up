@@ -48,11 +48,11 @@ export async function GET(req: NextRequest) {
 
     console.log(`API GET Conversations: Filtering based on Conversation status: ACTIVE`);
 
-    // --- QUERY SIMPLIFICADA: Filtrar por Conversation.status --- 
+    // --- QUERY: Incluir client.metadata --- 
     const conversations = await prisma.conversation.findMany({
       where: {
         workspace_id: workspaceId,
-        status: ConversationStatus.ACTIVE // <<< FILTRAR DIRETAMENTE AQUI
+        status: ConversationStatus.ACTIVE 
       },
       include: {
         client: {
@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
             id: true, 
             name: true, 
             phone_number: true,
+            metadata: true,
             follow_ups: { 
               where: {
                 status: { 
@@ -82,7 +83,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // Formatação da resposta (simplificada)
+    // Formatação da resposta: Incluir metadata no client
     const formattedData: ClientConversation[] = conversations.map(convo => ({
       id: convo.id,
       workspace_id: convo.workspace_id,
@@ -95,11 +96,12 @@ export async function GET(req: NextRequest) {
       created_at: convo.created_at,
       updated_at: convo.updated_at,
       metadata: convo.metadata,
-      client: convo.client ? { // Adicionar verificação se client existe
+      client: convo.client ? { 
         id: convo.client.id,
         name: convo.client.name,
         phone_number: convo.client.phone_number,
-      } : null, // Retornar null se o cliente não for encontrado (improvável mas seguro)
+        metadata: convo.client.metadata,
+      } : null,
       last_message: convo.messages[0] ? {
         id: convo.messages[0].id, // Adicionar ID
         content: convo.messages[0].content,

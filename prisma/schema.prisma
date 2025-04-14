@@ -285,6 +285,8 @@ model Workspace {
 
   // --- Fim Campos WhatsApp --- 
 
+  tags    WorkspaceTag[]
+
   @@map("workspaces")
   @@schema("workspace_schema")
 }
@@ -568,4 +570,18 @@ model CampaignContact {
   @@index([campaignId, status]) // Índice para buscar contatos pendentes rapidamente
   @@map("campaign_contacts")
   @@schema("workspace_schema") // Adicionando ao schema do workspace
+}
+
+model WorkspaceTag {
+  id           String    @id @default(cuid())
+  name         String    // Nome da tag (ex: "Lead Quente")
+  workspace_id String
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, name]) // Garante que o nome da tag seja único por workspace
+  @@index([workspace_id])
+  @@schema("workspace_schema")
 }

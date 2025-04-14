@@ -18,7 +18,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
-import type { Message } from '@/app/types';
+import type { Message, ClientConversation } from '@/app/types';
 import { toast } from 'react-hot-toast';
 import { useConversationContext } from '@/context/ConversationContext';
 import { useClient } from '@/context/client-context';
@@ -186,16 +186,22 @@ export default function ConversationDetail() {
   const handleSaveClient = async (clientId: string, updatedData: { name?: string | null; phone_number?: string | null; metadata?: any }) => {
     console.log(`[ConvDetail] Tentando salvar cliente ${clientId} com dados:`, updatedData);
     try {
-        await updateClient(clientId, updatedData);
-        if (conversation) {
-             console.log("[ConvDetail] Refetching conversation data after client update...");
-             selectConversation(conversation);
+        const updatedClientResponse = await updateClient(clientId, updatedData); 
+
+        if (conversation) { 
+          console.log("[ConvDetail] Re-selecionando a conversa no contexto com dados do cliente atualizados...");
+          const newConversationData: ClientConversation = {
+            ...conversation, 
+            client: updatedClientResponse 
+          };
+          selectConversation(newConversationData);
         }
-        console.log(`[ConvDetail] Cliente ${clientId} salvo (via contexto).`);
+
+        console.log(`[ConvDetail] Cliente ${clientId} salvo (via contexto) e estado da conversa atualizado.`);
     } catch (error: any) {
         console.error(`[ConvDetail] Erro ao salvar cliente ${clientId}:`, error);
         toast.error(`Erro ao salvar cliente: ${error.message || 'Erro desconhecido'}`);
-        throw error;
+        throw error; 
     }
   };
 

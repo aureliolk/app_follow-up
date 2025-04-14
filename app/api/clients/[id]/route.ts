@@ -13,6 +13,7 @@ const clientUpdateSchema = z.object({
   phone_number: z.string().min(5, "Número de telefone inválido").optional().nullable(),
   external_id: z.string().optional().nullable(),
   channel: z.string().optional().nullable(),
+  metadata: z.any().optional(),
   // workspaceId é necessário para verificação, mas não para update
   workspaceId: z.string().uuid("ID do Workspace inválido"),
 });
@@ -68,7 +69,6 @@ export async function GET(
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-
 ) {
   try {
     const awaitedParams = await params;
@@ -88,7 +88,7 @@ export async function PUT(
     if (!validation.success) {
       return NextResponse.json({ success: false, error: 'Dados inválidos', details: validation.error.errors }, { status: 400 });
     }
-    const { workspaceId, ...updateData } = validation.data; // Separa workspaceId dos dados de update
+    const { workspaceId, ...updateData } = validation.data;
 
     // Normalizar canal se presente
     if (updateData.channel) {
