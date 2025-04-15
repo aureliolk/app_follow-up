@@ -41,7 +41,14 @@ const humanTransferTool = tool({
   execute: async ({ conversationId }) => {
     deactivateConversationAI(conversationId);
     console.log(`[Tool] Transfere a conversa para um atendente humano: ${conversationId}`);
-    return { success: true };
+    return { 
+      success: true,
+      message: 'Certo! Estou transferindo seu atendimento para um humano. Um atendente irá continuar esta conversa em breve. Obrigado pela sua paciência!',
+      status: 'success',
+      data: {
+        responseText: 'Certo! Estou transferindo seu atendimento para um humano. Um atendente irá continuar esta conversa em breve. Obrigado pela sua paciência!'
+      }
+     };
   },
 });
 
