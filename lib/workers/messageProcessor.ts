@@ -419,20 +419,56 @@ async function processJob(job: Job<JobData>) {
     const systemPrompt = workspace.ai_default_system_prompt ?? undefined;
     console.log(`[MsgProcessor ${jobId}] Usando Modelo: ${modelId}, Prompt: ${!!systemPrompt}`);
 
-    // --- 8. Chamar o Serviço de IA --- 
-    console.log(`[MsgProcessor ${jobId}] Chamando generateChatCompletion...`);
+    // --- 8. Processar com IA ---
+    console.log(`[MsgProcessor ${jobId}] Processando mensagens com IA...`);
     
-    const aiResponseContent = await generateChatCompletion({ 
-      messages: aiMessages, 
-      systemPrompt, 
-      modelId, 
-      conversationId,
-      workspaceId: workspace.id 
-    });
+    // Create context for tools to access
+    const context = {
+      toolResponses: []
+    };
+    
+    // Variável para armazenar resposta da IA, que pode ser modificada
+    let aiResponseText = '';
+    
+    try {
+      // Usar a API de IA da Vercel com o modelo especificado
+      aiResponseText = await generateChatCompletion({
+        messages: aiMessages,
+        systemPrompt: systemPrompt,
+        modelId: modelId,
+        nameIa: workspace.ai_name || undefined,
+        conversationId: conversationId,
+        workspaceId: workspace.id,
+        context // Passar o contexto para a função
+      });
+      
+    } catch (aiError) {
+      console.error(`[MsgProcessor ${jobId}] Erro ao gerar conteúdo com IA:`, aiError);
+      // Se ocorrer erro na IA, retornar
+      return { handledBatch: true, status: 'ai_error', reason: 'Erro ao gerar texto com IA' };
+    }
+    
+    // Se nenhum resultado foi retornado da IA, verificar se temos uma resposta da ferramenta para usar
+    if (!aiResponseText || aiResponseText.trim() === '') {
+      console.log(`[MsgProcessor ${jobId}] IA não retornou conteúdo. Verificando respostas de ferramentas...`);
+      
+      // Verificar se temos um responseText de alguma ferramenta no contexto
+      // Isso permite que ferramentas como o Google Calendar forneçam respostas diretas
+      const toolResponses = context.toolResponses || [];
+      const lastToolResponse = toolResponses[toolResponses.length - 1];
+      
+      if (lastToolResponse?.data?.responseText) {
+        console.log(`[MsgProcessor ${jobId}] Usando responseText da ferramenta como resposta.`);
+        aiResponseText = lastToolResponse.data.responseText;
+      } else {
+        // Se não temos resposta da ferramenta, retornar sem enviar mensagem
+        return { handledBatch: true, status: 'empty_response', reason: 'IA não retornou conteúdo' };
+      }
+    }
 
     // --- 9. Salvar e Enviar Resposta da IA ---
-    if (aiResponseContent && aiResponseContent.trim() !== '') {
-      console.log(`[MsgProcessor ${jobId}] IA retornou conteúdo: "${aiResponseContent.substring(0, 100)}..."`);
+    if (aiResponseText && aiResponseText.trim() !== '') {
+      console.log(`[MsgProcessor ${jobId}] IA retornou conteúdo: "${aiResponseText.substring(0, 100)}..."`);
       const newAiMessageTimestamp = new Date();
 
       // <<< USAR AI_NAME DO WORKSPACE PARA O PREFIXO >>>
@@ -443,7 +479,7 @@ async function processJob(job: Job<JobData>) {
           data: {
             conversation_id: conversationId,
             sender_type: MessageSenderType.AI,
-            content: aiResponseContent, // <<< USAR CONTEÚDO COM PREFIXO
+            content: aiResponseText, // <<< USAR CONTEÚDO COM PREFIXO
             timestamp: newAiMessageTimestamp,
             // <<< Definir Status inicial como PENDING >>>
             status: 'PENDING' // Garante que começa como pendente antes do envio
@@ -534,7 +570,7 @@ async function processJob(job: Job<JobData>) {
                         whatsappPhoneNumberId,
                         clientPhoneNumber,
                         decryptedAccessTokenForSend,
-                        aiResponseContent, // <<< ENVIAR CONTEÚDO ORIGINAL, SEM PREFIXO
+                        aiResponseText, // <<< ENVIAR CONTEÚDO ORIGINAL, SEM PREFIXO
                         aiDisplayName
                     );
                     console.log(`[MsgProcessor ${jobId}] STEP 9: sendWhatsappMessage call completed.`);

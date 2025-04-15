@@ -79,23 +79,46 @@ export async function GET(request: NextRequest) {
     const accessTokenExpiresAt = new Date(Date.now() + expires_in * 1000);
 
     // 8. Salvar no banco de dados (no Workspace)
-    // (Opcional: Obter email da conta Google)
-    // let googleAccountEmail: string | null = null;
-    // if (scope.includes('email')) {
-    //   try {
-    //     const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-    //       headers: { Authorization: `Bearer ${access_token}` },
-    //     });
-    //     if (userInfoResponse.ok) {
-    //       const userInfo = await userInfoResponse.json();
-    //       googleAccountEmail = userInfo.email;
-    //     } else {
-    //        console.warn('Failed to fetch Google user info:', await userInfoResponse.text());
-    //     }
-    //   } catch (userInfoError) {
-    //      console.warn('Error fetching Google user info:', userInfoError);
-    //   }
-    // }
+    // Obter email da conta Google
+    let googleAccountEmail: string | null = null;
+    
+    console.log(`Escopos recebidos: ${scope}`);
+    
+    if (scope.includes('email')) {
+      try {
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+          headers: { Authorization: `Bearer ${access_token}` },
+        });
+        if (userInfoResponse.ok) {
+          const userInfo = await userInfoResponse.json();
+          googleAccountEmail = userInfo.email;
+          console.log(`Email da conta Google obtido: ${googleAccountEmail}`);
+        } else {
+          console.warn('Failed to fetch Google user info:', await userInfoResponse.text());
+        }
+      } catch (userInfoError) {
+        console.warn('Error fetching Google user info:', userInfoError);
+      }
+    } else {
+      console.warn('Escopo de email não concedido. Escopos disponíveis:', scope);
+    }
+
+    // Testar acesso ao Google Calendar com o token recebido
+    try {
+      console.log('Testando acesso ao Google Calendar...');
+      const calendarTestResponse = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+        headers: { Authorization: `Bearer ${access_token}` },
+      });
+      
+      if (calendarTestResponse.ok) {
+        const calendarData = await calendarTestResponse.json();
+        console.log(`Acesso ao Calendar confirmado! Calendários encontrados: ${calendarData.items?.length || 0}`);
+      } else {
+        console.warn('AVISO: Falha ao acessar o Google Calendar:', await calendarTestResponse.text());
+      }
+    } catch (calendarError) {
+      console.warn('ERRO ao testar acesso ao Calendar:', calendarError);
+    }
 
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -103,7 +126,7 @@ export async function GET(request: NextRequest) {
         google_refresh_token: encryptedRefreshToken,
         google_access_token_expires_at: accessTokenExpiresAt,
         google_calendar_scopes: scope.split(' '),
-        // google_account_email: googleAccountEmail,
+        google_account_email: googleAccountEmail,
       },
     });
 

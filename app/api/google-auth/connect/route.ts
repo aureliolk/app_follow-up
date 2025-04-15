@@ -30,10 +30,13 @@ export async function GET(request: NextRequest) {
 
   const scopes = [
     'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/calendar.readonly',
+    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/calendar.settings.readonly',
     // Adicione outros escopos se necessário (openid, email, profile)
-    // 'openid',
-    // 'email',
-    // 'profile',
+    'openid',
+    'email',
+    'profile',
   ];
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');

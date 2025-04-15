@@ -4,14 +4,35 @@ import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption'; // Importar função de descriptografia
 
 export async function POST(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const workspaceId = searchParams.get('workspaceId');
-
-  if (!workspaceId) {
-    return NextResponse.json({ error: 'Workspace ID is required' }, { status: 400 });
-  }
-
   try {
+    // Verificar se temos parâmetros na URL
+    const url = new URL(request.url);
+    const workspaceIdFromQuery = url.searchParams.get('workspaceId');
+    const reconnectFromQuery = url.searchParams.get('force') === 'true';
+    
+    // Tentar pegar parâmetros do corpo, se houver
+    let workspaceIdFromBody: string | undefined;
+    let reconnectFromBody: boolean | undefined;
+    
+    try {
+      const body = await request.json();
+      workspaceIdFromBody = body.workspaceId;
+      reconnectFromBody = body.reconnect;
+    } catch (e) {
+      // Ignora erro de parse se não houver corpo JSON
+    }
+    
+    // Priorizar parâmetros do corpo, senão usar os da query
+    const workspaceId = workspaceIdFromBody || workspaceIdFromQuery;
+    const reconnect = reconnectFromBody !== undefined ? reconnectFromBody : reconnectFromQuery;
+
+    if (!workspaceId) {
+      return NextResponse.json(
+        { error: 'Workspace ID is required' },
+        { status: 400 }
+      );
+    }
+
     // 1. Buscar o workspace para obter o token (se existir)
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -60,17 +81,33 @@ export async function POST(request: NextRequest) {
       data: {
         google_refresh_token: null,
         google_access_token_expires_at: null,
-        google_calendar_scopes: [], // Define como array vazio
-        google_account_email: null,
-      },
+        google_calendar_scopes: [],
+        google_account_email: null
+      }
     });
 
     console.log(`Successfully disconnected Google account for workspace ${workspaceId}`);
-    return NextResponse.json({ success: true });
 
+    // Se foi solicitada reconexão imediata, redirecionar para o endpoint de conexão
+    if (reconnect) {
+      const connectUrl = `/api/google-auth/connect?workspaceId=${encodeURIComponent(workspaceId)}`;
+      return NextResponse.json({
+        success: true,
+        message: 'Google account disconnected successfully and ready for reconnection',
+        redirectUrl: connectUrl
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Google account disconnected successfully'
+    });
   } catch (error: any) {
-    console.error(`Error disconnecting Google account for workspace ${workspaceId}:`, error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    console.error('Error disconnecting Google account:', error);
+    return NextResponse.json(
+      { error: 'Failed to disconnect Google account', details: error.message },
+      { status: 500 }
+    );
   }
 }
 

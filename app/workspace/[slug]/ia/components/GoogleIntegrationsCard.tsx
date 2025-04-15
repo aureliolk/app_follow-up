@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useWorkspace } from '@/context/workspace-context';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle, XCircle, Link as LinkIcon } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Link as LinkIcon, Check, X, RefreshCw, Calendar } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
@@ -22,19 +22,28 @@ export default function GoogleIntegrationsCard() {
     router.push(`/api/google-auth/connect?workspaceId=${workspace.id}`);
   };
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = async (force: boolean) => {
     if (!workspace) return;
     setIsDisconnecting(true);
     const toastId = toast.loading('Desconectando conta Google...');
 
     try {
-        const response = await fetch(`/api/google-auth/disconnect?workspaceId=${workspace.id}`, {
+        const response = await fetch(`/api/google-auth/disconnect?workspaceId=${workspace.id}&force=${force}`, {
              method: 'POST',
         });
 
         if (!response.ok) {
              const errorData = await response.json();
              throw new Error(errorData.error || 'Falha ao desconectar.');
+        }
+
+        const data = await response.json();
+        
+        // Se for reconexão e temos URL de redirecionamento, redirecionar o usuário
+        if (force && data.redirectUrl) {
+            toast.success('Redirecionando para reconexão...', { id: toastId });
+            router.push(data.redirectUrl);
+            return;
         }
 
         await refreshWorkspaces();
@@ -96,16 +105,52 @@ export default function GoogleIntegrationsCard() {
                         {isConnecting ? 'Redirecionando...' : 'Conectar Google Calendar'}
                     </Button>
                 ) : (
-                     <Button
-                       variant="destructive"
-                       onClick={handleDisconnect}
-                       disabled={isDisconnecting || workspaceLoading}
-                       size="sm"
-                       className="w-full sm:w-auto"
-                     >
-                        {isDisconnecting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                        {isDisconnecting ? 'Desconectando...' : 'Desconectar'}
-                     </Button>
+                     <div className="flex flex-col space-y-4">
+                       <div className="flex items-center space-x-2">
+                         <Check className="h-5 w-5 text-green-600" />
+                         <span>
+                           Conectado à conta Google: <span className="font-bold">{workspace.google_account_email}</span>
+                         </span>
+                       </div>
+                       <div className="flex flex-row space-x-2">
+                         <Button
+                           variant="destructive"
+                           size="sm"
+                           onClick={() => handleDisconnect(false)}
+                           disabled={isDisconnecting}
+                         >
+                           {isDisconnecting ? (
+                             <span className="flex items-center gap-1">
+                               <Loader2 className="h-4 w-4 animate-spin" /> Desconectando...
+                             </span>
+                           ) : (
+                             <span className="flex items-center gap-1">
+                               <X className="h-4 w-4" /> Desconectar
+                             </span>
+                           )}
+                         </Button>
+                         
+                         {/* Botão para forçar reconexão */}
+                         <Button
+                           variant="outline"
+                           size="sm"
+                           onClick={() => handleDisconnect(true)}
+                           disabled={isDisconnecting}
+                         >
+                           <span className="flex items-center gap-1">
+                             {isDisconnecting ? (
+                               <>
+                                 <Loader2 className="h-4 w-4 animate-spin" /> Reconectando...
+                               </>
+                             ) : (
+                               <>
+                                 <RefreshCw className="h-4 w-4" /> Reconectar (Corrigir Problemas)
+                               </>
+                             )}
+                           </span>
+                         </Button>
+                       </div>
+                     </div>
                 )}
             </div>
           </div>
