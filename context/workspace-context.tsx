@@ -105,7 +105,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isLoadingCurrent, setIsLoadingCurrent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const currentSlugRef = useRef<string | null>(null);
+  const currentIdRef = useRef<string | null>(null);
 
   // Estados Internos - Regras de Follow-up IA
   const [aiFollowUpRules, setAiFollowUpRules] = useState<ApiFollowUpRule[]>([]);
@@ -113,10 +113,10 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [aiFollowUpRulesError, setAiFollowUpRulesError] = useState<string | null>(null);
 
 
-  // Atualiza a ref do slug quando params muda
+  // Atualiza a ref do id quando params muda
   useEffect(() => {
-    currentSlugRef.current = params?.slug as string | null ?? null;
-  }, [params?.slug]);
+    currentIdRef.current = params?.id as string | null ?? null;
+  }, [params?.id]);
 
   // --- Funções Auxiliares ---
 
@@ -127,9 +127,9 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const getActiveWorkspaceIdInternal = useCallback((providedId?: string): string | null => {
     if (providedId) return providedId;
     if (workspace?.id) return workspace.id; // Prioriza o estado atual do contexto
-    const slug = currentSlugRef.current;
-    if (slug) {
-        const foundInList = workspaces.find(w => w.slug === slug);
+    const id = currentIdRef.current;
+    if (id) {
+        const foundInList = workspaces.find(w => w.id === id);
         if (foundInList) return foundInList.id;
     }
     if (typeof window !== 'undefined') {
@@ -187,8 +187,8 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
    // Definir o WORKSPACE ATUAL baseado na URL e na lista carregada
    useEffect(() => {
-    const slug = currentSlugRef.current;
-    console.log(`Effect Set Current Wks: Slug=${slug}, List Loading=${isLoadingList}`);
+    const id = currentIdRef.current;
+    console.log(`Effect Set Current Wks: Id=${id}, List Loading=${isLoadingList}`);
 
     if (isLoadingList) {
       setIsLoadingCurrent(true);
@@ -197,12 +197,12 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setIsLoadingCurrent(true);
-    if (!slug || !pathname?.startsWith('/workspace/')) {
+    if (!id || !pathname?.startsWith('/workspace/')) {
       setWorkspace(null);
       if (typeof window !== 'undefined') sessionStorage.removeItem('activeWorkspaceId');
        // Não limpa erro geral aqui, pode ser um erro da lista
     } else {
-      const found = workspaces.find(w => w.slug === slug);
+      const found = workspaces.find(w => w.id === id);
       if (found) {
          setWorkspace({ // Garante que as datas são objetos Date
             ...found,
@@ -213,7 +213,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         // Limpa erro se encontrou
         setError(null);
       } else if (!isLoadingList) { // Só define erro se a lista *já* carregou e não achou
-        setError(prevError => prevError || `Workspace "${slug}" não encontrado ou acesso negado.`);
+        setError(prevError => prevError || `Workspace "${id}" não encontrado ou acesso negado.`);
         setWorkspace(null);
         if (typeof window !== 'undefined') sessionStorage.removeItem('activeWorkspaceId');
       }

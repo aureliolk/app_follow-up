@@ -1,11 +1,5 @@
 // app/api/workspaces/[id]/subscribe/route.ts
 import { type NextRequest } from 'next/server';
-import {
-  subscribeToChannel,
-  unsubscribeFromChannel,
-  registerControllerForChannel,
-  unregisterControllerForChannel
-} from '@/lib/redis-subscriber';
 
 // Garantir que a rota seja tratada como dinâmica
 export const dynamic = 'force-dynamic';
@@ -27,20 +21,12 @@ export function GET(
         return;
       }
       channelName = `workspace-updates:${workspaceId}`;
-      // Registrar controller e inscrever canal
-      registerControllerForChannel(channelName, controller);
-      subscribeToChannel(channelName);
-      // Enviar evento de conexão pronta
+     
       controller.enqueue(
         encoder.encode(`event: connection_ready\ndata: {"channel":"${channelName}"}\n\n`)
       );
     },
-    cancel(reason) {
-      if (channelName && streamController) {
-        unregisterControllerForChannel(channelName, streamController);
-        unsubscribeFromChannel(channelName);
-      }
-    }
+    
   });
 
   // Retornar a resposta com o stream SSE

@@ -8,15 +8,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import WebhookInfoDisplay from './components/WebhookInfoDisplay';
 
 interface WhatsappIntegrationPageProps {
-  params: {
-    slug: string;
-  };
+  params: Promise<{ id: string }>;
 }
 
 // TODO: Implementar descriptografia segura se os tokens/segredos forem criptografados no DB
-async function getWorkspaceWhatsappSettings(slug: string) {
+async function getWorkspaceWhatsappSettings(id: string) {
     const workspace = await prisma.workspace.findUnique({
-        where: { slug },
+        where: { id },
         select: {
             id: true,
             name: true,
@@ -49,7 +47,7 @@ async function getWorkspaceWhatsappSettings(slug: string) {
 }
 
 export default async function WhatsappIntegrationPage({ params }: WhatsappIntegrationPageProps) {
-  const settings = await getWorkspaceWhatsappSettings((await params).slug);
+  const settings = await getWorkspaceWhatsappSettings((await params).id);
   // Construir URL base corretamente (você pode ter isso em .env)
   const appBaseUrl = process.env.NEXTAUTH_URL || 'https://app.lumibot.com.br'; // Usar URL real ou variável de ambiente
   // Construir URL dinâmica do webhook (USANDO "webhooks" no plural)

@@ -33,7 +33,7 @@ export default function WorkspacesList() {
     if (status === 'unauthenticated') {
       router.push('/auth/login');
     } else if (status === 'authenticated' && !isLoading && workspaces.length === 1 && !isSuperAdmin) {
-      router.push(`/workspace/${workspaces[0].slug}`);
+      router.push(`/workspace/${workspaces[0].id}`);
     }
   }, [status, router, isLoading, workspaces, isSuperAdmin]);
 
@@ -54,7 +54,7 @@ export default function WorkspacesList() {
     try {
       const workspace = await createWorkspace(newWorkspaceName);
       setNewWorkspaceName('');
-      router.push(`/workspace/${workspace.slug}`);
+      router.push(`/workspace/${workspace.id}`);
     } catch (err: any) {
       setError(err.message || 'Falha ao criar workspace');
     } finally {
@@ -249,7 +249,7 @@ export default function WorkspacesList() {
                           {isDeleting === workspace.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                         </Button>
                         <Button asChild variant="link" className="text-primary hover:text-primary/90 px-1">
-                          <Link href={`/workspace/${workspace.slug}`}>
+                          <Link href={`/workspace/${workspace.id}`}>
                             Entrar <ArrowRight className="ml-1 h-4 w-4" />
                           </Link>
                         </Button>

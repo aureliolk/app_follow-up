@@ -21,7 +21,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
-import type { Message, ClientConversation } from '@/app/types';
+import type { ClientConversation } from '@/app/types';
 import { toast } from 'react-hot-toast';
 import { useConversationContext } from '@/context/ConversationContext';
 import { useClient } from '@/context/client-context';

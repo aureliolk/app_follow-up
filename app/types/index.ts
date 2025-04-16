@@ -217,6 +217,9 @@ export interface Campaign {
   ai_prompt_pain_point?: string | null;
   ai_prompt_main_benefit?: string | null;
   ai_prompt_tone_of_voice?: string | null;
+  ai_prompt_extra_instructions?: string | null;
+  ai_prompt_cta_text?: string | null;
+  ai_prompt_cta_link?: string | null;
   funnel_stage_id?: string | null; // ID do estágio de funil (ou poderia ser um nome/tipo?)
   followUpId?: string; // Se houver relacionamento com FollowUp
   idLumibot?: string | null; // Adicionado
@@ -233,5 +236,36 @@ export type CampaignFormData = Omit<Campaign, 'id' | 'createdAt' | 'updatedAt' |
   id?: string; // ID opcional para edição
 };
 // +++ FIM RE-ADICIONAR TIPOS DE CAMPANHA +++
+
+// +++ INÍCIO TIPOS DE TRIGGER +++
+// Estrutura principal do Trigger (similar ao model do Prisma, provavelmente)
+export interface Trigger {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description?: string | null;
+  eventType: string; // Ex: 'contact_created', 'tag_added', 'webhook_received', 'scheduled'
+  eventFilters?: Record<string, any> | null; // Ex: { tag: 'vip', customField: 'value' }
+  actionType: string; // Ex: 'send_message_template', 'add_contact_tag', 'call_webhook'
+  actionConfig: Record<string, any>; // Ex: { templateName: '...', delaySeconds: 0, tag: 'processed' }
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  // Adicionar outros campos conforme necessário (ex: lastExecution, executionCount)
+}
+
+// Estrutura de dados para o formulário de criação/edição
+export interface TriggerFormData {
+  id?: string; // Opcional para criação
+  name: string;
+  description?: string | null;
+  eventType: string;
+  eventFilters?: Record<string, any> | null;
+  actionType: string;
+  actionConfig: Record<string, any>;
+  active: boolean;
+  // workspaceId geralmente vem do contexto/URL, não do formulário
+}
+// +++ FIM TIPOS DE TRIGGER +++
 
 

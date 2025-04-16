@@ -29,17 +29,26 @@ export default function WorkspaceHeader() {
   // Função simples para gerar breadcrumbs (pode ser melhorada)
   const generateBreadcrumbs = () => {
     if (!pathname || !workspace) return null;
-    const basePath = `/workspace/${slug}`;
-    const pathSegments = pathname.replace(basePath, '').split('/').filter(Boolean); // Remove a base e segmentos vazios
+    const basePath = ``;
+    const pathSegments = pathname.replace(basePath, '').split('/').filter(Boolean);
+
+    // Remove 'workspace' e o id dos segmentos
+    const filteredSegments = pathSegments.filter(
+      (segment, idx) =>
+        // Remove 'workspace' (primeiro) e o id (segundo)
+        !(idx === 0 && segment === 'workspace') && !(idx === 1 && segment === params.id)
+    );
 
     const breadcrumbs = [
-      { label: workspace.name, href: basePath, icon: Home }, // Link para o dashboard do workspace
+      { label: workspace.name, href: `/workspace/${workspace.id}`, icon: Home }, // Dashboard do workspace
     ];
 
-    let currentPath = basePath;
-    pathSegments.forEach((segment) => {
+    console.log('currentPath', pathSegments);
+
+    let currentPath = `/workspace/${workspace.id}`;
+    filteredSegments.forEach((segment) => {
       currentPath += `/${segment}`;
-      // Capitaliza o segmento para label (ex: 'members' -> 'Members')
+      // Capitaliza o segmento para label
       const label = segment.charAt(0).toUpperCase() + segment.slice(1);
       breadcrumbs.push({ label: label, href: currentPath, icon: ChevronRight });
     });
@@ -125,5 +134,3 @@ export default function WorkspaceHeader() {
   );
 }
 
-// Adicione os componentes Avatar se não os tiver: npx shadcn-ui@latest add avatar
-// Adicione DropdownMenu se não tiver: npx shadcn-ui@latest add dropdown-menu

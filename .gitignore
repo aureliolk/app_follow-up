@@ -16,6 +16,7 @@ README.md
 CLAUDE.md
 docs
 docs/
+.trigger
 
 docker-compose.yml
 redis-compose.yml

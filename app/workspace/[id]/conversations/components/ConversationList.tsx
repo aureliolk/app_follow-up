@@ -1,11 +1,10 @@
 // apps/next-app/app/workspace/[slug]/conversations/components/ConversationList.tsx
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { ClientConversation } from '@/app/types';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
+import {  useEffect } from 'react';
 import { useConversationContext } from '@/context/ConversationContext';
 
 interface ConversationListProps {
@@ -93,9 +92,7 @@ export default function ConversationList({
                  {senderPrefix && <span className="font-medium">{senderPrefix}</span>}
                  {lastMessageText}
               </p>
-              {/* <p className="text-xs text-muted-foreground truncate leading-snug">
-                {convo.id}
-              </p> */}
+            
             </div>
           </button>
         );

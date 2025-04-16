@@ -60,7 +60,7 @@ export default function WorkspaceLayout({
     { href: '/conversations', label: 'Conversas', icon: MessageSquare },
     { href: '/clients', label: 'Clientes', icon: Contact },
     { href: '/ia', label: 'IA', icon: BrainCog },
-    { href: '/campaigns/new', label: 'Disparador', icon: CheckSquare },
+    { href: '/triggers', label: 'Disparador', icon: CheckSquare },
     { href: '/kaban', label: 'Kanban', icon: Grid2x2 },
     { href: '/integrations/whatsapp', label: 'Integrações', icon: Cable },
     { href: '/members', label: 'Membros', icon: Users },
@@ -165,7 +165,7 @@ export default function WorkspaceLayout({
                         <TooltipTrigger asChild>
                            {/* Link com as classes */}
                           <Link
-                            href={item.href ? `/workspace/${slug}${item.href}` : `/workspace/${slug}`}
+                            href={item.href ? `/workspace/${workspace.id}${item.href}` : `/workspace/${workspace.id}`}
                             className={cn(
                               'flex items-center gap-3 rounded-md text-sm font-medium transition-colors group',
                               'h-10', // Altura fixa para alinhamento
@@ -185,7 +185,7 @@ export default function WorkspaceLayout({
                     ) : (
                        // Se expandido, Link normal
                       <Link
-                        href={item.href ? `/workspace/${slug}${item.href}` : `/workspace/${slug}`}
+                        href={item.href ? `/workspace/${workspace.id}${item.href}` : `/workspace/${workspace.id}`}
                         className={cn(
                            'flex items-center gap-3 rounded-md text-sm font-medium transition-colors group',
                            'h-10 px-4', // Altura e padding fixos

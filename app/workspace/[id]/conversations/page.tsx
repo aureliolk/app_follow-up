@@ -116,7 +116,7 @@ export default function ConversationsPage() {
         </div>
 
         <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-background">
-          <ConversationDetail />
+          {/* <ConversationDetail /> */}
         </div>
       </div>
     </div>
