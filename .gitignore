@@ -14,6 +14,7 @@ pnpm-debug.log*
 .vscode
 README.md
 CLAUDE.md
+docs
 docs/
 
 docker-compose.yml
