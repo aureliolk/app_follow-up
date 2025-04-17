@@ -1,49 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/auth-options";
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 
 // Get all workspaces for super admin
 export async function GET() {
+  // const session = await getServerSession(authOptions);
+  const cookieStore = cookies();
+  const supabase = createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  // Only allow super admins to access this route
+  // TODO: Implement proper Super Admin check with Supabase user roles/metadata
+  // if (!session?.user || !session.user.isSuperAdmin) {
+  if (authError || !user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+  // TEMPORARY: Assume user is NOT super admin until check is implemented
+  const isSuperAdmin = false; // Replace with actual check later
+  if (!isSuperAdmin) {
+    console.warn(`User ${user.id} attempted to access super admin route /api/workspaces/all`);
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      console.log('Unauthorized access attempt to workspaces/all API');
-      return NextResponse.json(
-        { message: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Check if user is super admin
-    // First try to get from session
-    const isSuperAdminFromSession = session.user.isSuperAdmin === true;
-    
-    // Double check with database if needed
-    let isSuperAdmin = isSuperAdminFromSession;
-    
-    if (!isSuperAdminFromSession) {
-      console.log('Super admin not found in session, checking database:', session.user.id);
-      const user = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { is_super_admin: true }
-      });
-      
-      isSuperAdmin = user?.is_super_admin === true;
-    }
-
-    if (!isSuperAdmin) {
-      console.log('Non-admin user attempted to access all workspaces:', session.user.id);
-      return NextResponse.json(
-        { message: 'Proibido: Apenas administradores super podem acessar este recurso' },
-        { status: 403 }
-      );
-    }
-    
-    console.log('Super admin verification successful for:', session.user.id);
-
-    console.log('Super admin fetching all workspaces:', session.user.id);
+    console.log('Super admin fetching all workspaces:', user.id);
 
     // Find all workspaces (for super admin)
     const workspaces = await prisma.workspace.findMany({
@@ -68,7 +49,6 @@ export async function GET() {
 
     console.log(`Found ${workspaces.length} total workspaces for super admin`);
     return NextResponse.json(workspaces);
-    
   } catch (error) {
     console.error('Error fetching all workspaces:', error);
     

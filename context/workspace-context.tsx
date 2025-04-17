@@ -11,10 +11,16 @@ import React, {
   useRef
 } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
-import { useSession, SessionContextValue } from 'next-auth/react';
+import { createClient, User } from '@supabase/supabase-js';
 import axios from 'axios';
 // Importar tipos (ajuste o caminho se necessário)
-import type { Workspace as PrismaWorkspace, WorkspaceAiFollowUpRule as PrismaAiFollowUpRule } from '@prisma/client'; // Importar tipos do Prisma se possível
+import type { Workspace as PrismaWorkspace, WorkspaceAiFollowUpRule as PrismaAiFollowUpRule } from '@prisma/client';
+
+// Criar cliente Supabase
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // --- Tipos Adaptados para o Contexto ---
 
@@ -36,7 +42,6 @@ type ApiFollowUpRule = Omit<PrismaAiFollowUpRule, 'delay_milliseconds' | 'create
   updated_at: string | Date;
 };
 
-
 // Tipos para dados de criação/atualização das regras
 type CreateRuleData = { delayString: string; messageContent: string };
 type UpdateRuleData = Partial<CreateRuleData>;
@@ -51,7 +56,6 @@ type WorkspaceUpdateData = {
   ai_model_preference?: string | null;
   ai_name?: string | null;
 };
-
 
 // Tipo para o valor do Contexto
 type WorkspaceContextType = {
@@ -94,7 +98,7 @@ export const useWorkspace = (): WorkspaceContextType => {
 
 // --- Componente Provider ---
 export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
-  const { data: session, status }: SessionContextValue = useSession();
+  const [user, setUser] = useState<User | null>(null);
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
@@ -112,11 +116,25 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [loadingAiFollowUpRules, setLoadingAiFollowUpRules] = useState(false);
   const [aiFollowUpRulesError, setAiFollowUpRulesError] = useState<string | null>(null);
 
-
   // Atualiza a ref do id quando params muda
   useEffect(() => {
     currentIdRef.current = params?.id as string | null ?? null;
   }, [params?.id]);
+
+  // Configurar listener de autenticação do Supabase
+  useEffect(() => {
+    // Verificar usuário atual
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+    });
+
+    // Configurar listener para mudanças de auth
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // --- Funções Auxiliares ---
 
@@ -140,15 +158,14 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     return null;
   }, [workspace?.id, workspaces]); // Depende do workspace e da lista
 
-
   // --- Lógica de Carregamento de Workspaces ---
 
-  const userId = session?.user?.id;
-  const userIsSuperAdmin = !!session?.user?.isSuperAdmin;
+  const userId = user?.id;
+  const userIsSuperAdmin = user?.app_metadata?.is_super_admin ?? false;
 
   // Buscar a LISTA de workspaces
   const fetchWorkspaceList = useCallback(async () => {
-    if (status !== 'authenticated' || !userId) {
+    if (!userId) {
       setWorkspaces([]);
       setIsLoadingList(false);
       return;
@@ -160,33 +177,43 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     setAiFollowUpRulesError(null); // Limpa erro específico das regras
     setAiFollowUpRules([]); // Limpa regras antigas
 
-    const endpoint = userIsSuperAdmin ? '/api/workspaces/all' : '/api/workspaces';
     try {
-      const response = await axios.get<Workspace[]>(endpoint, { headers: { 'Cache-Control': 'no-cache' } });
-       // Converte datas string para Date objects
-      const fetchedWorkspaces = response.data.map(ws => ({
+      let { data: workspaces, error } = await supabase
+        .from('workspaces')
+        .select(`
+          *,
+          owner:users!workspaces_owner_id_fkey (id, name, email),
+          members:workspace_members (id)
+        `);
+
+      if (error) throw error;
+
+      // Converte datas string para Date objects e formata contagem
+      const fetchedWorkspaces = workspaces.map(ws => ({
         ...ws,
         created_at: new Date(ws.created_at),
         updated_at: new Date(ws.updated_at),
+        _count: { members: ws.members?.length || 0 }
       }));
+
       setWorkspaces(fetchedWorkspaces);
       console.log('fetchWorkspaceList: Lista carregada com', fetchedWorkspaces.length, 'workspaces.');
     } catch (err: any) {
       console.error('fetchWorkspaceList: Erro -', err);
-      const message = err.response?.data?.message || err.message || 'Falha ao carregar workspaces';
+      const message = err.message || 'Falha ao carregar workspaces';
       setError(message);
       setWorkspaces([]);
     } finally {
       setIsLoadingList(false);
     }
-  }, [status, userId, userIsSuperAdmin]); // Dependências estáveis
+  }, [userId]); // Dependências estáveis
 
   useEffect(() => {
     fetchWorkspaceList();
   }, [fetchWorkspaceList]); // Executa ao montar e quando as dependências de fetchWorkspaceList mudarem
 
-   // Definir o WORKSPACE ATUAL baseado na URL e na lista carregada
-   useEffect(() => {
+  // Definir o WORKSPACE ATUAL baseado na URL e na lista carregada
+  useEffect(() => {
     const id = currentIdRef.current;
     console.log(`Effect Set Current Wks: Id=${id}, List Loading=${isLoadingList}`);
 
@@ -199,234 +226,328 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     setIsLoadingCurrent(true);
     if (!id || !pathname?.startsWith('/workspace/')) {
       setWorkspace(null);
-      if (typeof window !== 'undefined') sessionStorage.removeItem('activeWorkspaceId');
-       // Não limpa erro geral aqui, pode ser um erro da lista
-    } else {
-      const found = workspaces.find(w => w.id === id);
-      if (found) {
-         setWorkspace({ // Garante que as datas são objetos Date
-            ...found,
-            created_at: new Date(found.created_at),
-            updated_at: new Date(found.updated_at),
-         });
-        if (typeof window !== 'undefined') sessionStorage.setItem('activeWorkspaceId', found.id);
-        // Limpa erro se encontrou
-        setError(null);
-      } else if (!isLoadingList) { // Só define erro se a lista *já* carregou e não achou
-        setError(prevError => prevError || `Workspace "${id}" não encontrado ou acesso negado.`);
-        setWorkspace(null);
-        if (typeof window !== 'undefined') sessionStorage.removeItem('activeWorkspaceId');
-      }
+      setIsLoadingCurrent(false);
+      return;
     }
-    setIsLoadingCurrent(false);
 
-  }, [workspaces, pathname, isLoadingList]); // Depende da lista, do pathname e do loading da lista
+    // Procura na lista já carregada
+    const found = workspaces.find(w => w.id === id);
+    if (found) {
+      setWorkspace(found);
+      setIsLoadingCurrent(false);
+      return;
+    }
+
+    // Se não encontrou e tem ID, busca do backend
+    const fetchWorkspace = async () => {
+      try {
+        const { data: workspace, error } = await supabase
+          .from('workspaces')
+          .select(`
+            *,
+            owner:users!workspaces_owner_id_fkey (id, name, email),
+            members:workspace_members (id)
+          `)
+          .eq('id', id)
+          .single();
+
+        if (error) throw error;
+
+        const formattedWorkspace = {
+          ...workspace,
+          created_at: new Date(workspace.created_at),
+          updated_at: new Date(workspace.updated_at),
+          _count: { members: workspace.members?.length || 0 }
+        };
+
+        setWorkspace(formattedWorkspace);
+      } catch (err: any) {
+        console.error('Erro ao buscar workspace:', err);
+        setError(err.message || 'Falha ao carregar workspace');
+        setWorkspace(null);
+      } finally {
+        setIsLoadingCurrent(false);
+      }
+    };
+
+    fetchWorkspace();
+  }, [workspaces, isLoadingList, pathname]);
 
   // --- Funções CRUD para WORKSPACES ---
 
-  const switchWorkspace = useCallback((workspaceSlug: string) => {
-    const targetWorkspace = workspaces.find(w => w.slug === workspaceSlug);
-    if (!targetWorkspace) {
-      setError('Workspace não encontrado para troca');
-      return;
-    }
-    if (typeof window !== 'undefined') sessionStorage.setItem('activeWorkspaceId', targetWorkspace.id);
-    setWorkspace({ // Garante datas como Date objects
-        ...targetWorkspace,
-        created_at: new Date(targetWorkspace.created_at),
-        updated_at: new Date(targetWorkspace.updated_at),
-    });
-    setAiFollowUpRules([]); // Limpa regras do workspace anterior
-    setAiFollowUpRulesError(null); // Limpa erros de regras
-    router.push(`/workspace/${workspaceSlug}`);
-  }, [workspaces, router]);
-
+  // Criar novo workspace
   const createWorkspace = useCallback(async (name: string): Promise<Workspace> => {
-    console.log(`createWorkspace: Creating '${name}'`);
-    setError(null);
+    if (!userId) throw new Error('Usuário não autenticado');
+
     try {
-      const response = await axios.post<Workspace>('/api/workspaces', { name });
-       const newWorkspace = { // Converte datas
-         ...response.data,
-         created_at: new Date(response.data.created_at),
-         updated_at: new Date(response.data.updated_at),
-       };
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      
+      const { data: workspace, error } = await supabase
+        .from('workspaces')
+        .insert([
+          { 
+            name,
+            slug,
+            owner_id: userId,
+            ai_model_preference: 'gpt-4-turbo-preview', // Valor padrão
+            ai_default_system_prompt: 'Você é um assistente útil e amigável.' // Valor padrão
+          }
+        ])
+        .select(`
+          *,
+          owner:users!workspaces_owner_id_fkey (id, name, email),
+          members:workspace_members (id)
+        `)
+        .single();
+
+      if (error) throw error;
+
+      const newWorkspace = {
+        ...workspace,
+        created_at: new Date(workspace.created_at),
+        updated_at: new Date(workspace.updated_at),
+        _count: { members: workspace.members?.length || 0 }
+      };
+
       setWorkspaces(prev => [...prev, newWorkspace]);
       return newWorkspace;
     } catch (err: any) {
-      const message = err.response?.data?.message || err.message || 'Falha ao criar workspace';
-      setError(message);
-      throw new Error(message);
+      console.error('createWorkspace: Erro -', err);
+      throw new Error(err.message || 'Falha ao criar workspace');
     }
-  }, []);
+  }, [userId]);
 
-   const updateWorkspace = useCallback(async (id: string, data: WorkspaceUpdateData): Promise<Workspace> => {
-    console.log(`updateWorkspace: Updating ${id} with:`, data);
-    setError(null);
+  // Atualizar workspace existente
+  const updateWorkspace = useCallback(async (id: string, data: WorkspaceUpdateData): Promise<Workspace> => {
+    if (!userId) throw new Error('Usuário não autenticado');
+
     try {
-      const response = await axios.patch<Workspace>(`/api/workspaces/${id}`, data);
-      const updatedData = response.data;
-       const updatedWorkspace = { // Converte datas
-         ...updatedData,
-         created_at: new Date(updatedData.created_at),
-         updated_at: new Date(updatedData.updated_at),
-       };
+      const { data: workspace, error } = await supabase
+        .from('workspaces')
+        .update(data)
+        .eq('id', id)
+        .select(`
+          *,
+          owner:users!workspaces_owner_id_fkey (id, name, email),
+          members:workspace_members (id)
+        `)
+        .single();
 
-      setWorkspaces(prev => prev.map(w => (w.id === id ? { ...w, ...updatedWorkspace } : w)));
-      if (workspace?.id === id) {
-        setWorkspace(prev => prev ? { ...prev, ...updatedWorkspace } : null);
+      if (error) throw error;
+
+      const updatedWorkspace = {
+        ...workspace,
+        created_at: new Date(workspace.created_at),
+        updated_at: new Date(workspace.updated_at),
+        _count: { members: workspace.members?.length || 0 }
+      };
+
+      setWorkspaces(prev => prev.map(w => w.id === id ? updatedWorkspace : w));
+      if (workspace.id === currentIdRef.current) {
+        setWorkspace(updatedWorkspace);
       }
-      if (data.slug && data.slug !== workspace?.slug) {
-        router.push(`/workspace/${data.slug}`);
-      }
+
       return updatedWorkspace;
     } catch (err: any) {
-      const message = err.response?.data?.message || err.response?.data?.error || err.message || 'Falha ao atualizar workspace';
-      setError(message);
-      throw new Error(message);
+      console.error('updateWorkspace: Erro -', err);
+      throw new Error(err.message || 'Falha ao atualizar workspace');
     }
-  }, [workspace, router]);
+  }, [userId]);
 
+  // Deletar workspace
   const deleteWorkspace = useCallback(async (id: string): Promise<void> => {
-    console.log(`deleteWorkspace: Deleting ${id}`);
-    setError(null);
+    if (!userId) throw new Error('Usuário não autenticado');
+
     try {
-      await axios.delete(`/api/workspaces/${id}`);
-      const wasCurrent = workspace?.id === id;
+      const { error } = await supabase
+        .from('workspaces')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
       setWorkspaces(prev => prev.filter(w => w.id !== id));
-      if (wasCurrent) {
+      if (id === currentIdRef.current) {
         setWorkspace(null);
-        setAiFollowUpRules([]);
-        setAiFollowUpRulesError(null);
-        if (typeof window !== 'undefined') sessionStorage.removeItem('activeWorkspaceId');
         router.push('/workspaces');
       }
     } catch (err: any) {
-      const message = err.response?.data?.message || err.message || 'Falha ao excluir workspace';
-      setError(message);
-      throw new Error(message);
+      console.error('deleteWorkspace: Erro -', err);
+      throw new Error(err.message || 'Falha ao deletar workspace');
     }
-  }, [workspace, router]);
+  }, [userId, router]);
 
-  // Refresh Manual
-  const refreshWorkspaces = useCallback(async (): Promise<void> => {
-      console.log("refreshWorkspaces: Triggered.");
-      await fetchWorkspaceList(); // Simplesmente busca a lista novamente
-  }, [fetchWorkspaceList]);
+  // --- Funções para AI Follow-up Rules ---
 
-  // --- Funções CRUD para REGRAS DE FOLLOW-UP IA ---
-
-  const fetchAiFollowUpRules = useCallback(async (providedWorkspaceId?: string): Promise<void> => {
-    const wsId = getActiveWorkspaceIdInternal(providedWorkspaceId);
-    if (!wsId) {
-      console.warn("fetchAiFollowUpRules: Workspace ID não disponível.");
-      setAiFollowUpRules([]); // Limpa se não tem ID
+  // Buscar regras de follow-up
+  const fetchAiFollowUpRules = useCallback(async (workspaceId?: string) => {
+    const activeId = getActiveWorkspaceIdInternal(workspaceId);
+    if (!activeId) {
+      console.warn('fetchAiFollowUpRules: Nenhum workspace ativo');
       return;
     }
 
-    console.log(`fetchAiFollowUpRules: Buscando para workspace ${wsId}`);
     setLoadingAiFollowUpRules(true);
     setAiFollowUpRulesError(null);
+
     try {
-      const response = await axios.get<{ success: boolean, data?: ApiFollowUpRule[], error?: string }>(`/api/workspaces/${wsId}/ai-followups`);
-      if (!response.data.success || !response.data.data) {
-        throw new Error(response.data.error || 'Falha ao buscar regras de acompanhamento');
-      }
-      setAiFollowUpRules(response.data.data);
-      console.log(`fetchAiFollowUpRules: ${response.data.data.length} regras carregadas.`);
+      const { data: rules, error } = await supabase
+        .from('workspace_ai_follow_up_rules')
+        .select('*')
+        .eq('workspace_id', activeId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const formattedRules = rules.map(rule => ({
+        ...rule,
+        created_at: new Date(rule.created_at),
+        updated_at: new Date(rule.updated_at),
+        delay_milliseconds: rule.delay_milliseconds.toString()
+      }));
+
+      setAiFollowUpRules(formattedRules);
     } catch (err: any) {
-      const message = err.response?.data?.error || err.message || 'Erro ao buscar regras de acompanhamento.';
       console.error('fetchAiFollowUpRules: Erro -', err);
-      setAiFollowUpRulesError(message);
+      setAiFollowUpRulesError(err.message || 'Falha ao carregar regras de follow-up');
       setAiFollowUpRules([]);
     } finally {
       setLoadingAiFollowUpRules(false);
     }
   }, [getActiveWorkspaceIdInternal]);
 
-  const createAiFollowUpRule = useCallback(async (data: CreateRuleData, providedWorkspaceId?: string): Promise<ApiFollowUpRule> => {
-    const wsId = getActiveWorkspaceIdInternal(providedWorkspaceId);
-    if (!wsId) throw new Error('Workspace ID não encontrado para criar regra.');
+  // Criar nova regra de follow-up
+  const createAiFollowUpRule = useCallback(async (
+    data: CreateRuleData,
+    workspaceId?: string
+  ): Promise<ApiFollowUpRule> => {
+    const activeId = getActiveWorkspaceIdInternal(workspaceId);
+    if (!activeId) throw new Error('Nenhum workspace ativo');
 
-    console.log(`createAiFollowUpRule: Criando em ${wsId}`);
-    setAiFollowUpRulesError(null);
     try {
-      const response = await axios.post<{ success: boolean, data: ApiFollowUpRule, error?: string }>(
-          `/api/workspaces/${wsId}/ai-followups`,
-          data
-      );
-      if (!response.data.success) throw new Error(response.data.error || 'Falha ao criar regra');
-      const newRule = response.data.data;
-      setAiFollowUpRules(prev => [newRule, ...prev]);
+      const { data: rule, error } = await supabase
+        .from('workspace_ai_follow_up_rules')
+        .insert([{
+          workspace_id: activeId,
+          delay_milliseconds: parseInt(data.delayString),
+          message_content: data.messageContent
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newRule = {
+        ...rule,
+        created_at: new Date(rule.created_at),
+        updated_at: new Date(rule.updated_at),
+        delay_milliseconds: rule.delay_milliseconds.toString()
+      };
+
+      setAiFollowUpRules(prev => [...prev, newRule]);
       return newRule;
     } catch (err: any) {
-      const message = err.response?.data?.error || err.response?.data?.details?.[0]?.message || err.message || 'Erro ao criar regra.';
       console.error('createAiFollowUpRule: Erro -', err);
-      setAiFollowUpRulesError(message);
-      throw new Error(message);
+      throw new Error(err.message || 'Falha ao criar regra de follow-up');
     }
   }, [getActiveWorkspaceIdInternal]);
 
-  const updateAiFollowUpRule = useCallback(async (ruleId: string, data: UpdateRuleData, providedWorkspaceId?: string): Promise<ApiFollowUpRule> => {
-    const wsId = getActiveWorkspaceIdInternal(providedWorkspaceId);
-    if (!wsId) throw new Error('Workspace ID não encontrado para atualizar regra.');
+  // Atualizar regra de follow-up existente
+  const updateAiFollowUpRule = useCallback(async (
+    ruleId: string,
+    data: UpdateRuleData,
+    workspaceId?: string
+  ): Promise<ApiFollowUpRule> => {
+    const activeId = getActiveWorkspaceIdInternal(workspaceId);
+    if (!activeId) throw new Error('Nenhum workspace ativo');
 
-    console.log(`updateAiFollowUpRule: Atualizando ${ruleId} em ${wsId}`);
-    setAiFollowUpRulesError(null);
     try {
-       const response = await axios.put<{ success: boolean, data: ApiFollowUpRule, error?: string }>(
-           `/api/workspaces/${wsId}/ai-followups/${ruleId}`,
-           data
-       );
-      if (!response.data.success) throw new Error(response.data.error || 'Falha ao atualizar regra');
-      const updatedRule = response.data.data;
+      const updateData: any = {};
+      if (data.delayString !== undefined) {
+        updateData.delay_milliseconds = parseInt(data.delayString);
+      }
+      if (data.messageContent !== undefined) {
+        updateData.message_content = data.messageContent;
+      }
+
+      const { data: rule, error } = await supabase
+        .from('workspace_ai_follow_up_rules')
+        .update(updateData)
+        .eq('id', ruleId)
+        .eq('workspace_id', activeId) // Garantia extra
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const updatedRule = {
+        ...rule,
+        created_at: new Date(rule.created_at),
+        updated_at: new Date(rule.updated_at),
+        delay_milliseconds: rule.delay_milliseconds.toString()
+      };
+
       setAiFollowUpRules(prev => prev.map(r => r.id === ruleId ? updatedRule : r));
       return updatedRule;
     } catch (err: any) {
-      const message = err.response?.data?.error || err.response?.data?.details?.[0]?.message || err.message || 'Erro ao atualizar regra.';
-      console.error(`updateAiFollowUpRule: Erro (${ruleId}) -`, err);
-      setAiFollowUpRulesError(message);
-      throw new Error(message);
+      console.error('updateAiFollowUpRule: Erro -', err);
+      throw new Error(err.message || 'Falha ao atualizar regra de follow-up');
     }
   }, [getActiveWorkspaceIdInternal]);
 
-  const deleteAiFollowUpRule = useCallback(async (ruleId: string, providedWorkspaceId?: string): Promise<void> => {
-    const wsId = getActiveWorkspaceIdInternal(providedWorkspaceId);
-    if (!wsId) throw new Error('Workspace ID não encontrado para excluir regra.');
+  // Deletar regra de follow-up
+  const deleteAiFollowUpRule = useCallback(async (
+    ruleId: string,
+    workspaceId?: string
+  ): Promise<void> => {
+    const activeId = getActiveWorkspaceIdInternal(workspaceId);
+    if (!activeId) throw new Error('Nenhum workspace ativo');
 
-    console.log(`deleteAiFollowUpRule: Excluindo ${ruleId} de ${wsId}`);
-    setAiFollowUpRulesError(null);
     try {
-       const response = await axios.delete<{ success: boolean, message?: string, error?: string }>(
-           `/api/workspaces/${wsId}/ai-followups/${ruleId}`
-       );
-      if (!response.data.success) throw new Error(response.data.error || 'Falha ao excluir regra');
+      const { error } = await supabase
+        .from('workspace_ai_follow_up_rules')
+        .delete()
+        .eq('id', ruleId)
+        .eq('workspace_id', activeId); // Garantia extra
+
+      if (error) throw error;
+
       setAiFollowUpRules(prev => prev.filter(r => r.id !== ruleId));
     } catch (err: any) {
-      const message = err.response?.data?.error || err.message || 'Erro ao excluir regra.';
-      console.error(`deleteAiFollowUpRule: Erro (${ruleId}) -`, err);
-      setAiFollowUpRulesError(message);
-      throw new Error(message);
+      console.error('deleteAiFollowUpRule: Erro -', err);
+      throw new Error(err.message || 'Falha ao deletar regra de follow-up');
     }
   }, [getActiveWorkspaceIdInternal]);
 
+  // Função para trocar de workspace (navegação)
+  const switchWorkspace = useCallback((workspaceSlug: string) => {
+    router.push(`/workspace/${workspaceSlug}`);
+  }, [router]);
+
+  // Função para refresh manual da lista
+  const refreshWorkspaces = useCallback(async () => {
+    await fetchWorkspaceList();
+  }, [fetchWorkspaceList]);
 
   // Combina loadings para a UI geral
-  const combinedIsLoading = status === 'loading' || isLoadingList || isLoadingCurrent;
+  const isLoading = isLoadingList || isLoadingCurrent;
 
   // Valor final do Contexto
-  const contextValue: WorkspaceContextType = {
+  const contextValue = {
     workspace,
     workspaces,
-    isLoading: combinedIsLoading,
+    isLoading,
     error,
     switchWorkspace,
+    refreshWorkspaces,
+    clearError,
+
+    // Operações de Workspace
     createWorkspace,
     updateWorkspace,
     deleteWorkspace,
-    refreshWorkspaces,
-    clearError,
-    // Regras de Follow-up IA
+
+    // Estado e Operações das Regras
     aiFollowUpRules,
     loadingAiFollowUpRules,
     aiFollowUpRulesError,
@@ -443,3 +564,5 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     </WorkspaceContext.Provider>
   );
 };
+
+export default WorkspaceProvider;

@@ -1,72 +1,61 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { openai } from '@ai-sdk/openai';
-import { generateText, CoreMessage, tool } from 'ai';
-import { z } from 'zod';
-import { prisma } from '@/lib/db';
-import { deactivateConversationAI } from '@/lib/actions/conversationActions';
+import { createClient } from '@/lib/supabase/server';
+import { NextRequest } from 'next/server';
+import { type CoreMessage, StreamData, streamText } from 'ai';
+import { openai } from "@ai-sdk/openai";
 
-const humanTransferTool = tool({
-  description: 'Transfere a conversa para um atendente humano',
-  parameters: z.object({
-    reason: z.string().describe('Motivo da transferência'),
-    conversationId: z.string().describe('ID da conversa'),
-  }),
-  execute: async ({ reason, conversationId }) => {
-    deactivateConversationAI(conversationId);
-    console.log(`[Tool] Transfere a conversa para um atendente humano: ${reason}`);
-    return { success: true };
-  },
-});
+// Keep the systemMessage function if needed, or remove if unused
+// const systemMessage = (
+//   role: 'user' | 'assistant' | 'system'
+// ): 'user' | 'assistant' | 'system' => {
+//   return role
+// }
 
+// IMPORTANT! Set the runtime to edge
+export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
-  try {
-    let userMessageContent = "Me diga uma curiosidade sobre o Brasil."; // Mensagem padrão
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    try {
-      const body = await req.json();
-      if (body && typeof body.message === 'string') {
-        userMessageContent = body.message;
-      }
-    } catch (error) {
-      // Se não houver corpo ou não for JSON, usa a mensagem padrão
-      console.log("Nenhuma mensagem válida encontrada no corpo da requisição, usando padrão.");
-    }
+  // Extract the `messages` from the body of the request
+  const { messages }: { messages: CoreMessage[] } = await req.json();
 
-    // Monta as mensagens no formato esperado
-    const messages: CoreMessage[] = [{ role: 'user', content: userMessageContent }];
+  // Initialize StreamData
+  const data = new StreamData();
 
-    console.log("[API] Mensagem do usuário: ", userMessageContent);
-    
-    // Chama o modelo diretamente
-    const result = await generateText({
-      model: openai('gpt-4o'),
-      system: `
-      Id da conversa: 31fa7093-6590-4d02-8137-7d22a8c1dbbc
-      Você é um assistente de atendimento da empresa Lumibot
-      Você deve responder as mensagens do usuário de forma amigável e profissional.
-      Se o usuário perguntar sobre a empresa, responda que você é um assistente virtual da empresa Lumibot.
-      `,
-      messages,
-      tools: {
-        humanTransfer: humanTransferTool,
-      },
-      maxSteps: 3,
-    });
+  // Optional: Append initial data *before* calling streamText if needed
+  // data.append({ initialInfo: 'Starting stream...' });
 
-    // Retorna a resposta da IA
-    return NextResponse.json({ response: result.text });
+  // Call the language model
+  const result = await streamText({
+    model: openai('gpt-4o'),
+    system:
+      'Você é um assistente de IA chamado Lumibot. Você trabalha para a Lumina, uma empresa de desenvolvimento de software. Seu objetivo é auxiliar os usuários com suas dúvidas e problemas relacionados aos serviços da Lumina. Seja prestativo, amigável e profissional. Se o usuário expressar intenção de falar com um humano, responda APENAS com o texto: `Ok, estou transferindo você para um de nossos atendentes.` e NADA MAIS.', // System prompt
+    messages: messages, // Pass existing messages
+    // NO onCompletion or similar callbacks needed here when using experimental_streamData
+    // The data stream is managed automatically.
+  });
 
-  } catch (error) {
-    console.error('Erro na rota /api/ai:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Ocorreu um erro desconhecido';
-    return NextResponse.json(
-      { error: 'Falha ao gerar a conclusão do chat', details: errorMessage },
-      { status: 500 }
-    );
-  }
+  // Saving the full conversation usually happens *after* the stream is finished,
+  // often triggered from the client-side or a separate process,
+  // as waiting here would delay the response stream start.
+
+  // If you needed to access the final completion server-side *immediately* after
+  // the stream finishes (before sending the response), you might iterate
+  // through result.fullStream, but that defeats the purpose of streaming.
+
+  // Append data just before closing the stream (will be sent at the end)
+  // This is the place to append data that should only be available after the text stream is done.
+  data.append({ server_message: "Stream processing complete." });
+  data.close(); // Manually close StreamData *after* streamText is awaited
+
+  // Respond with the stream
+  return result.toDataStreamResponse({
+    data: data, // Pass the StreamData instance
+  });
 }
 
-
-// curl -X POST http://localhost:3000/api/ai -H "Content-Type: application/json" -d '{"message": "Me diga uma curiosidade sobre o Brasil."}'
-// curl -X POST http://localhost:3000/api/ai -H "Content-Type: application/json" -d '{"message": "Quero falar com um atendente humano. estou com problema no sistema."}'
+// curl -X POST http://localhost:3000/api/ai -H "Content-Type: application/json" -d '{"messages": [{"role": "user", "content": "Me diga uma curiosidade sobre o Brasil."}]}'
+// curl -X POST http://localhost:3000/api/ai -H "Content-Type: application/json" -d '{"messages": [{"role": "user", "content": "Quero falar com um atendente humano. estou com problema no sistema."}]}'

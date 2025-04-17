@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth-options';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from '@/lib/permissions';
 import { Prisma } from '@prisma/client';
 
@@ -24,17 +24,21 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      console.log('GET /api/clients/[id]: Auth error or no user', authError);
+      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
+    }
+    const userId = user.id;
+
     const clientId = params.id;
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId');
 
-    console.log(`GET /api/clients/${clientId}: Request received (Workspace ID: ${workspaceId})`);
-
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
-    }
-    const userId = session.user.id;
+    console.log(`GET /api/clients/${clientId}: Request received (Workspace ID: ${workspaceId}) by User ID: ${userId}`);
 
     if (!workspaceId) {
       return NextResponse.json({ success: false, error: 'ID do Workspace é obrigatório' }, { status: 400 });
@@ -71,15 +75,19 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const awaitedParams = await params;
-    const clientId = awaitedParams.id;
-    console.log(`PUT /api/clients/${clientId}: Request received`);
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (authError || !user) {
+      console.log('PUT /api/clients/[id]: Auth error or no user', authError);
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
-    const userId = session.user.id;
+    const userId = user.id;
+
+    const awaitedParams = await params;
+    const clientId = awaitedParams.id;
+    console.log(`PUT /api/clients/${clientId}: Request received by User ID: ${userId}`);
 
     const body = await req.json();
     console.log(`PUT /api/clients/${clientId}: Request body:`, body);
@@ -151,17 +159,21 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      console.log('DELETE /api/clients/[id]: Auth error or no user', authError);
+      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
+    }
+    const userId = user.id;
+
     const { id: clientId } = await params;
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId'); // Espera workspaceId como query param
 
-    console.log(`DELETE /api/clients/${clientId}: Request received (Workspace ID: ${workspaceId})`);
-
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
-    }
-    const userId = session.user.id;
+    console.log(`DELETE /api/clients/${clientId}: Request received (Workspace ID: ${workspaceId}) by User ID: ${userId}`);
 
     if (!workspaceId) {
       return NextResponse.json({ success: false, error: 'ID do Workspace é obrigatório' }, { status: 400 });

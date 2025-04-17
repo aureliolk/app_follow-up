@@ -2,12 +2,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth-options';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from '@/lib/permissions';
 import { sendWhatsappMessage } from "@/lib/channel/whatsappSender";
 import { decrypt } from '@/lib/encryption';
-import { redisConnection } from '@/lib/redis';
 import { MessageSenderType, ConversationStatus, Prisma } from '@prisma/client';
 import type { Message } from "@/app/types";
 import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
@@ -65,13 +64,15 @@ export async function GET(
             }
         } else {
             // Session-based Authentication
+            const cookieStore = cookies();
+            const supabase = createClient();
             console.log(`API GET Messages: Authenticating via User Session for Conv ${conversationId} (Workspace ${conversationWorkspaceId}).`);
-            const session = await getServerSession(authOptions);
-            if (!session?.user?.id) {
-                console.warn(`API GET Messages: Unauthorized - Invalid session for conv ${conversationId}.`);
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
+            if (authError || !user) {
+                console.warn(`API GET Messages: Unauthorized - Invalid session/auth error for conv ${conversationId}.`, authError);
                 return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
             }
-            userId = session.user.id;
+            userId = user.id;
 
             // Check user permission within the conversation's actual workspace
             hasAccess = await checkPermission(conversationWorkspaceId, userId, 'VIEWER');
@@ -143,12 +144,15 @@ export async function POST(
   console.log(`API POST /api/conversations/${conversationId}/messages: Request received - Send Manual Message`);
 
   try {
-    // 1. Autenticação e Autorização
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    // 1. Autenticação e Autorização (Supabase)
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.warn(`API POST Messages (${conversationId}): Unauthorized - Invalid session/auth error.`, authError);
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
-    const userId = session.user.id;
+    const userId = user.id;
 
     // 2. Buscar Conversa e Dados Relacionados (Canal, Cliente, Workspace Creds)
     const conversation = await prisma.conversation.findUnique({
@@ -204,7 +208,7 @@ export async function POST(
     // --- NOVA LÓGICA: Salvar Mensagem PENDING Primeiro ---
     let pendingMessage: PendingMessageType | null = null;
     const messageTimestamp = new Date();
-    const senderName = session?.user?.name || 'Operador';
+    const senderName = user.user_metadata?.name || user.email || 'Operador';
     const prefixedContent = `*${senderName}*\n ${content}`;
 
     try {

@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth-options';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from '@/lib/permissions';
 import { Prisma } from '@prisma/client';
 
@@ -20,12 +20,15 @@ const clientCreateSchema = z.object({
 export async function GET(req: NextRequest) {
   console.log("API GET /api/clients: Requisição recebida.");
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.warn("API GET Clients: Não autorizado - Sessão inválida.");
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      console.error('GET /api/clients: Auth error or no user', authError);
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
-    const userId = session.user.id;
+    const userId = user.id;
 
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId');
@@ -71,14 +74,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   console.log("API POST /api/clients: Requisição recebida.");
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      console.warn("API POST Clients: Não autorizado - Sessão inválida.");
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      console.error('POST /api/clients: Auth error or no user', authError);
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
-    const userId = session.user.id;
+    const userId = user.id;
 
     const body = await req.json();
+    console.log('POST /api/clients: Request received', { body, userId });
+
     const validation = clientCreateSchema.safeParse(body);
 
     if (!validation.success) {

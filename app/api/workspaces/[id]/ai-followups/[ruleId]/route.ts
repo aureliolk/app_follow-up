@@ -2,10 +2,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth-options';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from '@/lib/permissions';
-import { parseDelayStringToMs } from '@/lib/timeUtils';
+import { Prisma } from '@prisma/client';
 
 // Schema Zod para validação da atualização
 const updateRuleSchema = z.object({
@@ -16,47 +16,51 @@ const updateRuleSchema = z.object({
 // --- PUT: Atualizar uma regra específica ---
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string; ruleId: string } }
+  { params }: { params: Promise<{ id: string; ruleId: string }> }
 ) {
+  const { id: workspaceId, ruleId } = await params;
+  const cookieStore = cookies();
+  const supabase = createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const userId = user.id;
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
-    }
-
-    const { id: workspaceId, ruleId } = params;
-    const userId = session.user.id;
-
-    // Verificar permissão (ADMIN necessário para atualizar)
     const hasPermission = await checkPermission(workspaceId, userId, 'ADMIN');
     if (!hasPermission) {
-      return NextResponse.json({ success: false, error: 'Permissão negada para atualizar regras' }, { status: 403 });
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Verificar se a regra existe e pertence ao workspace
     const existingRule = await prisma.workspaceAiFollowUpRule.findUnique({
       where: { id: ruleId },
       select: { workspace_id: true }
     });
 
     if (!existingRule || existingRule.workspace_id !== workspaceId) {
-      return NextResponse.json({ success: false, error: 'Regra não encontrada neste workspace' }, { status: 404 });
+      return NextResponse.json({ error: "Rule not found or does not belong to this workspace" }, { status: 404 });
     }
 
     const body = await req.json();
     const validation = updateRuleSchema.safeParse(body);
 
     if (!validation.success) {
-      return NextResponse.json({ success: false, error: 'Dados inválidos', details: validation.error.errors }, { status: 400 });
+      return NextResponse.json({ error: "Invalid input", details: validation.error.errors }, { status: 400 });
     }
 
-    const dataToUpdate: { delay_milliseconds?: bigint, message_content?: string } = {};
+    const dataToUpdate: Prisma.WorkspaceAiFollowUpRuleUpdateInput = {};
     const { delayString, messageContent } = validation.data;
 
     if (delayString !== undefined) {
-      const delay_milliseconds = parseDelayStringToMs(delayString);
+      const delay_milliseconds = timeStringToMs(delayString);
       if (delay_milliseconds === null) {
-        return NextResponse.json({ success: false, error: 'Formato de tempo inválido.' }, { status: 400 });
+        return NextResponse.json({ error: "Invalid delay format. Use format like 30s, 5m, 1h, 2d." }, { status: 400 });
+      }
+      if (delay_milliseconds <= 0n) {
+        return NextResponse.json({ error: "Delay must be positive." }, { status: 400 });
       }
       dataToUpdate.delay_milliseconds = delay_milliseconds;
     }
@@ -66,13 +70,13 @@ export async function PUT(
     }
 
     if (Object.keys(dataToUpdate).length === 0) {
-         return NextResponse.json({ success: true, message: 'Nenhuma alteração detectada.' }, { status: 200 });
+      return NextResponse.json({ error: "No fields provided for update" }, { status: 400 });
     }
 
     const updatedRule = await prisma.workspaceAiFollowUpRule.update({
       where: { id: ruleId },
       data: dataToUpdate,
-      select: { // Seleciona os campos para retornar
+      select: {
         id: true,
         delay_milliseconds: true,
         message_content: true,
@@ -81,59 +85,98 @@ export async function PUT(
       }
     });
 
-     // Converter BigInt para String antes de retornar JSON
-     const ruleToReturn = {
-        ...updatedRule,
-        delay_milliseconds: updatedRule.delay_milliseconds.toString(),
+    const ruleToReturn = {
+      ...updatedRule,
+      delay_milliseconds: updatedRule.delay_milliseconds.toString(),
     };
 
-    return NextResponse.json({ success: true, data: ruleToReturn });
+    return NextResponse.json(ruleToReturn);
 
   } catch (error) {
-    console.error('PUT /ai-followups/[ruleId] Error:', error);
-    return NextResponse.json({ success: false, error: 'Erro interno ao atualizar regra' }, { status: 500 });
+    console.error(`Error updating AI follow-up rule ${ruleId} for workspace ${workspaceId}:`, error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
 // --- DELETE: Excluir uma regra específica ---
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string; ruleId: string } }
+  { params }: { params: Promise<{ id: string; ruleId: string }> }
 ) {
+  const { id: workspaceId, ruleId } = await params;
+  const cookieStore = cookies();
+  const supabase = createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const userId = user.id;
+
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
-    }
-
-    const { id: workspaceId, ruleId } = params;
-    const userId = session.user.id;
-
-    // Verificar permissão (ADMIN necessário para excluir)
     const hasPermission = await checkPermission(workspaceId, userId, 'ADMIN');
     if (!hasPermission) {
-      return NextResponse.json({ success: false, error: 'Permissão negada para excluir regras' }, { status: 403 });
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Verificar se a regra existe e pertence ao workspace antes de deletar
-     const existingRule = await prisma.workspaceAiFollowUpRule.findUnique({
+    const existingRule = await prisma.workspaceAiFollowUpRule.findUnique({
       where: { id: ruleId },
       select: { workspace_id: true }
     });
 
     if (!existingRule || existingRule.workspace_id !== workspaceId) {
-      return NextResponse.json({ success: false, error: 'Regra não encontrada neste workspace' }, { status: 404 });
+      return NextResponse.json({ error: "Rule not found or does not belong to this workspace" }, { status: 404 });
     }
 
-    // Excluir a regra
     await prisma.workspaceAiFollowUpRule.delete({
       where: { id: ruleId },
     });
 
-    return NextResponse.json({ success: true, message: 'Regra excluída com sucesso' }, { status: 200 }); // Ou 204
+    return NextResponse.json({ message: "Rule deleted successfully" }, { status: 200 });
 
   } catch (error) {
-    console.error('DELETE /ai-followups/[ruleId] Error:', error);
-    return NextResponse.json({ success: false, error: 'Erro interno ao excluir regra' }, { status: 500 });
+    console.error(`Error deleting AI follow-up rule ${ruleId} for workspace ${workspaceId}:`, error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+function timeStringToMs(timeString: string): bigint | null {
+  const match = timeString.match(/^(\d+)([smhd])$/);
+  if (!match) return null;
+  
+  let value: bigint;
+  try {
+    value = BigInt(match[1]); 
+  } catch (e) {
+    console.error("Falha ao converter valor para BigInt:", match[1], e);
+    return null;
+  }
+
+  const unit = match[2];
+  let multiplier: bigint;
+
+  switch (unit) {
+    case 's': 
+      multiplier = 1000n;
+      break;
+    case 'm': 
+      multiplier = 60n * 1000n;
+      break;
+    case 'h': 
+      multiplier = 60n * 60n * 1000n;
+      break;
+    case 'd': 
+      multiplier = 24n * 60n * 60n * 1000n;
+      break;
+    default: 
+      return null; 
+  }
+
+  try {
+    return value * multiplier;
+  } catch (e) {
+    console.error("Erro na multiplicação de BigInt:", value, multiplier, e);
+    return null;
   }
 }

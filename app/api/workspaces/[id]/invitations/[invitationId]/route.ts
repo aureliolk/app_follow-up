@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/auth-options";
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from "@/lib/permissions";
 import { sendInvitationEmail } from "@/lib/email";
+import { InvitationStatus } from "@prisma/client";
 
 // Delete an invitation
 export async function DELETE(
@@ -12,22 +13,24 @@ export async function DELETE(
   { params }: { params: { id: string; invitationId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
+    const { id: workspaceId, invitationId } = params;
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         { message: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // <<< Acessar params de forma assíncrona >>>
-    const { id: workspaceId, invitationId } = await params;
-    
+    const userId = user.id;
+
     // Check if user has admin permission for this workspace
-    const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');
+    const hasPermission = await checkPermission(workspaceId, userId, 'ADMIN');
     
-    if (!isAdmin && !session.user.isSuperAdmin) {
+    if (!hasPermission) {
       return NextResponse.json(
         { message: 'You do not have permission to cancel invitations' },
         { status: 403 }
@@ -49,15 +52,18 @@ export async function DELETE(
       );
     }
 
-    // Delete the invitation
-    await prisma.workspaceInvitation.delete({
-      where: { id: invitationId },
-    });
+    // Cannot delete/revoke already accepted invitations
+    if (invitation.status === InvitationStatus.ACCEPTED) {
+        return NextResponse.json({ error: "Cannot revoke an already accepted invitation" }, { status: 400 });
+    }
 
-    return NextResponse.json(
-      { message: 'Invitation cancelled successfully' },
-      { status: 200 }
-    );
+    // Option 2: Mark as REVOKED instead of deleting
+     const updatedInvitation = await prisma.workspaceInvitation.update({
+         where: { id: invitationId },
+         data: { status: InvitationStatus.REVOKED }
+     });
+
+    return NextResponse.json({ message: "Invitation revoked successfully", data: updatedInvitation }, { status: 200 });
   } catch (error) {
     console.error('Error cancelling invitation:', error);
     return NextResponse.json(
@@ -73,22 +79,22 @@ export async function POST(
   { params }: { params: { id: string; invitationId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
+    const { id: workspaceId, invitationId } = params;
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         { message: 'Unauthorized' },
         { status: 401 }
       );
     }
 
-    // <<< Acessar params de forma assíncrona >>>
-    const { id: workspaceId, invitationId } = await params;
-    
     // Check if user has admin permission for this workspace
-    const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');
+    const hasPermission = await checkPermission(workspaceId, user.id, 'ADMIN');
     
-    if (!isAdmin && !session.user.isSuperAdmin) {
+    if (!hasPermission) {
       return NextResponse.json(
         { message: 'You do not have permission to resend invitations' },
         { status: 403 }

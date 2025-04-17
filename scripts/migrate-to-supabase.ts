@@ -1,7 +1,8 @@
 import { prisma } from '../lib/db';
-import { supabase } from '../lib/supabase';
+import { createClient } from '../lib/supabase/server';
 
 async function migrateData() {
+  const supabase = createClient();
   try {
     // 1. Migrar Workspaces
     const workspaces = await prisma.workspace.findMany({

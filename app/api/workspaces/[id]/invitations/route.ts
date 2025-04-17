@@ -1,38 +1,30 @@
-import { getServerSession } from 'next-auth/next';
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { authOptions } from '@/lib/auth/auth-options';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from '@/lib/permissions';
-import crypto from 'crypto';
 import { sendInvitationEmail } from '@/lib/email';
+import { randomBytes } from 'crypto';
 
 // Get all invitations for a workspace
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      return NextResponse.json(
-        { message: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  const workspaceId = params.id;
+  const cookieStore = cookies();
+  const supabase = createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    // Properly accessing dynamic route params in Next.js 13+
-    const { id: workspaceId } = params;
-    
-    // Check if user has access to this workspace
-    const hasAccess = await checkPermission(workspaceId, session.user.id, 'VIEWER');
-    
-    if (!hasAccess && !session.user.isSuperAdmin) {
-      return NextResponse.json(
-        { message: 'You do not have access to this workspace' },
-        { status: 403 }
-      );
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const userId = user.id;
+
+  try {
+    // Check if user has permission to view invitations (ADMIN or OWNER)
+    const hasAccess = await checkPermission(workspaceId, userId, 'ADMIN');
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const invitations = await prisma.workspaceInvitation.findMany({
@@ -53,34 +45,27 @@ export async function GET(
 }
 
 // Create a new invitation
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  const workspaceId = params.id;
+  const cookieStore = cookies();
+  const supabase = createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const userId = user.id;
+  const userName = user.user_metadata?.name || user.email || 'Workspace Admin';
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      return NextResponse.json(
-        { message: 'Unauthorized' },
-        { status: 401 }
-      );
+    // Check if user has permission to invite (ADMIN or OWNER)
+    const hasPermission = await checkPermission(workspaceId, userId, 'ADMIN');
+    if (!hasPermission) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // <<< Acessar params de forma assíncrona >>>
-    const { id: workspaceId } = await params;
-    
-    // Check if user has admin permission for this workspace
-    const isAdmin = await checkPermission(workspaceId, session.user.id, 'ADMIN');
-    
-    if (!isAdmin && !session.user.isSuperAdmin) {
-      return NextResponse.json(
-        { message: 'You do not have permission to create invitations' },
-        { status: 403 }
-      );
-    }
-
-    const body = await req.json();
+    const body = await request.json();
     const schema = z.object({
       email: z.string().email(),
       role: z.enum(['ADMIN', 'MEMBER', 'VIEWER']).default('MEMBER'),
@@ -89,14 +74,10 @@ export async function POST(
     const { email, role } = schema.parse(body);
 
     // Check if user is already a member
-    const existingMember = await prisma.user.findFirst({
+    const existingMember = await prisma.workspaceMember.findFirst({
       where: {
-        email,
-        workspace_members: {
-          some: {
-            workspace_id: workspaceId,
-          },
-        },
+        workspace_id: workspaceId,
+        user: { email: email },
       },
     });
 
@@ -124,7 +105,7 @@ export async function POST(
     }
 
     // Generate invitation token
-    const token = crypto.randomBytes(32).toString('hex');
+    const token = randomBytes(32).toString('hex');
     
     // Set expiration date (7 days from now)
     const expiresAt = new Date();
@@ -138,7 +119,7 @@ export async function POST(
         token,
         expires_at: expiresAt,
         workspace_id: workspaceId,
-        invited_by: session.user.id,
+        invited_by: userId,
       },
       include: {
         workspace: {
@@ -156,9 +137,9 @@ export async function POST(
     }
 
     const emailSent = await sendInvitationEmail({
-        to: invitation.email,
-        token: invitation.token,
-        workspaceName: invitation.workspace.name
+        to: email,
+        token: token,
+        workspaceName: invitation.workspace.name,
     });
 
     if (!emailSent) {

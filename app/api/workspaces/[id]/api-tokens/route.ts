@@ -1,234 +1,157 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { withAuth, getCurrentUserId } from '@/lib/auth/auth-utils';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth-options';
-import crypto from 'crypto';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { checkPermission } from "@/lib/permissions";
 import { randomBytes } from 'crypto';
+import { Prisma } from "@prisma/client";
 
 // Função para gerar token criptograficamente seguro
 function generateToken() {
   // Formato: wsat_RANDOM_STRING
   // Onde RANDOM_STRING é um string aleatório em base64 (sem caracteres especiais)
-  const randomBytes = crypto.randomBytes(32);
-  const tokenString = randomBytes.toString('base64').replace(/[+/=]/g, '');
+  // Use a função randomBytes importada do módulo 'crypto' do Node.js
+  const bytes = randomBytes(32);
+  const tokenString = bytes.toString('base64').replace(/[+/=]/g, '');
   return `wsat_${tokenString}`;
 }
 
-// Função auxiliar para processar requisições de listagem de tokens
-async function processListTokensRequest(req: NextRequest, workspaceId: string) {
-  try {
-    const session = await getSession(); // Get the full session
-    if (!session?.user) {
-      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+// Helper function to authenticate and authorize the request
+// Returns the user ID if successful, otherwise returns a NextResponse error
+async function authenticateRequest(request: NextRequest, workspaceId: string): Promise<{ userId: string | null; response: NextResponse | null }> {
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+        return { userId: null, response: NextResponse.json({ error: "Not authenticated" }, { status: 401 }) };
+    }
+    const userId = user.id;
+
+    // Check if user has ADMIN permission for this workspace
+    const hasPermission = await checkPermission(workspaceId, userId, 'ADMIN');
+    if (!hasPermission) {
+        return { userId: null, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
     }
 
-    const userId = session.user.id;
-    const isSuperAdmin = session.user.isSuperAdmin;
-
-    // Verificar se o usuário tem acesso ao workspace (se não for super admin)
-    let hasAccess = false;
-    if (isSuperAdmin) {
-        hasAccess = true;
-    } else {
-        const memberAccess = await prisma.workspaceMember.findFirst({
-          where: {
-            workspace_id: workspaceId,
-            user_id: userId as string,
-            // TODO: Consider checking for specific roles (e.g., ADMIN, OWNER) if needed
-          },
-        });
-
-        const workspaceOwner = await prisma.workspace.findFirst({
-          where: {
-            id: workspaceId,
-            owner_id: userId as string,
-          }
-        });
-        hasAccess = !!memberAccess || !!workspaceOwner;
-    }
-
-    if (!hasAccess) {
-      return NextResponse.json(
-        { success: false, error: "Acesso negado a este workspace ou operação não permitida" },
-        { status: 403 }
-      );
-    }
-
-    // Buscar tokens (mas não retornar o valor do token completo)
-    const tokens = await prisma.workspaceApiToken.findMany({
-      where: {
-        workspace_id: workspaceId,
-      },
-      select: {
-        id: true,
-        name: true,
-        token: false, // Não retornar o token completo por segurança
-        created_at: true,
-        expires_at: true, 
-        last_used_at: true,
-        revoked: true,
-        creator: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-      },
-      orderBy: {
-        created_at: 'desc',
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      tokens,
-    });
-  } catch (error) {
-    console.error('Erro ao listar tokens:', error);
-    return NextResponse.json(
-      { success: false, error: "Erro interno do servidor" },
-      { status: 500 }
-    );
-  }
+    return { userId, response: null };
 }
 
-// Função auxiliar para processar requisições de criação de tokens
-async function processCreateTokenRequest(req: NextRequest, workspaceId: string) {
-  try {
-    const session = await getSession(); // Get the full session
-    if (!session?.user) {
-      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
+// Listar tokens de API para um workspace
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+    const workspaceId = params.id;
+    // Use a função de autenticação unificada
+    const authResult = await authenticateRequest(request, workspaceId);
+    if (authResult.response) return authResult.response;
+    const userId = authResult.userId;
+
+    // Garantir que userId não seja null (embora authenticateRequest deva tratar isso)
+    if (!userId) {
+        console.error("Authentication passed but userId is null in GET /api-tokens");
+        return NextResponse.json({ error: "Authentication error" }, { status: 500 });
     }
 
-    const userId = session.user.id;
-    const isSuperAdmin = session.user.isSuperAdmin;
-    const body = await req.json();
-
-    // Validar o corpo da requisição
-    const { name, expires_at } = body;
-
-    if (!name) {
-      return NextResponse.json(
-        { success: false, error: "Nome do token é obrigatório" },
-        { status: 400 }
-      );
-    }
-
-    // Verificar se o usuário tem acesso ao workspace (se não for super admin)
-    let hasAccess = false;
-    if (isSuperAdmin) {
-        hasAccess = true;
-    } else {
-        const memberAccess = await prisma.workspaceMember.findFirst({
+    try {
+        // Buscar tokens (mas não retornar o valor do token completo)
+        const tokens = await prisma.workspaceApiToken.findMany({
             where: {
                 workspace_id: workspaceId,
-                user_id: userId as string,
-                 // TODO: Consider checking for specific roles (e.g., ADMIN, OWNER) if needed
+            },
+            select: {
+                id: true,
+                name: true,
+                token: false, // Não retornar o token completo por segurança
+                created_at: true,
+                expires_at: true,
+                last_used_at: true,
+                revoked: true,
+                creator: {
+                    select: {
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
+            orderBy: {
+                created_at: 'desc',
             },
         });
 
-        const workspaceOwner = await prisma.workspace.findFirst({
-            where: {
-                id: workspaceId,
-                owner_id: userId as string,
-            }
-        });
-         hasAccess = !!memberAccess || !!workspaceOwner;
+        return NextResponse.json({ tokens });
+
+    } catch (error) {
+        console.error(`Error fetching API tokens for workspace ${workspaceId}:`, error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
-
-    if (!hasAccess) {
-      return NextResponse.json(
-        { success: false, error: "Acesso negado a este workspace ou operação não permitida" },
-        { status: 403 }
-      );
-    }
-
-    // Gerar um novo token
-    const tokenValue = generateToken();
-
-    // Criar o token no banco de dados
-    const token = await prisma.workspaceApiToken.create({
-      data: {
-        name,
-        token: tokenValue,
-        workspace_id: workspaceId,
-        created_by: userId as string,
-        expires_at: expires_at ? new Date(expires_at) : null,
-      },
-      select: {
-        id: true,
-        name: true,
-        created_at: true,
-        expires_at: true,
-        revoked: true,
-        creator: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      token: tokenValue, // Retorna o valor do token apenas na criação
-      tokenInfo: token,
-      message: "Token criado com sucesso",
-    });
-  } catch (error) {
-    console.error('Erro ao criar token:', error);
-    return NextResponse.json(
-      { success: false, error: "Erro interno do servidor" },
-      { status: 500 }
-    );
-  }
-}
-
-// Listar todos os tokens de API para o workspace
-export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
-  // Simplified access check, relies on processListTokensRequest for detailed checks
-  const session = await getSession();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
-  }
-
-  const params = await props.params;
-  await Promise.resolve(); // Workaround for params issue
-  const workspaceId = params.id;
-
-  // A função processListTokensRequest já contém a lógica de autenticação e autorização
-  return processListTokensRequest(request, workspaceId);
-}
-
-// Função auxiliar para obter a sessão atual
-async function getSession() {
-  try {
-    return await getServerSession(authOptions);
-  } catch (error) {
-    console.error("Erro ao obter sessão:", error);
-    return null;
-  }
 }
 
 // Criar um novo token de API
-export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
-  // Simplified access check, relies on processCreateTokenRequest for detailed checks
-  const session = await getSession();
-  if (!session?.user) {
-    return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
-  }
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+    const workspaceId = params.id;
+    const authResult = await authenticateRequest(request, workspaceId);
+    if (authResult.response) return authResult.response;
+    const userId = authResult.userId;
 
-  const params = await props.params;
-  // Para resolver o erro "params should be awaited", vamos seguir a documentação oficial do Next.js
-  // e primeiro fazer uma operação assíncrona não relacionada aos parâmetros
-  await Promise.resolve(); // Operação assíncrona simples
+    if (!userId) {
+         console.error("Authentication passed but userId is null in POST /api-tokens");
+         return NextResponse.json({ error: "Authentication error" }, { status: 500 });
+    }
 
-  // Agora é seguro acessar os parâmetros dinâmicos
-  const workspaceId = params.id;
+    try {
+        const body = await request.json();
+        const validation = tokenCreateSchema.safeParse(body);
 
-  // A função processCreateTokenRequest já contém a lógica de autenticação e autorização
-  return processCreateTokenRequest(request, workspaceId);
+        if (!validation.success) {
+            return NextResponse.json({ error: "Invalid input", details: validation.error.errors }, { status: 400 });
+        }
+
+        const { name, expires_in_days } = validation.data;
+
+        // Generate secure random token
+        const tokenValue = generateToken(); // Usa a função corrigida
+
+        let expires_at: Date | null = null;
+        if (expires_in_days) {
+            expires_at = new Date();
+            expires_at.setDate(expires_at.getDate() + expires_in_days);
+        }
+
+        const newToken = await prisma.workspaceApiToken.create({
+            data: {
+                workspace_id: workspaceId,
+                name: name,
+                token: tokenValue,
+                created_by: userId,
+                expires_at: expires_at,
+            },
+            select: {
+                id: true,
+                name: true,
+                created_at: true,
+                expires_at: true,
+                last_used_at: true,
+                revoked: true,
+                created_by: true,
+            }
+        });
+
+        // Retornar o token completo APENAS na criação
+        const responseData = {
+            ...newToken,
+            token: tokenValue 
+        }
+
+        return NextResponse.json(responseData, { status: 201 });
+
+    } catch (error) {
+        console.error(`Error creating API token for workspace ${workspaceId}:`, error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
 }
+
+// Schema for creating API token
+const tokenCreateSchema = z.object({
+    name: z.string().min(1, "Token name cannot be empty"),
+    expires_in_days: z.number().int().positive().optional().nullable(),
+});

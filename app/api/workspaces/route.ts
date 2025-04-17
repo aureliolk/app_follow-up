@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/auth-options";
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 
 // Create a workspace
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         { message: 'Unauthorized' },
         { status: 401 }
@@ -33,10 +35,10 @@ export async function POST(req: Request) {
       data: {
         name,
         slug,
-        owner_id: session.user.id,
+        owner_id: user.id,
         members: {
           create: {
-            user_id: session.user.id,
+            user_id: user.id,
             role: 'ADMIN',
           },
         },
@@ -63,44 +65,35 @@ export async function POST(req: Request) {
 
 // Get all workspaces for the current user
 export async function GET() {
+  const cookieStore = cookies();
+  const supabase = createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    console.log('Unauthorized access attempt to workspaces API');
+    return NextResponse.json(
+      { message: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
+  console.log('Fetching workspaces for user ID:', user.id);
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      console.log('Unauthorized access attempt to workspaces API');
-      return NextResponse.json(
-        { message: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    console.log('Fetching workspaces for user ID:', session.user.id);
-
-    // Find all workspaces where the user is a member
-    const workspaces = await prisma.workspace.findMany({
-      where: {
-        OR: [
-          { owner_id: session.user.id },
-          {
-            members: {
-              some: {
-                user_id: session.user.id,
-              },
-            },
-          },
-        ],
-      },
-      orderBy: {
-        created_at: 'desc',
+    const workspaces = await prisma.workspaceMember.findMany({
+      where: { user_id: user.id },
+      include: {
+        workspace: true,
       },
     });
 
-    console.log(`Found ${workspaces.length} workspaces for user ${session.user.id}`);
-    return NextResponse.json(workspaces);
+    const userWorkspaces = workspaces.map((member) => member.workspace);
+
+    console.log(`Found ${userWorkspaces.length} workspaces for user ${user.id}`);
+    return NextResponse.json(userWorkspaces);
   } catch (error) {
     console.error('Error fetching workspaces:', error);
     
-    // Add more detailed error information
     let errorMessage = 'Failed to fetch workspaces';
     if (error instanceof Error) {
       errorMessage += `: ${error.message}`;

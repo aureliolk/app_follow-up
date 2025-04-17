@@ -1,25 +1,27 @@
 // app/api/webhooks/ingress/whatsapp/templates/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth-options';
+import { prisma } from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from '@/lib/permissions';
-import { prisma } from '@/lib/db'; // <<< Descomentar Prisma
-import { decrypt } from '@/lib/encryption'; // <<< CORRIGIDO: usar decrypt
-import { WhatsappTemplate } from '@/app/types'; // <<< Importar tipo de app/types
-import { Prisma } from '@prisma/client'; // <<< Importar tipos Prisma para error handling
-
-// Mock Data removido
+import { decrypt } from '@/lib/encryption';
+import { WhatsappTemplate } from '@/app/types';
+import { Prisma } from '@prisma/client';
+import axios from 'axios';
 
 export async function GET(req: NextRequest) {
   console.log("[API GET .../whatsapp/templates] Request received."); 
   try {
-    // 1. Autenticação
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    // 1. Autenticação e Autorização via Sessão do Usuário
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       console.warn("[API GET .../whatsapp/templates] Unauthorized: No session found.");
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-    const userId = session.user.id;
+    const userId = user.id;
 
     // 2. Obter Workspace ID dos parâmetros
     const { searchParams } = new URL(req.url);
@@ -71,7 +73,8 @@ export async function GET(req: NextRequest) {
 
     let accessToken;
     try {
-      accessToken = decrypt(encryptedToken); // <<< CORRIGIDO: usar decrypt
+      accessToken = decrypt(encryptedToken);
+      if (!accessToken) throw new Error("Decrypted token is empty");
     } catch (decryptionError) {
       console.error(`[API GET .../whatsapp/templates] Failed to decrypt token for workspace ${workspaceId}:`, decryptionError);
       return NextResponse.json({ success: false, error: 'Failed to process WhatsApp credentials.' }, { status: 500 });
@@ -85,82 +88,50 @@ export async function GET(req: NextRequest) {
     console.log(`[API GET .../whatsapp/templates] Successfully retrieved and decrypted credentials for WABA ID: ${wabaId}`);
 
     // 5. Chamar API da Meta para buscar templates
-    const metaApiUrl = `https://graph.facebook.com/v19.0/${wabaId}/message_templates?fields=name,language,category,components,status&limit=100&access_token=${accessToken}`;
-    // Nota: Adicionamos status ao fields e removemos filter por status aprovado da URL, faremos o filtro no código.
-    // O limit=100 pode precisar de paginação se houver mais templates.
+    const apiUrl = `https://graph.facebook.com/v19.0/${wabaId}/message_templates`;
+    const response = await axios.get(apiUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      params: {
+        limit: 100,
+      },
+    });
 
-    let metaApiResponse;
-    try {
-      console.log(`[API GET .../whatsapp/templates] Fetching templates from Meta API for WABA ID: ${wabaId}`);
-      metaApiResponse = await fetch(metaApiUrl, {
-        method: 'GET',
-        headers: {
-           // O token agora está na URL, não precisamos do Header Authorization
-           // 'Authorization': `Bearer ${accessToken}`, 
-          'Content-Type': 'application/json',
-        },
-         // Adicionar cache revalidate se apropriado, ex: cada 1 hora
-        next: { revalidate: 3600 } 
-      });
+    // 6. Mapear e Filtrar a resposta da Meta
+    const approvedTemplates: WhatsappTemplate[] = [];
+    if (response.data?.data && Array.isArray(response.data.data)) {
+      response.data.data.forEach((template: any) => {
+        // Filtrar por status APROVADO
+        if (template.status !== 'APPROVED') {
+          return; // Pula para o próximo template
+        }
 
-      if (!metaApiResponse.ok) {
-        const errorBody = await metaApiResponse.text(); // Ler como texto para evitar erro de JSON
-        console.error(`[API GET .../whatsapp/templates] Meta API request failed for WABA ${wabaId}. Status: ${metaApiResponse.status}. Body: ${errorBody}`);
-        throw new Error(`Meta API Error (${metaApiResponse.status}): Failed to fetch templates.`);
-      }
+        // Encontrar o componente BODY
+        const bodyComponent = template.components?.find((comp: any) => comp.type === 'BODY');
+        const bodyText = bodyComponent?.text || ''; // Pega o texto do body ou string vazia
 
-      const metaData = await metaApiResponse.json();
-      console.log(`[API GET .../whatsapp/templates] Meta API response received for WABA ID: ${wabaId}. Found ${metaData?.data?.length || 0} raw templates.`);
-      
-      // 6. Mapear e Filtrar a resposta da Meta
-      const approvedTemplates: WhatsappTemplate[] = [];
-      if (metaData?.data && Array.isArray(metaData.data)) {
-        metaData.data.forEach((template: any) => {
-          // Filtrar por status APROVADO
-          if (template.status !== 'APPROVED') {
-            return; // Pula para o próximo template
-          }
-
-          // Encontrar o componente BODY
-          const bodyComponent = template.components?.find((comp: any) => comp.type === 'BODY');
-          const bodyText = bodyComponent?.text || ''; // Pega o texto do body ou string vazia
-
-           // Pular templates sem body? Ou permitir? Por ora, permitimos.
-          // if (!bodyText) {
-          //   console.warn(`[API GET .../whatsapp/templates] Template ${template.name} (${template.language}) skipped: No BODY component found.`);
-          //   return;
-          // }
-
-          // Criar objeto no nosso formato
-          approvedTemplates.push({
-            id: template.id, // Usar ID da Meta
-            name: template.name,
-            language: template.language,
-            category: template.category,
-            body: bodyText, // Mapeado do componente BODY
-          });
+        // Criar objeto no nosso formato
+        approvedTemplates.push({
+          id: template.id, // Usar ID da Meta
+          name: template.name,
+          language: template.language,
+          category: template.category,
+          body: bodyText, // Mapeado do componente BODY
         });
-      }
-
-      // 7. Retornar Resposta com os templates mapeados
-      console.log(`[API GET .../whatsapp/templates] Returning ${approvedTemplates.length} APPROVED templates for workspace ${workspaceId}`);
-      return NextResponse.json({ success: true, data: approvedTemplates });
-
-    } catch (fetchError: any) {
-       // Erro pode ser da chamada fetch ou do processamento do JSON/mapeamento
-       console.error(`[API GET .../whatsapp/templates] Error during Meta API call or processing for WABA ${wabaId}:`, fetchError.message || fetchError);
-       // Retornar um erro genérico para o cliente, mas logamos o detalhe
-       return NextResponse.json({ success: false, error: 'Failed to retrieve WhatsApp templates.' }, { status: 500 });
+      });
     }
+
+    // 7. Retornar Resposta com os templates mapeados
+    console.log(`[API GET .../whatsapp/templates] Returning ${approvedTemplates.length} APPROVED templates for workspace ${workspaceId}`);
+    return NextResponse.json({ success: true, data: approvedTemplates });
 
   } catch (error: any) {
     // Este catch pega erros da autenticação, permissão, busca no DB ou descriptografia
-    console.error("[API GET .../whatsapp/templates] Generic Error (Outer Catch):", error.message || error);
+    console.error("[API GET .../whatsapp/templates] Generic Error (Outer Catch):", error.response?.data || error.message);
     // Evitar expor detalhes do erro interno, usar o erro já formatado se possível ou um genérico
-    const errorMessage = error.message.includes('Workspace not found') ? 'Workspace not found' 
-                       : error.message.includes('credentials') ? 'Failed to process credentials' 
-                       : 'Internal Server Error';
-     const errorStatus = error.message.includes('Workspace not found') ? 404 : 500; // Ajustar status se necessário
+    const errorMessage = error.response?.data?.error?.message || "Internal Server Error";
+    const errorStatus = error.response?.status || 500; // Ajustar status se necessário
 
     return NextResponse.json({ success: false, error: errorMessage }, { status: errorStatus });
   }

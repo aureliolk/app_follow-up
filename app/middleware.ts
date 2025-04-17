@@ -1,77 +1,46 @@
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import type { NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
-  // CORS handling
-  const response = NextResponse.next();
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  response.headers.set('Access-Control-Max-Age', '86400');
-  response.headers.set('Access-Control-Allow-Origin', request.headers.get('origin') || '*');
-  response.headers.set('Access-Control-Allow-Credentials', 'true');
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req, res });
 
-  if (request.method === 'OPTIONS') {
-    return new NextResponse(null, {
-      status: 204,
-      headers: response.headers,
-    });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  // Se não estiver autenticado e tentar acessar rotas protegidas
+  if (!session && (
+    req.nextUrl.pathname.startsWith('/workspace') ||
+    req.nextUrl.pathname.startsWith('/workspaces') ||
+    req.nextUrl.pathname.startsWith('/account')
+  )) {
+    const redirectUrl = req.nextUrl.clone();
+    redirectUrl.pathname = '/login';
+    redirectUrl.searchParams.set('redirectTo', req.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
   }
 
-  // Auth protection for specific routes
-  const { pathname } = request.nextUrl;
-
-  // Public routes that don't need authentication
-  const isPublicRoute =
-    pathname.startsWith('/auth') ||
-    pathname === '/' ||
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/auth') ||
-    pathname.startsWith('/images') ||
-    pathname.startsWith('/fonts');
-
-  if (isPublicRoute) {
-    return response;
+  // Se estiver autenticado e tentar acessar páginas de auth
+  if (session && (
+    req.nextUrl.pathname.startsWith('/login') ||
+    req.nextUrl.pathname.startsWith('/register')
+  )) {
+    const redirectUrl = req.nextUrl.clone();
+    redirectUrl.pathname = '/workspaces';
+    return NextResponse.redirect(redirectUrl);
   }
 
-  // Protected routes
-  const token = await getToken({ req: request });
-
-  // If the user is not authenticated, redirect to login
-  if (!token) {
-    const url = new URL('/auth/login', request.url);
-    url.searchParams.set('callbackUrl', encodeURI(pathname));
-    return NextResponse.redirect(url);
-  }
-
-  // Special protection for workspace routes
-  if (pathname.startsWith('/workspace/')) {
-    // Let the workspace context handle the permission check
-    // If user doesn't have access, they'll be redirected from the client side
-    return response;
-  }
-
-  // Special handling for follow-up routes outside workspace context
-  if (pathname.startsWith('/follow-up') && !pathname.includes('/workspace/')) {
-    // Check if user is super admin - super admins can access follow-up directly
-    const isSuperAdmin = token?.isSuperAdmin;
-
-    if (!isSuperAdmin) {
-      // Regular users should only access follow-ups through a workspace
-      const url = new URL('/workspaces', request.url);
-      return NextResponse.redirect(url);
-    }
-  }
-
-  // User is authenticated - allow access to other protected routes
-  return response;
+  return res;
 }
 
 export const config = {
   matcher: [
-    // Protect routes requiring authentication
-    '/((?!auth|_next|images|fonts|api/auth).*)',
-    '/api/((?!auth).*)',
+    '/workspace/:path*',
+    '/workspaces',
+    '/account/:path*',
+    '/login',
+    '/register',
   ],
 };

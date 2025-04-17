@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth-options';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from '@/lib/permissions';
 import { parseDelayStringToMs } from '@/lib/timeUtils';
 
@@ -19,13 +19,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const { id: workspaceId } = await params;
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
-    const awaitedParams = await params;
-    const workspaceId = awaitedParams.id;
-    const userId = session.user.id;
+    const userId = user.id;
 
     // Verificar permissão (VIEWER é suficiente para listar)
     const hasPermission = await checkPermission(workspaceId, userId, 'VIEWER');
@@ -63,16 +65,18 @@ export async function GET(
 // --- POST: Criar nova regra de acompanhamento ---
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const { id: workspaceId } = await params;
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
-
-    const workspaceId = params.id;
-    const userId = session.user.id;
+    const userId = user.id;
 
     // Verificar permissão (ADMIN necessário para criar)
     const hasPermission = await checkPermission(workspaceId, userId, 'ADMIN');

@@ -1,34 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/auth-options";
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from "@/lib/permissions";
 
 // Get workspace members and invitations
-export async function GET(req: Request, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      return NextResponse.json(
-        { message: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const workspaceId = params.id;
+  const cookieStore = cookies();
+  const supabase = createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    // Properly accessing dynamic route params in Next.js 13+
-    const { id: workspaceId } = params;
-    
-    // Check if user has access to this workspace
-    const hasAccess = await checkPermission(workspaceId, session.user.id, 'VIEWER');
-    
-    if (!hasAccess && !session.user.isSuperAdmin) {
-      return NextResponse.json(
-        { message: 'You do not have access to this workspace' },
-        { status: 403 }
-      );
+  if (authError || !user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const userId = user.id;
+
+  try {
+    // Check if user has permission to view members (e.g., 'VIEWER')
+    const hasPermission = await checkPermission(workspaceId, userId, 'VIEWER');
+    if (!hasPermission) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Get all members with their user info
@@ -40,8 +37,12 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
             id: true,
             name: true,
             email: true,
+            image: true,
           },
         },
+      },
+      orderBy: {
+        created_at: "asc",
       },
     });
 
@@ -76,9 +77,9 @@ export async function GET(req: Request, props: { params: Promise<{ id: string }>
       invitations: formattedInvitations,
     });
   } catch (error) {
-    console.error('Error fetching workspace members:', error);
+    console.error(`Error fetching members for workspace ${workspaceId}:`, error);
     return NextResponse.json(
-      { message: 'Failed to fetch workspace members' },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }

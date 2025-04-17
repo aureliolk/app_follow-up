@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth-options';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 import { checkPermission } from '@/lib/permissions';
 import type { ClientConversation } from "@/app/types";
 import { FollowUpStatus as PrismaFollowUpStatus, ConversationStatus, Prisma } from '@prisma/client'; // Importar Enum e Prisma
@@ -28,19 +28,28 @@ const mapUiStatusToPrisma = (uiStatus: string): PrismaFollowUpStatus[] => {
 export async function GET(req: NextRequest) {
   console.log("API GET /api/conversations: Request received.");
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) { /* ... */ }
-    const userId = session.user.id;
+    const cookieStore = cookies();
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
+    }
+    const userId = user.id;
 
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId');
     const filterStatus = url.searchParams.get('status') || 'ATIVAS'; // Padrão para ATIVAS se não especificado
 
-    if (!workspaceId) { /* ... */ }
+    if (!workspaceId) {
+      return NextResponse.json({ success: false, error: 'ID do Workspace é obrigatório' }, { status: 400 });
+    }
     console.log(`API GET Conversations: Fetching for workspaceId: ${workspaceId}, FilterStatus: ${filterStatus}`);
 
     const hasAccess = await checkPermission(workspaceId, userId, 'VIEWER');
-    if (!hasAccess) { /* ... */ }
+    if (!hasAccess) {
+      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
+    }
 
     // Mapeia o status do filtro da UI para os status do Prisma Enum
     const prismaStatusesToFilter = mapUiStatusToPrisma(filterStatus);

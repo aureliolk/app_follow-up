@@ -3,7 +3,6 @@ import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { generateText, CoreMessage, tool, LanguageModel } from 'ai';
 import { z } from 'zod';
-import { deactivateConversationAI } from '@/lib/actions/conversationActions';
 import { 
   checkCalendarAvailabilityTool, 
   scheduleCalendarEventTool,
@@ -39,7 +38,6 @@ const humanTransferTool = tool({
     conversationId: z.string().describe('ID da conversa'),
   }),
   execute: async ({ conversationId }) => {
-    deactivateConversationAI(conversationId);
     console.log(`[Tool] Transfere a conversa para um atendente humano: ${conversationId}`);
     return { 
       success: true,

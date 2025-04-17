@@ -3,7 +3,6 @@
 
 import { z } from 'zod'; // Para validação de dados
 import { prisma } from '@/lib/db'; // Importa o Prisma Client
-import { campaignQueue, CAMPAIGN_SENDER_QUEUE } from '@/lib/queues/campaignQueue'; // Importa a fila
 // Importar tipos Prisma se necessário
 import { Campaign } from '@prisma/client';
 import { revalidatePath } from 'next/cache'; // Para limpar cache se necessário depois
@@ -129,11 +128,6 @@ export async function createCampaignAction(
       skipDuplicates: true, // Ignora se houver contatos duplicados na lista
     });
     console.log(`[ACTION] ${createManyResult.count} contatos inseridos.`);
-
-    // 6. Adicionar Job Inicial à Fila BullMQ
-    console.log(`[ACTION] Adicionando job inicial para campanha ${newCampaign.id} à fila ${CAMPAIGN_SENDER_QUEUE}...`);
-    await campaignQueue.add(CAMPAIGN_SENDER_QUEUE, { campaignId: newCampaign.id });
-    console.log(`[ACTION] Job inicial adicionado para ${newCampaign.id}.`);
 
     // 7. Opcional: Revalidar cache de páginas que listam campanhas
     revalidatePath(`/workspace/${workspaceId}/campaigns`); // Adapte o path se for diferente

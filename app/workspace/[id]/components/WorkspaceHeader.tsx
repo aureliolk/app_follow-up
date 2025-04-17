@@ -2,7 +2,6 @@
 
 import { usePathname, useParams } from 'next/navigation';
 import { useWorkspace } from '../../../../context/workspace-context';
-import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { Button } from '../../../../components/ui/button';
 import {
@@ -16,39 +15,52 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sun, Moon, LogOut, Settings, ChevronRight, Home } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useTheme } from '../../../../components/header'; // Reutilizar o hook de tema do header global
+import { useTheme } from '../../../../components/header';
+import { createClient } from '@/lib/supabase/client';
+import { useEffect, useState } from 'react';
+import { User } from '@supabase/supabase-js';
 
 export default function WorkspaceHeader() {
-  const { workspace } = useWorkspace(); // Pegar nome do workspace
-  const { data: session } = useSession();
+  const { workspace } = useWorkspace();
+  const [user, setUser] = useState<User | null>(null);
   const pathname = usePathname();
   const params = useParams();
   const slug = params?.slug as string;
-  const { theme, toggleTheme } = useTheme(); // Reutilizar hook de tema
+  const { theme, toggleTheme } = useTheme();
+  const supabase = createClient();
 
-  // Função simples para gerar breadcrumbs (pode ser melhorada)
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+
+    getUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const generateBreadcrumbs = () => {
     if (!pathname || !workspace) return null;
     const basePath = ``;
     const pathSegments = pathname.replace(basePath, '').split('/').filter(Boolean);
 
-    // Remove 'workspace' e o id dos segmentos
     const filteredSegments = pathSegments.filter(
       (segment, idx) =>
-        // Remove 'workspace' (primeiro) e o id (segundo)
         !(idx === 0 && segment === 'workspace') && !(idx === 1 && segment === params.id)
     );
 
     const breadcrumbs = [
-      { label: workspace.name, href: `/workspace/${workspace.id}`, icon: Home }, // Dashboard do workspace
+      { label: workspace.name, href: `/workspace/${workspace.id}`, icon: Home },
     ];
-
-    console.log('currentPath', pathSegments);
 
     let currentPath = `/workspace/${workspace.id}`;
     filteredSegments.forEach((segment) => {
       currentPath += `/${segment}`;
-      // Capitaliza o segmento para label
       const label = segment.charAt(0).toUpperCase() + segment.slice(1);
       breadcrumbs.push({ label: label, href: currentPath, icon: ChevronRight });
     });
@@ -63,7 +75,7 @@ export default function WorkspaceHeader() {
               href={crumb.href}
               className={cn(
                 "ml-1 hover:text-foreground",
-                index === breadcrumbs.length - 1 ? "font-medium text-foreground" : "" // Destaca o último
+                index === breadcrumbs.length - 1 ? "font-medium text-foreground" : ""
               )}
             >
               {crumb.label}
@@ -74,14 +86,16 @@ export default function WorkspaceHeader() {
     );
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-background px-6 sticky top-0 z-30">
-      {/* Breadcrumbs */}
       <div>
         {generateBreadcrumbs()}
       </div>
 
-      {/* Controles (Tema e Usuário) */}
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
@@ -92,14 +106,13 @@ export default function WorkspaceHeader() {
           {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
         </Button>
 
-        {session?.user && (
+        {user && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={session.user.image ?? undefined} alt={session.user.name ?? 'Usuário'} />
                   <AvatarFallback>
-                    {session.user.name ? session.user.name.charAt(0).toUpperCase() : 'U'}
+                    {user.email ? user.email.charAt(0).toUpperCase() : 'U'}
                   </AvatarFallback>
                 </Avatar>
               </Button>
@@ -107,22 +120,20 @@ export default function WorkspaceHeader() {
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{session.user.name}</p>
                   <p className="text-xs leading-none text-muted-foreground">
-                    {session.user.email}
+                    {user.email}
                   </p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {/* Adicione itens específicos do workspace se necessário */}
-               <DropdownMenuItem asChild>
-                 <Link href="/profile"> {/* Link para perfil geral, pode ajustar */}
-                   <Settings className="mr-2 h-4 w-4" />
-                   <span>Configurações da Conta</span>
-                  </Link>
-               </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/account">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Configurações da Conta</span>
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/' })}>
+              <DropdownMenuItem onClick={handleSignOut}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Sair</span>
               </DropdownMenuItem>

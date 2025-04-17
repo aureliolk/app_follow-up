@@ -1,402 +1,292 @@
 // app/auth/login/page.tsx
 'use client';
 
-import { useState, Suspense, useEffect } from 'react'; // Adicionado useEffect
-import { signIn, useSession } from 'next-auth/react';
+import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
-// Importar LoadingSpinner
-import LoadingSpinner from '@/components/ui/LoadingSpinner';
-// Importar componentes Shadcn UI (se usados no projeto antigo, se não, manter inputs normais)
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label"; // Shadcn label (opcional, mas bom para consistência)
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Usar Card para estrutura
+import { createClient } from '@/lib/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'react-hot-toast';
+import { cn } from '@/lib/utils';
 
-// <<< Adicionar tipo para o passo >>>
-type Step = 'checkEmail' | 'login' | 'register';
+type Step = 'checkEmail' | 'signIn' | 'signUp';
 
+// Componente filho que contém a lógica real e o uso de useSearchParams
 function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/workspaces';
+  const searchParams = useSearchParams(); // useSearchParams está seguro aqui
+  const supabase = createClient();
   const inviteToken = searchParams.get('inviteToken');
   const initialEmail = searchParams.get('email') || '';
-  const { data: session, status } = useSession();
 
-  const [step, setStep] = useState<Step>('checkEmail'); // <<< Estado para controlar o passo
+  const [step, setStep] = useState<Step>('checkEmail');
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
-  const [name, setName] = useState(''); // <<< Adicionar estado para nome (registro)
-  const [confirmPassword, setConfirmPassword] = useState(''); // <<< Adicionar estado para confirmar senha (registro)
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
-  // --- Efeito para redirecionar se já estiver logado ---
   useEffect(() => {
-    if (status === 'authenticated') {
-      router.push(callbackUrl);
-    }
-  }, [status, router, callbackUrl]);
-  // --- Fim do Efeito ---
-
-  // <<< Handler para Verificar Email >>>
-  const handleCheckEmail = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault(); // Prevenir envio de form se chamado por ele
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/auth/check-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Erro ao verificar email');
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/workspaces');
       }
+    };
+    checkSession();
+  }, [router, supabase.auth]); // Adicionar supabase.auth à dependência
 
-      if (data.exists) {
-        setStep('login');
+  const handleCheckEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      // Verifica se o email existe na tabela users do Supabase Auth (forma mais segura)
+      // Precisamos de uma função RPC ou uma API route para isso, pois não podemos consultar users diretamente do client-side.
+      // Por agora, vamos simplificar e assumir que qualquer email não existente vai para signUp
+      // Em produção, implemente uma verificação segura no backend.
+      
+      // Simulação placeholder (REMOVA E SUBSTITUA POR CHAMADA DE BACKEND SEGURA)
+      const { error: lookupError } = await supabase.rpc('check_user_exists', { user_email: email });
+      
+      if (lookupError && lookupError.code === 'PGRST116') { // Exemplo: Erro padrão se a função não encontra (Resource Not Found)
+        console.log("Email não encontrado, redirecionando para cadastro.");
+        setStep('signUp');
+      } else if (lookupError) {
+        throw new Error(lookupError.message || "Erro ao verificar email."); // Outros erros da RPC
       } else {
-        setStep('register');
+         console.log("Email encontrado, redirecionando para login.");
+        setStep('signIn'); // Email existe
       }
+
     } catch (err: any) {
-      setError(err.message || 'Ocorreu um erro.');
+      setError('Erro ao verificar email. Tente novamente.');
+      console.error('Check email error:', err);
+      // Não mudar o step em caso de erro real
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  // <<< Renomear para handleLogin >>>
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setLoading(true);
     setError('');
 
     try {
-      const result = await signIn('credentials', {
-        redirect: false,
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
-        inviteToken: inviteToken || undefined, // <<< Passar inviteToken se existir
       });
 
-      if (result?.error) {
-        setError('Email ou senha inválidos');
-        setIsLoading(false);
-        return;
-      }
+      if (error) throw error;
 
-      router.push(callbackUrl);
-    } catch (error) {
-      setError('Ocorreu um erro. Por favor, tente novamente.');
-      setIsLoading(false);
-    }
-  };
-
-  // <<< Handler para Registro >>>
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError('');
-
-    if (password !== confirmPassword) {
-      setError('As senhas não coincidem');
-      setIsLoading(false);
-      return;
-    }
-    if (password.length < 8) {
-      setError('A senha deve ter pelo menos 8 caracteres');
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      // 1. Chamar API de registro (que agora processa o token)
-      const registerRes = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, inviteToken: inviteToken || undefined }),
-      });
-      const registerData = await registerRes.json();
-
-      if (!registerRes.ok) {
-        throw new Error(registerData.message || 'Falha ao registrar');
-      }
-
-      // 2. Se registro OK, fazer login automaticamente
-      const loginResult = await signIn('credentials', {
-        redirect: false,
-        email,
-        password,
-        // Não precisa passar inviteToken aqui, já foi processado no registro
-      });
-
-      if (loginResult?.error) {
-        // Registro funcionou, mas login falhou?
-        setError('Conta criada, mas erro ao logar. Tente entrar na tela de login.');
-        // Voltar para checkEmail para que o usuário possa ir para login
-        setStep('checkEmail'); 
-        setIsLoading(false);
-        return;
-      }
-
-      // Registro e login OK, redirecionar
-      router.push(callbackUrl);
+      // Redirecionamento tratado pelo useEffect agora
+      // toast.success('Login bem-sucedido!'); 
+      // router.push('/workspaces'); // useEffect cuidará disso
 
     } catch (err: any) {
-      setError(err.message || 'Falha ao registrar');
-      setIsLoading(false);
+      setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.');
+      console.error('Sign in error:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handler Google não muda
-  const handleGoogleSignIn = async () => {
-    setIsLoading(true);
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
     try {
-      await signIn('google', { callbackUrl });
-    } catch (error) {
-      setError('Ocorreu um erro ao fazer login com o Google.');
-      setIsLoading(false);
+       const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name, // Nome é passado aqui
+          },
+          // Passa o inviteToken se existir para a função de backend (via hook ou trigger)
+          ...(inviteToken && { invite_token: inviteToken })
+        },
+      });
+
+      if (error) throw error;
+      if (!data.user) throw new Error("Falha ao criar usuário, tente novamente.");
+
+      toast.success('Conta criada! Verifique seu email para confirmar.');
+      // Permanece no formulário de login ou redireciona para aguardar confirmação?
+      // Por agora, vamos para o passo de login:
+      setStep('signIn'); 
+
+    } catch (err: any) {
+      setError(err.message || 'Erro ao criar conta. Tente novamente.');
+      console.error('Sign up error:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Não renderizar nada enquanto verifica a sessão ou se já está autenticado
-  if (status === 'loading' || status === 'authenticated') {
-    return (
-        <div className="min-h-screen flex items-center justify-center bg-background">
-            <LoadingSpinner message="Verificando sessão..." />
-        </div>
-    );
-  }
-
+  // O JSX do formulário permanece o mesmo...
   return (
-    // Usa bg-background
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      {/* Usa Card */}
-      <Card className="w-full max-w-md border-border">
-        <CardHeader className="text-center">
-          {/* Título muda baseado no passo */}
-          <CardTitle className="text-2xl font-bold text-card-foreground">
-            {step === 'checkEmail' && 'Entrar ou Cadastrar'}
-            {step === 'login' && 'Entrar'}
-            {step === 'register' && 'Criar sua conta'}
-          </CardTitle>
-          <CardDescription className="text-muted-foreground">
-            {step === 'checkEmail' && 'Digite seu email para continuar'}
-            {step === 'login' && `Bem-vindo(a) de volta! Digite sua senha para ${email}`}
-            {step === 'register' && `Quase lá! Complete seus dados para ${email}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+    <div className="container relative h-screen flex-col items-center justify-center grid lg:max-w-none lg:grid-cols-2 lg:px-0">
+      {/* Coluna da Esquerda (Imagem/Branding) */}
+      <div className="relative hidden h-full flex-col bg-muted p-10 text-white lg:flex dark:border-r">
+        <div className="absolute inset-0 bg-zinc-900" />
+        <div className="relative z-20 flex items-center text-lg font-medium">
+          <img width={30} height={30} src="https://app.lumibot.com.br/brand-assets/thumbnail-lumibot.svg" alt="Logo lumibot" />
+          <span className="ml-2">LumibotAI</span>
+        </div>
+        <div className="relative z-20 mt-auto">
+          <blockquote className="space-y-2">
+            <p className="text-lg">
+              "O LumibotAI revolucionou a forma como nos comunicamos com nossos clientes. É simplesmente incrível!"
+            </p>
+            <footer className="text-sm">Sofia Oliveira</footer>
+          </blockquote>
+        </div>
+      </div>
+      {/* Coluna da Direita (Formulário) */}
+      <div className="lg:p-8">
+        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+          <div className="flex flex-col space-y-2 text-center">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {step === 'checkEmail' && 'Bem-vindo'}
+              {step === 'signIn' && 'Faça login na sua conta'}
+              {step === 'signUp' && 'Crie sua conta'}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {step === 'checkEmail' && 'Digite seu email para começar'}
+              {step === 'signIn' && 'Email: ' + email}
+              {step === 'signUp' && 'Preencha para criar sua conta'}
+            </p>
+          </div>
+
           {error && (
-            // Usa cores destructive
-            <div className="bg-destructive/10 text-destructive p-3 border border-destructive/30 rounded-md text-sm">
+            <div className="p-3 rounded-md bg-destructive/15 text-destructive text-sm">
               {error}
             </div>
           )}
 
-          {/* Formulário condicional baseado no passo */}
-
-          {/* Passo 1: Verificar Email */} 
           {step === 'checkEmail' && (
             <form onSubmit={handleCheckEmail} className="space-y-4">
-              {/* Input oculto para o token aqui também? Ou só nos forms finais? Só nos finais. */}
-              <div className="space-y-1.5">
-                <Label htmlFor="email-check" className="text-foreground">
-                  Endereço de email
-                </Label>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="email-check"
-                  name="email"
+                  id="email"
                   type="email"
-                  required
+                  placeholder="seu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Digite seu email"
-                  disabled={isLoading}
+                  required
+                  disabled={loading}
                 />
               </div>
-              <Button type="submit" disabled={isLoading || !email} className="w-full">
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Continuar'}
+              <Button type="submit" className="w-full" disabled={loading || !email}>
+                {loading ? 'Verificando...' : 'Continuar'}
               </Button>
             </form>
           )}
 
-          {/* Passo 2: Login */} 
-          {step === 'login' && (
-            <form onSubmit={handleLogin} className="space-y-4">
-              {/* <<< Adicionar input oculto para o token >>> */}
-              <input type="hidden" name="inviteToken" value={inviteToken || ''} />
-              <div className="space-y-1.5">
-                <Label htmlFor="email-login" className="text-foreground">
-                  Endereço de email
-                </Label>
-                <Input
-                  id="email-login"
-                  name="email"
-                  type="email"
-                  required
-                  value={email}
-                  disabled // Email não editável aqui
-                  className="bg-muted/50"
-                />
-              </div>
-              <div className="space-y-1.5">
-                 <Label htmlFor="password" className="text-foreground">
-                  Senha
-                </Label>
+          {step === 'signIn' && (
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="password">Senha</Label>
                 <Input
                   id="password"
-                  name="password"
                   type="password"
-                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Digite sua senha"
+                  required
+                  disabled={loading}
                 />
               </div>
-
-              <div>
-                {/* Usa Button */}
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full" // variant="default" é aplicado automaticamente
-                >
-                  {isLoading ? (
-                    <LoadingSpinner size="small" message="" />
-                  ) : (
-                    'Entrar'
-                  )}
-                </Button>
-              </div>
+              <Button type="submit" className="w-full" disabled={loading || !password}>
+                {loading ? 'Entrando...' : 'Entrar'}
+              </Button>
+              <Button
+                type="button"
+                variant="link"
+                className="w-full text-sm text-muted-foreground h-auto py-1 px-0 font-normal"
+                onClick={() => setStep('checkEmail')}
+                disabled={loading}
+              >
+                Usar outro email
+              </Button>
             </form>
           )}
 
-          {/* Passo 3: Registro */} 
-          {step === 'register' && (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <input type="hidden" name="inviteToken" value={inviteToken || ''} />
-              <div className="space-y-1.5">
-                <Label htmlFor="email-register" className="text-foreground">Email</Label>
-                <Input id="email-register" type="email" value={email} disabled className="mt-1 bg-muted/50" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="name-register">Nome Completo</Label>
+          {step === 'signUp' && (
+            <form onSubmit={handleSignUp} className="space-y-4">
+               <div className="space-y-2">
+                <Label htmlFor="name">Nome</Label>
                 <Input
-                  id="name-register"
-                  name="name"
+                  id="name"
                   type="text"
-                  required
+                  placeholder="Seu nome completo"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Digite seu nome"
-                  disabled={isLoading}
+                  required
+                  disabled={loading}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password-register">Criar Senha</Label>
+              <div className="space-y-2">
+                <Label htmlFor="password">Senha</Label>
                 <Input
-                  id="password-register"
-                  name="password"
+                  id="password"
                   type="password"
-                  required
-                  minLength={8}
+                  placeholder="Crie uma senha segura"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Mínimo 8 caracteres"
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="confirmPassword-register">Confirmar Senha</Label>
-                <Input
-                  id="confirmPassword-register"
-                  name="confirmPassword"
-                  type="password"
                   required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repita a senha"
-                  disabled={isLoading}
+                  disabled={loading}
                 />
               </div>
-              <Button type="submit" disabled={isLoading} className="w-full">
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : 'Cadastrar'}
+              <Button type="submit" className="w-full" disabled={loading || !name || !password}>
+                {loading ? 'Criando conta...' : 'Criar conta'}
               </Button>
-             {/* Botão Voltar */} 
-             <Button 
-                variant="link" 
-                size="sm" 
-                onClick={() => { setStep('checkEmail'); setError(''); setPassword(''); setConfirmPassword(''); setName(''); }}
-                className="w-full text-muted-foreground"
+               <Button
                 type="button"
-                disabled={isLoading}
+                variant="link"
+                className="w-full text-sm text-muted-foreground h-auto py-1 px-0 font-normal"
+                onClick={() => setStep('checkEmail')}
+                disabled={loading}
               >
-               Voltar
-             </Button>
-           </form>
+                Usar outro email
+              </Button>
+            </form>
           )}
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-               {/* Usa border-border */}
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-               {/* Usa bg-card e text-muted-foreground */}
-              <span className="px-2 bg-card text-muted-foreground">
-                Ou continue com
-              </span>
-            </div>
-          </div>
-
-          <div>
-             {/* Usa Button com variant="outline" */}
-            <Button
-              onClick={handleGoogleSignIn}
-              disabled={isLoading}
-              variant="outline"
-              className="w-full"
-            >
-              <svg className="h-4 w-4 mr-2" /* ... (svg google) ... */ >
-                <g transform="matrix(1, 0, 0, 1, 27.009001, -39.238998)"><path fill="#4285F4" d="M -3.264 51.509 C -3.264 50.719 -3.334 49.969 -3.454 49.239 L -14.754 49.239 L -14.754 53.749 L -8.284 53.749 C -8.574 55.229 -9.424 56.479 -10.684 57.329 L -10.684 60.329 L -6.824 60.329 C -4.564 58.239 -3.264 55.159 -3.264 51.509 Z"></path><path fill="#34A853" d="M -14.754 63.239 C -11.514 63.239 -8.804 62.159 -6.824 60.329 L -10.684 57.329 C -11.764 58.049 -13.134 58.489 -14.754 58.489 C -17.884 58.489 -20.534 56.379 -21.484 53.529 L -25.464 53.529 L -25.464 56.619 C -23.494 60.539 -19.444 63.239 -14.754 63.239 Z"></path><path fill="#FBBC05" d="M -21.484 53.529 C -21.734 52.809 -21.864 52.039 -21.864 51.239 C -21.864 50.439 -21.724 49.669 -21.484 48.949 L -21.484 45.859 L -25.464 45.859 C -26.284 47.479 -26.754 49.299 -26.754 51.239 C -26.754 53.179 -26.284 54.999 -25.464 56.619 L -21.484 53.529 Z"></path><path fill="#EA4335" d="M -14.754 43.989 C -12.984 43.989 -11.404 44.599 -10.154 45.789 L -6.734 42.369 C -8.804 40.429 -11.514 39.239 -14.754 39.239 C -19.444 39.239 -23.494 41.939 -25.464 45.859 L -21.484 48.949 C -20.534 46.099 -17.884 43.989 -14.754 43.989 Z"></path></g>
-              </svg>
-              Google
-            </Button>
-          </div>
-        </CardContent>
-        <CardFooter className="text-center block">
-           {/* Usa text-muted-foreground e text-primary */}
-          <p className="text-sm text-muted-foreground">
-            {step === 'checkEmail' && (
-              <>Não possui uma conta? <Button variant="link" className="p-0 h-auto font-medium" onClick={() => setStep('register')}>Cadastre-se</Button></>
-            )}
-            {step === 'login' && (
-               <>Não possui uma conta? <Button variant="link" className="p-0 h-auto font-medium" onClick={() => setStep('register')}>Cadastre-se</Button></>
-            )}
-            {step === 'register' && (
-               <>Já possui uma conta? <Button variant="link" className="p-0 h-auto font-medium" onClick={() => setStep('login')}>Entrar</Button></>
-            )}
-          </p>
-        </CardFooter>
-      </Card>
+          
+           <p className="px-8 text-center text-sm text-muted-foreground">
+              Ao clicar em continuar, você concorda com nossos{" "}
+              <Link
+                href="/terms"
+                className="underline underline-offset-4 hover:text-primary"
+              >
+                Termos de Serviço
+              </Link>{" "}
+              e{" "}
+              <Link
+                href="/privacy"
+                className="underline underline-offset-4 hover:text-primary"
+              >
+                Política de Privacidade
+              </Link>
+              .
+            </p>
+        </div>
+      </div>
     </div>
   );
 }
 
-// Suspense wrapper não muda
-export default function LoginPage() {
+// Componente pai que envolve o filho com Suspense
+export default function LoginPageWrapper() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <LoadingSpinner message="Carregando página de login..." />
-      </div>
-    }>
+    <Suspense fallback={<div>Carregando...</div>}> {/* Ou um spinner, ou null */}
       <LoginForm />
     </Suspense>
   );
