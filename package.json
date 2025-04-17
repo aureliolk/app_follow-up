@@ -56,7 +56,6 @@
     "lucide-react": "^0.485.0",
     "mime-types": "^3.0.1",
     "next": "15.2.4",
-    "next-auth": "^4.24.11",
     "nodemailer": "^6.10.0",
     "papaparse": "^5.5.2",
     "react": "^19.0.0",
