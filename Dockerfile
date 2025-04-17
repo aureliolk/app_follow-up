@@ -1,32 +1,52 @@
 # ---- Estágio 1: Builder ----
 # Use uma imagem Node com pnpm pré-instalado ou instale-o
-FROM node:20-alpine AS builder
+FROM node:18-alpine AS base
 
-# Instalar pnpm globalmente (se não estiver na imagem base)
-# <<< ADICIONE ESTA LINHA >>>
-RUN npm install -g pnpm
-
-
-# Definir diretório de trabalho
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Instalar ffmpeg
-RUN apk update && apk add --no-cache ffmpeg
+# Install dependencies based on the preferred package manager
+COPY package.json package-lock.json* pnpm-lock.yaml* ./
+RUN npm ci
 
-# Instalar dependências primeiro para aproveitar o cache do Docker
-COPY package.json pnpm-lock.yaml ./
-# --frozen-lockfile garante que as versões exatas do lockfile sejam usadas
-# --prod pode ser omitido aqui se devDependencies forem necessárias para o build
-RUN pnpm install --frozen-lockfile 
-
-# Copiar o restante do código da aplicação
-# Atenção: Certifique-se de ter um .dockerignore para evitar copiar node_modules, .git, dist, etc.
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Gerar Prisma Client (essencial!)
-RUN pnpm run prisma:generate
+# Next.js collects completely anonymous telemetry data about general usage.
+# Learn more here: https://nextjs.org/telemetry
+# Uncomment the following line in case you want to disable telemetry during the build.
+# ENV NEXT_TELEMETRY_DISABLED 1
 
-# Construir todas as partes da aplicação (Next.js, workers, shared-lib)
-# Use o comando de build geral do seu CLAUDE.md
-RUN pnpm run build 
+RUN npm run build
+
+# Production image, copy all the files and run next
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+# Uncomment the following line in case you want to disable telemetry during runtime.
+# ENV NEXT_TELEMETRY_DISABLED 1
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT 3000
+
+CMD ["node", "server.js"]
 

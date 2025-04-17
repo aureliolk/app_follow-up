@@ -7,6 +7,7 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
   schemas  = ["conversation_schema", "follow_up_schema", "products_schema", "prompts_schema", "public", "workspace_schema"]
+  directUrl = env("DIRECT_URL")
 }
 
 model Product {
