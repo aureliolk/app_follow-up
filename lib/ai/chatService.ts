@@ -19,6 +19,7 @@ export interface ChatRequestPayload {
   systemPrompt?: string;
   modelId: string;
   nameIa?: string;
+  clientName: string;
   conversationId: string;
   workspaceId: string; // Adicionando workspaceId aqui
   context?: {
@@ -77,7 +78,8 @@ export async function generateChatCompletion({
   modelId, 
   conversationId,
   workspaceId,
-  context
+  context,
+  clientName
 }: ChatRequestPayload) {
   try {
     // Configurar o ID do workspace atual para as ferramentas de calendário
@@ -103,6 +105,7 @@ export async function generateChatCompletion({
     }
     
     const extraInstructions = `
+    Nome do cliente: ${clientName}
     Id da conversa: ${conversationId}
     Voce e capaz de Escutar audio e ver imagens. se o cliente pergunta se vc pode ver uma imagem, vc deve responder que sim. se o cliente pergunta se vc pode ouvir um audio, vc deve responder que sim.
     ${calendarInstructions}
