@@ -174,7 +174,8 @@ const processCampaignJob = async (job: Job<CampaignJobData>) => {
                 whatsappPhoneId,
                 clientPhoneNumber,
                 decryptedAccessToken,
-                campaign.message // Usando a mensagem da campanha
+                campaign.message, // Usando a mensagem da campanha
+                nextContact.contactName || undefined
             );
 
             if (sendResult.success) {
