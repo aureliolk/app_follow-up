@@ -163,7 +163,6 @@ export async function generateChatCompletion({
       maxTokens: 1500,
       system: systemMessage,
       messages,
-      tools,
     });
 
     console.log("Texto gerado pela IA:", text);

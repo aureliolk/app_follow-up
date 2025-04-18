@@ -5,7 +5,8 @@ import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { redisConnection } from '@/lib/redis'; // Importar conexão Redis
 import { addMessageProcessingJob } from '@/lib/queues/queueService'; // Importar função de enfileiramento
-import { ConversationStatus, Prisma, Message as PrismaMessage } from '@prisma/client'; // Importar tipos necessários
+import { ConversationStatus, Prisma, Message as PrismaMessage, FollowUpStatus } from '@prisma/client'; // Importar tipos necessários E FollowUpStatus
+import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< IMPORTAR a fila de sequência
 // import { FollowUpStatus } from '@prisma/client'; // <<< REMOVER OU COMENTAR: Não será mais usado aqui
 // import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< REMOVER OU COMENTAR: Não será mais usado aqui
 
@@ -168,6 +169,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     let mediaId: string | null = null;
                                     let mimeType: string | null = null; // <<< Guardar mime_type
                                     let requiresProcessing = false; // <<< Flag para saber se deve enfileirar job
+                                    let wasCreated = false;
 
                                     if (messageType === 'text') {
                                         messageContent = message.text?.body;
@@ -240,7 +242,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                                     // --- Tentar Criar ou Atualizar Conversa ---
                                     let conversation: Prisma.ConversationGetPayload<{}>; // Definir tipo explícito
-                                    let wasCreated = false;
                                     try {
                                         // Tenta criar primeiro
                                         conversation = await prisma.conversation.create({
@@ -365,6 +366,69 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} (Tipo: ${messageType}) não requer processamento pela IA/Worker. Job não enfileirado.`);
                                     }
 
+                                    // **************************************************
+                                    // <<< INÍCIO: Lógica de Disparo do Follow-up >>>
+                                    // **************************************************
+                                    if (wasCreated) {
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nova conversa ${conversation.id}. Iniciando lógica de follow-up...`);
+                                        try {
+                                            // 1. Buscar Regras de Follow-up para o Workspace
+                                            const followUpRules = await prisma.workspaceAiFollowUpRule.findMany({
+                                                where: { workspace_id: workspace.id },
+                                                orderBy: { created_at: 'asc' }, // Ordenar pela criação ou pelo delay? Melhor pelo delay.
+                                                // orderBy: { delay_milliseconds: 'asc' }, 
+                                            });
+                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Encontradas ${followUpRules.length} regras de follow-up para Workspace ${workspace.id}.`);
+
+                                            if (followUpRules.length > 0) {
+                                                // 2. Pegar a primeira regra
+                                                const firstRule = followUpRules[0];
+                                                const firstDelayMs = Number(firstRule.delay_milliseconds); // Converter BigInt para Number para o delay do job
+
+                                                if (isNaN(firstDelayMs) || firstDelayMs < 0) {
+                                                     console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Delay da primeira regra (${firstRule.id}) é inválido (${firstDelayMs}ms). Follow-up não será iniciado.`);
+                                                } else {
+                                                      // 3. Criar Registro FollowUp
+                                                    const newFollowUp = await prisma.followUp.create({
+                                                        data: {
+                                                            workspace_id: workspace.id,
+                                                            client_id: client.id,
+                                                            status: FollowUpStatus.ACTIVE, // Usar Enum
+                                                            started_at: new Date(),
+                                                            current_sequence_step_order: 0, // Começa em 0
+                                                            next_sequence_message_at: new Date(Date.now() + firstDelayMs),
+                                                        },
+                                                    });
+                                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Registro FollowUp ${newFollowUp.id} criado.`);
+
+                                                    // 4. Agendar Job para o Primeiro Passo
+                                                    const jobData = {
+                                                        followUpId: newFollowUp.id,
+                                                        stepRuleId: firstRule.id, // ID da regra a ser processada
+                                                        workspaceId: workspace.id,
+                                                    };
+                                                    const jobOptions = {
+                                                        delay: firstDelayMs,
+                                                        jobId: `seq_${newFollowUp.id}_step_${firstRule.id}`, // ID único
+                                                        removeOnComplete: true,
+                                                        removeOnFail: 5000,
+                                                    };
+                                                    await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
+                                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Primeiro job de sequência agendado para FollowUp ${newFollowUp.id} (Regra: ${firstRule.id}, Delay: ${firstDelayMs}ms).`);
+                                                }
+                                            } else {
+                                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nenhuma regra de follow-up encontrada para Workspace ${workspace.id}. Nenhum follow-up iniciado.`);
+                                            }
+                                        } catch (followUpError) {
+                                            console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro ao iniciar sequência de follow-up para Conv ${conversation.id}:`, followUpError);
+                                            // Não falhar a resposta para a Meta, apenas logar
+                                        }
+                                    } else {
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa ${conversation.id} já existente. Follow-up não iniciado.`);
+                                    }
+                                    // ************************************************
+                                    // <<< FIM: Lógica de Disparo do Follow-up >>>
+                                    // ************************************************
 
                                 } // Fim if message.from
                             } // Fim loop messages

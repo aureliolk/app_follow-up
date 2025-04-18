@@ -430,6 +430,8 @@ async function processJob(job: Job<JobData>) {
     // Variável para armazenar resposta da IA, que pode ser modificada
     let aiResponseText = '';
     
+    console.log(`[MsgProcessor ${jobId}] Nome do cliente: ${client?.name}`);
+
     try {
       // Usar a API de IA da Vercel com o modelo especificado
       aiResponseText = await generateChatCompletion({
@@ -439,7 +441,8 @@ async function processJob(job: Job<JobData>) {
         nameIa: workspace.ai_name || undefined,
         conversationId: conversationId,
         workspaceId: workspace.id,
-        context // Passar o contexto para a função
+        context, // Passar o contexto para a função
+        clientName: client?.name || ''
       });
       
     } catch (aiError) {

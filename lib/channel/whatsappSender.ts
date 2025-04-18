@@ -126,7 +126,7 @@ export async function sendWhatsappMessage(
   toPhoneNumber: string,
   accessToken: string,
   messageText: string,
-  displayName?: string
+  displayName: string
 ): Promise<SendResult> {
   const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phoneNumberId}/messages`;
 

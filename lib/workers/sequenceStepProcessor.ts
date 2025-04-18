@@ -7,6 +7,8 @@ import { decrypt } from '@/lib/encryption';
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
 import { FollowUpStatus, Prisma, ConversationStatus, MessageSenderType } from '@prisma/client'; // Importe Prisma para tipos
 import { formatMsToDelayString, parseDelayStringToMs } from '@/lib/timeUtils'; // Importar utils
+import { generateChatCompletion } from '../ai/chatService';
+import { CoreMessage } from 'ai'; // <<< Adicionar import CoreMessage
 
 const QUEUE_NAME = 'sequence-steps';
 
@@ -27,8 +29,8 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
   console.log(`[SequenceWorker ${jobId}] Processando Step Rule ${stepRuleId} para FollowUp ${followUpId}`);
 
   try {
-    // 1. Buscar FollowUp e dados relacionados
-    console.log(`[SequenceWorker ${jobId}] Buscando FollowUp ${followUpId}...`);
+    // 1. Buscar FollowUp e dados relacionados (Query CORRIGIDA)
+    console.log(`[SequenceWorker ${jobId}] Buscando FollowUp ${followUpId} com dados expandidos...`);
     const followUp = await prisma.followUp.findUnique({
       where: { id: followUpId },
       include: {
@@ -37,22 +39,28 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
             id: true,
             whatsappAccessToken: true,
             whatsappPhoneNumberId: true,
-            ai_follow_up_rules: {
-              orderBy: { created_at: 'asc' },
-              select: { id: true, delay_milliseconds: true, message_content: true, created_at: true },
+            ai_model_preference: true,    // <<< Usar nome correto do schema
+            ai_default_system_prompt: true, // <<< Usar nome correto do schema
+            ai_name: true,                 // <<< Incluir ai_name
+            ai_follow_up_rules: {      // Incluir as regras aqui dentro
+              orderBy: { delay_milliseconds: 'asc' }, // <<< Ordenar por delay
+              select: { id: true, delay_milliseconds: true, message_content: true },
             },
           },
         },
         client: {
-          select: {
-            id: true,
-            name: true,
-            phone_number: true,
+          include: {
             conversations: {
-                where: { channel: 'WHATSAPP', status: ConversationStatus.ACTIVE },
-                select: { id: true, status: true, is_ai_active: true, metadata: true },
-                orderBy: { last_message_at: 'desc' },
-                take: 1
+              where: { channel: 'WHATSAPP', status: ConversationStatus.ACTIVE },
+              orderBy: { last_message_at: 'desc' },
+              take: 1,
+              include: {
+                messages: {
+                  orderBy: { timestamp: 'asc' },
+                  take: 20, // Últimas 20 mensagens
+                  select: { sender_type: true, content: true, timestamp: true }
+                }
+              }
             }
           },
         },
@@ -74,32 +82,34 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
     // 3. Verificar se o Workspace foi carregado
     if (!followUp.workspace) {
-         console.error(`[SequenceWorker ${jobId}] ERRO INESPERADO: Workspace não incluído para FollowUp ${followUpId}.`);
-         throw new Error(`Workspace não encontrado nos dados do FollowUp ${followUpId}.`);
+      console.error(`[SequenceWorker ${jobId}] ERRO INESPERADO: Workspace não incluído para FollowUp ${followUpId}.`);
+      throw new Error(`Workspace não encontrado nos dados do FollowUp ${followUpId}.`);
     }
-     const workspaceData = followUp.workspace;
-     console.log(`[SequenceWorker ${jobId}] Dados do Workspace (ID: ${workspaceData.id}) carregados.`);
+
+    const workspaceData = followUp.workspace;
+    console.log(`[SequenceWorker ${jobId}] Dados do Workspace (ID: ${workspaceData.id}) carregados.`);
 
     // 4. Encontrar a regra ATUAL
     const currentRule = workspaceData.ai_follow_up_rules.find((rule) => rule.id === stepRuleId);
     if (!currentRule) {
-        console.error(`[SequenceWorker ${jobId}] Regra de passo ${stepRuleId} não encontrada nas regras do workspace ${workspaceData.id}.`);
-        throw new Error(`Regra ${stepRuleId} não encontrada para o workspace.`);
+      console.error(`[SequenceWorker ${jobId}] Regra de passo ${stepRuleId} não encontrada nas regras do workspace ${workspaceData.id}.`);
+      throw new Error(`Regra ${stepRuleId} não encontrada para o workspace.`);
     }
-     console.log(`[SequenceWorker ${jobId}] Regra atual encontrada: ID=${currentRule.id}`);
+    console.log(`[SequenceWorker ${jobId}] Regra atual encontrada: ID=${currentRule.id}`);
 
     // 5. Obter dados do Cliente e ID da Conversa
     const clientData = followUp.client;
     if (!clientData?.phone_number) {
-        console.error(`[SequenceWorker ${jobId}] Cliente ou número de telefone não encontrado para FollowUp ${followUpId}.`);
-        throw new Error(`Cliente ou telefone não encontrado nos dados do FollowUp ${followUpId}.`);
+      console.error(`[SequenceWorker ${jobId}] Cliente ou número de telefone não encontrado para FollowUp ${followUpId}.`);
+      throw new Error(`Cliente ou telefone não encontrado nos dados do FollowUp ${followUpId}.`);
     }
+
     const clientPhoneNumber = clientData.phone_number;
     const activeConversation = clientData.conversations?.[0];
     if (!activeConversation) {
-         console.warn(`[SequenceWorker ${jobId}] NENHUMA CONVERSA ATIVA encontrada para Cliente ${clientData.id} / Workspace ${workspaceData.id}. Não é possível salvar a mensagem de follow-up.`);
+      console.warn(`[SequenceWorker ${jobId}] NENHUMA CONVERSA ATIVA encontrada para Cliente ${clientData.id} / Workspace ${workspaceData.id}. Não é possível salvar a mensagem de follow-up.`);
     } else {
-        console.log(`[SequenceWorker ${jobId}] Conversa ativa encontrada: ID=${activeConversation.id}`);
+      console.log(`[SequenceWorker ${jobId}] Conversa ativa encontrada: ID=${activeConversation.id}`);
     }
     console.log(`[SequenceWorker ${jobId}] Dados do Cliente (Nome: ${clientData.name || 'N/A'}, Telefone: ${clientPhoneNumber}) OK.`);
 
@@ -112,21 +122,73 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
     let decryptedAccessToken: string | null = null;
     try {
-        decryptedAccessToken = decrypt(whatsappAccessToken);
-        if (!decryptedAccessToken) throw new Error("Token de acesso WhatsApp descriptografado está vazio.");
+      decryptedAccessToken = decrypt(whatsappAccessToken);
+      if (!decryptedAccessToken) throw new Error("Token de acesso WhatsApp descriptografado está vazio.");
     } catch (decryptError: any) {
-         console.error(`[SequenceWorker ${jobId}] Falha ao descriptografar token WhatsApp para Workspace ${workspaceData.id}:`, decryptError.message);
-         return { status: 'failed', reason: 'Falha ao descriptografar token WhatsApp' };
+      console.error(`[SequenceWorker ${jobId}] Falha ao descriptografar token WhatsApp para Workspace ${workspaceData.id}:`, decryptError.message);
+      return { status: 'failed', reason: 'Falha ao descriptografar token WhatsApp' };
     }
 
-    // 7. Formatar a Mensagem
-    let messageToSend = currentRule.message_content;
-    console.log(`[SequenceWorker ${jobId}] Mensagem original da regra: "${messageToSend}"`);
-    if (clientData.name) {
-      messageToSend = messageToSend.replace(/\\[NomeCliente\\]/gi, clientData.name);
-      console.log(`[SequenceWorker ${jobId}] Placeholder [NomeCliente] substituído.`);
+    // <<< NOVO PASSO 7: Preparar e Chamar IA >>>
+    console.log(`[SequenceWorker ${jobId}] Preparando para chamar IA...`);
+    let aiResponseText: string | null = null;
+    let aiMessages: CoreMessage[] = [];
+    const systemPromptInstruction = currentRule.message_content; // O conteúdo da regra é a instrução
+    const baseSystemPrompt = workspaceData.ai_default_system_prompt || 'Você é um assistente prestativo.';
+    const finalSystemPrompt = `${baseSystemPrompt}\n\nInstrução de Follow-up: ${systemPromptInstruction}`;
+    const modelId = workspaceData.ai_model_preference || 'gpt-4o'; // Usar pref ou fallback
+    const conversationId = activeConversation?.id; // ID da conversa ativa
+    const clientName = clientData.name || '';
+
+    // Verificar se temos uma conversa ativa e mensagens para enviar para a IA
+    if (!activeConversation || !activeConversation.messages) {
+      console.warn(`[SequenceWorker ${jobId}] Não há conversa ativa ou histórico de mensagens para enviar à IA. Usando a mensagem da regra como fallback.`);
+      aiResponseText = systemPromptInstruction; // Usar a própria instrução como fallback simples
+      // Substituir [NomeCliente] se existir na instrução fallback
+      if (clientName) {
+        aiResponseText = aiResponseText.replace(/\[NomeCliente\]/gi, clientName);
+      }
+    } else {
+      // Formatar histórico para CoreMessage[]
+      aiMessages = activeConversation.messages.map(msg => ({
+        role: msg.sender_type === 'CLIENT' ? 'user' : 'assistant',
+        content: msg.content || '' // Garantir que content não seja null
+        // Adicionar timestamp ou outros dados se generateChatCompletion precisar
+      }));
+
+
+      console.log(`[SequenceWorker ${jobId}] Histórico formatado com ${aiMessages.length} mensagens.`)
+      console.log(`[SequenceWorker ${jobId}] Histórico formatado com ${aiMessages}`)
+      try {
+         const messages: CoreMessage[] = [{ role: 'user', content: `${aiMessages}` }];
+        // Usar a API de IA da Vercel com o modelo especificado
+         aiResponseText = await generateChatCompletion({
+          messages,
+          systemPrompt: finalSystemPrompt,
+          modelId: modelId,
+          nameIa: workspaceData.ai_name || undefined,
+          conversationId: conversationId!, // Usar Non-null assertion pois verificamos activeConversation
+          workspaceId: workspaceData.id,
+          clientName: clientName
+        });
+
+      } catch (aiError) {
+        console.error(`[SequenceWorker ${jobId}] Erro ao gerar conteúdo com IA:`, aiError);
+        // Lançar erro para que BullMQ tente novamente?
+        // Ou usar a mensagem original da regra como fallback?
+        // Por enquanto, vamos falhar o job.
+        throw new Error(`Falha ao gerar resposta da IA para follow-up: ${aiError}`);
+      }
     }
-    console.log(`[SequenceWorker ${jobId}] Mensagem final a ser enviada: "${messageToSend}"`);
+
+    // Validar se a IA retornou algo
+    if (!aiResponseText || aiResponseText.trim() === '') {
+      console.error(`[SequenceWorker ${jobId}] Resposta da IA foi vazia ou nula.`);
+      throw new Error('Resposta da IA para follow-up foi vazia.');
+    }
+
+    const messageToSend = aiResponseText; // <<< Usar a resposta da IA
+    console.log(`[SequenceWorker ${jobId}] Mensagem final (gerada pela IA): "${messageToSend}"`);
 
     // 8. Enviar Mensagem via WhatsApp
     console.log(`[SequenceWorker ${jobId}] Enviando mensagem para WhatsApp (Número: ${clientPhoneNumber})...`);
@@ -134,21 +196,22 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
     let errorMessage: string | null = null;
     let sentMessageIdFromWhatsapp: string | null = null;
     try {
-        const sendResult = await sendWhatsappMessage(
-            whatsappPhoneNumberId,
-            clientPhoneNumber,
-            decryptedAccessToken,
-            messageToSend
-        );
-        if (sendResult.success && sendResult.wamid) {
-            sendSuccess = true;
-            sentMessageIdFromWhatsapp = sendResult.wamid;
-        } else {
-            errorMessage = JSON.stringify(sendResult.error || 'Erro desconhecido no envio WhatsApp');
-        }
+      const sendResult = await sendWhatsappMessage(
+        whatsappPhoneNumberId,
+        clientPhoneNumber,
+        decryptedAccessToken,
+        messageToSend,
+        workspaceData.ai_name || undefined
+      );
+      if (sendResult.success && sendResult.wamid) {
+        sendSuccess = true;
+        sentMessageIdFromWhatsapp = sendResult.wamid;
+      } else {
+        errorMessage = JSON.stringify(sendResult.error || 'Erro desconhecido no envio WhatsApp');
+      }
     } catch (sendError: any) {
-        errorMessage = `Exceção durante envio WhatsApp: ${sendError.message}`;
-        console.error(`[SequenceWorker ${jobId}] Exceção ao enviar mensagem via WhatsApp para ${clientPhoneNumber}:`, sendError);
+      errorMessage = `Exceção durante envio WhatsApp: ${sendError.message}`;
+      console.error(`[SequenceWorker ${jobId}] Exceção ao enviar mensagem via WhatsApp para ${clientPhoneNumber}:`, sendError);
     }
 
     // 9. Lidar com Resultado do Envio, Salvar Mensagem, Publicar, Agendar Próximo Passo
@@ -159,75 +222,76 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
       console.log(`[SequenceWorker ${jobId}] Mensagem enviada com sucesso (WPP ID: ${sentMessageIdFromWhatsapp}).`);
 
       if (activeConversation) {
+        try {
+          const savedMessage = await prisma.message.create({
+            data: {
+              conversation_id: activeConversation.id,
+              sender_type: MessageSenderType.AI,
+              content: messageToSend,
+              timestamp: new Date(),
+              channel_message_id: sentMessageIdFromWhatsapp,
+              metadata: {
+                followUpId: followUpId,
+                stepRuleId: stepRuleId,
+                originalPrompt: systemPromptInstruction
+              }
+            },
+            select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true }
+          });
+          console.log(`[SequenceWorker ${jobId}] Mensagem de follow-up ${savedMessage.id} salva para Conv ${activeConversation.id}.`);
+
           try {
-              const savedMessage = await prisma.message.create({
-                  data: {
-                      conversation_id: activeConversation.id,
-                      sender_type: MessageSenderType.AI,
-                      content: messageToSend,
-                      timestamp: new Date(),
-                      channel_message_id: sentMessageIdFromWhatsapp,
-                      metadata: {
-                          followUpId: followUpId,
-                          stepRuleId: stepRuleId,
-                      }
-                  },
-                  select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true }
-              });
-              console.log(`[SequenceWorker ${jobId}] Mensagem de follow-up ${savedMessage.id} salva para Conv ${activeConversation.id}.`);
-
-              try {
-                  const conversationChannel = `chat-updates:${activeConversation.id}`;
-                  const conversationPayload = {
-                      type: 'new_message',
-                      payload: {
-                          id: savedMessage.id,
-                          conversation_id: savedMessage.conversation_id,
-                          content: savedMessage.content,
-                          sender_type: savedMessage.sender_type,
-                          timestamp: savedMessage.timestamp.toISOString(),
-                          metadata: {
-                              followUpId: followUpId,
-                              stepRuleId: stepRuleId,
-                          }
-                      }
-                  };
-                  await redisConnection.publish(conversationChannel, JSON.stringify(conversationPayload));
-                  console.log(`[SequenceWorker ${jobId}] Mensagem ${savedMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
-              } catch (publishConvError) {
-                  console.error(`[SequenceWorker ${jobId}] Falha ao publicar mensagem ${savedMessage.id} no Redis (Canal Conversa):`, publishConvError);
+            const conversationChannel = `chat-updates:${activeConversation.id}`;
+            const conversationPayload = {
+              type: 'new_message',
+              payload: {
+                id: savedMessage.id,
+                conversation_id: savedMessage.conversation_id,
+                content: savedMessage.content,
+                sender_type: savedMessage.sender_type,
+                timestamp: savedMessage.timestamp.toISOString(),
+                metadata: {
+                  followUpId: followUpId,
+                  stepRuleId: stepRuleId,
+                }
               }
-
-              try {
-                  const workspaceChannel = `workspace-updates:${workspaceData.id}`;
-                  const workspacePayload = {
-                       type: 'new_message',
-                       payload: {
-                           conversationId: activeConversation.id,
-                           channel: 'WHATSAPP',
-                           status: activeConversation.status,
-                           is_ai_active: activeConversation.is_ai_active,
-                           lastMessageTimestamp: savedMessage.timestamp.toISOString(),
-                           last_message_at: savedMessage.timestamp.toISOString(),
-                           clientId: clientData.id,
-                           clientName: clientData.name,
-                           clientPhone: clientData.phone_number,
-                           lastMessageContent: savedMessage.content,
-                           lastMessageSenderType: savedMessage.sender_type,
-                           metadata: activeConversation.metadata
-                       }
-                  };
-                  await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
-                  console.log(`[SequenceWorker ${jobId}] Notificação ENRIQUECIDA (follow-up) publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
-              } catch (publishWsError) {
-                  console.error(`[SequenceWorker ${jobId}] Falha ao publicar notificação de follow-up no Redis (Canal Workspace):`, publishWsError);
-              }
-
-          } catch (saveError) {
-              console.error(`[SequenceWorker ${jobId}] ERRO ao salvar mensagem de follow-up para Conv ${activeConversation.id}:`, saveError);
+            };
+            await redisConnection.publish(conversationChannel, JSON.stringify(conversationPayload));
+            console.log(`[SequenceWorker ${jobId}] Mensagem ${savedMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
+          } catch (publishConvError) {
+            console.error(`[SequenceWorker ${jobId}] Falha ao publicar mensagem ${savedMessage.id} no Redis (Canal Conversa):`, publishConvError);
           }
+
+          try {
+            const workspaceChannel = `workspace-updates:${workspaceData.id}`;
+            const workspacePayload = {
+              type: 'new_message',
+              payload: {
+                conversationId: activeConversation.id,
+                channel: 'WHATSAPP',
+                status: activeConversation.status,
+                is_ai_active: activeConversation.is_ai_active,
+                lastMessageTimestamp: savedMessage.timestamp.toISOString(),
+                last_message_at: savedMessage.timestamp.toISOString(),
+                clientId: clientData.id,
+                clientName: clientData.name,
+                clientPhone: clientData.phone_number,
+                lastMessageContent: savedMessage.content,
+                lastMessageSenderType: savedMessage.sender_type,
+                metadata: activeConversation.metadata
+              }
+            };
+            await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+            console.log(`[SequenceWorker ${jobId}] Notificação ENRIQUECIDA (follow-up) publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
+          } catch (publishWsError) {
+            console.error(`[SequenceWorker ${jobId}] Falha ao publicar notificação de follow-up no Redis (Canal Workspace):`, publishWsError);
+          }
+
+        } catch (saveError) {
+          console.error(`[SequenceWorker ${jobId}] ERRO ao salvar mensagem de follow-up para Conv ${activeConversation.id}:`, saveError);
+        }
       } else {
-          console.warn(`[SequenceWorker ${jobId}] Conversa ativa não encontrada. Mensagem enviada ("${messageToSend}") não será salva no histórico.`);
+        console.warn(`[SequenceWorker ${jobId}] Conversa ativa não encontrada. Mensagem enviada ("${messageToSend}") não será salva no histórico.`);
       }
 
       // Encontrar a PRÓXIMA regra na sequência
@@ -239,9 +303,9 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
         nextDelayMs = Number(nextRule.delay_milliseconds); // Converter BigInt
         console.log(`[SequenceWorker ${jobId}] Próxima regra encontrada: ID=${nextRuleId}, Delay=${nextDelayMs}ms`);
         if (isNaN(nextDelayMs) || nextDelayMs < 0) {
-            console.warn(`[SequenceWorker ${jobId}] Delay da próxima regra (${nextRuleId}) é inválido (${nextDelayMs}ms). Não será agendada.`);
-            nextRuleId = null; // Anula agendamento
-            nextDelayMs = null;
+          console.warn(`[SequenceWorker ${jobId}] Delay da próxima regra (${nextRuleId}) é inválido (${nextDelayMs}ms). Não será agendada.`);
+          nextRuleId = null; // Anula agendamento
+          nextDelayMs = null;
         }
       } else {
         console.log(`[SequenceWorker ${jobId}] Nenhuma regra posterior encontrada. Sequência será concluída.`);
@@ -249,14 +313,17 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
     } else {
       // O envio falhou
-      console.error(`[SequenceWorker ${jobId}] Falha ao enviar mensagem via WhatsApp:`, errorMessage);
-      // Lançar erro para BullMQ tentar novamente (ou ter tratamento de falha customizado)
-      throw new Error(`Falha ao enviar mensagem do passo ${stepRuleId} via WhatsApp: ${errorMessage}`);
+      console.error(`[SequenceWorker ${jobId}] Envio falhou. Mensagem original da regra será usada como fallback.`);
+      aiResponseText = systemPromptInstruction; // Usar a própria instrução como fallback simples
+      // Substituir [NomeCliente] se existir na instrução fallback
+      if (clientName) {
+        aiResponseText = aiResponseText.replace(/\[NomeCliente\]/gi, clientName);
+      }
     }
 
     // 10. Atualizar o FollowUp no Banco
     const updateData: Prisma.FollowUpUpdateInput = {
-      current_sequence_step_order: workspaceData.ai_follow_up_rules.findIndex((r) => r.id === stepRuleId) + 1,
+      current_sequence_step_order: followUp.workspace.ai_follow_up_rules.findIndex((r) => r.id === stepRuleId) + 1,
       updated_at: new Date(),
     };
 
@@ -266,19 +333,19 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
       updateData.status = FollowUpStatus.ACTIVE; // Manter ativo (usar Enum)
 
       // Agendar job na fila
-      const nextJobData: SequenceJobData = { followUpId, stepRuleId: nextRuleId, workspaceId: workspaceData.id };
+      const nextJobData: SequenceJobData = { followUpId, stepRuleId: nextRuleId, workspaceId: followUp.workspace.id };
       const nextJobOptions = {
-          delay: nextDelayMs,
-          jobId: `seq_${followUpId}_step_${nextRuleId}`, // ID único
-          removeOnComplete: true,
-          removeOnFail: 5000,
+        delay: nextDelayMs,
+        jobId: `seq_${followUpId}_step_${nextRuleId}`, // ID único
+        removeOnComplete: true,
+        removeOnFail: 5000,
       };
       try {
         await sequenceStepQueue.add('processSequenceStep', nextJobData, nextJobOptions);
         console.log(`[SequenceWorker ${jobId}] Próximo job (regra ${nextRuleId}) agendado com delay ${nextDelayMs}ms.`);
       } catch (scheduleError) {
-          console.error(`[SequenceWorker ${jobId}] ERRO ao agendar PRÓXIMO job de sequência para FollowUp ${followUpId}:`, scheduleError);
-          throw new Error(`Falha ao agendar próximo passo da sequência: ${scheduleError}`);
+        console.error(`[SequenceWorker ${jobId}] ERRO ao agendar PRÓXIMO job de sequência para FollowUp ${followUpId}:`, scheduleError);
+        throw new Error(`Falha ao agendar próximo passo da sequência: ${scheduleError}`);
       }
 
     } else {
@@ -300,15 +367,15 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 
   } catch (error: any) {
     console.error(`[SequenceWorker ERROR ${job?.id}] Erro processando step ${stepRuleId} para FollowUp ${followUpId}:`, error);
-     try {
-         await prisma.followUp.update({
-             where: { id: followUpId },
-             data: { status: FollowUpStatus.FAILED } // Usar Enum
-         });
-         console.log(`[SequenceWorker ${jobId}] FollowUp ${followUpId} marcado como FAILED devido a erro crítico.`);
-     } catch (updateError) {
-          console.error(`[SequenceWorker ${jobId}] Falha ao marcar FollowUp ${followUpId} como FAILED:`, updateError);
-     }
+    try {
+      await prisma.followUp.update({
+        where: { id: followUpId },
+        data: { status: FollowUpStatus.FAILED } // Usar Enum
+      });
+      console.log(`[SequenceWorker ${jobId}] FollowUp ${followUpId} marcado como FAILED devido a erro crítico.`);
+    } catch (updateError) {
+      console.error(`[SequenceWorker ${jobId}] Falha ao marcar FollowUp ${followUpId} como FAILED:`, updateError);
+    }
     throw error; // Re-lança para BullMQ
   }
 }
@@ -316,42 +383,42 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
 // --- Inicialização do Worker ---
 console.log('[SequenceWorker] Tentando inicializar o worker...');
 try {
-    const sequenceWorker = new Worker<SequenceJobData>(QUEUE_NAME, processSequenceStepJob, {
-      connection: redisConnection,
-      concurrency: 5, // Ajustar conforme necessário
-      // lockDuration: 60000 // Aumentar se o processamento + envio demorar mais que 30s
-    });
+  const sequenceWorker = new Worker<SequenceJobData>(QUEUE_NAME, processSequenceStepJob, {
+    connection: redisConnection,
+    concurrency: 5, // Ajustar conforme necessário
+    // lockDuration: 60000 // Aumentar se o processamento + envio demorar mais que 30s
+  });
 
-    // --- Listeners de Eventos ---
-    sequenceWorker.on('completed', (job: Job<SequenceJobData>, result: any) => {
-      console.log(`[SequenceWorker] Job ${job.id || 'N/A'} (FollowUp: ${job.data?.followUpId}) concluído. Status: ${result?.status || 'completed'}. Próximo passo agendado: ${result?.nextStepScheduled ? 'Sim' : 'Não/Fim'}. Razão (se pulou): ${result?.reason || 'N/A'}`);
-    });
+  // --- Listeners de Eventos ---
+  sequenceWorker.on('completed', (job: Job<SequenceJobData>, result: any) => {
+    console.log(`[SequenceWorker] Job ${job.id || 'N/A'} (FollowUp: ${job.data?.followUpId}) concluído. Status: ${result?.status || 'completed'}. Próximo passo agendado: ${result?.nextStepScheduled ? 'Sim' : 'Não/Fim'}. Razão (se pulou): ${result?.reason || 'N/A'}`);
+  });
 
-    sequenceWorker.on('failed', (job: Job<SequenceJobData> | undefined, err: Error) => {
-      const jobId = job?.id || 'N/A';
-      const followUpId = job?.data?.followUpId || 'N/A';
-      const attempts = job?.attemptsMade || 0;
-      console.error(`[SequenceWorker] Job ${jobId} (FollowUp: ${followUpId}) falhou após ${attempts} tentativas:`, err.message);
-       console.error(err);
-    });
+  sequenceWorker.on('failed', (job: Job<SequenceJobData> | undefined, err: Error) => {
+    const jobId = job?.id || 'N/A';
+    const followUpId = job?.data?.followUpId || 'N/A';
+    const attempts = job?.attemptsMade || 0;
+    console.error(`[SequenceWorker] Job ${jobId} (FollowUp: ${followUpId}) falhou após ${attempts} tentativas:`, err.message);
+    console.error(err);
+  });
 
-    sequenceWorker.on('error', (err) => {
-      console.error('[SequenceWorker] Erro geral:', err);
-    });
+  sequenceWorker.on('error', (err) => {
+    console.error('[SequenceWorker] Erro geral:', err);
+  });
 
-     sequenceWorker.on('stalled', (jobId: string) => {
-        console.warn(`[SequenceWorker] Job ${jobId} estagnou (stalled). Verificando.`);
-    });
+  sequenceWorker.on('stalled', (jobId: string) => {
+    console.warn(`[SequenceWorker] Job ${jobId} estagnou (stalled). Verificando.`);
+  });
 
-    // <<< ADICIONAR LISTENERS DE DEBUG >>>
-    sequenceWorker.on('active', (job: Job<SequenceJobData>) => {
-      // Este evento dispara QUANDO o worker pega um job para processar.
-      console.log(`[SequenceWorker EVENT] Job ATIVO: ${job.id || 'N/A'} (FollowUp: ${job.data?.followUpId})`);
-    });
+  // <<< ADICIONAR LISTENERS DE DEBUG >>>
+  sequenceWorker.on('active', (job: Job<SequenceJobData>) => {
+    // Este evento dispara QUANDO o worker pega um job para processar.
+    console.log(`[SequenceWorker EVENT] Job ATIVO: ${job.id || 'N/A'} (FollowUp: ${job.data?.followUpId})`);
+  });
 
-    console.log(`[SequenceWorker] Worker iniciado e escutando a fila "${QUEUE_NAME}"...`);
+  console.log(`[SequenceWorker] Worker iniciado e escutando a fila "${QUEUE_NAME}"...`);
 
 } catch (initError) {
-    console.error('[SequenceWorker] Falha CRÍTICA ao inicializar o worker:', initError);
-    process.exit(1);
+  console.error('[SequenceWorker] Falha CRÍTICA ao inicializar o worker:', initError);
+  process.exit(1);
 }
