@@ -17,7 +17,7 @@ RUN apk update && apk add --no-cache ffmpeg
 COPY package.json pnpm-lock.yaml ./
 # --frozen-lockfile garante que as versões exatas do lockfile sejam usadas
 # --prod pode ser omitido aqui se devDependencies forem necessárias para o build
-RUN pnpm install --frozen-lockfile 
+RUN pnpm install --frozen-lockfile
 
 # Copiar o restante do código da aplicação
 # Atenção: Certifique-se de ter um .dockerignore para evitar copiar node_modules, .git, dist, etc.
@@ -28,5 +28,4 @@ RUN pnpm run prisma:generate
 
 # Construir todas as partes da aplicação (Next.js, workers, shared-lib)
 # Use o comando de build geral do seu CLAUDE.md
-RUN pnpm run build 
-
+RUN pnpm run build
