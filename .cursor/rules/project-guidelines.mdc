@@ -1,0 +1,70 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Project Guidelines
+
+This document outlines the structure, technologies, and conventions for this Next.js project.
+
+## 1. Tech Stack
+
+*   **Framework:** Next.js (v14+ w/ App Router) - [`app/`](mdc:app)
+*   **Language:** TypeScript
+*   **Database:** PostgreSQL with Prisma ORM - [`prisma/schema.prisma`](mdc:prisma/schema.prisma), [`lib/db.ts`](mdc:lib/db.ts)
+*   **Styling:** Tailwind CSS - [`tailwind.config.ts`](mdc:tailwind.config.ts)
+*   **UI Components:** Shadcn/ui (Do not modify) - [`components/ui/`](mdc:components/ui)
+*   **Icons:** Lucide Icons (`lucide-react`)
+*   **State Management:** React Context API - [`context/`](mdc:context)
+*   **Async Jobs:** BullMQ with Redis - [`lib/queues/`](mdc:lib/queues), [`lib/workers/`](mdc:lib/workers), [`lib/redis.ts`](mdc:lib/redis.ts)
+*   **AI:** Vercel AI SDK - [`lib/ai/`](mdc:lib/ai)
+*   **Auth:** (Likely NextAuth) - Check [`lib/auth/`](mdc:lib/auth)
+*   **Notifications:** React Hot Toast
+
+## 2. Directory Structure
+
+*   **`app/`**: App Router routes.
+    *   `page.tsx`: Server Component page.
+    *   `layout.tsx`: Route layout.
+    *   `components/`: **Route-specific** components (often Client Components).
+    *   `api/.../route.ts`: API Routes.
+*   **`components/`**: **Globally reusable** React components.
+    *   `ui/`: Shadcn UI components (import only).
+*   **`lib/`**: Backend logic, services, utils, shared config.
+    *   `db.ts`: Prisma client instance.
+    *   `redis.ts`: Redis connection.
+    *   `ai/`: AI services.
+    *   `auth/`: Auth logic.
+    *   `channel/`: Communication channel logic (e.g., Lumibot).
+    *   `queues/`: BullMQ job definitions.
+    *   `workers/`: BullMQ worker implementations.
+    *   `types/`: **Globally reusable** TypeScript types.
+    *   `utils.ts`, `timeUtils.ts`, etc.: **Globally reusable** utility functions.
+*   **`context/`**: React Context providers for shared state.
+*   **`prisma/`**: Database schema - [`prisma/schema.prisma`](mdc:prisma/schema.prisma).
+*   **`public/`**: Static assets.
+
+## 3. Coding Patterns
+
+*   **Components:** Prefer Server Components. Use `'use client'` only for interactivity, hooks, or Context API usage.
+*   **Typing:**
+    *   Declare types primarily **within the file** they are used.
+    *   Use [`lib/types/`](mdc:lib/types) **only** for types needed across multiple unrelated modules.
+*   **Hooks:** Define React hooks **directly within** the Client Components that use them. No separate `hooks/` directory.
+*   **Utility Functions:**
+    *   Define component-specific helpers **directly within** the component file.
+    *   Place **globally reusable** functions in [`lib/utils.ts`](mdc:lib/utils.ts) or similar files in [`lib/`](mdc:lib).
+*   **Server Actions:** Define component-specific actions **within** the Server Component file. Consider [`lib/actions/`](mdc:lib/actions) for reusable actions.
+*   **State:** Use `useState` for local state, [`context/`](mdc:context) for shared state.
+*   **Styling:** Use **Tailwind CSS** directly via `className`. Use `cn` utility from [`lib/utils.ts`](mdc:lib/utils.ts) for conditional classes.
+*   **Backend Communication:**
+    *   Server Components: Call DB/services directly (import from [`lib/`](mdc:lib)).
+    *   Client Components: Prefer Context functions or use `fetch`/`axios` for API Routes (`app/api/`). Consider Server Actions for simple form mutations.
+
+## 4. Key Libraries
+
+*   Use Shadcn components from [`components/ui/`](mdc:components/ui).
+*   Use `lucide-react` for icons.
+*   Use `react-hot-toast` for notifications.
+*   Use `prisma` via [`lib/db.ts`](mdc:lib/db.ts) for database access.
+*   Use `ai` package (Vercel SDK) via [`lib/ai/`](mdc:lib/ai).

@@ -15,13 +15,18 @@ import {
   Bot,
   Play,
   Pause,
+  PlayCircle,
+  PauseCircle,
+  Star,
+  CircleOff,
+  CheckSquare,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
-import type { Message, ClientConversation } from '@/app/types';
+import type { Message, ClientConversation, ActiveFollowUpInfo } from '@/app/types';
 import { toast } from 'react-hot-toast';
 import { useConversationContext } from '@/context/ConversationContext';
 import { useClient } from '@/context/client-context';
@@ -29,6 +34,31 @@ import ConversationInputArea from './ConversationInputArea';
 import ClientInfoSidebar from './ClientInfoSidebar';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+const getFollowUpStatusDisplay = (status: string | undefined | null): {
+  text: string;
+  Icon: React.ElementType;
+  colorClass: string;
+  tooltip: string;
+} | null => {
+  if (!status) return null;
+
+  switch (status.toUpperCase()) {
+    case 'ACTIVE':
+      return { text: "Follow-up Ativo", Icon: PlayCircle, colorClass: "text-green-600 dark:text-green-500", tooltip: "Sequência de follow-up automático está ativa." };
+    case 'PAUSED':
+      return { text: "Follow-up Pausado", Icon: PauseCircle, colorClass: "text-yellow-600 dark:text-yellow-500", tooltip: "Sequência de follow-up está pausada." };
+    case 'CONVERTED':
+      return { text: "Convertido", Icon: Star, colorClass: "text-blue-600 dark:text-blue-500", tooltip: "Cliente atingiu o objetivo do follow-up." };
+    case 'CANCELLED':
+      return { text: "Cancelado", Icon: CircleOff, colorClass: "text-red-600 dark:text-red-500", tooltip: "Sequência de follow-up foi cancelada." };
+    case 'COMPLETED':
+      return { text: "Concluído", Icon: CheckSquare, colorClass: "text-gray-500 dark:text-gray-400", tooltip: "Sequência de follow-up foi concluída." };
+    default:
+        console.warn(`[ConvDetail] Status de follow-up desconhecido recebido: ${status}`);
+        return null;
+  }
+};
 
 export default function ConversationDetail() {
   console.log('[ConvDetail LIFECYCLE] Rendering/Mounting (Simplified)...');
@@ -251,21 +281,42 @@ export default function ConversationDetail() {
 
   // Determinar estado da IA para o botão
   const isAIActive = conversation.is_ai_active;
+  const followUpDisplay = getFollowUpStatusDisplay(conversation.activeFollowUp?.status);
+  console.log('[ConvDetail] conversation.activeFollowUp:', conversation.activeFollowUp);
 
   return (
     <div className="flex flex-col h-full bg-card border-l border-border relative">
-      {/* Header */} 
+      {/* Header */}
       <div className="flex items-center justify-between p-[12px] border-b border-border flex-shrink-0">
-        <div className="flex items-center space-x-3">
-          <Avatar className="h-9 w-9">
+        <div className="flex items-center space-x-3 flex-grow min-w-0">
+          <Avatar className="h-9 w-9 flex-shrink-0">
             <AvatarFallback>{conversation.client?.name?.charAt(0)?.toUpperCase() || 'C'}</AvatarFallback>
           </Avatar>
-          <div>
-            <div className="font-semibold  dark:text-white">{conversation.client?.name || 'Desconhecido'}</div>
-            <div className="text-xs text-muted-foreground">{conversation.client?.phone_number || 'Sem telefone'}</div>
+          <div className="flex-grow min-w-0">
+            <div className="font-semibold truncate dark:text-white" title={conversation.client?.name || 'Desconhecido'}>
+              {conversation.client?.name || 'Desconhecido'}
+            </div>
+            <div className="flex items-center space-x-2 mt-0.5">
+                <div className="text-xs text-muted-foreground truncate" title={conversation.client?.phone_number || 'Sem telefone'}>{conversation.client?.phone_number || 'Sem telefone'}</div>
+                {followUpDisplay && (
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                         <span className={cn("inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full", followUpDisplay.colorClass)}>
+                           <followUpDisplay.Icon className="h-3 w-3 mr-1" />
+                           {followUpDisplay.text}
+                         </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>{followUpDisplay.tooltip}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+            </div>
           </div>
         </div>
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1 flex-shrink-0">
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -305,7 +356,7 @@ export default function ConversationDetail() {
         </div>
       </div>
 
-      {/* Messages */} 
+      {/* Messages */}
       <ScrollArea ref={scrollAreaRef} className="flex-grow p-4 overflow-y-auto">
         {isLoadingMessages && messages.length === 0 && <LoadingSpinner message="Carregando..." />}
         {messageError && messages.length === 0 && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
@@ -362,7 +413,7 @@ export default function ConversationDetail() {
         ))}
       </ScrollArea>
 
-      {/* Input Area */} 
+      {/* Input Area */}
       <ConversationInputArea
          conversationId={conversation.id}
          workspaceId={conversation.workspace_id}

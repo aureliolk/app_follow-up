@@ -62,10 +62,9 @@ export async function GET(req: NextRequest) {
             phone_number: true,
             metadata: true,
             follow_ups: { 
-              where: {
-                status: { 
-                  in: [PrismaFollowUpStatus.ACTIVE, PrismaFollowUpStatus.PAUSED] 
-                },
+              select: {
+                id: true,
+                status: true,
               },
               orderBy: { started_at: 'desc' },
               take: 1
@@ -84,7 +83,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Formatação da resposta: Incluir metadata no client
-    const formattedData: ClientConversation[] = conversations.map(convo => ({
+    const formattedData = conversations.map(convo => ({
       id: convo.id,
       workspace_id: convo.workspace_id,
       client_id: convo.client_id,
@@ -108,10 +107,14 @@ export async function GET(req: NextRequest) {
         timestamp: convo.messages[0].timestamp.toISOString(), // Converter para string ISO
         sender_type: convo.messages[0].sender_type,
       } : null,
-      activeFollowUp: convo.client?.follow_ups?.[0] || null, 
+      activeFollowUp: convo.client?.follow_ups?.[0] || null,
     }));
 
     console.log(`API GET Conversations: Found ${formattedData.length} conversations with status ACTIVE.`);
+
+    // <<< ADICIONAR LOG DETALHADO AQUI >>>
+    console.log("API GET Conversations: Final formatted data being sent:", JSON.stringify(formattedData, null, 2));
+
     return NextResponse.json({ success: true, data: formattedData });
 
   } catch (error) {

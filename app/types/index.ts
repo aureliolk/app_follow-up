@@ -165,6 +165,16 @@ export interface WhatsappTemplate {
 }
 // <<< FIM DA NOVA INTERFACE >>>
 
+// Adicionar tipo para o FollowUp resumido
+// Remover import do enum aqui, pois a API enviará string
+// import { FollowUpStatus } from '@prisma/client';
+
+export interface ActiveFollowUpInfo {
+  id: string;
+  status: string; // <<< Alterar para string
+  // Adicionar outros campos se necessário no futuro (ex: next_sequence_message_at)
+}
+
 // Representa uma conversa como vinda da API de listagem (/api/conversations)
 export interface ClientConversation {
   id: string; // Conversation ID
@@ -172,7 +182,7 @@ export interface ClientConversation {
   client_id: string;
   channel?: string | null;
   channel_conversation_id?: string | null;
-  status: string; // Ex: 'ACTIVE', 'CLOSED'
+  status: string; // Ex: 'ACTIVE', 'CLOSED' (Status da CONVERSA)
   is_ai_active: boolean;
   last_message_at: string | Date | null;
   created_at: string | Date;
@@ -182,18 +192,20 @@ export interface ClientConversation {
     id: string;
     name?: string | null;
     phone_number?: string | null;
-  };
+    // Metadata do CLIENTE pode estar aqui se a API incluir
+    metadata?: any | null; 
+  } | null; // Tornar client opcional para segurança
   last_message?: { 
+    id?: string;
     content: string | null; // Permitir null para mídia sem texto
     timestamp: string | Date;
     sender_type: 'CLIENT' | 'AI' | 'SYSTEM' | 'AGENT' | 'AUTOMATION'; // Atualizado
-    id?: string; // Adicionado ID opcional para referência rápida
   } | null;
 
-  // Campo de Follow-up removido
-  // activeFollowUp: { ... } | null;
+  // <<< RE-ADICIONAR/ATUALIZAR CAMPO AQUI >>>
+  activeFollowUp?: ActiveFollowUpInfo | null; // Status do FollowUp ativo/pausado do CLIENTE
 
-  unread_count?: number;
+  unread_count?: number; // Se aplicável
 }
 
 // --- Tipos de Follow-up/Campanha Removidos ---
