@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
         timestamp: convo.messages[0].timestamp.toISOString(), // Converter para string ISO
         sender_type: convo.messages[0].sender_type,
       } : null,
-      activeFollowUp: convo.client?.follow_ups?.[0] || null,
+      activeFollowUp: convo.client?.follow_ups?.[0] || null, 
     }));
 
     console.log(`API GET Conversations: Found ${formattedData.length} conversations with status ACTIVE.`);

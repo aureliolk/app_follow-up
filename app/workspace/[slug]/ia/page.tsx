@@ -2,8 +2,9 @@
 import AISettingsForm from "./components/AISettingsForm";
 import AiFollowUpRules from "./components/AiFollowUpRules";
 import GoogleIntegrationsCard from "./components/GoogleIntegrationsCard";
+import AbandonedCartRules from "./components/AbandonedCartRules";
 import { prisma } from '@/lib/db'; // <<< Importar Prisma
-import { WorkspaceAiFollowUpRule } from '@prisma/client'; // <<< Importar tipo Prisma
+import { WorkspaceAiFollowUpRule, AbandonedCartRule } from '@prisma/client'; // <<< Importar tipos Prisma
 import { notFound } from 'next/navigation'; // <<< Importar notFound
 
 // <<< Tornar async e aceitar params >>>
@@ -26,18 +27,33 @@ export default async function IaPage({ params }: { params: { slug: string } }) {
 
     const workspaceId = workspace.id; // <<< Usar o ID real do workspace
 
-    // <<< Buscar as regras de follow-up >>>
+    // <<< Buscar as regras de follow-up e abandonadas >>>
     let followUpRules: WorkspaceAiFollowUpRule[] = [];
+    let abandonedCartRules: AbandonedCartRule[] = [];
     let fetchError: string | null = null;
     try {
-        followUpRules = await prisma.workspaceAiFollowUpRule.findMany({
-            where: { workspace_id: workspaceId },
-            orderBy: { delay_milliseconds: 'asc' }, 
-        });
+        [followUpRules, abandonedCartRules] = await Promise.all([
+            prisma.workspaceAiFollowUpRule.findMany({
+                where: { workspace_id: workspaceId },
+                orderBy: { delay_milliseconds: 'asc' }, 
+            }),
+            prisma.abandonedCartRule.findMany({
+                where: { workspace_id: workspaceId },
+                orderBy: { sequenceOrder: 'asc' }, // Order by sequence
+            })
+        ]);
     } catch (error) {
-        console.error(`[Page] Error fetching follow-up rules for workspace ${workspaceId}:`, error);
-        fetchError = "Falha ao carregar as regras de acompanhamento.";
-        // Dependendo do erro, você pode querer tratar de forma diferente
+        console.error(`[Page] Error fetching rules for workspace ${workspaceId}:`, error);
+        fetchError = "Falha ao carregar as regras.";
+        // Optionally, set both arrays to empty if one fails, or handle partial data
+        followUpRules = [];
+        abandonedCartRules = [];
+    }
+
+    // Optional: Display a generic fetch error message
+    if (fetchError) {
+        // You might want a more prominent error display
+        console.warn("Fetch error message:", fetchError);
     }
 
     return (
@@ -46,6 +62,13 @@ export default async function IaPage({ params }: { params: { slug: string } }) {
             <h1 className="text-2xl font-bold text-foreground">
                 Configurações e Integrações de IA
             </h1>
+
+            {/* Display fetch error if present */}
+            {fetchError && (
+                <div className="bg-destructive/10 border border-destructive/30 text-destructive p-3 rounded-md text-sm">
+                    {fetchError} Não foi possível carregar todas as configurações. Tente recarregar a página.
+                </div>
+            )}
 
             {/* Card de Integrações Google */}
             <div>
@@ -56,6 +79,14 @@ export default async function IaPage({ params }: { params: { slug: string } }) {
             <div>
                 {/* Não precisa de título extra aqui se AISettingsForm já tem um CardHeader */}
                 <AISettingsForm />
+            </div>
+
+            {/* Render Abandoned Cart Rules Component */}
+            <div>
+                <AbandonedCartRules
+                    initialRules={abandonedCartRules}
+                    workspaceId={workspaceId}
+                />
             </div>
 
             {/* Card de Regras de Acompanhamento por Inatividade */}

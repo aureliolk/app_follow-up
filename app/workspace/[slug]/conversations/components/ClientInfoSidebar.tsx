@@ -249,8 +249,8 @@ export default function ClientInfoSidebar({
             <SheetDescription>
               Visualize e edite os detalhes deste contato.
             </SheetDescription>
-            {/* <p>ID do workspace: {clientData?.workspace_id}</p>
-            <p>ID do contato: {clientData?.id}</p> */}
+            <p>ID do workspace: {clientData?.workspace_id}</p>
+            <p>ID do contato: {clientData?.id}</p>
           </SheetHeader>
 
           <div className="flex-grow overflow-y-auto py-4 pr-6 space-y-4">

@@ -1,0 +1,468 @@
+// /api/webhooks/events/route.ts
+
+
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { prisma } from '@/lib/db';
+import { FollowUpStatus, Prisma, ConversationStatus } from '@prisma/client';
+import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // Para agendar jobs
+import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // <<< IMPORTAR AQUI
+
+// Esquema de validação para o corpo da requisição do evento
+const eventWebhookSchema = z.object({
+  eventName: z.string().min(1, "Nome do evento é obrigatório"),
+  customerPhoneNumber: z.string().min(10, "Número de telefone inválido"), // Validação básica
+  // Opcional: Adicionar validação mais estrita para formato de telefone se necessário
+  eventData: z.record(z.unknown()).optional().default({}), // Objeto para dados extras
+  // campaignId ou sequenceName pode ser necessário aqui dependendo da lógica de decisão
+  // campaignId: z.string().optional(), 
+});
+
+// Função atualizada para validar o token de integração usando Prisma
+async function validateIntegrationToken(token: string | null): Promise<string | null> {
+  if (!token) {
+    console.warn("validateIntegrationToken: Nenhum token fornecido.");
+    return null; // Token ausente
+  }
+
+  try {
+    console.log(`validateIntegrationToken: Buscando token: ${token.substring(0, 5)}...`); // Log parcial por segurança
+    const tokenRecord = await prisma.workspaceApiToken.findUnique({
+      where: {
+        token: token,
+        // Adicionar um índice composto (token, revoked, workspace_id) no schema.prisma pode otimizar isso
+      },
+      select: {
+        id: true,
+        workspace_id: true,
+        revoked: true,
+        expires_at: true,
+        last_used_at: true, // Para possível atualização do last_used_at
+      }
+    });
+
+    if (!tokenRecord) {
+      console.warn(`validateIntegrationToken: Token não encontrado: ${token.substring(0, 5)}...`);
+      return null; // Token não encontrado no banco de dados
+    }
+
+    if (tokenRecord.revoked) {
+      console.warn(`validateIntegrationToken: Token revogado (ID: ${tokenRecord.id}).`);
+      return null; // Token foi revogado
+    }
+
+    if (tokenRecord.expires_at && new Date(tokenRecord.expires_at) < new Date()) {
+      console.warn(`validateIntegrationToken: Token expirado (ID: ${tokenRecord.id}) em ${tokenRecord.expires_at}.`);
+      // Opcional: Poderia marcar o token como revogado aqui automaticamente
+      // await prisma.workspaceApiToken.update({ where: { id: tokenRecord.id }, data: { revoked: true }});
+      return null; // Token expirou
+    }
+
+    console.log(`validateIntegrationToken: Token válido encontrado (ID: ${tokenRecord.id}) para workspace ${tokenRecord.workspace_id}.`);
+
+    // Opcional: Atualizar last_used_at de forma assíncrona (não bloquear a resposta)
+    // Não usar await aqui para não atrasar a resposta principal.
+    // Se falhar, não é crítico para a validação em si.
+    prisma.workspaceApiToken.update({
+      where: { id: tokenRecord.id },
+      data: { last_used_at: new Date() }
+    }).catch(err => {
+        console.error(`validateIntegrationToken: Falha ao atualizar last_used_at para token ${tokenRecord.id}:`, err);
+    });
+
+
+    return tokenRecord.workspace_id; // Token válido, retorna o ID do workspace
+
+  } catch (error) {
+    console.error("validateIntegrationToken: Erro ao validar token:", error);
+    return null; // Erro durante a validação
+  }
+}
+
+
+export async function POST(req: NextRequest) {
+  const integrationToken = req.headers.get('x-integration-token');
+  console.log("API POST /api/webhooks/events: Request received.");
+
+  // 1. Autenticação via Token de Integração
+  console.log(`API POST /api/webhooks/events: Attempting auth via x-integration-token.`);
+  const workspaceId = await validateIntegrationToken(integrationToken);
+
+  if (!workspaceId) {
+    console.warn(`API POST /api/webhooks/events: Authentication failed. Invalid or missing x-integration-token.`);
+    return NextResponse.json({ success: false, error: 'Não autorizado. Token de integração inválido ou ausente.' }, { status: 401 });
+  }
+  console.log(`API POST /api/webhooks/events: Authenticated successfully for workspace ${workspaceId}.`);
+
+
+  // 2. Parse e Validação do Corpo da Requisição
+  let parsedBody;
+  try {
+    const body = await req.json();
+    parsedBody = eventWebhookSchema.parse(body);
+    console.log(`API POST /api/webhooks/events: Parsed body for workspace ${workspaceId}:`, parsedBody);
+  } catch (error) {
+    console.warn(`API POST /api/webhooks/events: Invalid request body for workspace ${workspaceId}:`, error);
+    return NextResponse.json({ success: false, error: 'Dados inválidos na requisição', details: (error as z.ZodError).errors }, { status: 400 });
+  }
+
+  const { eventName, customerPhoneNumber: customerPhoneNumberRaw, eventData } = parsedBody;
+
+  // +++ PADRONIZAR NÚMERO DO CLIENTE +++
+  const customerPhoneNumber = standardizeBrazilianPhoneNumber(customerPhoneNumberRaw);
+
+  if (!customerPhoneNumber) {
+      console.warn(`API POST /api/webhooks/events: Número de telefone inválido ou não padronizável fornecido: ${customerPhoneNumberRaw} para workspace ${workspaceId}`);
+      return NextResponse.json({ success: false, error: 'Número de telefone inválido ou não pode ser padronizado.' }, { status: 400 });
+  }
+  console.log(`API POST /api/webhooks/events: Telefone padronizado de ${customerPhoneNumberRaw} para ${customerPhoneNumber}`);
+  // --- Fim Padronização ---
+
+  try {
+    // 3. Encontrar ou Criar Cliente (usando telefone PADRONIZADO) - Refatorado
+    const targetChannel = 'WHATSAPP'; // Canal desejado para esta interação
+    console.log(`API POST /api/webhooks/events: Finding or creating client for standardized phone ${customerPhoneNumber} and channel ${targetChannel} in workspace ${workspaceId}`);
+
+    let client: Prisma.ClientGetPayload<{ select: { id: true, name: true, channel: true } }>; // Definir tipo para o cliente final
+    let wasCreated = false;
+
+    // Tentar encontrar cliente existente pelo telefone no workspace
+    // Busca primeiro com o canal correto para otimizar o caso comum
+    let existingClient = await prisma.client.findUnique({
+        where: {
+            workspace_id_phone_number_channel: {
+                workspace_id: workspaceId,
+                phone_number: customerPhoneNumber,
+                channel: targetChannel,
+            }
+        },
+        select: { id: true, name: true, channel: true },
+    });
+
+    // Se não encontrou com o canal certo, buscar SÓ pelo telefone para ver se existe com outro canal
+    if (!existingClient) {
+        existingClient = await prisma.client.findFirst({
+            where: {
+                workspace_id: workspaceId,
+                phone_number: customerPhoneNumber,
+                // NÃO filtra por canal aqui
+            },
+             select: { id: true, name: true, channel: true },
+        });
+    }
+
+
+    if (existingClient) {
+        // Cliente encontrado, verificar/atualizar canal e nome
+        console.log(`API POST /api/webhooks/events: Found existing client ${existingClient.id}. Current channel: ${existingClient.channel}`);
+        const dataToUpdate: Prisma.ClientUpdateInput = { updated_at: new Date() };
+        let needsUpdate = false;
+
+        // Precisa atualizar o canal?
+        if (existingClient.channel !== targetChannel) {
+            dataToUpdate.channel = targetChannel;
+            needsUpdate = true;
+            console.log(`API POST /api/webhooks/events: Updating channel for client ${existingClient.id} to ${targetChannel}.`);
+        }
+
+        // Precisa corrigir o nome? (Se o nome atual for igual ao número antigo raw ou nulo)
+        if ((existingClient.name === customerPhoneNumberRaw && customerPhoneNumberRaw !== customerPhoneNumber) || existingClient.name === null) {
+            dataToUpdate.name = customerPhoneNumber; // Atualiza/define para número padronizado
+            needsUpdate = true;
+            console.log(`API POST /api/webhooks/events: Updating/Setting name for client ${existingClient.id} to ${customerPhoneNumber}.`);
+        }
+
+        if (needsUpdate) {
+            client = await prisma.client.update({
+                where: { id: existingClient.id },
+                data: dataToUpdate,
+                select: { id: true, name: true, channel: true }, // Selecionar os mesmos campos
+            });
+            console.log(`API POST /api/webhooks/events: Client ${client.id} updated.`);
+        } else {
+            client = existingClient; // Nenhuma atualização necessária nos campos verificados
+            console.log(`API POST /api/webhooks/events: Client ${existingClient.id} already up-to-date.`);
+        }
+
+    } else {
+        // Cliente não encontrado, criar novo
+        console.log(`API POST /api/webhooks/events: Client not found. Creating new client...`);
+        client = await prisma.client.create({
+            data: {
+                workspace_id: workspaceId,
+                phone_number: customerPhoneNumber,
+                channel: targetChannel,
+                name: customerPhoneNumber, // Nome padrão inicial
+                // metadata: eventData || Prisma.DbNull, // Adicionar se necessário
+            },
+            select: { id: true, name: true, channel: true }, // Selecionar os mesmos campos
+        });
+        wasCreated = true; // Marcar que foi criado para lógicas futuras (como iniciar follow-up)
+        console.log(`API POST /api/webhooks/events: Client ${client.id} created with channel ${client.channel}.`);
+    }
+
+    console.log(`API POST /api/webhooks/events: Client ${client.id} (Name: ${client.name}) ready for workspace ${workspaceId}`);
+    // --- Fim da Lógica Refatorada ---
+
+    // --- PASSO 3: Verificar Conversa ATIVA OU Follow-up ATIVO/PAUSADO --- (Agora usa a variável 'client' correta)
+    console.log(`API POST /api/webhooks/events: Checking for existing ACTIVE Conversation or ACTIVE/PAUSED FollowUp for client ${client.id}`);
+
+    const existingActiveConversation = await prisma.conversation.findFirst({
+        where: {
+            client_id: client.id,
+            workspace_id: workspaceId,
+
+            status: ConversationStatus.ACTIVE,
+        },
+        select: { id: true, status: true }
+    });
+
+    // 4. Verificar Follow-up Existente (Ativo/Pausado)
+    // console.log(`API POST /api/webhooks/events: Checking for existing ACTIVE/PAUSED follow-up for client ${client.id}`);
+    const existingActiveFollowUp = await prisma.followUp.findFirst({
+      where: {
+        client_id: client.id,
+        workspace_id: workspaceId,
+        status: {
+          in: [FollowUpStatus.ACTIVE, FollowUpStatus.PAUSED],
+        }
+      },
+      select: { id: true, status: true }
+    });
+
+    // --- PASSO 4/5: Decidir se inicia ---
+    if (existingActiveConversation || existingActiveFollowUp) {
+        let reason = "";
+        if (existingActiveConversation) reason += `Conversation ${existingActiveConversation.id} is ACTIVE. `;
+        if (existingActiveFollowUp) reason += `FollowUp ${existingActiveFollowUp.id} is ${existingActiveFollowUp.status}.`;
+        console.log(`API POST /api/webhooks/events: Client ${client.id} already has an active interaction. ${reason} Skipping new conversation/follow-up initiation for event '${eventName}'.`);
+        // TODO: Implementar lógica alternativa se necessário (pausar antigo, adicionar nota, etc.)
+        return NextResponse.json({ success: true, message: `Interação ativa existente (${reason.trim()}). Nenhum novo follow-up iniciado.` });
+    } else {
+       console.log(`API POST /api/webhooks/events: No active conversation or follow-up found for client ${client.id}. Proceeding based on event type '${eventName}'.`);
+       // Continuar para a lógica específica do evento abaixo...
+    }
+
+    // --- NOVA LÓGICA: Tratar 'abandoned_cart' separadamente ---
+    const now = new Date(); // Definir 'now' aqui para usar em ambos os blocos
+
+    if (eventName === 'abandoned_cart') {
+        console.log(`API POST /api/webhooks/events: [Abandoned Cart] Processing event for workspace ${workspaceId}, client ${client.id}`);
+
+        // 1. Buscar Regras de Carrinho Abandonado para o Workspace
+        const abandonedCartRules = await prisma.abandonedCartRule.findMany({
+            where: {
+                workspace_id: workspaceId,
+                // Adicionar filtro para regras ativas se existir um campo 'isActive' no futuro
+            },
+            orderBy: {
+                sequenceOrder: 'asc', // Ou outra ordenação se relevante
+            },
+            select: {
+                id: true,
+                delay_milliseconds: true,
+                message_content: true,
+                sequenceOrder: true,
+            }
+        });
+
+        if (!abandonedCartRules || abandonedCartRules.length === 0) {
+            console.log(`API POST /api/webhooks/events: [Abandoned Cart] No active abandoned cart rules found for workspace ${workspaceId}. No action taken.`);
+            return NextResponse.json({ success: true, message: "Evento 'abandoned_cart' recebido, mas nenhuma regra de recuperação ativa configurada." });
+        }
+
+        console.log(`API POST /api/webhooks/events: [Abandoned Cart] Found ${abandonedCartRules.length} rule(s) for workspace ${workspaceId}.`);
+
+        // 2. Criar UMA ÚNICA Conversa para este evento de carrinho
+        console.log(`API POST /api/webhooks/events: [Abandoned Cart] Creating new Conversation record for client ${client.id}`);
+        const conversationChannelType = 'ABANDONED_CART'; // Canal específico
+        const newConversation = await prisma.conversation.create({
+            data: {
+                workspace_id: workspaceId,
+                client_id: client.id,
+                channel: conversationChannelType, // Usar canal definido
+                status: ConversationStatus.ACTIVE, // Inicia ativa, será fechada pelo worker? Ou manual?
+                is_ai_active: true, // IA não deve intervir inicialmente aqui? Definir padrão
+                last_message_at: now, // Marcar o início
+                // Metadata para indicar origem
+                metadata: { initiatedByEvent: eventName, eventData: eventData },
+            },
+            select: { id: true }
+        });
+        console.log(`API POST /api/webhooks/events: [Abandoned Cart] Conversation record ${newConversation.id} created for client ${client.id}.`);
+
+        // 3. Agendar um Job para CADA Regra de Carrinho
+        let scheduledJobsCount = 0;
+        for (const rule of abandonedCartRules) {
+            const ruleDelayMs = Number(rule.delay_milliseconds);
+
+            // Validar Delay da Regra Específica
+            if (isNaN(ruleDelayMs) || ruleDelayMs < 0) {
+                console.warn(`API POST /api/webhooks/events: [Abandoned Cart] Delay da regra ${rule.id} é inválido (${ruleDelayMs}ms). Skipping this rule.`);
+                continue; // Pular para a próxima regra
+            }
+
+            // Preparar dados do Job
+            const jobData = {
+                // Identificador para o worker saber que é de carrinho abandonado
+                abandonedCartRuleId: rule.id,
+                workspaceId: workspaceId,
+                clientId: client.id,
+                conversationId: newConversation.id,
+                messageContent: rule.message_content, // Passar conteúdo diretamente? Ou worker busca? Passando por agora.
+                eventData: eventData, // Passar dados do evento original para placeholders
+            };
+            const jobOptions = {
+                delay: ruleDelayMs,
+                // Job ID único combinando conversa e regra
+                jobId: `acart_${newConversation.id}_rule_${rule.id}`,
+                removeOnComplete: true,
+                removeOnFail: 5000,
+            };
+
+            // Agendar Job
+            // TODO: Considerar uma fila/worker diferente para carrinho abandonado se a lógica for complexa.
+            // Usando 'processSequenceStep' por enquanto, o worker precisará diferenciar pelo jobData.
+            await sequenceStepQueue.add('processAbandonedCartStep', jobData, jobOptions); // <<< Usar um nome de job dedicado
+            console.log(`API POST /api/webhooks/events: [Abandoned Cart] Job scheduled for rule ${rule.id} (Delay: ${ruleDelayMs}ms) in Conversation ${newConversation.id}.`);
+            scheduledJobsCount++;
+        }
+
+        // Retornar sucesso específico para carrinho abandonado
+        return NextResponse.json({
+            success: true,
+            message: `Evento '${eventName}' recebido. Conversa ${newConversation.id} criada. ${scheduledJobsCount} mensagens de recuperação agendadas.`
+        });
+
+    } else {
+        // --- LÓGICA ORIGINAL PARA OUTROS EVENTOS (USANDO MAPEAMENTO E CAMPANHAS) ---
+        console.log(`API POST /api/webhooks/events: [Generic Event] Processing event '${eventName}' using campaign mapping for workspace ${workspaceId}.`);
+
+        // --- PASSO 6: Identificar Campanha via Mapeamento de Evento ---
+        console.log(`API POST /api/webhooks/events: Buscando mapeamento para evento '${eventName}' no workspace ${workspaceId}`);
+        const eventMapping = await prisma.eventFollowUpMapping.findUnique({
+            where: {
+                workspaceId_eventName: {
+                    workspaceId: workspaceId,
+                    eventName: eventName,
+                },
+                isActive: true,
+            },
+            select: {
+                followUpCampaignId: true,
+                followUpCampaign: {
+                    select: { name: true }
+                }
+            }
+        });
+
+        if (!eventMapping) {
+            console.log(`API POST /api/webhooks/events: Nenhum mapeamento ativo encontrado para o evento '${eventName}'. Follow-up não será iniciado.`);
+            return NextResponse.json({ success: true, message: `Nenhum mapeamento de follow-up ativo encontrado para o evento '${eventName}'.` });
+        }
+
+        const followUpCampaignId = eventMapping.followUpCampaignId;
+        // Adicionado tratamento para caso followUpCampaign seja null/undefined (embora não devesse ser pelo select)
+        const campaignName = eventMapping.followUpCampaign?.name ?? 'Nome Desconhecido';
+        console.log(`API POST /api/webhooks/events: Mapeamento encontrado. Evento '${eventName}' iniciará a campanha '${campaignName}' (ID: ${followUpCampaignId}).`);
+
+        // --- PASSO 6.1: Buscar Primeira Regra da Campanha Mapeada ---
+        const firstRule = await prisma.workspaceAiFollowUpRule.findFirst({
+            where: {
+                followUpCampaignId: followUpCampaignId,
+            },
+            orderBy: {
+                sequenceOrder: 'asc',
+            },
+            select: {
+                id: true,
+                delay_milliseconds: true,
+                sequenceOrder: true,
+            }
+        });
+
+        if (!firstRule) {
+            console.warn(`API POST /api/webhooks/events: Campanha '${campaignName}' (ID: ${followUpCampaignId}) mapeada para o evento '${eventName}', mas não contém nenhuma regra de follow-up. Follow-up não será iniciado.`);
+            return NextResponse.json({ success: true, message: `Campanha '${campaignName}' mapeada, mas sem regras de follow-up configuradas.` });
+        }
+
+        console.log(`API POST /api/webhooks/events: Primeira regra da campanha encontrada (ID: ${firstRule.id}, Order: ${firstRule.sequenceOrder}).`);
+        const firstDelayMs = Number(firstRule.delay_milliseconds);
+
+        // --- PASSO 6.2: Validar Delay ---
+        if (isNaN(firstDelayMs) || firstDelayMs < 0) {
+            console.warn(`API POST /api/webhooks/events: Delay da regra (${firstRule.id}) é inválido (${firstDelayMs}ms). Follow-up não será iniciado.`);
+            return NextResponse.json({ success: false, error: "Configuração de delay da regra de follow-up inválida." }, { status: 500 });
+        }
+
+        // --- PASSO 7: Criar Nova Conversa ---
+        console.log(`API POST /api/webhooks/events: Creating new Conversation record for client ${client.id}`);
+        const conversationChannelType = 'SYSTEM'; // Ou 'EVENT'? Definir o canal para conversas iniciadas por eventos
+        // 'now' já foi definido acima
+        const newConversation = await prisma.conversation.create({
+            data: {
+                workspace_id: workspaceId,
+                client_id: client.id,
+                channel: conversationChannelType,
+                status: ConversationStatus.ACTIVE,
+                is_ai_active: true, // Para follow-ups genéricos, a IA geralmente está ativa
+                last_message_at: now,
+                metadata: { initiatedByEvent: eventName, eventData: eventData },
+            },
+            select: { id: true }
+        });
+        console.log(`API POST /api/webhooks/events: Conversation record ${newConversation.id} created for client ${client.id}.`);
+
+        // --- PASSO 8: Criar Registro FollowUp (com campaign_id) ---
+        console.log(`API POST /api/webhooks/events: Creating new FollowUp record for client ${client.id} (linked to Conv ${newConversation.id}, Campaign ${followUpCampaignId})`);
+        const newFollowUp = await prisma.followUp.create({
+            data: {
+                workspace_id: workspaceId,
+                client_id: client.id,
+                campaign_id: followUpCampaignId,
+                status: FollowUpStatus.ACTIVE,
+                started_at: now,
+                current_sequence_step_order: 0,
+                next_sequence_message_at: new Date(now.getTime() + firstDelayMs),
+            },
+            select: { id: true }
+        });
+        console.log(`API POST /api/webhooks/events: FollowUp record ${newFollowUp.id} created for client ${client.id}.`);
+
+        // --- PASSO 9: Agendar Primeiro Passo (usando a regra da campanha) ---
+        const jobData = {
+            followUpId: newFollowUp.id,
+            stepRuleId: firstRule.id,
+            workspaceId: workspaceId,
+            conversationId: newConversation.id,
+        };
+        const jobOptions = {
+            delay: firstDelayMs,
+            jobId: `seq_${newFollowUp.id}_step_${firstRule.id}`, // ID único
+            removeOnComplete: true,
+            removeOnFail: 5000,
+        };
+
+        // Usando o nome de job original para follow-ups genéricos
+        await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
+        console.log(`API POST /api/webhooks/events: First sequence job scheduled for FollowUp ${newFollowUp.id} (Rule: ${firstRule.id}, Delay: ${firstDelayMs}ms).`);
+
+        // Retornar sucesso incluindo ID da conversa e do follow-up
+        return NextResponse.json({
+            success: true,
+            message: `Evento '${eventName}' recebido. Conversa ${newConversation.id} e Follow-up ${newFollowUp.id} (Campanha: ${campaignName}) iniciados.`
+        });
+    }
+    // --- FIM DA NOVA LÓGICA ---
+
+  } catch (error) {
+    console.error(`API POST /api/webhooks/events: Internal error processing event for workspace ${workspaceId}:`, error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        // Handle known Prisma errors
+        console.error(`API POST /api/webhooks/events: Prisma Error Code - ${error.code}`, error.message);
+        return NextResponse.json({ success: false, error: 'Erro no banco de dados ao processar evento.' }, { status: 500 });
+    }
+    return NextResponse.json({ success: false, error: 'Erro interno ao processar evento' }, { status: 500 });
+  }
+}
+

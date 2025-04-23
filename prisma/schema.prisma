@@ -57,6 +57,7 @@ model FollowUpCampaign {
   description                  String?
   created_at                   DateTime @default(now())
   active                       Boolean  @default(true)
+  isDefaultInactivity          Boolean  @default(false)
   idLumibot                    String?
   tokenAgentLumibot            String?
   ai_prompt_product_name       String?  @default("")
@@ -68,10 +69,13 @@ model FollowUpCampaign {
   ai_prompt_cta_link           String?  @default("")
   ai_prompt_cta_text           String?  @default("")
 
+  rules                        WorkspaceAiFollowUpRule[] @relation("CampaignToRules")
   stages     FollowUpFunnelStage[]       @relation("FollowUpCampaignToFollowUpFunnelStage")
   follow_ups FollowUp[]
-  workspaces WorkspaceFollowUpCampaign[] // Adicionada relação com a tabela de junção
+  workspaces WorkspaceFollowUpCampaign[]
+  eventMappings EventFollowUpMapping[]
 
+  @@index([isDefaultInactivity])
   @@map("follow_up_campaigns")
   @@schema("follow_up_schema")
 }
@@ -113,18 +117,17 @@ model FollowUp {
   id                     String    @id @default(uuid())
   campaign_id            String?
   client_id              String
-  // Manter status existente, usaremos 'ACTIVE', 'COMPLETED', 'CANCELLED', e adicionaremos 'CONVERTED' via API
   status                 String    @default("active")
   started_at             DateTime  @default(now())
   updated_at             DateTime  @updatedAt
-  next_message_at        DateTime? // Pode ser usado pela IA ou removido se confuso
+  next_message_at        DateTime?
   completed_at           DateTime?
-  current_stage_id       String? // Mantém para organização visual (opcional)
-  waiting_for_response   Boolean   @default(false) // Lógica de inatividade antiga, pode ser removida/ignorada
-  last_response          String? // Lógica de inatividade antiga
-  last_response_at       DateTime? // Lógica de inatividade antiga
-  last_client_message_at DateTime? // Mantém, útil para IA
-  next_evaluation_at     DateTime? // Lógica de inatividade antiga
+  current_stage_id       String?
+  waiting_for_response   Boolean   @default(false)
+  last_response          String?
+  last_response_at       DateTime?
+  last_client_message_at DateTime?
+  next_evaluation_at     DateTime?
   paused_reason          String?
   ai_suggestion          String?
 
@@ -133,11 +136,9 @@ model FollowUp {
 
   client Client @relation("ClientToFollowUp", fields: [client_id], references: [id], onDelete: Cascade)
 
-  // --- NOVOS CAMPOS PARA SEQUÊNCIA ---
-  current_sequence_step_order Int?      @default(0) // Rastreia a ordem do último passo da *sequência* enviado (0 = nenhum ainda)
-  next_sequence_message_at    DateTime? // Quando a próxima mensagem *da sequência* está agendada
+  current_sequence_step_order Int?      @default(0)
+  next_sequence_message_at    DateTime?
 
-  // --- RELAÇÕES EXISTENTES ---
   messages    FollowUpMessage[]
   campaign    FollowUpCampaign?    @relation(fields: [campaign_id], references: [id])
   ai_analyses FollowUpAIAnalysis[]
@@ -256,49 +257,43 @@ model Workspace {
   updated_at          DateTime                    @updatedAt
   api_tokens          WorkspaceApiToken[]
   follow_up_campaigns WorkspaceFollowUpCampaign[]
-  follow_ups          FollowUp[] // <<< ADICIONAR/CORRIGIR ESTA LINHA
+  follow_ups          FollowUp[]
   invitations         WorkspaceInvitation[]
   members             WorkspaceMember[]
   webhooks            WorkspaceWebhook[]
-  campaigns           Campaign[] // Relação reversa para Campaigns
+  campaigns           Campaign[]
   owner               User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
+  eventFollowUpMappings EventFollowUpMapping[]
 
   clients       Client[]       @relation("WorkspaceToClient")
   conversations Conversation[] @relation("WorkspaceToConversation")
 
   ai_follow_up_rules WorkspaceAiFollowUpRule[]
+  abandonedCartRules AbandonedCartRule[]
 
   ai_default_system_prompt String? @db.Text
   ai_model_preference      String?
   webhook_ingress_secret   String? @unique
 
-  // --- NOVO CAMPO PARA NOME DA IA ---
   ai_name String? @default("Beatriz") @map("ai_name")
 
-  // --- Fim Campos WhatsApp --- 
-
-  // --- Campos para Google Calendar Auth ---
-  google_refresh_token           String?   @map("google_refresh_token") // Criptografado no banco
+  google_refresh_token           String?   @map("google_refresh_token")
   google_access_token_expires_at DateTime? @map("google_access_token_expires_at")
-  google_calendar_scopes         String[]  @map("google_calendar_scopes") // Lista de escopos autorizados
-  google_account_email           String?   @map("google_account_email") // Email da conta Google conectada
-  // --- Fim Campos Google Calendar Auth ---
+  google_calendar_scopes         String[]  @map("google_calendar_scopes")
+  google_account_email           String?   @map("google_account_email")
 
   active_whatsapp_integration_type WhatsappIntegrationType @default(WHATSAPP_CLOUD_API) @map("active_whatsapp_integration_type")
 
-  // --- Campos para WhatsApp Cloud API --- 
   whatsappPhoneNumberId      String? @map("whatsapp_phone_number_id")
-  whatsappBusinessAccountId  String? @map("whatsapp_business_account_id") // WABA ID
-  whatsappAccessToken        String? @map("whatsapp_access_token") // PRECISA CRIPTOGRAFAR
-  whatsappAppSecret          String? @map("whatsapp_app_secret") // Armazena o App Secret (criptografado)
-  whatsappWebhookVerifyToken String? @map("whatsapp_webhook_verify_token") // Token para validar seu webhook
-  whatsappWebhookRouteToken  String? @unique @map("whatsapp_webhook_route_token") // Token único para URL dinâmica do webhook
+  whatsappBusinessAccountId  String? @map("whatsapp_business_account_id")
+  whatsappAccessToken        String? @map("whatsapp_access_token")
+  whatsappAppSecret          String? @map("whatsapp_app_secret")
+  whatsappWebhookVerifyToken String? @map("whatsapp_webhook_verify_token")
+  whatsappWebhookRouteToken  String? @unique @map("whatsapp_webhook_route_token")
 
-  // --- API EVOLUTION ---
   evolution_api_endpoint      String? @map("evolution_api_endpoint")
   evolution_api_key           String? @map("evolution_api_key")
   evolution_api_instance_name String? @map("evolution_api_instance_name")
-  // --- Fim API EVOLUTION ---
 
   tags WorkspaceTag[]
 
@@ -346,7 +341,7 @@ model WorkspaceFollowUpCampaign {
   campaign_id  String
   created_at   DateTime         @default(now())
   workspace    Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  campaign     FollowUpCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade) // Adicionada relação com a campanha
+  campaign     FollowUpCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, campaign_id])
   @@map("workspace_follow_up_campaigns")
@@ -396,43 +391,43 @@ model WorkspaceAiFollowUpRule {
   workspace_id String
   workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  // Armazenamos como BigInt para precisão, mas converteremos para/de string na API/UI
+  followUpCampaignId String?
+  followUpCampaign   FollowUpCampaign? @relation("CampaignToRules", fields: [followUpCampaignId], references: [id], onDelete: Cascade)
+
   delay_milliseconds BigInt
   message_content    String @db.Text
 
-  // Opcional: Para ordenar regras se houver múltiplas futuramente
-  // order               Int      @default(0)
+  sequenceOrder      Int      @default(0)
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  @@index([workspace_id, created_at]) // Índice para buscar por workspace ordenado
+  @@index([followUpCampaignId, sequenceOrder])
+  @@index([workspace_id, created_at])
   @@map("workspace_ai_follow_up_rules")
   @@schema("workspace_schema")
 }
 
 model Client {
   id           String    @id @default(uuid())
-  workspace_id String // A qual workspace pertence
+  workspace_id String
   workspace    Workspace @relation("WorkspaceToClient", fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  external_id  String? // ID do contato no sistema de origem (ex: Chatwoot Contact ID: body.sender.id)
-  phone_number String? // Número de telefone (ex: body.sender.phone_number) - Pode ser o identificador principal
-  name         String? // Nome do contato (ex: body.sender.name)
-  channel      String? // Canal de origem (ex: "WHATSAPP", "CHATWOOT", etc. - derivado de body.conversation.channel)
+  external_id  String?
+  phone_number String?
+  name         String?
+  channel      String?
 
   follow_ups FollowUp[] @relation("ClientToFollowUp")
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  // Relação com conversas
   conversations Conversation[] @relation("ClientToConversation")
 
-  // JSON para dados adicionais do payload original
   metadata Json?
 
-  @@unique([workspace_id, phone_number, channel]) // Garante cliente único por telefone+canal dentro do workspace
+  @@unique([workspace_id, phone_number, channel])
   @@index([workspace_id])
   @@index([external_id])
   @@index([phone_number])
@@ -442,24 +437,22 @@ model Client {
 
 model Conversation {
   id           String    @id @default(uuid())
-  workspace_id String // A qual workspace pertence (para filtros rápidos)
+  workspace_id String
   workspace    Workspace @relation("WorkspaceToConversation", fields: [workspace_id], references: [id], onDelete: Cascade)
-  client_id    String // A qual cliente pertence
+  client_id    String
   client       Client    @relation("ClientToConversation", fields: [client_id], references: [id], onDelete: Cascade)
 
-  channel                 String? // Canal da conversa (ex: "WHATSAPP")
-  channel_conversation_id String? // ID da conversa no sistema de origem (ex: Chatwoot Conversation ID: body.conversation.id)
-  status                  ConversationStatus @default(ACTIVE) // Status atual (ativa, pausada, fechada)
-  is_ai_active            Boolean            @default(true) // Se a IA deve responder nesta conversa
+  channel                 String?
+  channel_conversation_id String?
+  status                  ConversationStatus @default(ACTIVE)
+  is_ai_active            Boolean            @default(true)
 
-  last_message_at DateTime? // Timestamp da última mensagem (para ordenação)
+  last_message_at DateTime?
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
 
-  // Relação com mensagens
   messages Message[] @relation("ConversationToMessage")
 
-  // JSON para dados adicionais (ex: meta da conversa do Chatwoot)
   metadata Json?
 
   @@unique([workspace_id, client_id, channel])
@@ -473,28 +466,25 @@ model Conversation {
   @@schema("conversation_schema")
 }
 
-// Modelo para cada mensagem individual
 model Message {
   id                 String            @id @default(uuid())
   conversation_id    String
   conversation       Conversation      @relation("ConversationToMessage", fields: [conversation_id], references: [id], onDelete: Cascade)
-  sender_type        MessageSenderType // CLIENT, AI, SYSTEM
-  content            String?           @db.Text // Text content or placeholder like [Imagem Recebida]
-  ai_media_analysis  String?           @db.Text // AI-generated description/transcription
+  sender_type        MessageSenderType
+  content            String?           @db.Text
+  ai_media_analysis  String?           @db.Text
   timestamp          DateTime          @default(now())
-  channel_message_id String? // ID from the external channel (e.g., WhatsApp WAMID)
-  metadata           Json? // Any additional metadata (e.g., webhook payload, AI confidence)
+  channel_message_id String?
+  metadata           Json?
 
-  // --- Campos para Anexos ---
-  media_url       String? @default("") // URL do anexo (ex: S3)
-  media_mime_type String? @default("") // Tipo MIME do anexo (ex: image/jpeg)
-  media_filename  String? @default("") // Nome original do arquivo (útil para documentos)
+  media_url       String? @default("")
+  media_mime_type String? @default("")
+  media_filename  String? @default("")
 
-  // --- Campos para Status de Envio (para mensagens enviadas pelo sistema/AI) ---
-  status            String?   @default("PENDING") // PENDING, SENT, FAILED, DELIVERED (opcional), READ (opcional)
-  providerMessageId String?   @map("provider_message_id") // ID da mensagem no provedor (ex: WhatsApp ID)
-  sentAt            DateTime? @map("sent_at") // Quando foi enviada pela nossa API
-  errorMessage      String?   @map("error_message") @db.Text // Mensagem de erro se o envio falhar
+  status            String?   @default("PENDING")
+  providerMessageId String?   @map("provider_message_id")
+  sentAt            DateTime? @map("sent_at")
+  errorMessage      String?   @map("error_message") @db.Text
 
   @@index([conversation_id])
   @@index([timestamp])
@@ -504,108 +494,138 @@ model Message {
 
 enum ConversationStatus {
   ACTIVE
-  PAUSED_BY_USER // Pausado manualmente pelo operador
-  PAUSED_BY_AI // Pausado pela IA (ex: esperando ação humana) - Opcional
-  CLOSED // Conversa finalizada
+  PAUSED_BY_USER
+  PAUSED_BY_AI
+  CLOSED
 
   @@schema("conversation_schema")
 }
 
 enum MessageSenderType {
-  CLIENT // Mensagem vinda do cliente final
-  AI // Mensagem gerada pela IA do sistema
-  SYSTEM // Mensagem interna do sistema (ex: "IA pausada", "Conversa iniciada")
+  CLIENT
+  AI
+  SYSTEM
   AGENT
 
   @@schema("conversation_schema")
 }
 
-// Adicione esta definição de enum (idealmente perto do modelo FollowUp)
 enum FollowUpStatus {
-  ACTIVE // Sequência em andamento
-  PAUSED // Pausado manualmente ou por alguma condição
-  COMPLETED // Todos os passos da sequência foram enviados
-  CONVERTED // O cliente converteu (parou a sequência)
-  CANCELLED // A sequência foi cancelada manualmente
-  FAILED // Ocorreu um erro irrecuperável (opcional)
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CONVERTED
+  CANCELLED
+  FAILED
 
-  @@schema("follow_up_schema") // Certifique-se de colocar no schema correto!
+  @@schema("follow_up_schema")
 }
 
-// <<< Adicionar Enum para Status do Convite >>>
 enum InvitationStatus {
-  PENDING // Convite enviado, aguardando aceite
-  ACCEPTED // Convite aceito, usuário se tornou membro
-  EXPIRED // Convite expirou antes de ser aceito
-  REVOKED // Convite cancelado pelo admin antes de ser aceito
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
 
-  @@schema("workspace_schema") // Definir no schema correto
+  @@schema("workspace_schema")
 }
 
-// Enum para tipo de integração WhatsApp
 enum WhatsappIntegrationType {
   WHATSAPP_CLOUD_API
   EVOLUTION_API
 
-  @@map("whatsapp_integration_type") // Opcional, define o nome do tipo no DB
+  @@map("whatsapp_integration_type")
   @@schema("workspace_schema")
 }
 
 model Campaign {
-  id          String    @id @default(cuid()) // Usando cuid() como padrão no projeto
+  id          String    @id @default(cuid())
   name        String
-  message     String    @db.Text // Usar Text para mensagens potencialmente longas
-  status      String    @default("PENDING") // Ex: PENDING, PROCESSING, COMPLETED, FAILED, PAUSED, CANCELLED
+  message     String    @db.Text
+  status      String    @default("PENDING")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   workspaceId String    @map("workspace_id")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // Campos de agendamento
-  sendIntervalSeconds  Int    @map("send_interval_seconds") // Intervalo em segundos
-  allowedSendStartTime String @map("allowed_send_start_time") // Formato "HH:MM" (ex: "09:00")
-  allowedSendEndTime   String @map("allowed_send_end_time") // Formato "HH:MM" (ex: "18:00")
-  allowedSendDays      String @map("allowed_send_days") // Ex: "1,2,3,4,5" ou JSON [1,2,3,4,5]
+  sendIntervalSeconds  Int    @map("send_interval_seconds")
+  allowedSendStartTime String @map("allowed_send_start_time")
+  allowedSendEndTime   String @map("allowed_send_end_time")
+  allowedSendDays      String @map("allowed_send_days")
 
-  // Campos para Template HSM (Opcionais)
   isTemplate       Boolean @default(false) @map("is_template")
-  templateName     String? @map("template_name") // Nome exato do template HSM
-  templateCategory String? @map("template_category") // Categoria do template (ex: UTILITY)
+  templateName     String? @map("template_name")
+  templateCategory String? @map("template_category")
 
-  // Relação com os contatos da campanha
   contacts CampaignContact[]
 
   @@map("campaigns")
-  @@schema("workspace_schema") // Adicionando ao schema do workspace
+  @@schema("workspace_schema")
 }
 
 model CampaignContact {
   id          String    @id @default(cuid())
   campaignId  String    @map("campaign_id")
   campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contactInfo String    @map("contact_info") // Telefone ou outro identificador
-  contactName String?   @map("contact_name") // Nome do contato (opcional)
-  status      String    @default("PENDING") // Ex: PENDING, SENT, FAILED
+  contactInfo String    @map("contact_info")
+  contactName String?   @map("contact_name")
+  status      String    @default("PENDING")
   sentAt      DateTime? @map("sent_at")
-  error       String?   @db.Text // Armazenar mensagens de erro longas
+  error       String?   @db.Text
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  @@index([campaignId, status]) // Índice para buscar contatos pendentes rapidamente
+  @@index([campaignId, status])
   @@map("campaign_contacts")
-  @@schema("workspace_schema") // Adicionando ao schema do workspace
+  @@schema("workspace_schema")
 }
 
 model WorkspaceTag {
   id           String   @id @default(cuid())
-  name         String // Nome da tag (ex: "Lead Quente")
+  name         String
   workspace_id String
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  @@unique([workspace_id, name]) // Garante que o nome da tag seja único por workspace
+  @@unique([workspace_id, name])
   @@index([workspace_id])
   @@schema("workspace_schema")
+}
+
+model EventFollowUpMapping {
+  id           String    @id @default(uuid())
+  workspaceId String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  eventName         String
+  followUpCampaignId String
+  followUpCampaign   FollowUpCampaign @relation(fields: [followUpCampaignId], references: [id], onDelete: Cascade)
+
+  isActive   Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([workspaceId, eventName])
+  @@index([workspaceId, isActive])
+  @@map("event_follow_up_mappings")
+  @@schema("workspace_schema")
+}
+
+model AbandonedCartRule {
+  id                 String   @id @default(uuid())
+  workspace_id       String
+  workspace          Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  delay_milliseconds BigInt   // Time to wait after the event
+  message_content    String   @db.Text // Message to send
+  sequenceOrder      Int      @default(0) // Order if multiple rules exist
+
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  @@index([workspace_id, sequenceOrder]) // Index for efficient lookup
+  @@map("abandoned_cart_rules")          // Table name in the DB
+  @@schema("workspace_schema")           // Place in the same schema
 }
