@@ -81,30 +81,62 @@ async function validateIntegrationToken(token: string | null): Promise<string | 
 
 
 export async function POST(req: NextRequest) {
-  const integrationToken = req.headers.get('x-integration-token');
+  const apiKey = req.headers.get('x-api-key'); // <<< Ler x-api-key
   console.log("API POST /api/webhooks/events: Request received.");
-
-  // 1. Autenticação via Token de Integração
-  console.log(`API POST /api/webhooks/events: Attempting auth via x-integration-token.`);
-  const workspaceId = await validateIntegrationToken(integrationToken);
-
-  if (!workspaceId) {
-    console.warn(`API POST /api/webhooks/events: Authentication failed. Invalid or missing x-integration-token.`);
-    return NextResponse.json({ success: false, error: 'Não autorizado. Token de integração inválido ou ausente.' }, { status: 401 });
-  }
-  console.log(`API POST /api/webhooks/events: Authenticated successfully for workspace ${workspaceId}.`);
-
 
   // 2. Parse e Validação do Corpo da Requisição
   let parsedBody;
+  let workspaceId: string; // <<< Declarar workspaceId aqui
   try {
     const body = await req.json();
     parsedBody = eventWebhookSchema.parse(body);
+    workspaceId = parsedBody.workspaceId; // <<< Extrair workspaceId do corpo parseado
     console.log(`API POST /api/webhooks/events: Parsed body for workspace ${workspaceId}:`, parsedBody);
   } catch (error) {
     console.warn(`API POST /api/webhooks/events: Invalid request body for workspace ${workspaceId}:`, error);
     return NextResponse.json({ success: false, error: 'Dados inválidos na requisição', details: (error as z.ZodError).errors }, { status: 400 });
   }
+
+  // --- Validação do API Key (APÓS pegar workspaceId do corpo) ---
+  console.log(`API POST /api/webhooks/events: Attempting auth via x-api-key for workspace ${workspaceId}.`);
+  if (!apiKey) {
+      console.warn(`API POST /api/webhooks/events: Authentication failed. Missing x-api-key header.`);
+      return NextResponse.json({ success: false, error: 'Não autorizado. Cabeçalho x-api-key ausente.' }, { status: 401 });
+  }
+
+  try {
+      const tokenRecord = await prisma.workspaceApiToken.findFirst({
+          where: {
+              token: apiKey,
+              workspace_id: workspaceId, // Validar contra o workspace da requisição
+              revoked: false,
+              OR: [
+                  { expires_at: null },
+                  { expires_at: { gt: new Date() } }
+              ]
+          },
+          select: { id: true } // Apenas confirmar existência
+      });
+
+      if (!tokenRecord) {
+          console.warn(`API POST /api/webhooks/events: Authentication failed. Invalid or expired API key provided for workspace ${workspaceId}.`);
+          return NextResponse.json({ success: false, error: 'Não autorizado. API key inválida ou expirada para este workspace.' }, { status: 401 });
+      }
+
+      console.log(`API POST /api/webhooks/events: Authentication successful via API key for workspace ${workspaceId}. Token ID: ${tokenRecord.id}`);
+      // Atualizar last_used_at (sem bloquear)
+      prisma.workspaceApiToken.update({
+          where: { id: tokenRecord.id },
+          data: { last_used_at: new Date() }
+      }).catch(err => {
+          console.error(`API POST /api/webhooks/events: Failed to update last_used_at for token ${tokenRecord.id}`, err);
+      });
+
+  } catch (error) {
+      console.error('API POST /api/webhooks/events: Error validating API key:', error);
+      return NextResponse.json({ success: false, error: 'Erro interno ao validar API key.' }, { status: 500 });
+  }
+  // --- Fim da Validação do API Key ---
 
   const { eventName, customerPhoneNumber: customerPhoneNumberRaw, eventData } = parsedBody;
 
