@@ -52,11 +52,11 @@ Headers:
 
 Body:
 {
-  "event_type": "abandoned_cart",
-  "workspace_id": "seu_workspace_id",
-  "client_phone_number": "5511999998888", // Número completo com código do país/área
-  "client_name": "Nome do Cliente",
-  // Restante do corpo da requisição OPCIONAL...
+  "eventName": "abandoned_cart",
+  "workspaceId": "seu_workspace_id",
+  "customerPhoneNumber": "5511999998888",
+  "customerName": "Nome do Cliente",
+  // "eventData": { /* Dados adicionais do evento, se houver */ }
 }`}
               </code>
             </pre>
@@ -88,7 +88,7 @@ Headers:
 Body:
 {
   "workspaceId": "id_do_seu_workspace",
-  "clientId": "id_do_cliente"
+  "clientPhoneNumber": "5511988887777"
 }
 `}
               </code>
