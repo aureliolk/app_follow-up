@@ -57,7 +57,6 @@ export async function generateFollowUpMessage(
   // Construir prompt do sistema
   const systemPrompt = `${workspace.ai_default_system_prompt} === Evie uma mensagem de follow-up para o cliente ${client.name} com as seguinte regra: ${rule.message_content}`;
 
-  console.log('systemPrompt', systemPrompt);
   // Parâmetros para IA
   const modelId = workspace.ai_model_preference || 'gpt-4o';
   const clientName = client.name || '';

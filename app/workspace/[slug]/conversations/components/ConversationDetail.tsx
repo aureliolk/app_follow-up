@@ -136,7 +136,7 @@ export default function ConversationDetail() {
       const maxRetries = 3;
       const retryDelay = 2000;
       const connectSSE = () => {
-        const newEventSource = new EventSource(`/api/conversations/${conversationId}/events`);
+        const newEventSource = new EventSource(`/api/sse/conversations/${conversationId}`);
         eventSourceRef.current = newEventSource;
         newEventSource.addEventListener('connection_ready', () => { 
           console.log(`[SSE_LISTENER] Connection Ready for Conv ${conversationId}`);
