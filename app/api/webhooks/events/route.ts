@@ -14,10 +14,8 @@ const eventWebhookSchema = z.object({
   customerPhoneNumber: z.string().min(10, "Número de telefone inválido"), // Validação básica
   workspaceId: z.string().min(1, "ID do workspace é obrigatório"),
   customerName: z.string().min(1, "Nome do cliente é obrigatório"),
-  // Opcional: Adicionar validação mais estrita para formato de telefone se necessário
   eventData: z.record(z.unknown()).optional().default({}), // Objeto para dados extras
-  // campaignId ou sequenceName pode ser necessário aqui dependendo da lógica de decisão
-  // campaignId: z.string().optional(), 
+ 
 });
 
 
@@ -25,8 +23,7 @@ export async function POST(req: NextRequest) {
   const apiKey = req.headers.get('x-api-key'); // <<< Ler x-api-key
   console.log("API POST /api/webhooks/events: Request received.");
 
-  // 2. Parse e Validação do Corpo da Requisição
-  let parsedBody;
+  let parsedBody: any;
   let workspaceId: string; // <<< Declarar workspaceId aqui
   try {
     const body = await req.json();

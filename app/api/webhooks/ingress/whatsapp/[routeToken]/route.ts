@@ -127,16 +127,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         return new NextResponse('Missing signature header', { status: 400 });
     }
 
-    // Calcula a assinatura esperada usando o segredo do .env
-    // const expectedSignature = crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
-    // const receivedSignatureHash = signatureHeader.split('=')[1]; // Pega apenas o hash
-
-    // Compara a assinatura calculada com a recebida
-    // if (expectedSignature !== receivedSignatureHash) {
-    //     console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura inválida (usando segredo global). Expected: ${expectedSignature}, Received Hash: ${receivedSignatureHash}. Rejeitando.`);
-    //     return new NextResponse('Invalid signature', { status: 403 }); // 403 Forbidden é apropriado
-    // }
-
     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura validada com sucesso (usando segredo global).`);
 
     // --- INÍCIO: Processamento do Payload (APÓS validação) ---
@@ -392,15 +382,29 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                                 // --- Lógica para encontrar a mensagem/conversa no DB --- 
                                 try {
+                                    // <<< PASSO 1: Encontrar o Cliente pelo telefone e workspace >>>
+                                    const clientRecord = await prisma.client.findFirst({
+                                        where: { 
+                                            workspace_id: workspace.id, 
+                                            phone_number: recipientId 
+                                        },
+                                        select: { id: true }
+                                    });
+
+                                    if (!clientRecord) {
+                                        console.warn(`[WH_STATUS_LOG] Client not found for phone ${recipientId} in workspace ${workspace.id}. Skipping status update for WAMID ${messageIdFromWhatsapp}.`);
+                                        continue; // Pula para o próximo status update
+                                    }
+                                    const clientId = clientRecord.id; 
+
                                     if (newStatus === 'SENT') {
-                                        // Para SENT, precisamos encontrar a mensagem PENDING enviada pelo AGENT/SYSTEM.
-                                        // A melhor forma é buscar a última mensagem PENDING do AGENT/SYSTEM para este cliente/conversa.
-                                        // Primeiro, encontrar a conversa pelo recipientId (número do cliente) e workspaceId.
+                                        // Para SENT, buscar a conversa e a última msg PENDING
+                                        // <<< PASSO 2 (SENT): Encontrar a Conversa específica do WhatsApp >>>
                                         const conversation = await prisma.conversation.findUnique({
                                             where: {
-                                                workspace_id_client_id_channel: { // <<< CORREÇÃO: Usar a constraint por client_id
+                                                workspace_id_client_id_channel: {
                                                     workspace_id: workspace.id,
-                                                    client_id: await prisma.client.findUniqueOrThrow({ where: { workspace_id_phone_number_channel: { workspace_id: workspace.id, phone_number: recipientId, channel: 'WHATSAPP' } }, select: { id: true } }).then(c => c.id), // <<< USA recipientId PADRONIZADO
+                                                    client_id: clientId, // <<< Usa o clientId encontrado
                                                     channel: 'WHATSAPP'
                                                 }
                                             },
@@ -445,22 +449,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                                     } else { // Para DELIVERED, READ, FAILED - Tentar buscar por WAMID, com fallback
                                         try { // <<< Adicionar try/catch em volta da busca
-                                            // <<< TENTATIVA 1: Buscar por WAMID >>>
+                                            // <<< TENTATIVA 1: Buscar por WAMID (não precisa do cliente) >>>
                                             messageInDb = await prisma.message.findFirst({
                                                 where: { providerMessageId: messageIdFromWhatsapp },
                                                 select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, metadata: true }
                                             }) as SelectedMessageInfo | null;
 
                                             if (!messageInDb) {
-                                                // <<< TENTATIVA 2 (Fallback): Buscar última SENT do SYSTEM/AGENT na conversa >>>
+                                                // <<< TENTATIVA 2 (Fallback): Buscar última SENT na conversa >>>
                                                 console.warn(`[WH_STATUS_LOG] ${newStatus} Status: Message not found by WAMID ${messageIdFromWhatsapp}. Attempting fallback search...`);
-                                                // Precisamos do targetConversationId, que pode não ter sido definido se entramos direto neste else.
-                                                // Obter conversationId mapeando recipientId novamente (pode otimizar guardando o resultado anterior)
+                                                // <<< PASSO 2 (Fallback): Encontrar a Conversa específica do WhatsApp >>>
                                                 const conversationForFallback = await prisma.conversation.findUnique({
                                                     where: {
                                                         workspace_id_client_id_channel: {
                                                             workspace_id: workspace.id,
-                                                            client_id: await prisma.client.findUniqueOrThrow({ where: { workspace_id_phone_number_channel: { workspace_id: workspace.id, phone_number: recipientId, channel: 'WHATSAPP' } }, select: { id: true } }).then(c => c.id),
+                                                            client_id: clientId, // <<< Usa o clientId encontrado
                                                             channel: 'WHATSAPP'
                                                         }
                                                     },

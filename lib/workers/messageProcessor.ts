@@ -2,9 +2,7 @@
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
 import { prisma } from '@/lib/db';
-// Importar a função de envio do WhatsApp (deve existir em lib/channel/whatsappSender.ts)
-import { sendWhatsappMessage } from '@/lib/channel/whatsappSender';
-import { MessageSenderType, ConversationStatus, Prisma } from '@prisma/client'; // Adicionar Prisma
+import { MessageSenderType, Prisma } from '@prisma/client'; // Adicionar Prisma
 import { CoreMessage } from 'ai'; // Tipo para Vercel AI SDK
 // Importar função de descriptografia
 import { decrypt } from '@/lib/encryption';
@@ -19,6 +17,10 @@ import { describeImage } from '@/lib/ai/describeImage';
 import { transcribeAudio } from '@/lib/ai/transcribeAudio';
 import { Readable } from 'stream';
 import { generateChatCompletion } from '../ai/chatService';
+// <<< Importar Notifier Service >>>
+import { publishConversationUpdate, publishWorkspaceUpdate } from '../services/notifierService';
+// <<< Importar Channel Service >>>
+import { sendWhatsAppMessage } from '../services/channelService';
 
 const QUEUE_NAME = 'message-processing';
 const BUFFER_TIME_MS = 3000; // 3 segundos de buffer (ajuste se necessário)
@@ -300,6 +302,10 @@ async function processJob(job: Job<JobData>) {
            // <<< Payload MÍNIMO FUNCIONAL >>>
            const minimalPayload = {
                 id: updatedMessageData.id,
+                // Incluir campos necessários para UI renderizar o placeholder e status
+                content: updatedMessageData.content,
+                sender_type: updatedMessageData.sender_type,
+                timestamp: updatedMessageData.timestamp.toISOString(),
                 media_url: updatedMessageData.media_url,
                 media_mime_type: updatedMessageData.media_mime_type,
                 media_filename: updatedMessageData.media_filename,
@@ -308,12 +314,13 @@ async function processJob(job: Job<JobData>) {
            console.log("[MsgProcessor ${jobId}] Payload Mínimo (skipped batch):", minimalPayload);
 
             try {
-                await redisConnection.publish(
+                // <<< USAR notifierService >>>
+                await publishConversationUpdate(
                     `chat-updates:${conversationId}`,
-                    JSON.stringify({
+                    {
                         type: 'message_content_updated',
                         payload: minimalPayload // <<< USAR PAYLOAD MÍNIMO
-                    })
+                    }
                 );
                 console.log(`[MsgProcessor ${jobId}] Atualização de mídia MÍNIMA (skipped batch) publicada.`);
              } catch (publishError) {
@@ -494,6 +501,7 @@ async function processJob(job: Job<JobData>) {
       // Publicar nova mensagem IA no canal Redis da CONVERSA
       try {
         const conversationChannel = `chat-updates:${conversationId}`;
+        // Preparar payload completo para a UI
         const newAiMessagePayload = {
             type: "new_message",
             payload: { 
@@ -501,12 +509,18 @@ async function processJob(job: Job<JobData>) {
               conversation_id: newAiMessage.conversation_id,
               sender_type: newAiMessage.sender_type,
               content: newAiMessage.content,
+              // Adicionar outros campos esperados pela UI
+              status: 'PENDING', // Mensagem começa PENDING
+              media_url: null,
+              media_mime_type: null,
+              media_filename: null,
               timestamp: newAiMessage.timestamp.toISOString(), // Use ISO string
               metadata: null 
             }
         };
         try {
-            await redisConnection.publish(conversationChannel, JSON.stringify(newAiMessagePayload));
+            // <<< USAR notifierService >>>
+            await publishConversationUpdate(conversationChannel, newAiMessagePayload);
             console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada no canal Redis da CONVERSA.`);
         } catch (aiMsgPublishError) {
             console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR mensagem da IA no Redis (Canal Conversa):`, aiMsgPublishError);
@@ -535,7 +549,8 @@ async function processJob(job: Job<JobData>) {
               metadata: conversationData.metadata, // Workspace notification uses conversation metadata
           };
           try {
-              await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+              // <<< USAR notifierService >>>
+              await publishWorkspaceUpdate(workspaceChannel, workspacePayload);
               console.log(`[MsgProcessor ${jobId}] Notificação de msg IA publicada no canal Redis do WORKSPACE.`);
           } catch (wsNotifyPublishError) {
               console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR notificação de msg IA no Redis (Canal Workspace):`, wsNotifyPublishError);
@@ -560,19 +575,16 @@ async function processJob(job: Job<JobData>) {
       if (channel === 'WHATSAPP') {
             console.log(`[MsgProcessor ${jobId}] STEP 9: ENTERING WhatsApp send block.`);
             const { whatsappPhoneNumberId } = workspace; // AccessToken already available
-            if (whatsappAccessToken && whatsappPhoneNumberId && clientPhoneNumber) {
-                let decryptedAccessTokenForSend: string | null = null;
-                try {
-                    console.log(`[MsgProcessor ${jobId}] STEP 9: Attempting decrypt for WhatsApp send...`);
-                    decryptedAccessTokenForSend = decrypt(whatsappAccessToken);
-                    if (!decryptedAccessTokenForSend) throw new Error("Token de acesso descriptografado para envio está vazio.");
-                    console.log(`[MsgProcessor ${jobId}] STEP 9: Decrypt successful for WhatsApp send.`);
+            const encryptedAccessToken = workspace.whatsappAccessToken; // Pega o token ENCRIPTADO
 
+            if (whatsappAccessToken && whatsappPhoneNumberId && clientPhoneNumber) {
+                try {
                     console.log(`[MsgProcessor ${jobId}] STEP 9: Attempting sendWhatsappMessage to ${clientPhoneNumber}...`);
-                    const sendResult = await sendWhatsappMessage(
+                    // <<< USAR channelService >>>
+                    const sendResult = await sendWhatsAppMessage(
                         whatsappPhoneNumberId,
                         clientPhoneNumber,
-                        decryptedAccessTokenForSend,
+                        encryptedAccessToken, // Passar o token ENCRIPTADO
                         aiResponseText, // <<< ENVIAR CONTEÚDO ORIGINAL, SEM PREFIXO
                         aiDisplayName
                     );
@@ -636,6 +648,10 @@ async function processJob(job: Job<JobData>) {
          // <<< Payload MÍNIMO FUNCIONAL >>>
          const minimalPayloadFinal = {
               id: updatedMessageData.id,
+              // Incluir campos necessários para UI renderizar o placeholder e status
+              content: updatedMessageData.content,
+              sender_type: updatedMessageData.sender_type,
+              timestamp: updatedMessageData.timestamp.toISOString(),
               media_url: updatedMessageData.media_url,
               media_mime_type: updatedMessageData.media_mime_type,
               media_filename: updatedMessageData.media_filename,
@@ -644,15 +660,15 @@ async function processJob(job: Job<JobData>) {
          console.log("[MsgProcessor ${jobId}] Payload Mínimo (Passo 10):", minimalPayloadFinal);
 
         try {
-             // REMOVIDOS logs STEP 10 detalhados
-            await redisConnection.publish(
-                `chat-updates:${conversationId}`, // Canal correto
-                JSON.stringify({ 
-                    type: 'message_content_updated',
-                    payload: minimalPayloadFinal // <<< USAR PAYLOAD MÍNIMO
-                })
-            );
-            console.log(`[MsgProcessor ${jobId}] Publicação final da atualização de mídia MÍNIMA concluída.`);
+             // <<< USAR notifierService >>>
+             await publishConversationUpdate(
+                 `chat-updates:${conversationId}`,
+                 {
+                     type: 'message_content_updated',
+                     payload: minimalPayloadFinal // <<< USAR PAYLOAD MÍNIMO
+                 }
+             );
+             console.log(`[MsgProcessor ${jobId}] Publicação final da atualização de mídia MÍNIMA concluída.`);
         } catch (mediaUpdatePublishError) {
             console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR atualização mínima de mídia (Passo 10):`, mediaUpdatePublishError);
         }
