@@ -86,3 +86,73 @@ export async function loadFollowUpContext(
   });
   return { followUp, client: followUp.client, workspace: followUp.workspace, conversation };
 }
+
+/**
+ * Obtém ou cria o cliente e conversa para um número no canal WhatsApp.
+ * Retorna o cliente, a conversa e flag se foi criada agora.
+ */
+export async function getOrCreateConversation(
+  workspaceId: string,
+  phoneNumber: string,
+  clientName?: string | null
+): Promise<{ client: Client; conversation: Conversation; wasCreated: boolean }> {
+  // 1) Cliente
+  let client = await prisma.client.findFirst({
+    where: { workspace_id: workspaceId, phone_number: phoneNumber }
+  });
+  let clientCreated = false;
+  if (!client) {
+    client = await prisma.client.create({
+      data: { 
+        workspace_id: workspaceId, 
+        phone_number: phoneNumber, 
+        name: clientName ?? null,
+        metadata: {} 
+      }
+    });
+    clientCreated = true;
+  } else if (!client.name && clientName) {
+    // Cliente existe, mas sem nome -> Atualiza com o nome recebido
+    client = await prisma.client.update({
+      where: { id: client.id },
+      data: { name: clientName }
+    });
+  }
+
+  // 2) Conversa
+  let conversation: Conversation;
+  let wasCreated = false;
+  try {
+    conversation = await prisma.conversation.create({
+      data: {
+        workspace_id: workspaceId,
+        client_id: client.id,
+        channel: 'WHATSAPP',
+        status: ConversationStatus.ACTIVE,
+        is_ai_active: true,
+        last_message_at: new Date()
+      }
+    });
+    wasCreated = true;
+  } catch (e: any) {
+    // Se já existir pela chave única workspace_id+client_id+channel, atualiza
+    if (e.code === 'P2002') {
+      conversation = await prisma.conversation.update({
+        where: {
+          workspace_id_client_id_channel: {
+            workspace_id: workspaceId,
+            client_id: client.id,
+            channel: 'WHATSAPP'
+          }
+        },
+        data: {
+          last_message_at: new Date(),
+          status: ConversationStatus.ACTIVE
+        }
+      });
+    } else {
+      throw e;
+    }
+  }
+  return { client, conversation, wasCreated };
+}

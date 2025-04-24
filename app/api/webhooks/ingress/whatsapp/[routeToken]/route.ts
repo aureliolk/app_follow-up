@@ -8,6 +8,9 @@ import { addMessageProcessingJob } from '@/lib/queues/queueService'; // Importar
 import { ConversationStatus, Prisma, Message as PrismaMessage, FollowUpStatus } from '@prisma/client'; // Importar tipos necessários E FollowUpStatus
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< IMPORTAR a fila de sequência
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
+import { getOrCreateConversation } from '@/lib/services/conversationService';
+import { saveMessageRecord } from '@/lib/services/persistenceService';
+import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
 
 
 // Define a type for the selected message fields
@@ -152,6 +155,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                             for (const message of change.value.messages) {
                                 // Processar mensagens de texto, imagem ou áudio recebidas
                                 if (message.from) {
+                                    // <<< Extrair nome do contato (se disponível) >>>
+                                    const senderName = contacts?.[0]?.profile?.name;
+
                                     const receivedTimestamp = parseInt(message.timestamp, 10) * 1000; // Timestamp da mensagem (em segundos, converter para ms)
                                     const senderPhoneNumberRaw = message.from; // Número original
                                     const messageIdFromWhatsapp = message.id; // ID da mensagem na API do WhatsApp
@@ -164,13 +170,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         continue; // Pular esta mensagem se o número for inválido
                                     }
                                     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Remetente padronizado de ${senderPhoneNumberRaw} para ${senderPhoneNumber}`);
+                                    
+                                    // Obter ou criar conversa e client usando serviço modularizado
+                                    const { conversation, client, wasCreated } = await getOrCreateConversation(
+                                        workspace.id,
+                                        senderPhoneNumber,
+                                        senderName // <<< Passar o nome extraído
+                                    );
+                                    console.log(
+                                        `[WHATSAPP WEBHOOK - POST ${routeToken}] Conversation ${conversation.id} ${wasCreated ? 'criada' : 'recuperada'} para client ${client.id}.` + (senderName ? ` (Nome: ${senderName})` : '') // Log opcional do nome
+                                    );
 
                                     let messageContent: string | null = null;
                                     const messageType = message.type;
                                     let mediaId: string | null = null;
                                     let mimeType: string | null = null; // <<< Guardar mime_type
                                     let requiresProcessing = false; // <<< Flag para saber se deve enfileirar job
-                                    let wasCreated = false;
 
                                     if (messageType === 'text') {
                                         messageContent = message.text?.body;
@@ -221,194 +236,40 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         continue;
                                     }
 
-                                    // --- Upsert Client --- Refatorado
-                                    const targetChannel = 'WHATSAPP'; // Canal específico para esta rota
-                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Finding or creating client for phone ${senderPhoneNumber} and channel ${targetChannel} in workspace ${workspace.id}`);
-
-                                    let client: Prisma.ClientGetPayload<{ select: { id: true, name: true, channel: true, phone_number: true } }>; // Definir tipo para o cliente final
-
-                                    // Tentar encontrar cliente existente pelo telefone no workspace
-                                    // Busca primeiro com o canal correto para otimizar
-                                    let existingClient = await prisma.client.findUnique({
-                                        where: {
-                                            workspace_id_phone_number_channel: {
-                                                workspace_id: workspace.id,
-                                                phone_number: senderPhoneNumber,
-                                                channel: targetChannel,
-                                            }
-                                        },
-                                        select: { id: true, name: true, channel: true, phone_number: true },
-                                    });
-
-                                    // Se não encontrou com o canal certo, buscar SÓ pelo telefone
-                                    if (!existingClient) {
-                                        existingClient = await prisma.client.findFirst({
-                                            where: {
-                                                workspace_id: workspace.id,
-                                                phone_number: senderPhoneNumber,
-                                            },
-                                             select: { id: true, name: true, channel: true, phone_number: true },
-                                        });
-                                    }
-
-                                    if (existingClient) {
-                                        // Cliente encontrado, verificar/atualizar canal e nome
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Found existing client ${existingClient.id}. Current channel: ${existingClient.channel}`);
-                                        const dataToUpdate: Prisma.ClientUpdateInput = { updated_at: new Date() };
-                                        let needsUpdate = false;
-
-                                        // Precisa atualizar o canal?
-                                        if (existingClient.channel !== targetChannel) {
-                                            dataToUpdate.channel = targetChannel;
-                                            needsUpdate = true;
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Updating channel for client ${existingClient.id} to ${targetChannel}.`);
-                                        }
-
-                                        // Tentar obter nome do perfil do WhatsApp do payload atual
-                                        const profileNameFromPayload = change.value.contacts?.find((c: any) => c.wa_id === senderPhoneNumberRaw)?.profile?.name;
-
-                                        // Precisa atualizar o nome? (Se o nome atual for nulo E temos um nome melhor do payload)
-                                        if (existingClient.name === null && profileNameFromPayload) {
-                                            dataToUpdate.name = profileNameFromPayload;
-                                            needsUpdate = true;
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Updating name for client ${existingClient.id} to '${profileNameFromPayload}' from payload.`);
-                                        }
-
-                                        if (needsUpdate) {
-                                            client = await prisma.client.update({
-                                                where: { id: existingClient.id },
-                                                data: dataToUpdate,
-                                                select: { id: true, name: true, channel: true, phone_number: true },
-                                            });
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Client ${client.id} updated.`);
-                                        } else {
-                                            client = existingClient; // Nenhuma atualização necessária
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Client ${existingClient.id} already up-to-date.`);
-                                        }
-                                    } else {
-                                        // Cliente não encontrado, criar novo
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Client not found for phone ${senderPhoneNumber}. Creating new client...`);
-                                        // Tentar obter nome do perfil do WhatsApp do payload atual (USANDO O NÚMERO RAW)
-                                        const profileNameFromPayload = change.value.contacts?.find((c: any) => c.wa_id === senderPhoneNumberRaw)?.profile?.name;
-                                        client = await prisma.client.create({
-                                            data: {
-                                                workspace_id: workspace.id,
-                                                phone_number: senderPhoneNumber,
-                                                channel: targetChannel,
-                                                name: profileNameFromPayload || null,
-                                                external_id: senderPhoneNumberRaw,
-                                            },
-                                             select: { id: true, name: true, channel: true, phone_number: true },
-                                        });
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Client ${client.id} created with channel ${client.channel}.`);
-                                    }
-                                     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Client ${client.id} (Name: ${client.name}) ready.`);
-                                     // --- Fim da Lógica Refatorada ---
-
-                                    // --- Tentar Criar ou Atualizar Conversa ---
-                                    let conversation: Prisma.ConversationGetPayload<{}>; // Definir tipo explícito
-                                    try {
-                                        // Tenta criar primeiro
-                                        conversation = await prisma.conversation.create({
-                                            data: {
-                                                workspace_id: workspace.id,
-                                                client_id: client.id,
-                                                channel: 'WHATSAPP',
-                                                status: ConversationStatus.ACTIVE,
-                                                is_ai_active: true, // Começa com IA ativa
-                                                last_message_at: new Date(receivedTimestamp),
-                                            }
-                                        });
-                                        wasCreated = true;
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nova Conversa ${conversation.id} CRIADA para Cliente ${client.id}. (wasCreated = true)`);
-                                    } catch (e) {
-                                        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-                                            // Violação de constraint única, a conversa já existe. Atualizar.
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa existente para cliente ${client.id} encontrada. Atualizando...`);
-                                            conversation = await prisma.conversation.update({
-                                                where: {
-                                                    workspace_id_client_id_channel: {
-                                                        workspace_id: workspace.id,
-                                                        client_id: client.id,
-                                                        channel: 'WHATSAPP',
-                                                    }
-                                                },
-                                                data: {
-                                                    last_message_at: new Date(receivedTimestamp),
-                                                    status: ConversationStatus.ACTIVE, // Reabre se estava fechada
-                                                    updated_at: new Date(),
-                                                }
-                                            });
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa ${conversation.id} ATUALIZADA.`);
-                                        } else {
-                                            // Outro erro durante a criação/atualização da conversa
-                                            console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro inesperado ao criar/atualizar conversa para cliente ${client.id}:`, e);
-                                            // Considerar se deve parar aqui ou continuar sem conversa? Por segurança, vamos parar.
-                                            // Não retornar 500 para a Meta, apenas logar e pular esta mensagem.
-                                            continue; // Pula para a próxima mensagem no loop
-                                        }
-                                    }
-                                    // --- Fim Criar/Atualizar Conversa ---
-
                                     // --- Save Message ---
-                                    const newMessage = await prisma.message.create({
-                                        data: {
-                                            conversation_id: conversation.id,
-                                            sender_type: 'CLIENT',
-                                            content: messageContent, // Placeholder para mídias
-                                            timestamp: new Date(receivedTimestamp),
-                                            channel_message_id: messageIdFromWhatsapp,
-                                            metadata: { // Armazenar detalhes da mídia
-                                                whatsappMessage: message,
-                                                // Somente adicionar campos se existirem
-                                                ...(mediaId && { mediaId }),
-                                                ...(mimeType && { mimeType }),
-                                                messageType: messageType, // Sempre guardar o tipo original
-                                            }
+                                    // Persiste mensagem no banco via saveMessageRecord
+                                    const savedMessage = await saveMessageRecord({
+                                        conversation_id: conversation.id,
+                                        sender_type: 'CLIENT',
+                                        content: messageContent!,
+                                        timestamp: new Date(receivedTimestamp),
+                                        metadata: {
+                                            messageIdFromWhatsapp,
+                                            ...(mediaId && { mediaId }),
+                                            ...(mimeType && { mimeType }),
+                                            messageType
                                         },
-                                        select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true }
+                                        channel_message_id: messageIdFromWhatsapp
                                     });
-                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} (WPP ID: ${messageIdFromWhatsapp}) salva para Conv ${conversation.id}.`);
+                                    console.log(
+                                        `[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${savedMessage.id} salva para Conv ${conversation.id}.`
+                                    );
 
-                                    // --- Publish to Redis (Canal da Conversa - CORRIGIDO) ---
-                                    try {
-                                        const conversationChannel = `chat-updates:${conversation.id}`;
-                                        // <<< CORREÇÃO AQUI >>> Envolver no formato { type, payload }
-                                        const conversationPayload = {
-                                            type: 'new_message',
-                                            payload: newMessage
-                                        };
-                                        const conversationPayloadString = JSON.stringify(conversationPayload);
-                                        await redisConnection.publish(conversationChannel, conversationPayloadString);
-                                        // Atualizar log para refletir o novo formato
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Evento {type: 'new_message', payload: Msg ${newMessage.id}} publicado no canal Redis da CONVERSA: ${conversationChannel}`);
-                                    } catch (publishError) {
-                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar evento new_message para ${newMessage.id} no Redis (Canal Conversa):`, publishError);
-                                    }
+                                    // Notificar front-end via serviço modularizado
+                                    await publishConversationUpdate(
+                                        `chat-updates:${conversation.id}`,
+                                        { type: 'new_message', payload: savedMessage }
+                                    );
 
-                                    // --- Publish to Redis (Canal do Workspace) ---
-                                    try {
-                                        const workspaceChannel = `workspace-updates:${workspace.id}`;
-                                        const workspacePayload = {
+                                    // Notificar workspace subscribers via serviço modularizado
+                                    await publishWorkspaceUpdate(
+                                        `workspace-updates:${workspace.id}`,
+                                        {
                                             type: 'new_message',
                                             conversationId: conversation.id,
-                                            channel: conversation.channel,
-                                            status: conversation.status,
-                                            is_ai_active: conversation.is_ai_active,
-                                            lastMessageTimestamp: newMessage.timestamp.toISOString(),
-                                            last_message_at: newMessage.timestamp.toISOString(), // Redundante mas mantém consistência
-                                            clientId: client.id,
-                                            clientName: client.name,
-                                            clientPhone: client.phone_number,
-                                            lastMessageContent: newMessage.content,
-                                            lastMessageSenderType: newMessage.sender_type,
-                                            metadata: conversation.metadata, // Incluir metadata da conversa
-                                        };
-                                        await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Notificação ENRIQUECIDA publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
-                                    } catch (publishError) {
-                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao publicar notificação no Redis (Canal Workspace):`, publishError);
-                                    }
+                                            lastMessageTimestamp: savedMessage.timestamp.toISOString()
+                                        }
+                                    );
 
                                     // --- Enqueue Job para Processamento da Mensagem (IA, etc.) ---
                                     // É importante que este job NÃO dependa do início do follow-up
@@ -417,18 +278,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                             const jobData = {
                                                 conversationId: conversation.id,
                                                 clientId: client.id,
-                                                newMessageId: newMessage.id,
+                                                newMessageId: savedMessage.id,
                                                 workspaceId: workspace.id,
                                                 receivedTimestamp: receivedTimestamp,
                                             };
                                             await addMessageProcessingJob(jobData);
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Job adicionado à fila message-processing para msg ${newMessage.id}.`);
+                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Job adicionado à fila message-processing para msg ${savedMessage.id}.`);
                                         } catch (queueError) {
                                             console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao adicionar job à fila message-processing:`, queueError);
                                             // Logar o erro, mas continuar, pois a mensagem foi salva
                                         }
                                     } else {
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${newMessage.id} (Tipo: ${messageType}) não requer processamento pela IA/Worker. Job não enfileirado.`);
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${savedMessage.id} (Tipo: ${messageType}) não requer processamento pela IA/Worker. Job não enfileirado.`);
                                     }
 
                                     // **************************************************

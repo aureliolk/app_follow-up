@@ -12,72 +12,13 @@ import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // <<< IMPOR
 const eventWebhookSchema = z.object({
   eventName: z.string().min(1, "Nome do evento é obrigatório"),
   customerPhoneNumber: z.string().min(10, "Número de telefone inválido"), // Validação básica
+  workspaceId: z.string().min(1, "ID do workspace é obrigatório"),
+  customerName: z.string().min(1, "Nome do cliente é obrigatório"),
   // Opcional: Adicionar validação mais estrita para formato de telefone se necessário
   eventData: z.record(z.unknown()).optional().default({}), // Objeto para dados extras
   // campaignId ou sequenceName pode ser necessário aqui dependendo da lógica de decisão
   // campaignId: z.string().optional(), 
 });
-
-// Função atualizada para validar o token de integração usando Prisma
-async function validateIntegrationToken(token: string | null): Promise<string | null> {
-  if (!token) {
-    console.warn("validateIntegrationToken: Nenhum token fornecido.");
-    return null; // Token ausente
-  }
-
-  try {
-    console.log(`validateIntegrationToken: Buscando token: ${token.substring(0, 5)}...`); // Log parcial por segurança
-    const tokenRecord = await prisma.workspaceApiToken.findUnique({
-      where: {
-        token: token,
-        // Adicionar um índice composto (token, revoked, workspace_id) no schema.prisma pode otimizar isso
-      },
-      select: {
-        id: true,
-        workspace_id: true,
-        revoked: true,
-        expires_at: true,
-        last_used_at: true, // Para possível atualização do last_used_at
-      }
-    });
-
-    if (!tokenRecord) {
-      console.warn(`validateIntegrationToken: Token não encontrado: ${token.substring(0, 5)}...`);
-      return null; // Token não encontrado no banco de dados
-    }
-
-    if (tokenRecord.revoked) {
-      console.warn(`validateIntegrationToken: Token revogado (ID: ${tokenRecord.id}).`);
-      return null; // Token foi revogado
-    }
-
-    if (tokenRecord.expires_at && new Date(tokenRecord.expires_at) < new Date()) {
-      console.warn(`validateIntegrationToken: Token expirado (ID: ${tokenRecord.id}) em ${tokenRecord.expires_at}.`);
-      // Opcional: Poderia marcar o token como revogado aqui automaticamente
-      // await prisma.workspaceApiToken.update({ where: { id: tokenRecord.id }, data: { revoked: true }});
-      return null; // Token expirou
-    }
-
-    console.log(`validateIntegrationToken: Token válido encontrado (ID: ${tokenRecord.id}) para workspace ${tokenRecord.workspace_id}.`);
-
-    // Opcional: Atualizar last_used_at de forma assíncrona (não bloquear a resposta)
-    // Não usar await aqui para não atrasar a resposta principal.
-    // Se falhar, não é crítico para a validação em si.
-    prisma.workspaceApiToken.update({
-      where: { id: tokenRecord.id },
-      data: { last_used_at: new Date() }
-    }).catch(err => {
-        console.error(`validateIntegrationToken: Falha ao atualizar last_used_at para token ${tokenRecord.id}:`, err);
-    });
-
-
-    return tokenRecord.workspace_id; // Token válido, retorna o ID do workspace
-
-  } catch (error) {
-    console.error("validateIntegrationToken: Erro ao validar token:", error);
-    return null; // Erro durante a validação
-  }
-}
 
 
 export async function POST(req: NextRequest) {
@@ -138,7 +79,7 @@ export async function POST(req: NextRequest) {
   }
   // --- Fim da Validação do API Key ---
 
-  const { eventName, customerPhoneNumber: customerPhoneNumberRaw, eventData } = parsedBody;
+  const { eventName, customerPhoneNumber: customerPhoneNumberRaw, eventData, customerName } = parsedBody;
 
   // +++ PADRONIZAR NÚMERO DO CLIENTE +++
   const customerPhoneNumber = standardizeBrazilianPhoneNumber(customerPhoneNumberRaw);
@@ -224,7 +165,7 @@ export async function POST(req: NextRequest) {
                 workspace_id: workspaceId,
                 phone_number: customerPhoneNumber,
                 channel: targetChannel,
-                name: customerPhoneNumber, // Nome padrão inicial
+                name: customerName, // Nome padrão inicial
                 // metadata: eventData || Prisma.DbNull, // Adicionar se necessário
             },
             select: { id: true, name: true, channel: true }, // Selecionar os mesmos campos
@@ -337,6 +278,7 @@ export async function POST(req: NextRequest) {
             // Preparar dados do Job
             const jobData = {
                 // Identificador para o worker saber que é de carrinho abandonado
+                jobType: 'abandonedCart',
                 abandonedCartRuleId: rule.id,
                 workspaceId: workspaceId,
                 clientId: client.id,
