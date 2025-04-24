@@ -44,4 +44,32 @@ Testes:
 [ ] Testar a edição de uma regra existente.
 [ ] Testar a exclusão de uma regra.
 [ ] Testar a validação de entrada no formulário (tempos inválidos, campos vazios).
-[ ] Verificar se a lista atualiza corretamente após cada operação.
+ [ ] Verificar se a lista atualiza corretamente após cada operação.
+
+Refatoração: Modularização dos fluxos de Carrinho Abandonado e Inatividade
+  - Criar diretório lib/services e os arquivos:
+    * conversationService.ts
+    * aiService.ts
+    * channelService.ts
+    * persistenceService.ts
+    * notifierService.ts
+    * schedulerService.ts
+  - Em cada service, implementar funções:
+    * conversationService:
+      - loadAbandonedCartContext(conversationId: string, workspaceId: string)
+      - loadFollowUpContext(followUpId: string, workspaceId: string)
+    * aiService:
+      - generateCartMessage(context: AbandonedCartContext)
+      - generateFollowUpMessage(context: FollowUpContext)
+    * channelService:
+      - sendWhatsAppMessage(phoneNumberId: string, recipientPhone: string, accessToken: string, content: string, senderName?: string)
+    * persistenceService:
+      - saveMessageRecord(messageData: SaveMessageData)
+    * notifierService:
+      - publishConversationUpdate(channel: string, payload: any)
+      - publishWorkspaceUpdate(channel: string, payload: any)
+    * schedulerService:
+      - scheduleSequenceJob(jobData: SequenceJobData, delay: number, jobId?: string)
+  - Refatorar lib/workers/sequenceStepProcessor.ts para chamar processAbandonedCart(...) ou processFollowUp(...) nos novos services
+  - Escrever testes unitários para cada service recém-criado
+  - Atualizar README ou criar lib/services/README.md documentando cada service e suas funções

@@ -1,0 +1,63 @@
+GoogleCalendarTool] Configurando workspaceId atual: 5207c77e-e038-4a5d-8bd2-e4263809a534
+Gerando texto com IA. Modelo: openrouter/google/gemini-2.0-flash-001, Mensagens: 1, Google Conectado: true, Workspace: 5207c77e-e038-4a5d-8bd2-e4263809a534
+Texto gerado pela IA: Entendido! Estou aqui para ajudar a Acos Services. Vou aguardar o retorno deles e manter essa conversa ativa até obter uma resposta. 😉
+
+[WhatsappSender] Enviando para 5573991121575 via 447057031834187 (Axios): "Entendido! Estou aqui para ajudar a Acos Services...."
+[WhatsappSender] Mensagem enviada com sucesso para 5573991121575 via Axios. WAMID: wamid.HBgMNTU3MzkxMTIxNTc1FQIAERgSNjU0NDI2QzdFQjI2NEVCMkE4AA==
+[SequenceWorker] Job seq_ff21a8eb-14a2-461f-9179-fb84070b4a4d_step_369034a7-4995-4046-a0dd-cfdc863ba35c failed: PrismaClientValidationError: 
+Invalid `prisma.message.create()` invocation in
+/Users/aureliolk/Projects/app_dev-main/lib/services/persistenceService.ts:35:40
+
+  32   metadata,
+  33   channel_message_id
+  34 } = data;
+→ 35 const message = await prisma.message.create({
+       data: {
+         conversation: {
+           connect: {
+             id: undefined,
+     ?       workspace_id_client_id_channel?: ConversationWorkspace_idClient_idChannelCompoundUniqueInput,
+     ?       workspace_id_channel_conversation_id?: ConversationWorkspace_idChannel_conversation_idCompoundUniqueInput,
+     ?       AND?: ConversationWhereInput | ConversationWhereInput[],
+     ?       OR?: ConversationWhereInput[],
+     ?       NOT?: ConversationWhereInput | ConversationWhereInput[],
+     ?       workspace_id?: StringFilter | String,
+     ?       client_id?: StringFilter | String,
+     ?       channel?: StringNullableFilter | String | Null,
+     ?       channel_conversation_id?: StringNullableFilter | String | Null,
+     ?       status?: EnumConversationStatusFilter | ConversationStatus,
+     ?       is_ai_active?: BoolFilter | Boolean,
+     ?       last_message_at?: DateTimeNullableFilter | DateTime | Null,
+     ?       created_at?: DateTimeFilter | DateTime,
+     ?       updated_at?: DateTimeFilter | DateTime,
+     ?       metadata?: JsonNullableFilter,
+     ?       workspace?: WorkspaceScalarRelationFilter | WorkspaceWhereInput,
+     ?       client?: ClientScalarRelationFilter | ClientWhereInput,
+     ?       messages?: MessageListRelationFilter
+           }
+         },
+         sender_type: "AI",
+         content: "Entendido! Estou aqui para ajudar a Acos Services. Vou aguardar o retorno deles e manter essa conversa ativa até obter uma resposta. 😉\n",
+         timestamp: new Date("2025-04-24T12:42:05.400Z"),
+         status: "SENT",
+         channel_message_id: "wamid.HBgMNTU3MzkxMTIxNTc1FQIAERgSNjU0NDI2QzdFQjI2NEVCMkE4AA==",
+         providerMessageId: "wamid.HBgMNTU3MzkxMTIxNTc1FQIAERgSNjU0NDI2QzdFQjI2NEVCMkE4AA==",
+         metadata: {
+           ruleId: "369034a7-4995-4046-a0dd-cfdc863ba35c",
+           followUpId: "ff21a8eb-14a2-461f-9179-fb84070b4a4d"
+         }
+       }
+     })
+
+Argument `connect` of type ConversationWhereUniqueInput needs at least one of `id`, `workspace_id_client_id_channel` or `workspace_id_channel_conversation_id` arguments. Available options are marked with ?.
+    at An (/Users/aureliolk/Projects/app_dev-main/node_modules/.pnpm/@prisma+client@6.6.0_prisma@6.6.0_typescript@5.8.3__typescript@5.8.3/node_modules/@prisma/client/runtime/library.js:29:1363)
+    at zn.handleRequestError (/Users/aureliolk/Projects/app_dev-main/node_modules/.pnpm/@prisma+client@6.6.0_prisma@6.6.0_typescript@5.8.3__typescript@5.8.3/node_modules/@prisma/client/runtime/library.js:121:7102)
+    at zn.handleAndLogRequestError (/Users/aureliolk/Projects/app_dev-main/node_modules/.pnpm/@prisma+client@6.6.0_prisma@6.6.0_typescript@5.8.3__typescript@5.8.3/node_modules/@prisma/client/runtime/library.js:121:6784)
+    at zn.request (/Users/aureliolk/Projects/app_dev-main/node_modules/.pnpm/@prisma+client@6.6.0_prisma@6.6.0_typescript@5.8.3__typescript@5.8.3/node_modules/@prisma/client/runtime/library.js:121:6491)
+    at async l (/Users/aureliolk/Projects/app_dev-main/node_modules/.pnpm/@prisma+client@6.6.0_prisma@6.6.0_typescript@5.8.3__typescript@5.8.3/node_modules/@prisma/client/runtime/library.js:130:9778)
+    at async saveMessageRecord (/Users/aureliolk/Projects/app_dev-main/lib/services/persistenceService.ts:35:19)
+    at async processFollowUp (/Users/aureliolk/Projects/app_dev-main/lib/services/sequenceService.ts:94:17)
+    at async <anonymous> (/Users/aureliolk/Projects/app_dev-main/node_modules/.pnpm/bullmq@5.49.1/node_modules/bullmq/src/classes/worker.ts:909:26)
+    at async Worker.retryIfFailed (/Users/aureliolk/Projects/app_dev-main/node_modules/.pnpm/bullmq@5.49.1/node_modules/bullmq/src/classes/worker.ts:1173:16) {
+  clientVersion: '6.6.0'
+}
