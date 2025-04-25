@@ -1,15 +1,25 @@
-// todo
+// todo list
 
-# Refatoração WhatsApp Templates TODO
+# TODO: Refatoração Trigger em Massa com Variáveis de Template (Abordagem 1)
 
-- [ ] Mover o componente `WhatsappTemplateDialog` de `app/workspace/[slug]/conversations/components/` para `components/whatsapp/`
-- [ ] Atualizar a importação do `WhatsappTemplateDialog` em `app/workspace/[slug]/conversations/components/ConversationInputArea.tsx`
-- [ ] Mover/Definir o tipo `WhatsappTemplate` em `lib/types/whatsapp.ts` (ou `lib/types/index.ts`)
-- [ ] Atualizar importações do tipo `WhatsappTemplate` em `components/whatsapp/WhatsappTemplateDialog.tsx` e onde mais for usado
-- [ ] Criar/Definir a Server Action `sendWhatsappTemplateAction` em `lib/actions/whatsappActions.ts` (se `lib/actions` não existir, criar)
-- [ ] Implementar a lógica na `sendWhatsappTemplateAction` (buscar credenciais, formatar payload, chamar API WhatsApp, opcionalmente criar mensagem no DB com status PENDING/SENT)
-- [ ] Refatorar a função `sendTemplateMessage` no `ConversationContext` para chamar a `sendWhatsappTemplateAction`, passando os dados necessários (incluindo `clientId` se necessário para a action)
-- [ ] Garantir que `ConversationDetail.tsx` passe todos os dados necessários (como `clientId`) para a função `sendTemplateMessage` do contexto.
-- [ ] Testar o fluxo completo de seleção e envio de templates na área de conversas original.
-- [ ] Identificar e refatorar outras áreas do app que precisarão usar o `WhatsappTemplateDialog` e a `sendWhatsappTemplateAction`.
+- [ ] Confirmar/Ajustar nomes dos campos nos modelos Prisma `Campaign` e `CampaignContact` (mensagem/corpo, intervalo, horários, dias, isTemplate, templateName, templateLanguage, contactInfo, contactName).
+- [ ] Adicionar campo `variables Json?` ao modelo `CampaignContact` no arquivo `prisma/schema.prisma` para armazenar as variáveis específicas de cada contato.
+- [ ] Executar `npx prisma generate` para atualizar o Prisma Client após modificar o schema.
+- [ ] Atualizar a interface `Contact` em `app/workspace/[slug]/mass-trigger/components/TriggerForm.tsx` para incluir `variables?: Record<string, string>;`.
+- [ ] Modificar a função `handleFileChange` em `TriggerForm.tsx`:
+    - Extrair dados das colunas adicionais (a partir da coluna 2) como valores de variáveis (chave "1" para coluna 2, "2" para coluna 3, etc.).
+    - Armazenar o objeto `variables` extraído dentro de cada objeto `Contact` no estado `contacts`.
+- [ ] Atualizar as descrições/instruções na UI de `TriggerForm.tsx` para informar o usuário sobre a necessidade de incluir colunas para variáveis no arquivo de upload.
+- [ ] Atualizar a função `handleSubmit` em `TriggerForm.tsx` para garantir que o array `contacts` (agora com `variables`) seja passado corretamente para a Server Action.
+- [ ] Atualizar o schema Zod (`CreateTriggerActionSchema`) em `lib/actions/triggerActions.ts` para validar o campo `variables` (opcional) dentro de cada objeto `contact` no array `contacts`.
+- [ ] Implementar a lógica de banco de dados na Server Action `createTriggerAction` (`lib/actions/triggerActions.ts`):
+    - Descomentar/implementar a criação do registro `Campaign` usando `prisma.campaign.create`.
+    - Descomentar/implementar a criação dos registros `CampaignContact` usando `prisma.campaignContact.createMany`, mapeando `identifier`, `name` (opcional) e `variables` (opcional) para os campos corretos do DB (`contactInfo`, `contactName`, `variables`).
+- [ ] Implementar a lógica de agendamento (ex: BullMQ) na Server Action `createTriggerAction` para adicionar um job inicial para processar a campanha criada.
+- [ ] Remover a simulação (`await new Promise...`) da Server Action `createTriggerAction`.
+- [ ] (Tarefa Futura/Worker): Garantir que o worker BullMQ responsável por processar os jobs da campanha:
+    - Recupere o corpo do template (`Campaign.message`).
+    - Recupere as variáveis do contato específico (`CampaignContact.variables`).
+    - Renderize a mensagem final substituindo os placeholders `{{1}}`, `{{2}}`, etc., pelos valores das variáveis antes de enviar.
+- [ ] Testar o fluxo completo: upload de arquivo com variáveis, criação da campanha, verificação no DB, (opcionalmente) início do processamento pelo worker.
 

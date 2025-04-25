@@ -560,6 +560,7 @@ model Campaign {
 
   isTemplate       Boolean @default(false) @map("is_template")
   templateName     String? @map("template_name")
+  templateLanguage String? @map("template_language")
   templateCategory String? @map("template_category")
 
   contacts CampaignContact[]
@@ -574,6 +575,7 @@ model CampaignContact {
   campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   contactInfo String    @map("contact_info")
   contactName String?   @map("contact_name")
+  variables   Json?     @default("{}") 
   status      String    @default("PENDING")
   sentAt      DateTime? @map("sent_at")
   error       String?   @db.Text

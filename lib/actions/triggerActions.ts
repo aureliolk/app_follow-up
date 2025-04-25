@@ -2,75 +2,126 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-// import { db } from '@/lib/db'; // TODO: Uncomment when DB logic is added
-// import { TriggerSchema } from '@/lib/schemas'; // TODO: Define this schema
+import { prisma } from '@/lib/db'; // <<< Corrigido import do Prisma
+import { getServerSession } from 'next-auth/next'; // <<< Importado getServerSession
+import { authOptions } from '@/lib/auth/auth-options'; // <<< Importado authOptions
+import { Prisma } from '@prisma/client';
 
-// TODO: Define a schema for the input validation using Zod
+// Schema Zod para validação (sem workspaceId, vem da sessão)
 const CreateTriggerActionSchema = z.object({
-  workspaceId: z.string(),
   name: z.string().min(1, { message: "Nome do trigger é obrigatório." }),
-  message: z.string().min(1, { message: "Mensagem é obrigatória." }),
+  message: z.string().min(1, { message: "Mensagem é obrigatória." }), // Corpo do template
   contacts: z.array(z.object({
-    identifier: z.string(),
+    identifier: z.string().min(1, { message: "Identificador do contato não pode ser vazio."}),
     name: z.string().optional(),
+    variables: z.record(z.string()).optional(),
   })).min(1, { message: "Pelo menos um contato é necessário."}),
   sendIntervalSeconds: z.number().int().positive({ message: "Intervalo deve ser positivo."}),
-  allowedSendStartTime: z.string(), // TODO: Validate time format
-  allowedSendEndTime: z.string(), // TODO: Validate time format
-  allowedSendDays: z.string(), // Expecting JSON string of numbers [0-6]
+  allowedSendStartTime: z.string().regex(/^\d{2}:\d{2}$/, { message: "Formato de hora inválido (HH:MM)."}),
+  allowedSendEndTime: z.string().regex(/^\d{2}:\d{2}$/, { message: "Formato de hora inválido (HH:MM)."}),
+  allowedSendDays: z.string().refine((val) => {
+      try {
+          const days = JSON.parse(val);
+          return Array.isArray(days) && days.every(d => typeof d === 'number' && d >= 0 && d <= 6);
+      } catch { return false; }
+  }, { message: "Dias permitidos inválidos."}),
   isTemplate: z.boolean(),
   templateName: z.string().optional(),
-  templateCategory: z.string().optional(), // TODO: Validate category if isTemplate is true
+  templateLanguage: z.string().optional(),
 });
 
+// Tipo de entrada baseado no Schema (sem workspaceId)
 type CreateTriggerActionInput = z.infer<typeof CreateTriggerActionSchema>;
 
-interface ContactInput {
-    identifier: string;
-    name?: string;
-}
-
-interface CreateTriggerActionData {
-  workspaceId: string;
-  name: string;
-  message: string;
-  contacts: ContactInput[];
-  sendIntervalSeconds: number;
-  allowedSendStartTime: string;
-  allowedSendEndTime: string;
-  allowedSendDays: string; // JSON string of numbers [0-6]
-  isTemplate: boolean;
-  templateName?: string;
-  templateCategory?: string;
-}
-
 export async function createTriggerAction(
-    data: CreateTriggerActionData
-): Promise<{ success: boolean; error?: string; triggerId?: string }> {
+    workspaceId: string,
+    inputData: CreateTriggerActionInput
+): Promise<{ success: boolean; error?: string; campaignId?: string }> {
 
-  // TODO: Validate input using CreateTriggerActionSchema.safeParse(data)
-  // TODO: Check user permissions/authentication
+  // 1. Obter usuário da sessão (APENAS para ID e autenticação)
+  const session = await getServerSession(authOptions);
+  // Verifica apenas se o usuário está logado
+  if (!session?.user?.id) {
+    console.error("Erro de Sessão: Usuário não autenticado.", session);
+    return { success: false, error: "Usuário não autenticado." };
+  }
+  const userId = session.user.id;
 
-  console.log("Server Action: createTriggerAction received data:", data);
+  // 2. Validar input usando o schema Zod
+  const validationResult = CreateTriggerActionSchema.safeParse(inputData);
+
+  if (!validationResult.success) {
+    console.error("Erro de validação na Action:", validationResult.error.flatten());
+    const firstError = validationResult.error.flatten().fieldErrors;
+    const errorKey = Object.keys(firstError)[0] as keyof typeof firstError;
+    const errorMessage = firstError[errorKey]?.[0] || "Dados inválidos.";
+    return { success: false, error: errorMessage };
+  }
+
+  const data = validationResult.data;
+
+  console.log(`Server Action: User ${userId} in workspace ${workspaceId} creating campaign...`, data);
 
   try {
-    // TODO: Implement database logic to save the trigger
-    // Example: const newTrigger = await db.trigger.create({ data: { ... } });
+    // 3. Criar a Campanha no banco de dados
+    const newCampaign = await prisma.campaign.create({
+      data: {
+        name: data.name,
+        message: data.message,
+        workspaceId: workspaceId, // <<< Usando workspaceId do ARGUMENTO >>>
+        sendIntervalSeconds: data.sendIntervalSeconds,
+        allowedSendStartTime: data.allowedSendStartTime,
+        allowedSendEndTime: data.allowedSendEndTime,
+        allowedSendDays: data.allowedSendDays,
+        isTemplate: data.isTemplate,
+        templateName: data.templateName,
+        templateLanguage: data.templateLanguage,
+        templateCategory: null,
+        status: "PENDING",
+      },
+    });
+
+    console.log(`Campanha ${newCampaign.id} criada para workspace ${workspaceId}`);
+
+    // 4. Preparar dados para CampaignContact.createMany
+    const contactsToCreate: Prisma.CampaignContactCreateManyInput[] = data.contacts.map(contact => ({
+        campaignId: newCampaign.id,
+        contactInfo: contact.identifier,
+        contactName: contact.name,
+        variables: contact.variables && Object.keys(contact.variables).length > 0
+            ? contact.variables as Prisma.JsonObject
+            : Prisma.JsonNull,
+        status: "PENDING",
+    }));
+
+    // 5. Criar os contatos associados à campanha
+    const creationResult = await prisma.campaignContact.createMany({
+        data: contactsToCreate,
+        skipDuplicates: true,
+    });
+
+    console.log(`${creationResult.count} contatos criados para a campanha ${newCampaign.id}`);
 
     // TODO: Implement logic to schedule the trigger (e.g., add to BullMQ)
 
-    console.log("Server Action: Trigger creation simulation successful.");
-    const simulatedTriggerId = `trigger_${Date.now()}`;
-
     // Revalidate the path to update the list on the frontend
-    // TODO: Adjust the path if needed, e.g., /workspace/${data.workspaceId}/triggers
-    revalidatePath(`/workspace/${data.workspaceId}/triggers`); 
+    revalidatePath(`/workspace/${workspaceId}/mass-trigger`);
 
-    return { success: true, triggerId: simulatedTriggerId };
+    return { success: true, campaignId: newCampaign.id };
 
   } catch (error) {
-    console.error("Error creating trigger:", error);
-    return { success: false, error: "Falha ao criar o trigger no servidor." };
+    console.error("Erro ao criar campanha/contatos no banco de dados:", error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+             // Tenta dar uma mensagem mais útil baseada nos campos da constraint (se possível)
+             const target = error.meta?.target as string[] | undefined;
+             if (target && target.includes('campaignId') && target.includes('contactInfo')) {
+                return { success: false, error: "Erro: Um ou mais contatos já existem nesta campanha." };
+             }
+             return { success: false, error: "Erro: Violação de constraint única ao criar contatos." };
+        }
+    }
+    return { success: false, error: "Falha ao salvar os dados da campanha no servidor." };
   }
 }
 

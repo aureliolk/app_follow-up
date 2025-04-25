@@ -1,21 +1,23 @@
 // app/workspace/[slug]/triggers/new/components/TriggerForm.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx'; // Importa a biblioteca para ler arquivos Excel/CSV
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'react-hot-toast'; // Para notificações
-import { Loader2, UploadCloud, XCircle } from 'lucide-react'; // Ícones
-import { Switch } from "@/components/ui/switch"; // Importar Switch
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Importar Select para Categoria
+import { Loader2, UploadCloud, XCircle, AlertTriangle } from 'lucide-react'; // Ícones
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"; // Importar Select para Categoria
 // Importe a Server Action (será criada no próximo passo)
 import { createTriggerAction } from '@/lib/actions/triggerActions';
+// <<< Importar hook e tipo de template >>>
+import { useWhatsappTemplates } from '@/context/whatsapp-template-context';
+import type { WhatsappTemplate } from '@/lib/types/whatsapp';
 
+// <<< DEFINIR PROPS >>>
 interface TriggerFormProps {
   workspaceId: string;
 }
@@ -24,6 +26,7 @@ interface TriggerFormProps {
 interface Contact {
   identifier: string;
   name?: string; // Nome agora é opcional
+  variables?: Record<string, string>; // Variáveis do template para este contato
 }
 
 const daysOfWeek = [
@@ -36,21 +39,23 @@ const daysOfWeek = [
   { id: 0, label: 'Domingo' }, // Usando 0 para Domingo (padrão Date.getDay())
 ];
 
-export default function TriggerForm() {
+// <<< USAR PROPS >>>
+export default function TriggerForm({ workspaceId }: TriggerFormProps) {
   const [triggerName, setTriggerName] = useState('');
-  const [message, setMessage] = useState('');
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>('');
+  const [selectedTemplateBody, setSelectedTemplateBody] = useState<string>('');
+  const [selectedTemplateLanguage, setSelectedTemplateLanguage] = useState<string>('');
   const [intervalSeconds, setIntervalSeconds] = useState<number>(60); // Padrão 1 minuto
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('18:00');
   const [allowedDays, setAllowedDays] = useState<number[]>([1, 2, 3, 4, 5]); // Padrão Seg-Sex
   const [contacts, setContacts] = useState<Contact[]>([]); // Mudar estado para armazenar objetos Contact
-  const [isTemplate, setIsTemplate] = useState(false);
-  const [templateName, setTemplateName] = useState('');
-  const [templateCategory, setTemplateCategory] = useState('UTILITY'); // Categoria padrão
   const [fileName, setFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const { templates, loadingTemplates, templateError, fetchTemplatesForWorkspace } = useWhatsappTemplates();
 
   const handleDayChange = (dayId: number) => {
     setAllowedDays((prevDays) =>
@@ -63,75 +68,111 @@ export default function TriggerForm() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
-      resetFileData();
+      setFileName(null);
+      setContacts([]);
+      setFileError(null);
       return;
-    }
-
-    // Validar tipo de arquivo (opcional mas recomendado)
-    if (!file.type.match(/spreadsheetml|excel|csv/)) {
-       setFileError('Tipo de arquivo inválido. Envie apenas arquivos Excel (.xlsx, .xls) ou CSV (.csv).');
-       resetFileData();
-       event.target.value = ''; // Limpa o input
-       return;
     }
 
     setFileName(file.name);
     setFileError(null);
-    setIsLoading(true); // Mostra loading durante o parse
+    setIsLoading(true);
+    toast.loading('Processando arquivo...', { id: 'file-processing' });
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
+      const data = e.target?.result;
+      if (!data) {
+        setFileError('Não foi possível ler o arquivo.');
+        toast.error('Erro ao ler arquivo.', { id: 'file-processing' });
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        const data = e.target?.result;
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        // Converte para JSON - header: 1 assume a primeira linha como cabeçalho (ignorado aqui)
-        // defval: '' garante que células vazias virem strings vazias
-        const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+        const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
 
-        // Extrai contatos (identifier da coluna 0, name da coluna 1)
-        const extractedContacts: Contact[] = jsonData
-          .slice(1) // Pula a linha de cabeçalho
-          .map(row => ({
-              identifier: String(row[0]).trim(), // Coluna 0: Telefone/ID
-              name: String(row[1] || '').trim() || undefined // Coluna 1: Nome (opcional)
-          }))
-          .filter(contact => contact.identifier !== ''); // Remove linhas sem identificador
-
-        if (extractedContacts.length === 0) {
-           setFileError('Nenhum contato encontrado na primeira coluna do arquivo.');
-           resetFileData();
-           return;
+        // Remove a primeira linha (cabeçalho) se ela existir e não estiver vazia
+        if (json.length > 0 && json[0].some(cell => String(cell).trim() !== '')) {
+            json.shift();
         }
 
-        setContacts(extractedContacts);
-        toast.success(`${extractedContacts.length} contatos carregados de ${file.name}`);
+        const parsedContacts: Contact[] = json
+            .map((row, rowIndex) => {
+                if (!row || row.length === 0) {
+                    console.warn(`Linha ${rowIndex + 2} vazia, ignorando.`);
+                    return null; // Ignora linhas completamente vazias
+                }
+                const identifier = String(row[0] || '').trim();
+                if (!identifier) {
+                    console.warn(`Linha ${rowIndex + 2} sem identificador (coluna 1), ignorando.`);
+                    return null; // Ignora linhas sem identificador
+                }
 
-      } catch (err) {
+                const name = String(row[1] || '').trim() || undefined;
+
+                // Extrai variáveis das colunas a partir da terceira (índice 2)
+                const variables: Record<string, string> = {};
+                for (let i = 2; i < row.length; i++) {
+                    const varKey = String(i - 1); // Chave "1" para coluna 2, "2" para coluna 3, etc.
+                    const varValue = String(row[i] || '').trim();
+                    if (varValue) { // Só adiciona se tiver valor
+                         variables[varKey] = varValue;
+                    }
+                }
+
+                return {
+                    identifier,
+                    name,
+                    variables: Object.keys(variables).length > 0 ? variables : undefined // Só inclui o objeto se houver variáveis
+                };
+            })
+            .filter(Boolean); // Remove nulos (linhas ignoradas)
+
+        if (parsedContacts.length === 0) {
+             setFileError('Nenhum contato válido encontrado no arquivo.');
+             toast.error('Nenhum contato válido encontrado.', { id: 'file-processing' });
+             setContacts([]);
+        } else {
+            setContacts(parsedContacts);
+            toast.success(`Arquivo processado: ${parsedContacts.length} contatos carregados.`, { id: 'file-processing' });
+        }
+
+      } catch (err: any) {
         console.error("Erro ao processar o arquivo:", err);
-        setFileError('Erro ao ler o arquivo. Verifique o formato e tente novamente.');
-        resetFileData();
+        setFileError(`Erro ao processar: ${err.message || 'Formato inválido?'}`);
+        toast.error(`Erro ao processar arquivo: ${err.message || 'Verifique o formato.'}`, { id: 'file-processing' });
+        setContacts([]);
       } finally {
         setIsLoading(false);
+        // Reset o input de arquivo para permitir carregar o mesmo arquivo novamente
+        if (event.target) {
+            event.target.value = '';
+        }
       }
     };
 
-    reader.onerror = (err) => {
-        console.error("Erro no FileReader:", err);
-        setFileError('Não foi possível ler o arquivo.');
-        resetFileData();
-        setIsLoading(false);
-    }
+    reader.onerror = () => {
+      setFileError('Erro ao tentar ler o arquivo.');
+      toast.error('Erro ao ler arquivo.', { id: 'file-processing' });
+      setIsLoading(false);
+       if (event.target) {
+            event.target.value = '';
+        }
+    };
 
     reader.readAsBinaryString(file);
-    event.target.value = ''; // Permite re-upload do mesmo arquivo
   };
 
-  const resetFileData = () => {
-      setFileName(null);
-      setContacts([]); // Limpa o array de objetos
-  }
+  const handleTemplateChange = (templateName: string) => {
+      setSelectedTemplateName(templateName);
+      const selected = templates.find(t => t.name === templateName);
+      setSelectedTemplateBody(selected?.body || '');
+      setSelectedTemplateLanguage(selected?.language || '');
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -142,9 +183,9 @@ export default function TriggerForm() {
       setFormError('O nome do trigger é obrigatório.');
       return;
     }
-    if (!message.trim()) {
-      setFormError('A mensagem é obrigatória.');
-      return;
+    if (!selectedTemplateName) {
+        setFormError('Selecione um template do WhatsApp.');
+        return;
     }
     if (intervalSeconds <= 0) {
         setFormError('O intervalo entre mensagens deve ser maior que zero.');
@@ -158,41 +199,51 @@ export default function TriggerForm() {
       setFormError('Carregue um arquivo com a lista de contatos.');
       return;
     }
-    if (isTemplate && !templateName.trim()) {
-        setFormError('O nome exato do template HSM é obrigatório quando a opção está ativa.');
-        return;
-    }
 
     setIsLoading(true);
     toast.loading('Criando trigger...', { id: 'create-trigger' });
 
     try {
-        // --- CHAMADA DA SERVER ACTION ---
-        // Converta allowedDays para string ou JSON, conforme definido no schema/action
         const allowedDaysString = JSON.stringify(allowedDays.sort());
 
-        console.log("Dados para Action (Trigger Disparo):", {
-            // workspaceId,
+        // Chama a Server Action
+        const result = await createTriggerAction(workspaceId, {
             name: triggerName,
-            message,
-            contacts, // Array de objetos { identifier, name }
+            message: selectedTemplateBody,
+            contacts,
             sendIntervalSeconds: intervalSeconds,
             allowedSendStartTime: startTime,
             allowedSendEndTime: endTime,
-            allowedSendDays: allowedDaysString, // String JSON
-            isTemplate: isTemplate,
-            templateName: isTemplate ? templateName : undefined,
-            templateCategory: isTemplate ? templateCategory : undefined,
+            allowedSendDays: allowedDaysString,
+            isTemplate: true,
+            templateName: selectedTemplateName,
+            templateLanguage: selectedTemplateLanguage,
         });
 
-        
-       // Simulação de sucesso (remover depois)
-       await new Promise(resolve => setTimeout(resolve, 1500));
-       toast.success('Simulação: Trigger criado!', { id: 'create-trigger' });
-       // Fim da simulação
+        if (result.success) {
+            toast.success(`Trigger '${triggerName}' criado com sucesso! (ID: ${result.campaignId})`, { id: 'create-trigger' });
+            // TODO: Limpar o formulário ou redirecionar o usuário?
+            // Exemplo de limpar (pode ser ajustado):
+            // setTriggerName('');
+            // setSelectedTemplateName('');
+            // setSelectedTemplateBody('');
+            // setSelectedTemplateLanguage('');
+            // setIntervalSeconds(60);
+            // setStartTime('09:00');
+            // setEndTime('18:00');
+            // setAllowedDays([1, 2, 3, 4, 5]);
+            // setContacts([]);
+            // setFileName(null);
+            // setFileError(null);
+            // setFormError(null);
+        } else {
+            // Exibe o erro retornado pela Action
+            setFormError(result.error || 'Falha ao criar o trigger.');
+            toast.error(`Erro: ${result.error || 'Falha ao criar o trigger.'}`, { id: 'create-trigger' });
+        }
 
     } catch (error: any) {
-      console.error("Erro ao criar trigger:", error);
+      console.error("Erro inesperado no formulário ao criar trigger:", error);
       const errorMessage = error.message || 'Ocorreu um erro inesperado.';
       setFormError(errorMessage);
       toast.error(`Erro: ${errorMessage}`, { id: 'create-trigger' });
@@ -213,7 +264,7 @@ export default function TriggerForm() {
       <Card>
         <CardHeader>
           <CardTitle>Detalhes do Trigger</CardTitle>
-          <CardDescription>Defina o nome e a mensagem principal do disparo.</CardDescription>
+          <CardDescription>Defina o nome e selecione o template do WhatsApp para o disparo.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2">
@@ -222,28 +273,49 @@ export default function TriggerForm() {
               id="triggerName"
               value={triggerName}
               onChange={(e) => setTriggerName(e.target.value)}
-              placeholder="Ex: Trigger Boas Vindas - Q1"
+              placeholder="Ex: Disparo Boas Vindas - Q1"
               required
               disabled={isLoading}
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="message">Mensagem</Label>
-            <Textarea
-              id="message"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Digite a mensagem que será enviada aos contatos..."
-              rows={5}
-              required
-              disabled={isLoading}
-            />
-            <p className="text-xs text-muted-foreground">
-              {isTemplate 
-                ? "Este é o conteúdo base do template (ex: com {{1}}, {{2}}). O nome exato e categoria são definidos abaixo."
-                : "Esta mensagem será enviada como texto livre."
-              }
-            </p>
+             <Label htmlFor="templateSelect">Template do WhatsApp</Label>
+             {loadingTemplates && (
+                 <div className="flex items-center text-sm text-muted-foreground">
+                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando templates...
+                 </div>
+             )}
+             {templateError && (
+                 <div className="flex items-center text-sm text-destructive">
+                     <AlertTriangle className="mr-2 h-4 w-4" /> Erro ao carregar templates: {templateError}
+                 </div>
+             )}
+             <Select
+                 value={selectedTemplateName}
+                 onValueChange={handleTemplateChange}
+                 disabled={isLoading || loadingTemplates || !!templateError || templates.length === 0}
+                 required
+             >
+                 <SelectTrigger id="templateSelect">
+                     <SelectValue placeholder={loadingTemplates ? "Carregando..." : "Selecione um template"} />
+                 </SelectTrigger>
+                 <SelectContent>
+                    {templates.length === 0 && !loadingTemplates && <SelectItem value="" disabled>Nenhum template encontrado</SelectItem>}
+                     {templates.map((template) => (
+                         <SelectItem key={template.name} value={template.name}>
+                             {template.name} ({template.language})
+                         </SelectItem>
+                     ))}
+                 </SelectContent>
+             </Select>
+             {selectedTemplateBody && (
+                <div className="mt-2 p-3 border rounded-md bg-muted/50">
+                  <p className="text-sm font-medium mb-1">Preview do Corpo:</p>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                    {selectedTemplateBody}
+                  </p>
+                </div>
+             )}
           </div>
         </CardContent>
       </Card>
@@ -266,7 +338,11 @@ export default function TriggerForm() {
                     className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
                  />
                  <p className="text-xs text-muted-foreground">
-                   O arquivo deve ter os números de telefone (ou identificadores) na primeira coluna. A primeira linha pode ser um cabeçalho (será ignorada).
+                   Formato esperado: Coluna 1: Telefone/ID. Coluna 2: Nome (opcional).
+                   <br/>
+                   Colunas 3, 4, 5... (opcionais): Valores para as variáveis do template {'{{1}}'}, {'{{2}}'}, {'{{3}}'}...
+                   <br/>
+                   A primeira linha pode ser um cabeçalho (será ignorada).
                 </p>
             </div>
             {fileError && (
@@ -281,7 +357,7 @@ export default function TriggerForm() {
                     <span className="flex-shrink-0 bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
                         {contacts.length} contatos
                     </span>
-                    <Button variant="ghost" size="sm" onClick={resetFileData} disabled={isLoading}>
+                    <Button variant="ghost" size="sm" onClick={() => { setFileName(null); setContacts([]); setFileError(null); }} disabled={isLoading}>
                         <XCircle className="h-4 w-4" />
                     </Button>
                  </div>
@@ -354,70 +430,9 @@ export default function TriggerForm() {
         </CardContent>
       </Card>
 
-      {/* Seção 4: Template HSM */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Template HSM</CardTitle>
-          <CardDescription>Opcionalmente, use um template HSM aprovado no WhatsApp.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="isTemplateSwitch" className="flex flex-col space-y-1">
-                <span>Usar Template HSM Aprovado?</span>
-                <span className="font-normal leading-snug text-muted-foreground">
-                    Se ativado, você precisará fornecer o nome e categoria exatos do template aprovado no WhatsApp.
-                </span>
-            </Label>
-            <Switch
-                id="isTemplateSwitch"
-                checked={isTemplate}
-                onCheckedChange={setIsTemplate}
-                disabled={isLoading}
-            />
-         </div>
-
-          {isTemplate && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
-                <div className="grid gap-2">
-                    <Label htmlFor="templateName">Nome Exato do Template</Label>
-                    <Input
-                        id="templateName"
-                        value={templateName}
-                        onChange={(e) => setTemplateName(e.target.value)}
-                        placeholder="Ex: boas_vindas_cliente_v2"
-                        required={isTemplate} // Obrigatório apenas se for template
-                        disabled={isLoading}
-                    />
-                </div>
-                <div className="grid gap-2">
-                    <Label htmlFor="templateCategory">Categoria do Template</Label>
-                    <Select
-                        value={templateCategory}
-                        onValueChange={setTemplateCategory}
-                        disabled={isLoading}
-                    >
-                        <SelectTrigger id="templateCategory">
-                            <SelectValue placeholder="Selecione a categoria" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="UTILITY">Utilitário (Utility)</SelectItem>
-                            <SelectItem value="MARKETING">Marketing</SelectItem>
-                            <SelectItem value="AUTHENTICATION">Autenticação (Authentication)</SelectItem>
-                            {/* Adicione outras categorias se necessário */} 
-                        </SelectContent>
-                    </Select>
-                     <p className="text-xs text-muted-foreground">
-                        Selecione a mesma categoria aprovada no WhatsApp.
-                     </p>
-                </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Footer com Botão */}
       <div className="flex justify-end pt-4">
-         <Button type="submit" disabled={isLoading || contacts.length === 0}>
+         <Button type="submit" disabled={isLoading || contacts.length === 0 || !selectedTemplateName}>
             {isLoading ? (
                 <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

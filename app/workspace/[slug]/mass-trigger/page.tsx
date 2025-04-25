@@ -1,6 +1,6 @@
 // app/workspace/[slug]/campaigns/new/page.tsx
 import { prisma } from '@/lib/db'; // Ajuste o caminho se necessário
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import TriggerForm from './components/TriggerForm'; // Importa o formulário
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // Usando Shadcn para layout
 import { getServerSession } from 'next-auth/next'; // Importar getServerSession
@@ -15,9 +15,29 @@ interface NewCampaignPageProps {
 export default async function NewCampaignPage({ params }: NewCampaignPageProps) {
   const session = await getServerSession(authOptions); // Obter sessão
   if (!session?.user?.id) {
+    // Usuário não logado, redirecionar para login talvez?
+    redirect('/login'); // Ou outra página apropriada
+  }
+
+  // <<< Extrair slug dos parâmetros >>>
+  const { slug } = params;
+
+  // <<< BUSCAR WORKSPACE PELO SLUG >>>
+  const workspace = await prisma.workspace.findUnique({
+    where: {
+      // <<< Usar variável slug extraída >>>
+      slug: slug,
+    },
+    select: {
+      id: true, // Selecionar apenas o ID
+    },
+  });
+
+  // Se workspace não encontrado
+  if (!workspace) {
     notFound();
   }
-  
+  // <<< FIM BUSCAR WORKSPACE >>>
 
   return (
     <div className="p-4 md:p-6">
@@ -29,7 +49,8 @@ export default async function NewCampaignPage({ params }: NewCampaignPageProps) 
            </CardDescription>
          </CardHeader>
          <CardContent>
-           <TriggerForm />
+           {/* Passando o ID (UUID) real do workspace encontrado pelo slug */}
+           <TriggerForm workspaceId={workspace.id} />
          </CardContent>
        </Card>
     </div>
