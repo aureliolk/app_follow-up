@@ -128,7 +128,7 @@ export async function PATCH(
   { params }: { params: { id: string } } // Assinatura padrão para rotas dinâmicas
 ) {
   try {
-    const conversationId = params.id;
+    const { id: conversationId } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });

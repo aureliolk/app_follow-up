@@ -16,7 +16,7 @@ interface RouteParams {
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
-    const { conversationId } = params;
+    const { conversationId } = await params;
 
     if (!conversationId) {
         // This case should technically not happen with file-based routing, but good practice
