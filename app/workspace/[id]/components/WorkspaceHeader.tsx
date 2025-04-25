@@ -19,21 +19,21 @@ import { cn } from '@/lib/utils';
 import { useTheme } from '../../../../components/header'; // Reutilizar o hook de tema do header global
 
 export default function WorkspaceHeader() {
-  const { workspace } = useWorkspace(); // Pegar nome do workspace
+  const { workspace } = useWorkspace(); // Pegar workspace do contexto
   const { data: session } = useSession();
   const pathname = usePathname();
   const params = useParams();
-  const slug = params?.slug as string;
+  const workspaceId = params?.id as string;
   const { theme, toggleTheme } = useTheme(); // Reutilizar hook de tema
 
   // Função simples para gerar breadcrumbs (pode ser melhorada)
   const generateBreadcrumbs = () => {
-    if (!pathname || !workspace) return null;
-    const basePath = `/workspace/${slug}`;
+    if (!pathname || !workspace || !workspaceId) return null;
+    const basePath = `/workspace/${workspaceId}`;
     const pathSegments = pathname.replace(basePath, '').split('/').filter(Boolean); // Remove a base e segmentos vazios
 
     const breadcrumbs = [
-      { label: workspace.name, href: basePath, icon: Home }, // Link para o dashboard do workspace
+      { label: workspace.name || 'Workspace', href: basePath, icon: Home }, // Link para o dashboard do workspace
     ];
 
     let currentPath = basePath;

@@ -6,27 +6,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { getServerSession } from 'next-auth/next'; // Importar getServerSession
 import { authOptions } from '@/lib/auth/auth-options'; // Importar authOptions
 
-interface NewCampaignPageProps {
-  params: {
-    slug: string;
-  };
-}
-
-export default async function NewCampaignPage({ params }: NewCampaignPageProps) {
+export default async function NewCampaignPage({ params }: any) {
   const session = await getServerSession(authOptions); // Obter sessão
   if (!session?.user?.id) {
     // Usuário não logado, redirecionar para login talvez?
     redirect('/login'); // Ou outra página apropriada
   }
 
-  // <<< Extrair slug dos parâmetros >>>
-  const { slug } = params;
+  // Tentar logar o objeto params completo
+  console.log("DEBUG: Params recebidos em mass-trigger/page:", params);
+  const workspaceId = params?.id; // Acessar diretamente
+  console.log("DEBUG: workspaceId extraído:", workspaceId);
 
-  // <<< BUSCAR WORKSPACE PELO SLUG >>>
+  // Se o ID ainda for undefined, não podemos continuar
+  if (!workspaceId) {
+    console.error("ERRO: Workspace ID não encontrado nos parâmetros da URL.");
+    notFound(); // Ou mostrar um erro mais específico
+  }
+
+  // <<< BUSCAR WORKSPACE PELO ID (usando params.id diretamente) >>>
   const workspace = await prisma.workspace.findUnique({
     where: {
-      // <<< Usar variável slug extraída >>>
-      slug: slug,
+      // <<< Usar params.id diretamente >>>
+      id: workspaceId, // Usando a variável testada
     },
     select: {
       id: true, // Selecionar apenas o ID

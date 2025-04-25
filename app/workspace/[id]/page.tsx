@@ -105,7 +105,7 @@ export default function WorkspaceDashboard() {
                 {/* <<< USAR followUps do contexto >>> */}
                 <p className="text-2xl font-bold text-foreground mb-2">{activeConversations.length}</p>
                 <Link
-                  href={`/workspace/${workspace.slug}/conversations`} // Link para a página de conversas
+                  href={`/workspace/${workspace.id}/conversations`} // Link para a página de conversas
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Ver conversas <ArrowUpRight className="ml-1 h-3 w-3" />
@@ -132,7 +132,7 @@ export default function WorkspaceDashboard() {
                  {/* <<< USAR campaigns do contexto >>> */}
                 <p className="text-2xl font-bold text-foreground mb-2">{campaigns.length}</p>
                 <Link
-                  href={`/workspace/${workspace.slug}/campaigns`} // Ajustar link se necessário
+                  href={`/workspace/${workspace.id}/campaigns`} // Ajustar link se necessário
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Gerenciar campanhas <ArrowUpRight className="ml-1 h-3 w-3" />
@@ -142,7 +142,7 @@ export default function WorkspaceDashboard() {
               <div>
                 <p className="text-muted-foreground text-sm mb-3">Nenhuma campanha encontrada.</p>
                 <Link
-                  href={`/workspace/${workspace.slug}/campaigns/new`} // Ajustar link se necessário
+                  href={`/workspace/${workspace.id}/campaigns/new`} // Ajustar link se necessário
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Criar campanha <ArrowUpRight className="ml-1 h-3 w-3" />
@@ -166,7 +166,7 @@ export default function WorkspaceDashboard() {
                   {workspace._count.members} {workspace._count.members === 1 ? 'membro' : 'membros'}
                 </p>
                 <Link
-                  href={`/workspace/${workspace.slug}/members`}
+                  href={`/workspace/${workspace.id}/members`}
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Gerenciar membros <ArrowUpRight className="ml-1 h-3 w-3" />
@@ -176,7 +176,7 @@ export default function WorkspaceDashboard() {
               <div>
                 <p className="text-muted-foreground text-sm mb-3">Apenas você no workspace.</p>
                 <Link
-                  href={`/workspace/${workspace.slug}/members`}
+                  href={`/workspace/${workspace.id}/members`}
                   className="text-primary text-sm flex items-center hover:underline"
                 >
                   Convidar membros <ArrowUpRight className="ml-1 h-3 w-3" />

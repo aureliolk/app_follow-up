@@ -60,7 +60,7 @@ type WorkspaceContextType = {
   workspaces: Workspace[];
   isLoading: boolean; // Loading geral (combina lista e atual)
   error: string | null; // Erro geral do contexto
-  switchWorkspace: (workspaceSlug: string) => void;
+  switchWorkspace: (workspaceId: string) => void;
   refreshWorkspaces: () => Promise<void>; // Refresh manual
   clearError: () => void; // Limpar erro geral
 
@@ -105,7 +105,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isLoadingCurrent, setIsLoadingCurrent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const currentSlugRef = useRef<string | null>(null);
+  const currentWorkspaceIdRef = useRef<string | null>(null);
 
   // Estados Internos - Regras de Follow-up IA
   const [aiFollowUpRules, setAiFollowUpRules] = useState<ApiFollowUpRule[]>([]);
@@ -115,8 +115,8 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
   // Atualiza a ref do slug quando params muda
   useEffect(() => {
-    currentSlugRef.current = params?.slug as string | null ?? null;
-  }, [params?.slug]);
+    currentWorkspaceIdRef.current = params?.id as string | null ?? null;
+  }, [params?.id]);
 
   // --- Funções Auxiliares ---
 
@@ -127,7 +127,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const getActiveWorkspaceIdInternal = useCallback((providedId?: string): string | null => {
     if (providedId) return providedId;
     if (workspace?.id) return workspace.id; // Prioriza o estado atual do contexto
-    const slug = currentSlugRef.current;
+    const slug = currentWorkspaceIdRef.current;
     if (slug) {
         const foundInList = workspaces.find(w => w.slug === slug);
         if (foundInList) return foundInList.id;
@@ -187,8 +187,8 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
    // Definir o WORKSPACE ATUAL baseado na URL e na lista carregada
    useEffect(() => {
-    const slug = currentSlugRef.current;
-    console.log(`Effect Set Current Wks: Slug=${slug}, List Loading=${isLoadingList}`);
+    const workspaceIdFromUrl = currentWorkspaceIdRef.current;
+    console.log(`Effect Set Current Wks: ID=${workspaceIdFromUrl}, List Loading=${isLoadingList}`);
 
     if (isLoadingList) {
       setIsLoadingCurrent(true);
@@ -197,12 +197,12 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setIsLoadingCurrent(true);
-    if (!slug || !pathname?.startsWith('/workspace/')) {
+    if (!workspaceIdFromUrl || !pathname?.startsWith('/workspace/')) {
       setWorkspace(null);
       if (typeof window !== 'undefined') sessionStorage.removeItem('activeWorkspaceId');
        // Não limpa erro geral aqui, pode ser um erro da lista
     } else {
-      const found = workspaces.find(w => w.slug === slug);
+      const found = workspaces.find(w => w.id === workspaceIdFromUrl);
       if (found) {
          setWorkspace({ // Garante que as datas são objetos Date
             ...found,
@@ -213,7 +213,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         // Limpa erro se encontrou
         setError(null);
       } else if (!isLoadingList) { // Só define erro se a lista *já* carregou e não achou
-        setError(prevError => prevError || `Workspace "${slug}" não encontrado ou acesso negado.`);
+        setError(prevError => prevError || `Workspace ID "${workspaceIdFromUrl}" não encontrado ou acesso negado.`);
         setWorkspace(null);
         if (typeof window !== 'undefined') sessionStorage.removeItem('activeWorkspaceId');
       }
@@ -224,10 +224,10 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Funções CRUD para WORKSPACES ---
 
-  const switchWorkspace = useCallback((workspaceSlug: string) => {
-    const targetWorkspace = workspaces.find(w => w.slug === workspaceSlug);
+  const switchWorkspace = useCallback((workspaceId: string) => {
+    const targetWorkspace = workspaces.find(w => w.id === workspaceId);
     if (!targetWorkspace) {
-      setError('Workspace não encontrado para troca');
+      setError('Workspace não encontrado para troca (ID: ' + workspaceId + ')');
       return;
     }
     if (typeof window !== 'undefined') sessionStorage.setItem('activeWorkspaceId', targetWorkspace.id);
@@ -238,7 +238,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     });
     setAiFollowUpRules([]); // Limpa regras do workspace anterior
     setAiFollowUpRulesError(null); // Limpa erros de regras
-    router.push(`/workspace/${workspaceSlug}`);
+    router.push(`/workspace/${workspaceId}`);
   }, [workspaces, router]);
 
   const createWorkspace = useCallback(async (name: string): Promise<Workspace> => {

@@ -7,25 +7,29 @@ import { prisma } from '@/lib/db'; // <<< Importar Prisma
 import { WorkspaceAiFollowUpRule, AbandonedCartRule } from '@prisma/client'; // <<< Importar tipos Prisma
 import { notFound } from 'next/navigation'; // <<< Importar notFound
 
-// <<< Tornar async e aceitar params >>>
-export default async function IaPage({ params }: { params: { slug: string } }) {
+// <<< Tornar async e aceitar params com id >>>
+export default async function IaPage({ params }: { params: { id: string } }) {
     
-    // <<< Aguardar resolução de params e obter workspaceSlug >>>
+    // <<< Aguardar resolução de params e obter workspaceId >>>
     const resolvedParams = await params;
-    const workspaceSlug = resolvedParams.slug;
+    const workspaceId = resolvedParams.id; // <<< Usar id
 
-    // <<< Buscar o Workspace pelo SLUG >>>
+    // <<< Verificar se workspaceId existe >>>
+    if (!workspaceId) {
+        console.error("ERRO: Workspace ID não encontrado nos parâmetros da URL.");
+        notFound(); 
+    }
+
+    // <<< Buscar o Workspace pelo ID >>>
     const workspace = await prisma.workspace.findUnique({
-        where: { slug: workspaceSlug },
-        select: { id: true } // Selecionar apenas o ID que precisamos
+        where: { id: workspaceId }, // <<< Usar id
+        select: { id: true } // Selecionar apenas o ID
     });
 
     // <<< Se não encontrar o workspace, retornar 404 >>>
     if (!workspace) {
         notFound();
     }
-
-    const workspaceId = workspace.id; // <<< Usar o ID real do workspace
 
     // <<< Buscar as regras de follow-up e abandonadas >>>
     let followUpRules: WorkspaceAiFollowUpRule[] = [];

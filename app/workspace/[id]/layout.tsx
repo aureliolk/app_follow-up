@@ -50,7 +50,7 @@ export default function WorkspaceLayout({
   const router = useRouter();
   const pathname = usePathname();
   const params = useParams();
-  const slug = params?.slug as string;
+  const workspaceId = params?.id as string;
 
   const [isCollapsed, setIsCollapsed] = useState(false); // Estado para controlar sidebar
 
@@ -75,8 +75,8 @@ export default function WorkspaceLayout({
  
   // Função para verificar link ativo (mais precisa)
   const isActive = (item: NavItem) => {
-    if (!pathname || !slug) return false;
-    const baseWorkspacePath = `/workspace/${slug}`;
+    if (!pathname || !workspaceId) return false;
+    const baseWorkspacePath = `/workspace/${workspaceId}`;
     const fullHref = item.href ? `${baseWorkspacePath}${item.href}` : baseWorkspacePath;
 
     if (item.matchExact) {
@@ -165,7 +165,7 @@ export default function WorkspaceLayout({
                         <TooltipTrigger asChild>
                            {/* Link com as classes */}
                           <Link
-                            href={item.href ? `/workspace/${slug}${item.href}` : `/workspace/${slug}`}
+                            href={item.href ? `/workspace/${workspaceId}${item.href}` : `/workspace/${workspaceId}`}
                             className={cn(
                               'flex items-center gap-3 rounded-md text-sm font-medium transition-colors group',
                               'h-10', // Altura fixa para alinhamento
@@ -185,7 +185,7 @@ export default function WorkspaceLayout({
                     ) : (
                        // Se expandido, Link normal
                       <Link
-                        href={item.href ? `/workspace/${slug}${item.href}` : `/workspace/${slug}`}
+                        href={item.href ? `/workspace/${workspaceId}${item.href}` : `/workspace/${workspaceId}`}
                         className={cn(
                            'flex items-center gap-3 rounded-md text-sm font-medium transition-colors group',
                            'h-10 px-4', // Altura e padding fixos
