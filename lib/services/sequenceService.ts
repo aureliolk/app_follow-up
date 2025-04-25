@@ -1,4 +1,5 @@
 import type { SequenceJobData } from './schedulerService';
+import { FollowUpStatus } from '@prisma/client';
 
 /**
  * Processa job de carrinho abandonado, delegando a serviços especializados.
@@ -19,6 +20,16 @@ export async function processAbandonedCart(
   const { conversationId, abandonedCartRuleId: ruleId, workspaceId } = jobData;
   // Carrega contexto
   const context = await loadAbandonedCartContext(conversationId, workspaceId);
+
+  if (context.followUp && (
+      context.followUp.status === FollowUpStatus.CONVERTED ||
+      context.followUp.status === FollowUpStatus.CANCELLED ||
+      context.followUp.status === FollowUpStatus.COMPLETED
+     )) {
+    console.log(`[AbandonedCartProcessor] Follow-up ${context.followUp.id} has terminal status ${context.followUp.status}. Skipping abandoned cart message for conv ${conversationId}.`);
+    return;
+  }
+
   // Gera mensagem com IA
   const text = await generateCartMessage(context, ruleId);
   // Envia via WhatsApp

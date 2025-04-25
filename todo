@@ -1,75 +1,15 @@
-To-Do List: Implementação das Regras de Acompanhamento da IA
-Mudar para Branch e Atualizar:
-[ ] Mudar para a branch de destino: git checkout app_devlumibot
-[ ] Garantir que a branch local está atualizada: git pull origin app_devlumibot
-Verificar/Migrar Schema Prisma:
-[ ] Confirmar que o modelo WorkspaceAiFollowUpRule em prisma/schema.prisma está como o esperado (já verificado, parece bom).
-[ ] Rodar pnpm prisma migrate dev --name added_follow_up_rules (ou um nome similar) para aplicar quaisquer mudanças pendentes no banco de dados de desenvolvimento.
-[ ] Rodar pnpm prisma generate para atualizar o Prisma Client.
-Criar Server Actions (lib/actions/followUpRuleActions.ts):
-[ ] Criar o arquivo lib/actions/followUpRuleActions.ts.
-[ ] Implementar a função createFollowUpRule(workspaceId: string, formData: FormData):
-Usar use server;.
-Extrair e validar delayString e messageContent (usar Zod).
-Converter delayString para BigInt (milissegundos) usando parseDelayStringToMs.
-Chamar prisma.workspaceAiFollowUpRule.create.
-Chamar revalidatePath('/workspace/[slug]/ia').
-Retornar sucesso/erro.
-[ ] Implementar a função updateFollowUpRule(ruleId: string, formData: FormData): Similar à criação, usando prisma.workspaceAiFollowUpRule.update.
-[ ] Implementar a função deleteFollowUpRule(ruleId: string): Usar prisma.workspaceAiFollowUpRule.delete e revalidatePath.
-Ajustar Página Server Component (app/workspace/[slug]/ia/page.tsx):
-[ ] Modificar o componente da página para ser async.
-[ ] Buscar as followUpRules diretamente usando prisma.workspaceAiFollowUpRule.findMany({ where: { workspaceId }, orderBy: { delay_milliseconds: 'asc' } }).
-[ ] Passar followUpRules e workspaceId como props para o componente cliente <AiFollowUpRules />.
-Refatorar Componente Cliente (app/workspace/[slug]/ia/components/AiFollowUpRules.tsx):
-[ ] Garantir que tem 'use client'.
-[ ] Remover chamadas ao useWorkspace para buscar/manipular aiFollowUpRules.
-[ ] Receber initialRules: PrismaRule[] e workspaceId: string como props.
-[ ] Manter estado local apenas para o formulário (isFormOpen, editingRule, formData, formError).
-[ ] Usar o hook useTransition para gerenciar o estado de loading (isPending) ao chamar Server Actions.
-[ ] Adaptar handleSaveRule:
-Construir FormData a partir do formData do estado.
-Chamar createFollowUpRule ou updateFollowUpRule dentro de startTransition.
-Atualizar UI (loading, toasts) com base em isPending e no retorno da action.
-[ ] Adaptar handleDeleteRule:
-Chamar deleteFollowUpRule dentro de startTransition.
-Atualizar UI.
-[ ] Renderizar a lista de regras usando a prop initialRules.
-[ ] Usar formatMsToDelayString para exibir o tempo (converter BigInt para Number).
-Verificar Funções Utilitárias (lib/timeUtils.ts):
-[ ] Garantir que parseDelayStringToMs existe, funciona corretamente e retorna BigInt.
-[ ] Garantir que formatMsToDelayString existe, funciona corretamente e aceita BigInt ou Number como entrada.
-Testes:
-[ ] Testar a criação de uma nova regra.
-[ ] Testar a edição de uma regra existente.
-[ ] Testar a exclusão de uma regra.
-[ ] Testar a validação de entrada no formulário (tempos inválidos, campos vazios).
- [ ] Verificar se a lista atualiza corretamente após cada operação.
+// todo
 
-Refatoração: Modularização dos fluxos de Carrinho Abandonado e Inatividade
-  - Criar diretório lib/services e os arquivos:
-    * conversationService.ts
-    * aiService.ts
-    * channelService.ts
-    * persistenceService.ts
-    * notifierService.ts
-    * schedulerService.ts
-  - Em cada service, implementar funções:
-    * conversationService:
-      - loadAbandonedCartContext(conversationId: string, workspaceId: string)
-      - loadFollowUpContext(followUpId: string, workspaceId: string)
-    * aiService:
-      - generateCartMessage(context: AbandonedCartContext)
-      - generateFollowUpMessage(context: FollowUpContext)
-    * channelService:
-      - sendWhatsAppMessage(phoneNumberId: string, recipientPhone: string, accessToken: string, content: string, senderName?: string)
-    * persistenceService:
-      - saveMessageRecord(messageData: SaveMessageData)
-    * notifierService:
-      - publishConversationUpdate(channel: string, payload: any)
-      - publishWorkspaceUpdate(channel: string, payload: any)
-    * schedulerService:
-      - scheduleSequenceJob(jobData: SequenceJobData, delay: number, jobId?: string)
-  - Refatorar lib/workers/sequenceStepProcessor.ts para chamar processAbandonedCart(...) ou processFollowUp(...) nos novos services
-  - Escrever testes unitários para cada service recém-criado
-  - Atualizar README ou criar lib/services/README.md documentando cada service e suas funções
+# Refatoração WhatsApp Templates TODO
+
+- [ ] Mover o componente `WhatsappTemplateDialog` de `app/workspace/[slug]/conversations/components/` para `components/whatsapp/`
+- [ ] Atualizar a importação do `WhatsappTemplateDialog` em `app/workspace/[slug]/conversations/components/ConversationInputArea.tsx`
+- [ ] Mover/Definir o tipo `WhatsappTemplate` em `lib/types/whatsapp.ts` (ou `lib/types/index.ts`)
+- [ ] Atualizar importações do tipo `WhatsappTemplate` em `components/whatsapp/WhatsappTemplateDialog.tsx` e onde mais for usado
+- [ ] Criar/Definir a Server Action `sendWhatsappTemplateAction` em `lib/actions/whatsappActions.ts` (se `lib/actions` não existir, criar)
+- [ ] Implementar a lógica na `sendWhatsappTemplateAction` (buscar credenciais, formatar payload, chamar API WhatsApp, opcionalmente criar mensagem no DB com status PENDING/SENT)
+- [ ] Refatorar a função `sendTemplateMessage` no `ConversationContext` para chamar a `sendWhatsappTemplateAction`, passando os dados necessários (incluindo `clientId` se necessário para a action)
+- [ ] Garantir que `ConversationDetail.tsx` passe todos os dados necessários (como `clientId`) para a função `sendTemplateMessage` do contexto.
+- [ ] Testar o fluxo completo de seleção e envio de templates na área de conversas original.
+- [ ] Identificar e refatorar outras áreas do app que precisarão usar o `WhatsappTemplateDialog` e a `sendWhatsappTemplateAction`.
+

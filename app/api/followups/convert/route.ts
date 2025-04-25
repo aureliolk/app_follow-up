@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     let userId: string | null = null;
 
     // --- Parse e validação do corpo da requisição (necessário antes para API key) ---
-    let parsedBody;
+    let parsedBody : z.infer<typeof convertFollowUpSchema>;
     try {
       // Clonar a requisição para ler o corpo duas vezes se necessário (API key vs Session)
       const body = await req.clone().json(); 

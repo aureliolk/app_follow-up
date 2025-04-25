@@ -5,7 +5,7 @@ import { sendWhatsappMessage } from "@/lib/channel/whatsappSender";
 import { Prisma } from '@prisma/client';
 
 // Context shapes for services
-import type { Conversation, Client, Workspace, AbandonedCartRule, FollowUp as FollowUpModel, WorkspaceAiFollowUpRule } from '@prisma/client';
+import type { Conversation, Client, Workspace, AbandonedCartRule, FollowUp as FollowUpModel, WorkspaceAiFollowUpRule, FollowUp } from '@prisma/client';
 
 /**
  * Contexto completo para processamento de carrinho abandonado.
@@ -14,6 +14,7 @@ export interface AbandonedCartContext {
   conversation: Conversation;
   client: Client;
   workspace: Workspace & { abandonedCartRules: AbandonedCartRule[] };
+  followUp: FollowUp | null;
 }
 
 /**
@@ -27,10 +28,8 @@ export interface FollowUpContext {
 }
 
 /**
- * Carrega dados necessários para processar carrinho abandonado.
- */
-/**
- * Carrega dados de conversa, cliente e regras para fluxo de carrinho abandonado.
+ * Carrega dados de conversa, cliente, workspace (com regras de carrinho)
+ * e o FollowUp associado (se existir).
  */
 export async function loadAbandonedCartContext(
   conversationId: string,
@@ -46,10 +45,11 @@ export async function loadAbandonedCartContext(
             orderBy: { sequenceOrder: 'asc' },
           }
         }
-      }
+      },
+      followUp: true
     }
   });
-  return { conversation, client: conversation.client, workspace: conversation.workspace };
+  return { conversation, client: conversation.client, workspace: conversation.workspace, followUp: conversation.followUp };
 }
 
 /**

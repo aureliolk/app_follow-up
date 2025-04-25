@@ -19,6 +19,7 @@ import type {
     ClientConversation,
 } from '@/app/types';
 import { toast, Toast, DefaultToastOptions } from 'react-hot-toast';
+import { sendWhatsappTemplateAction } from '@/lib/actions/whatsappActions';
 
 // --- Helper Function ---
 const getActiveWorkspaceId = (workspaceCtx: any, providedId?: string): string | null => {
@@ -37,7 +38,7 @@ interface ConversationContextType {
     // Função para enviar mídia (File object)
     sendMediaMessage: (conversationId: string, file: File) => Promise<void>; // Retorna void pois a atualização vem via SSE
     // Função para enviar template (objeto com dados do template)
-    sendTemplateMessage: (conversationId: string, templateData: any) => Promise<void>; // Retorna void, atualização via SSE
+    sendTemplateMessage: (conversationId: string, templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => Promise<void>;
 
     // Conversation List State & Actions
     conversations: ClientConversation[];
@@ -422,48 +423,72 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
     }, [workspaceContext, selectedConversation /* remover addMessageOptimistically e updateMessageStatus se não forem mais usados em outro lugar*/]);
 
-    // <<< FUNÇÃO: Enviar Template >>>
-    const sendTemplateMessage = useCallback(async (conversationId: string, templateData: any) => {
+    // <<< FUNÇÃO: Enviar Template (Refatorada) >>>
+    const sendTemplateMessage = useCallback(async (conversationId: string, templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => {
         const wsId = getActiveWorkspaceId(workspaceContext);
+        const clientId = selectedConversation?.client_id;
+
         if (!wsId) {
             toast.error('Workspace ID não encontrado para enviar template.');
-            return;
+            throw new Error('Workspace ID não encontrado');
         }
+        if (!clientId) {
+             toast.error('Cliente não selecionado ou ID do cliente não encontrado para enviar template.');
+             throw new Error('ID do Cliente não encontrado');
+        }
+
         const templateName = templateData.name || 'template_desconhecido';
+        console.log(`[ConversationContext] Calling sendWhatsappTemplateAction for Conv ${conversationId}:`, templateData);
 
-        console.log(`[ConversationContext] Sending template for Conv ${conversationId}:`, templateData);
-
-        // Montar payload para a API
-        const payload = {
+        // Usar toast.promise para feedback visual
+        const promise = sendWhatsappTemplateAction({
+            conversationId,
             workspaceId: wsId,
+            clientId,
             templateName: templateData.name,
-            languageCode: templateData.language, // Assumindo que templateData tem 'language'
-            variables: templateData.variables || {}, // Assumindo que templateData tem 'variables'
-        };
+            templateLanguage: templateData.language,
+            variables: templateData.variables,
+            templateBody: templateData.body
+        });
 
+        try {
+             await toast.promise(promise, {
+                loading: `Enviando template ${templateName}...`,
+                success: (result) => {
+                    if (!result.success) {
+                        // Se a action retorna sucesso=false, lançamos erro para cair no catch do toast
+                        throw new Error(result.error || 'Falha no envio do template (reportado pela action).');
+                    }
+                    // A mensagem aparecerá via SSE, então só confirmamos o início do envio.
+                    console.log(`[ConversationContext] Server action sendWhatsappTemplateAction successful for Conv ${conversationId}. WAMID: ${result.messageId}`);
+                    return `Template ${templateName} enviado para processamento.`;
+                },
+                error: (err) => {
+                    // Erros lançados pela action ou pelo try/catch abaixo
+                    console.error(`[ConversationContext] Error sending template for Conv ${conversationId}:`, err);
+                    return err.message || 'Erro desconhecido ao enviar template.';
+                },
+            });
+        } catch (error) {
+             // Captura erros caso toast.promise falhe ou a action lance um erro inesperado
+             // O toast.promise já deve ter mostrado o erro, mas logamos aqui também.
+             console.error("[ConversationContext] Underlying error during sendTemplateMessage action call:", error);
+             // Re-lançar o erro para que a UI que chamou (ex: ConversationInputArea) possa saber
+             throw error;
+        }
+
+        /* Código antigo removido:
         try {
             const response = await axios.post(
                 `/api/conversations/${conversationId}/send-template`,
                 payload
             );
-
-            if (!response.data.success) {
-                throw new Error(response.data.error || 'Falha ao enviar template');
-            }
-
-            console.log(`[ConversationContext] Template API call successful for Conv ${conversationId}. Message will arrive via SSE.`);
-            // Não adicionamos mensagem otimista, esperamos o SSE com a mensagem real criada pelo backend.
-            // Podemos mostrar um toast de sucesso aqui se desejado, mas o SSE é a confirmação final.
-            // toast.success(`Template ${templateName} enviado!`);
-
+            // ... restante da lógica antiga
         } catch (error: any) {
-             console.error("[ConversationContext] Erro ao enviar template:", error);
-            const message = error.response?.data?.error || error.message || 'Erro ao enviar template.';
-            // Não há mensagem otimista para atualizar o status para FAILED.
-            // Apenas mostramos o erro.
-            toast.error(`Falha ao enviar template: ${message}`);
+            // ... lógica de erro antiga
         }
-    }, [workspaceContext]); // Remover dependências otimistas
+        */
+    }, [workspaceContext, selectedConversation?.client_id]); // <<< Adicionar clientId como dependência >>>
 
     // --- Realtime Message Handling (SSE) ---
     const addRealtimeMessage = useCallback((message: Message) => {
@@ -670,82 +695,77 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, [workspaceContext, setSelectedConversationError, setConversations, setSelectedConversation]); // Adicionado setters
 
     useEffect(() => {
-        // Obter o workspaceId DENTRO do useEffect ou garantir que ele seja estável
         const workspaceId = workspaceContext.workspace?.id;
 
         if (workspaceId) {
             console.log('[ConversationContext] Setting up SSE listener for workspace:', workspaceId);
-            // const eventSource = new EventSource(`/api/sse?workspaceId=${workspaceId}`); // <<< COMENTADO
+            const eventSource = new EventSource(`/api/sse?workspaceId=${workspaceId}`);
 
-            // eventSource.onopen = () => { // <<< Todo o bloco relacionado a eventSource pode ser comentado se necessário
-            //     console.log('[ConversationContext] SSE Connection Opened');
-            // };
+            eventSource.onopen = () => {
+                console.log('[ConversationContext] SSE Connection Opened');
+            };
 
-            // eventSource.onerror = (error) => {
-            //     console.error('[ConversationContext] SSE Error:', error);
-            //     eventSource.close();
-            // };
+            eventSource.onerror = (error) => {
+                console.error('[ConversationContext] SSE Error:', error);
+                eventSource.close();
+            };
 
-            // eventSource.onmessage = (event) => {
-            //     try {
-            //         const eventData = JSON.parse(event.data);
-            //         console.log('[CONTEXT_LOG] SSE Received Event:', eventData);
+            eventSource.onmessage = (event) => {
+                try {
+                    const eventData = JSON.parse(event.data);
+                    console.log('[CONTEXT_LOG] SSE Received Event:', eventData);
 
-            //         if (eventData.type === 'new_message') {
-            //             addRealtimeMessage(eventData.payload as Message);
-            //         } else if (eventData.type === 'message_status_updated') {
-            //             updateRealtimeMessageStatus(eventData.payload);
-            //         } else if (eventData.type === 'message_content_updated') {
-            //             updateRealtimeMessageContent(eventData.payload);
-            //         }
-            //         // <<< HANDLER PARA ai_status_updated >>>
-            //         else if (eventData.type === 'ai_status_updated') {
-            //             console.log(`[CONTEXT_LOG] Handling ai_status_updated:`, eventData.payload);
-            //             const { conversationId, is_ai_active } = eventData.payload;
+                    if (eventData.type === 'new_message') {
+                        console.log('[CONTEXT SSE] Received new_message event:', eventData.payload);
+                        addRealtimeMessage(eventData.payload as Message);
+                    } else if (eventData.type === 'message_status_updated') {
+                        console.log('[CONTEXT SSE] Received message_status_updated event:', eventData.payload);
+                        updateRealtimeMessageStatus(eventData.payload);
+                    } else if (eventData.type === 'message_content_updated') {
+                        console.log('[CONTEXT SSE] Received message_content_updated event:', eventData.payload);
+                        updateRealtimeMessageContent(eventData.payload);
+                    } else if (eventData.type === 'ai_status_updated') {
+                        console.log(`[CONTEXT_LOG] Handling ai_status_updated:`, eventData.payload);
+                        const { conversationId, is_ai_active } = eventData.payload;
 
-            //             // Atualizar a conversa selecionada
-            //             setSelectedConversation(prevSelected => {
-            //                 if (prevSelected && prevSelected.id === conversationId) {
-            //                     console.log(`[CONTEXT_LOG] Updating selected conversation ${conversationId} AI status to ${is_ai_active}`);
-            //                     return { ...prevSelected, is_ai_active: is_ai_active };
-            //                 }
-            //                 return prevSelected;
-            //             });
+                        setSelectedConversation(prevSelected => {
+                            if (prevSelected && prevSelected.id === conversationId) {
+                                console.log(`[CONTEXT_LOG] Updating selected conversation ${conversationId} AI status to ${is_ai_active}`);
+                                return { ...prevSelected, is_ai_active: is_ai_active };
+                            }
+                            return prevSelected;
+                        });
 
-            //             // Atualizar a lista geral de conversas
-            //             setConversations(prevList => {
-            //                 console.log(`[CONTEXT_LOG] Updating conversations list for ${conversationId} AI status to ${is_ai_active}`);
-            //                 return prevList.map(convo =>
-            //                     convo.id === conversationId
-            //                         ? { ...convo, is_ai_active: is_ai_active }
-            //                         : convo
-            //                 );
-            //             });
+                        setConversations(prevList => {
+                            console.log(`[CONTEXT_LOG] Updating conversations list for ${conversationId} AI status to ${is_ai_active}`);
+                            return prevList.map(convo =>
+                                convo.id === conversationId
+                                    ? { ...convo, is_ai_active: is_ai_active }
+                                    : convo
+                            );
+                        });
 
-            //             // Mostrar toast
-            //             if (selectedConversation?.id === conversationId) {
-            //                 // Usar toast.success ou outra variante disponível
-            //                 toast.success(`IA foi ${is_ai_active ? 'reativada' : 'pausada'} automaticamente.`);
-            //             }
+                        if (selectedConversation?.id === conversationId) {
+                             toast.success(`IA foi ${is_ai_active ? 'reativada' : 'pausada'} automaticamente.`);
+                        }
 
-            //         } else {
-            //             console.warn('[ConversationContext] Received unknown SSE event type:', eventData.type);
-            //         }
+                    } else {
+                        console.warn('[ConversationContext] Received unknown SSE event type:', eventData.type);
+                    }
 
-            //     } catch (error) {
-            //         console.error('[ConversationContext] Error parsing SSE message:', error, 'Data:', event.data);
-            //     }
-            // };
+                } catch (error) {
+                    console.error('[ConversationContext] Error parsing SSE message:', error, 'Data:', event.data);
+                }
+            };
 
-            // Cleanup
             return () => {
-                console.log('[ConversationContext] Closing SSE connection (commented out).');
-                // eventSource.close(); // <<< COMENTADO
+                console.log('[ConversationContext] Closing SSE connection.');
+                eventSource.close();
             };
         } else {
              console.log('[ConversationContext] Workspace ID not available, SSE listener not started.');
+             return () => {};
         }
-    // Dependências: funções de callback e IDs que podem mudar e recriar a conexão/handler
     }, [workspaceContext.workspace?.id, addRealtimeMessage, updateRealtimeMessageStatus, updateRealtimeMessageContent, selectedConversation?.id]);
 
     // --- Context Value (Simplified) ---
@@ -784,7 +804,6 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         addMessageOptimistically, updateMessageStatus, isSendingMessage, sendManualMessage,
         clearMessageCache, addRealtimeMessage, updateRealtimeMessageContent, updateRealtimeMessageStatus,
         unreadConversationIds, setUnreadConversationIds, sendMediaMessage, sendTemplateMessage,
-        // toggleAIStatus e isTogglingAIStatus são estáveis se definidos com useCallback corretamente
         toggleAIStatus, isTogglingAIStatus,
     ]);
 

@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 
 import type { Message } from '@/app/types';
 import { cn } from '@/lib/utils';
-import WhatsappTemplateDialog from './WhatsappTemplateDialog'; // Presumindo que está no mesmo diretório
+import WhatsappTemplateDialog from '@/components/whatsapp/WhatsappTemplateDialog';
 
 // --- Tipos e Interfaces ---
 
@@ -197,7 +197,7 @@ export default function ConversationInputArea({
     }
   };
 
-  const handleSendTemplate = async (templateData: { name: string; language: string; variables: Record<string, string> }) => {
+  const handleSendTemplate = async (templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => {
     if (!conversationId) {
         toast.error("Conversa não selecionada.");
         return;
@@ -205,7 +205,6 @@ export default function ConversationInputArea({
     console.log("Input Area: Template selecionado, chamando contexto...", templateData);
     try {
       await sendTemplateMessage(conversationId, templateData);
-      toast(`Template ${templateData.name} sendo enviado...`);
     } catch (error: any) {
       console.error("Erro capturado no InputArea ao tentar enviar template:", error);
     }

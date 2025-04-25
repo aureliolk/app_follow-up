@@ -1,4 +1,3 @@
-// app/workspace/[slug]/conversations/components/WhatsappTemplateDialog.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -18,11 +17,11 @@ import {
 import { ScrollArea as DialogScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, MessageSquareText, Loader2, XCircle } from 'lucide-react';
 import { useWhatsappTemplates } from '@/context/whatsapp-template-context';
-import type { WhatsappTemplate } from '@/app/types'; // <<< Assumindo que o tipo será movido para app/types
+import type { WhatsappTemplate } from '@/lib/types/whatsapp';
 import { toast } from 'react-hot-toast';
 
 interface WhatsappTemplateDialogProps {
-  onSendTemplate: (templateData: { name: string; language: string; variables: Record<string, string> }) => void;
+  onSendTemplate: (templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => void;
   disabled?: boolean; // Para desabilitar o botão trigger
 }
 
@@ -47,7 +46,7 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
 
   // Função para extrair variáveis like {{1}}, {{2}}
   const extractVariables = (body: string): string[] => {
-    const regex = /{{(\d+)}}/g;
+    const regex = /{{\d+}}/g;
     const matches = body.match(regex);
     if (!matches) {
       return [];
@@ -69,7 +68,7 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
       // Não fecha o diálogo
     } else {
       // Template sem variáveis, chama onSendTemplate diretamente e fecha
-      onSendTemplate({ name: template.name, language: template.language, variables: {} });
+      onSendTemplate({ name: template.name, language: template.language, variables: {}, body: template.body });
       resetDialogState();
       setShowTemplateDialog(false);
     }
@@ -95,7 +94,8 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
     onSendTemplate({
         name: selectedTemplateForEditing.name,
         language: selectedTemplateForEditing.language,
-        variables: variableValues
+        variables: variableValues,
+        body: selectedTemplateForEditing.body
     });
     resetDialogState();
     setShowTemplateDialog(false);
@@ -163,7 +163,7 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
                 {templateVariables.map((variableKey) => (
                   <div key={variableKey} className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor={`var-${variableKey}`} className="text-right">
-                      Variável {'{{'}{variableKey}{'}}'}
+                      Variável {'{'}{variableKey}{'}}'}
                     </Label>
                     <Input
                       id={`var-${variableKey}`}
@@ -224,4 +224,4 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
       </DialogContent>
     </Dialog>
   );
-}
+} 

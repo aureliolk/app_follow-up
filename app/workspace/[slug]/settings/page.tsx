@@ -75,6 +75,18 @@ export default function WorkspaceSettingsPage() {
                 className="bg-input border-input text-foreground text-sm"
               />
             </div>
+            <div>
+              <Label htmlFor="wsCreatedAt" className="block text-xs font-medium text-muted-foreground mb-1">
+                Workspace ID
+              </Label>
+              <Input
+                id="wsId"
+                type="text"
+                value={workspace.id}
+                disabled
+                className="bg-input border-input text-foreground text-sm"
+              />
+            </div>
           </CardContent>
         </Card>
 

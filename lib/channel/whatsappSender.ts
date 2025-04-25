@@ -195,18 +195,6 @@ export async function sendWhatsappMessage(
   }
 }
 
-// Interface para os parâmetros de envio de mídia
-// <<< REMOVER INTERFACE ANTIGA >>>
-// interface SendMediaParams {
-//   phoneNumberId: string;
-//   toPhoneNumber: string;
-//   accessToken: string;
-//   mediaUrl: string;
-//   mimeType: string;
-//   filename?: string; // Opcional, útil para documentos
-//   caption?: string;  // Opcional, para adicionar legenda a imagens/vídeos
-// }
-
 // <<< NOVAS INTERFACES PARA PARÂMETROS >>>
 interface SendMediaParamsBase {
   phoneNumberId: string;
@@ -270,114 +258,176 @@ const mimeToWhatsAppType: Record<string, { type: 'image' | 'document' | 'audio' 
 export async function sendWhatsappMediaMessage(
   params: SendMediaByIdParams | SendMediaByUrlParams // Aceita um dos dois tipos
 ): Promise<SendResult> {
-  const { phoneNumberId, toPhoneNumber, accessToken, caption } = params;
-  const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phoneNumberId}/messages`;
+  const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${params.phoneNumberId}/messages`;
+  let messagePayload: any;
+  let logIdentifier: string; // Para logs
 
-  let requestBody: any;
-  let logType: string; // Para logging
-
-  // Verifica qual tipo de parâmetro foi passado usando o type guard
   if (isSendMediaByIdParams(params)) {
-    // --- Envio por Media ID ---
-    const { mediaId, messageType } = params;
-    logType = `Media ID (${messageType})`;
-
-    // Validação básica
-    if (!['image', 'audio', 'video', 'document'].includes(messageType)) {
-        console.error(`[WhatsappSender] Invalid messageType provided for sending by ID: ${messageType}`);
-        return { success: false, error: { message: `Invalid messageType for sending by ID: ${messageType}` } };
-    }
-
-    requestBody = {
+    // Envio por ID
+    logIdentifier = `Media ID ${params.mediaId}`;
+    messagePayload = {
       messaging_product: 'whatsapp',
-      to: toPhoneNumber,
-      type: messageType,
-      [messageType]: { // Usa o tipo como nome do campo (ex: 'image': { id: ... })
-        id: mediaId,
-        // Adiciona caption APENAS se for imagem ou vídeo
-        ...( (messageType === 'image' || messageType === 'video') && caption && { caption: caption } )
-        // Filename não é usado ao enviar por ID
-      },
+      to: params.toPhoneNumber,
+      type: params.messageType,
+      [params.messageType]: { // Nome do campo varia com o tipo (image, audio, video, document)
+        id: params.mediaId,
+        ...(params.caption && { caption: params.caption }),
+        // Filename não é necessário ou usado ao enviar por ID de mídia
+        // ...(params.messageType === 'document' && params.filename && { filename: params.filename }), // <<< LINHA REMOVIDA
+      }
     };
-    console.log(`[WhatsappSender] Enviando ${logType} para ${toPhoneNumber}. ID: ${mediaId}`);
-
   } else {
-    // --- Envio por URL ---
-    const { mediaUrl, mimeType, filename } = params;
-    logType = `Media URL (${mimeType})`;
-
-    const mapping = mimeToWhatsAppType[mimeType.toLowerCase()];
-    if (!mapping) {
-      console.error(`[WhatsappSender] Tipo MIME não suportado para envio de mídia por URL: ${mimeType}`);
-      return { success: false, error: { message: `Unsupported MIME type for sending by URL: ${mimeType}` } };
+    // Envio por URL
+    logIdentifier = `Media URL ${params.mediaUrl.substring(0, 50)}...`;
+    const typeInfo = mimeToWhatsAppType[params.mimeType];
+    if (!typeInfo) {
+        console.error(`[WhatsappSender] Tipo MIME não suportado para envio via URL: ${params.mimeType}`);
+        return { success: false, error: { message: `Unsupported MIME type for URL sending: ${params.mimeType}` } };
     }
-    const { type, fieldName } = mapping; // fieldName é geralmente igual a type
 
-    requestBody = {
-      messaging_product: 'whatsapp',
-      to: toPhoneNumber,
-      type: type,
-      [fieldName]: {
-        link: mediaUrl,
-        // Adiciona filename se for documento e estiver disponível
-        ...(type === 'document' && filename && { filename: filename }),
-        // Adiciona caption se for imagem ou vídeo e estiver disponível
-        ...( (type === 'image' || type === 'video') && caption && { caption: caption } )
+    messagePayload = {
+        messaging_product: 'whatsapp',
+        to: params.toPhoneNumber,
+        type: typeInfo.type,
+        [typeInfo.fieldName]: { // Campo correto (image, document, etc.)
+          link: params.mediaUrl,
+          ...(params.caption && { caption: params.caption }),
+          // Filename é crucial para documentos e útil para outros tipos
+          ...(typeInfo.type === 'document' && params.filename && { filename: params.filename }),
+        }
+      };
+  }
+
+  console.log(`[WhatsappSender] Sending media message (${logIdentifier}) to ${params.toPhoneNumber} via ${params.phoneNumberId} (Axios)`);
+
+  try {
+    const response = await axios.post<WhatsAppResponse>(apiUrl, messagePayload, {
+      headers: {
+        'Authorization': `Bearer ${params.accessToken}`,
+        'Content-Type': 'application/json',
       },
-    };
-     console.log(`[WhatsappSender] Enviando ${logType} para ${toPhoneNumber}. URL: ${mediaUrl}`);
-     if (filename) console.log(`  Filename: ${filename}`);
+      timeout: 15000, // Timeout um pouco maior para envio de mídia por URL
+    });
+
+    const sentWamid = response.data.messages?.[0]?.id;
+    if (!sentWamid) {
+      console.warn(`[WhatsappSender] Media message sent to ${params.toPhoneNumber}, but WAMID not found.`);
+      return { success: true, wamid: undefined };
+    }
+
+    console.log(`[WhatsappSender] Media message sent successfully to ${params.toPhoneNumber}. WAMID: ${sentWamid}`);
+    return { success: true, wamid: sentWamid };
+
+  } catch (error: any) {
+    // Reutilizar a mesma lógica de tratamento de erro Axios
+    console.error(`[WhatsappSender] Error sending media message (${logIdentifier}) to ${params.toPhoneNumber} via Axios:`);
+     if (axios.isAxiosError(error)) {
+        const axiosError = error as AxiosError<WhatsAppErrorResponse>;
+        const apiErrorData = axiosError.response?.data?.error;
+        if (apiErrorData) {
+            console.error(`  Status: ${axiosError.response?.status}`);
+            console.error(`  API Error: ${apiErrorData.message} (Code: ${apiErrorData.code}, Type: ${apiErrorData.type}, Subcode: ${apiErrorData.error_subcode || 'N/A'})`);
+            console.error(`  Trace ID: ${apiErrorData.fbtrace_id}`);
+            return { success: false, error: apiErrorData };
+        } else if (axiosError.request) {
+            console.error('  Error: No response received from API (network/timeout).');
+            return { success: false, error: { message: 'Network Error or Timeout' } };
+        } else {
+            console.error('  Error: Axios setup error:', axiosError.message);
+            return { success: false, error: { message: `Axios setup error: ${axiosError.message}` } };
+        }
+    } else {
+        console.error('  Unexpected error:', error.message);
+        return { success: false, error: { message: error.message || 'Unknown error occurred' } };
+    }
+  }
+}
+
+// --- NOVA FUNÇÃO PARA TEMPLATES ---
+
+interface SendTemplateParams {
+  phoneNumberId: string;
+  toPhoneNumber: string;
+  accessToken: string;
+  templateName: string;
+  templateLanguage: string;
+  variables: Record<string, string>; // Variáveis como { "1": "valor1", "2": "valor2" }
+}
+
+/**
+ * Envia uma mensagem de template via WhatsApp Cloud API.
+ * @param params - Objeto contendo os parâmetros para o envio do template.
+ * @returns Um objeto indicando sucesso ou falha no envio.
+ */
+export async function sendWhatsappTemplateMessage(
+  params: SendTemplateParams
+): Promise<SendResult> {
+  const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${params.phoneNumberId}/messages`;
+
+  // Construir a seção de componentes para as variáveis
+  const components = [];
+  if (Object.keys(params.variables).length > 0) {
+    components.push({
+      type: 'body',
+      parameters: Object.entries(params.variables)
+        .sort(([keyA], [keyB]) => parseInt(keyA) - parseInt(keyB)) // Garante ordem {{1}}, {{2}}...
+        .map(([, value]) => ({ type: 'text', text: value }))
+    });
+    // TODO: Adicionar suporte para variáveis de HEADER e BUTTONS se necessário no futuro
   }
 
-  // Log da legenda, se houver (comum a ambos os métodos)
-  if (caption) {
-     console.log(`  Caption: "${caption.substring(0,50)}..."`);
-  }
+  const requestBody = {
+    messaging_product: 'whatsapp',
+    to: params.toPhoneNumber,
+    type: 'template',
+    template: {
+      name: params.templateName,
+      language: { code: params.templateLanguage },
+      components: components,
+    },
+  };
 
-  // --- Lógica de Envio (comum a ambos os métodos) ---
+  console.log(`[WhatsappSender] Sending template '${params.templateName}' (${params.templateLanguage}) to ${params.toPhoneNumber} via ${params.phoneNumberId} (Axios)`);
+
   try {
     const response = await axios.post<WhatsAppResponse>(apiUrl, requestBody, {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'Authorization': `Bearer ${params.accessToken}`,
         'Content-Type': 'application/json',
       },
-      timeout: 20000, // Timeout razoável para envio de mídia
+      timeout: 10000, // Timeout padrão
     });
 
-    const successData = response.data;
-    const sentWamid = successData.messages?.[0]?.id;
-
+    const sentWamid = response.data.messages?.[0]?.id;
     if (!sentWamid) {
-      console.warn(`[WhatsappSender] Mídia (${logType}) enviada para ${toPhoneNumber}, mas WAMID não encontrado na resposta.`);
-       // Considerar sucesso mesmo sem WAMID? Ou retornar erro?
-       // Vamos retornar sucesso sem WAMID por enquanto.
-       return { success: true, wamid: undefined }; // <<< Usar wamid
+      console.warn(`[WhatsappSender] Template message sent to ${params.toPhoneNumber}, but WAMID not found.`);
+      return { success: true, wamid: undefined };
     }
 
-    console.log(`[WhatsappSender] Mídia (${logType}) enviada com sucesso para ${toPhoneNumber}. WAMID: ${sentWamid}`);
-    return { success: true, wamid: sentWamid }; // <<< Usar wamid
+    console.log(`[WhatsappSender] Template message sent successfully to ${params.toPhoneNumber}. WAMID: ${sentWamid}`);
+    return { success: true, wamid: sentWamid };
 
   } catch (error: any) {
-     // Reutiliza a lógica de tratamento de erro do Axios, ajustando a mensagem
-     console.error(`[WhatsappSender] Erro ao enviar ${logType} para ${toPhoneNumber}:`);
-     if (axios.isAxiosError(error)) {
-         const axiosError = error as AxiosError<WhatsAppErrorResponse>;
-         const apiErrorData = axiosError.response?.data?.error;
-         if (apiErrorData) {
-             console.error(`  Status: ${axiosError.response?.status}`);
-             console.error(`  API Error: ${apiErrorData.message} (Code: ${apiErrorData.code}, Type: ${apiErrorData.type}, Subcode: ${apiErrorData.error_subcode || 'N/A'})`);
-             console.error(`  Trace ID: ${apiErrorData.fbtrace_id}`);
-             return { success: false, error: apiErrorData };
-         } else if (axiosError.request) {
-             console.error('  Erro: Nenhuma resposta recebida da API (problema de rede ou timeout).');
-             return { success: false, error: { message: `Network Error or Timeout sending ${logType}` } };
-         } else {
-             console.error('  Erro na configuração da requisição Axios:', axiosError.message);
-             return { success: false, error: { message: `Axios setup error sending ${logType}: ${axiosError.message}` } };
-         }
-     } else {
-         console.error('  Erro inesperado:', error.message);
-         return { success: false, error: { message: error.message || `Unknown error occurred sending ${logType}` } };
-     }
+    // Reutilizar a mesma lógica de tratamento de erro Axios
+    console.error(`[WhatsappSender] Error sending template '${params.templateName}' to ${params.toPhoneNumber} via Axios:`);
+    if (axios.isAxiosError(error)) {
+        const axiosError = error as AxiosError<WhatsAppErrorResponse>;
+        const apiErrorData = axiosError.response?.data?.error;
+        if (apiErrorData) {
+            console.error(`  Status: ${axiosError.response?.status}`);
+            console.error(`  API Error: ${apiErrorData.message} (Code: ${apiErrorData.code}, Type: ${apiErrorData.type}, Subcode: ${apiErrorData.error_subcode || 'N/A'})`);
+            console.error(`  Trace ID: ${apiErrorData.fbtrace_id}`);
+            return { success: false, error: apiErrorData };
+        } else if (axiosError.request) {
+            console.error('  Error: No response received from API (network/timeout).');
+            return { success: false, error: { message: 'Network Error or Timeout' } };
+        } else {
+            console.error('  Error: Axios setup error:', axiosError.message);
+            return { success: false, error: { message: `Axios setup error: ${axiosError.message}` } };
+        }
+    } else {
+        console.error('  Unexpected error:', error.message);
+        return { success: false, error: { message: error.message || 'Unknown error occurred' } };
+    }
   }
 }
