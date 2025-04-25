@@ -266,7 +266,7 @@ export async function POST(req: NextRequest) {
                 client_id: client.id,
                 channel: conversationChannelType,
                 status: ConversationStatus.ACTIVE, 
-                is_ai_active: false,
+                is_ai_active: true,
                 last_message_at: now, 
                 metadata: { initiatedByEvent: eventName, eventData: eventData },
                 followUp: { 

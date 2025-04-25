@@ -5,25 +5,10 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
-import { sendWhatsappMessage } from "@/lib/channel/whatsappSender";
-import { decrypt } from '@/lib/encryption';
 import { redisConnection } from '@/lib/redis';
-import { MessageSenderType, ConversationStatus, Prisma } from '@prisma/client';
 import type { Message } from "@/app/types";
 import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
-
-// Define the exact type returned by the select clause
-const selectArgs = {
-    id: true,
-    conversation_id: true,
-    sender_type: true,
-    content: true,
-    timestamp: true,
-    status: true,
-    metadata: true,
-    providerMessageId: true,
-};
-type PendingMessageType = Prisma.MessageGetPayload<{ select: typeof selectArgs }>;
+import { sendOperatorMessage } from '@/lib/services/conversationService';
 
 export async function GET(
   req: NextRequest,
@@ -130,8 +115,6 @@ export async function GET(
 
 const sendMessageSchema = z.object({
   content: z.string().min(1, "O conteúdo da mensagem não pode ser vazio."),
-  // workspaceId: z.string().uuid(), // Não precisa vir no body, pegamos da conversa
-  // senderType: z.enum(['AI', 'SYSTEM']), // Opcional: Definir quem está enviando manualmente
 });
 
 export async function POST(
@@ -143,165 +126,80 @@ export async function POST(
   console.log(`API POST /api/conversations/${conversationId}/messages: Request received - Send Manual Message`);
 
   try {
-    // 1. Autenticação e Autorização
+    // 1. Autenticação
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 });
     }
     const userId = session.user.id;
+    const userName = session.user.name; // Get user name for the service
 
-    // 2. Buscar Conversa e Dados Relacionados (Canal, Cliente, Workspace Creds)
-    const conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
-        select: { // Selecionar apenas o necessário
-            id: true,
-            channel: true,
-            client_id: true,
-            client: {
-                select: { phone_number: true }
-            },
-            workspace_id: true,
-            workspace: { // Incluir relação workspace
-                select: {
-                    id: true,
-                    whatsappPhoneNumberId: true,
-                    whatsappAccessToken: true, // Criptografado
-                    ai_name: true
-                }
-            }
+    // 2. Validar Corpo da Requisição
+    let content: string;
+    try {
+        const body = await req.json();
+        const validation = sendMessageSchema.safeParse(body);
+        if (!validation.success) {
+          return NextResponse.json({ success: false, error: 'Dados inválidos', details: validation.error.errors }, { status: 400 });
         }
+        content = validation.data.content;
+    } catch (parseError) {
+         console.error(`API POST Messages (${conversationId}): Error parsing request body:`, parseError);
+         return NextResponse.json({ success: false, error: 'Corpo da requisição inválido.' }, { status: 400 });
+    }
+
+
+    // 3. Verificar Permissão (Necessário buscar workspace ID primeiro)
+    const conversationForPermission = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { workspace_id: true }
     });
 
-    if (!conversation) {
+    if (!conversationForPermission) {
         return NextResponse.json({ success: false, error: 'Conversa não encontrada' }, { status: 404 });
     }
-    if (!conversation.workspace) {
-        console.error(`API POST Messages (${conversationId}): Relação Workspace ausente na conversa encontrada.`);
-        return NextResponse.json({ success: false, error: 'Dados do Workspace associado não encontrados' }, { status: 500 });
-    }
-    if (!conversation.client) {
-         console.error(`API POST Messages (${conversationId}): Relação Client ausente na conversa encontrada.`);
-        return NextResponse.json({ success: false, error: 'Dados do Cliente associado não encontrados' }, { status: 500 });
-    }
-    const workspaceId = conversation.workspace.id;
-    const clientId = conversation.client_id;
+    const workspaceId = conversationForPermission.workspace_id;
 
-    // 3. Verificar Permissão
-    const hasPermission = await checkPermission(workspaceId, userId, 'MEMBER'); // Ajuste role se necessário
+    const hasPermission = await checkPermission(workspaceId, userId, 'MEMBER'); // Or appropriate role
     if (!hasPermission) {
         return NextResponse.json({ success: false, error: 'Permissão negada para enviar mensagem nesta conversa' }, { status: 403 });
     }
 
-    // 4. Validar Corpo da Requisição
-    const body = await req.json();
-    const validation = sendMessageSchema.safeParse(body);
-    if (!validation.success) {
-      return NextResponse.json({ success: false, error: 'Dados inválidos', details: validation.error.errors }, { status: 400 });
-    }
-    const { content } = validation.data;
-    const senderType = MessageSenderType.SYSTEM; // Usar SYSTEM (ou criar AGENT no futuro)
+    // --- 4. Chamar o Serviço para Enviar a Mensagem ---
+    console.log(`API POST Messages (${conversationId}): Calling sendOperatorMessage service for user ${userId}.`);
+    const result = await sendOperatorMessage(
+        conversationId,
+        userId,
+        userName,
+        content
+    );
 
-    // --- NOVA LÓGICA: Salvar Mensagem PENDING Primeiro ---
-    let pendingMessage: PendingMessageType | null = null;
-    const messageTimestamp = new Date();
-    const senderName = session?.user?.name || 'Operador';
-    const prefixedContent = `*${senderName}*\n ${content}`;
+    // 5. Lidar com a Resposta do Serviço
+    if (result.success && result.message) {
+        console.log(`API POST Messages (${conversationId}): Service call successful. Message ID: ${result.message.id}`);
 
-    try {
-        pendingMessage = await prisma.message.create({
-            data: {
-                conversation_id: conversationId,
-                sender_type: senderType,
-                content: prefixedContent,
-                timestamp: messageTimestamp,
-                status: 'PENDING',
-                providerMessageId: null,
-                metadata: { manual_sender_id: userId },
-            },
-            select: selectArgs
-        });
-        console.log(`API POST Messages (${conversationId}): Saved PENDING message to DB (ID: ${pendingMessage.id}).`);
-    } catch (dbError) {
-        console.error(`API POST Messages (${conversationId}): Error saving PENDING message to DB:`, dbError);
-        return NextResponse.json({ success: false, error: 'Erro ao preparar mensagem para envio.' }, { status: 500 });
-    }
-
-    // 5. Lógica de Envio Condicional (usar `content` original)
-    let sendSuccess = false;
-    let channelMessageIdFromApi: string | undefined = undefined;
-
-    if (conversation.channel === 'WHATSAPP') {
-        console.log(`API POST Messages (${conversationId}): Attempting send via WHATSAPP.`);
-        const { whatsappPhoneNumberId, whatsappAccessToken } = conversation.workspace;
-        const clientPhoneNumber = conversation.client?.phone_number;
-
-        if (!whatsappPhoneNumberId || !whatsappAccessToken || !clientPhoneNumber) {
-            console.error(`API POST Messages (${conversationId}): WhatsApp credentials/phone missing for workspace ${workspaceId} or client.`);
-             // Atualizar status da msg pendente para FAILED
-             if (pendingMessage) {
-                 // Assign metadata directly, handling non-object cases
-                 const existingMetadata = (typeof pendingMessage.metadata === 'object' && pendingMessage.metadata !== null) ? pendingMessage.metadata : {}; 
-                 await prisma.message.update({ where: { id: pendingMessage.id }, data: { status: 'FAILED', metadata: { ...existingMetadata, error: 'Configuração do WhatsApp incompleta.' } } }); 
-             }
-            return NextResponse.json({ success: false, error: 'Configuração do WhatsApp incompleta para envio.' }, { status: 500 });
-        }
-
+        // Opcional: Publicar evento no Redis para atualização da UI via SSE
         try {
-            console.log(`API POST Messages (${conversationId}): Decrypting WhatsApp token...`);
-            const decryptedAccessToken = decrypt(whatsappAccessToken);
-            if (!decryptedAccessToken) throw new Error("Token de acesso descriptografado está vazio.");
-            console.log(`API POST Messages (${conversationId}): Token decrypted. Sending message...`);
-
-            const sendResult = await sendWhatsappMessage(
-                whatsappPhoneNumberId,
-                clientPhoneNumber,
-                decryptedAccessToken,
-                content,
-                senderName
-            );
-
-            if (sendResult.success) {
-                sendSuccess = true;
-                channelMessageIdFromApi = sendResult.wamid;
-                console.log(`API POST Messages (${conversationId}): Message sent successfully via WhatsApp API (API Msg ID: ${channelMessageIdFromApi}).`);
-            } else {
-                console.error(`API POST Messages (${conversationId}): Failed to send message via WhatsApp.`, sendResult.error);
-                throw new Error(`Falha ao enviar mensagem para o WhatsApp: ${JSON.stringify(sendResult.error)}`);
-            }
-        } catch (error: any) {
-            console.error(`API POST Messages (${conversationId}): Error during WhatsApp send/decrypt:`, error);
-             // Atualizar status da msg pendente para FAILED
-              if (pendingMessage) {
-                 // Assign metadata directly, handling non-object cases
-                 const existingMetadata = (typeof pendingMessage.metadata === 'object' && pendingMessage.metadata !== null) ? pendingMessage.metadata : {}; 
-                 await prisma.message.update({ where: { id: pendingMessage.id }, data: { status: 'FAILED', metadata: { ...existingMetadata, error: error.message || 'Erro ao enviar via WhatsApp.' } } }); 
-             }
-            return NextResponse.json({ success: false, error: error.message || 'Erro ao enviar via WhatsApp.' }, { status: 500 });
+            const redis = redisConnection;
+            // Usar o formato esperado pelo frontend/SSE handler
+            const eventPayload = JSON.stringify({ type: 'new_message', payload: result.message });
+            await redis.publish(`chat-updates:${conversationId}`, eventPayload);
+             console.log(`API POST Messages (${conversationId}): Published 'new_message' event to Redis channel chat-updates:${conversationId}`);
+        } catch(pubError) {
+            console.error(`API POST Messages (${conversationId}): Failed to publish new message event to Redis:`, pubError);
+            // Não falhar a requisição inteira por causa disso, apenas logar.
         }
 
+        // Retornar a mensagem criada pelo serviço
+        return NextResponse.json({ success: true, message: result.message });
     } else {
-         console.warn(`API POST Messages (${conversationId}): Channel is '${conversation.channel}', which is not supported for manual sending.`);
-          // Atualizar status da msg pendente para FAILED
-           if (pendingMessage) {
-                // Assign metadata directly, handling non-object cases
-                const existingMetadata = (typeof pendingMessage.metadata === 'object' && pendingMessage.metadata !== null) ? pendingMessage.metadata : {}; 
-               await prisma.message.update({ where: { id: pendingMessage.id }, data: { status: 'FAILED', metadata: { ...existingMetadata, error: `Envio manual não suportado para o canal ${conversation.channel}` } } }); 
-           }
-         return NextResponse.json({ success: false, error: `Envio manual não suportado para o canal ${conversation.channel}` }, { status: 400 });
+        console.error(`API POST Messages (${conversationId}): Service call failed. Error: ${result.error}`);
+        // Usar o statusCode retornado pelo serviço, se disponível
+        return NextResponse.json({ success: false, error: result.error || 'Falha ao enviar mensagem.' }, { status: result.statusCode || 500 });
     }
-
-    // --- Retornar Sucesso (Apenas confirmação do envio para API) ---
-    return NextResponse.json({ success: true });
 
   } catch (error: any) {
     console.error(`API POST Messages (${conversationId}): Unhandled error in POST handler:`, error);
-    // Remove the attempt to update the message status in the final catch block 
-    // as the specific message might be uncertain here.
-    /* 
-    if (pendingMessage?.id) { 
-        try { ... } catch { ... } 
-    }
-    */
-    return NextResponse.json({ success: false, error: 'Erro interno do servidor' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Erro interno do servidor ao processar a requisição.' }, { status: 500 });
   }
 }

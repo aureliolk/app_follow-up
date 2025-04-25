@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 import { FollowUpStatus, Prisma } from '@prisma/client'; // Import Prisma para error handling
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // <<< Importar função
+import { markFollowUpConverted } from '@/lib/services/followUpService'; // <<< Importar a função do serviço
 
 // Esquema de validação para o corpo da requisição
 const convertFollowUpSchema = z.object({
@@ -120,48 +121,52 @@ export async function POST(req: NextRequest) {
     const clientId = client.id;
     console.log(`API POST /api/followups/convert: Found client ID: ${clientId}`);
     
-    // <<< ALTERAÇÃO: Usar clientId encontrado para buscar Follow-up >>>
-    console.log(`API POST /api/followups/convert: Searching for active follow-up for client ${clientId} in workspace ${workspaceId}`);
+    // Buscar Follow-up ativo ou pausado (APENAS PARA OBTER O ID)
+    console.log(`API POST /api/followups/convert: Searching for active/paused follow-up for client ${clientId} to get its ID...`);
     const activeFollowUp = await prisma.followUp.findFirst({
       where: {
         workspace_id: workspaceId,
-        client_id: clientId, // <<< Usar o ID encontrado
+        client_id: clientId, 
         status: {
           in: [FollowUpStatus.ACTIVE, FollowUpStatus.PAUSED],
         },
       },
-      select: { id: true, status: true },
+      select: { id: true }, // <<< Selecionar apenas o ID
     });
 
     if (!activeFollowUp) {
       console.log(`API POST /api/followups/convert: No active or paused follow-up found for client ${clientId}.`);
       return NextResponse.json({ success: true, message: 'Nenhum follow-up ativo ou pausado encontrado para este cliente.' });
     }
+    const followUpIdToConvert = activeFollowUp.id;
+    console.log(`API POST /api/followups/convert: Found follow-up ID to convert: ${followUpIdToConvert}`);
 
-    console.log(`API POST /api/followups/convert: Found follow-up ${activeFollowUp.id}. Current status: ${activeFollowUp.status}. Updating to ${finalStatus}...`);
+    // <<< CHAMAR O SERVIÇO PARA CONVERTER E REMOVER JOBS >>>
+    const updatedFollowUpResult = await markFollowUpConverted(followUpIdToConvert);
 
-    const updatedFollowUp = await prisma.followUp.update({
-      where: {
-        id: activeFollowUp.id,
-      },
-      data: {
-        status: finalStatus,
-        next_sequence_message_at: null,
-        updated_at: new Date(),
-      },
-      select: { id: true, status: true }
-    });
-
-    console.log(`API POST /api/followups/convert: Follow-up ${updatedFollowUp.id} updated successfully to status ${updatedFollowUp.status}.`);
-
-    return NextResponse.json({ success: true, message: 'Follow-up marcado como convertido com sucesso.', data: updatedFollowUp });
+    if (updatedFollowUpResult) {
+        console.log(`API POST /api/followups/convert: Follow-up ${updatedFollowUpResult.id} processed by service. Final status: ${updatedFollowUpResult.status}.`);
+        return NextResponse.json({ 
+            success: true, 
+            message: `Follow-up ${updatedFollowUpResult.status === FollowUpStatus.CONVERTED ? 'marcado como convertido' : 'processado (status atual: ' + updatedFollowUpResult.status + ')'} com sucesso.`, 
+            data: updatedFollowUpResult 
+        });
+    } else {
+         console.warn(`API POST /api/followups/convert: Follow-up ${followUpIdToConvert} não foi encontrado pelo serviço (pode ter sido alterado por outro processo).`);
+         // Retornar sucesso, pois a intenção era converter algo que não está mais no estado esperado ou não existe.
+         return NextResponse.json({ success: true, message: 'Follow-up não encontrado ou já estava em estado final.' });
+    }
 
   } catch (error) {
     console.error('API POST /api/followups/convert: Internal error:', error);
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
         console.error(`API POST /api/followups/convert: Prisma Error Code - ${error.code}`, error.message);
-        return NextResponse.json({ success: false, error: 'Erro no banco de dados ao converter follow-up.' }, { status: 500 });
+        return NextResponse.json({ success: false, error: 'Erro no banco de dados ao processar conversão de follow-up.' }, { status: 500 });
+    } else if (error instanceof Error) {
+        // Capturar outros erros (ex: do followUpService)
+         return NextResponse.json({ success: false, error: `Erro ao processar conversão: ${error.message}` }, { status: 500 });
+    } else {
+        return NextResponse.json({ success: false, error: 'Erro interno desconhecido ao converter follow-up' }, { status: 500 });
     }
-    return NextResponse.json({ success: false, error: 'Erro interno ao converter follow-up' }, { status: 500 });
   }
 } 
