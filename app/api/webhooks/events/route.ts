@@ -243,25 +243,41 @@ export async function POST(req: NextRequest) {
 
         console.log(`API POST /api/webhooks/events: [Abandoned Cart] Found ${abandonedCartRules.length} rule(s) for workspace ${workspaceId}.`);
 
-        // 2. Criar UMA ÚNICA Conversa para este evento de carrinho
+        // 2. Criar FollowUp ANTES da conversa
+        console.log(`API POST /api/webhooks/events: [Abandoned Cart] Creating new FollowUp record for client ${client.id}`);
+        const newAbandonedCartFollowUp = await prisma.followUp.create({
+            data: {
+                workspace_id: workspaceId,
+                client_id: client.id,
+                status: FollowUpStatus.ACTIVE,
+                started_at: now,
+                current_sequence_step_order: 0,
+            },
+            select: { id: true }
+        });
+        console.log(`API POST /api/webhooks/events: [Abandoned Cart] FollowUp record ${newAbandonedCartFollowUp.id} created.`);
+
+        // 2. Criar Conversa (e associar FollowUp)
         console.log(`API POST /api/webhooks/events: [Abandoned Cart] Creating new Conversation record for client ${client.id}`);
-        const conversationChannelType = 'ABANDONED_CART'; // Canal específico
+        const conversationChannelType = 'ABANDONED_CART';
         const newConversation = await prisma.conversation.create({
             data: {
                 workspace_id: workspaceId,
                 client_id: client.id,
-                channel: conversationChannelType, // Usar canal definido
-                status: ConversationStatus.ACTIVE, // Inicia ativa, será fechada pelo worker? Ou manual?
-                is_ai_active: true, // IA não deve intervir inicialmente aqui? Definir padrão
-                last_message_at: now, // Marcar o início
-                // Metadata para indicar origem
+                channel: conversationChannelType,
+                status: ConversationStatus.ACTIVE, 
+                is_ai_active: false,
+                last_message_at: now, 
                 metadata: { initiatedByEvent: eventName, eventData: eventData },
+                followUp: { 
+                    connect: { id: newAbandonedCartFollowUp.id } 
+                }
             },
             select: { id: true }
         });
-        console.log(`API POST /api/webhooks/events: [Abandoned Cart] Conversation record ${newConversation.id} created for client ${client.id}.`);
+        console.log(`API POST /api/webhooks/events: [Abandoned Cart] Conversation record ${newConversation.id} created and linked to FollowUp ${newAbandonedCartFollowUp.id}.`);
 
-        // 3. Agendar um Job para CADA Regra de Carrinho
+        // 4. Agendar um Job para CADA Regra de Carrinho
         let scheduledJobsCount = 0;
         for (const rule of abandonedCartRules) {
             const ruleDelayMs = Number(rule.delay_milliseconds);
@@ -274,27 +290,23 @@ export async function POST(req: NextRequest) {
 
             // Preparar dados do Job
             const jobData = {
-                // Identificador para o worker saber que é de carrinho abandonado
                 jobType: 'abandonedCart',
                 abandonedCartRuleId: rule.id,
                 workspaceId: workspaceId,
                 clientId: client.id,
                 conversationId: newConversation.id,
-                messageContent: rule.message_content, // Passar conteúdo diretamente? Ou worker busca? Passando por agora.
-                eventData: eventData, // Passar dados do evento original para placeholders
+                messageContent: rule.message_content,
+                eventData: eventData,
             };
             const jobOptions = {
                 delay: ruleDelayMs,
-                // Job ID único combinando conversa e regra
                 jobId: `acart_${newConversation.id}_rule_${rule.id}`,
                 removeOnComplete: true,
                 removeOnFail: 5000,
             };
 
             // Agendar Job
-            // TODO: Considerar uma fila/worker diferente para carrinho abandonado se a lógica for complexa.
-            // Usando 'processSequenceStep' por enquanto, o worker precisará diferenciar pelo jobData.
-            await sequenceStepQueue.add('processAbandonedCartStep', jobData, jobOptions); // <<< Usar um nome de job dedicado
+            await sequenceStepQueue.add('processAbandonedCartStep', jobData, jobOptions);
             console.log(`API POST /api/webhooks/events: [Abandoned Cart] Job scheduled for rule ${rule.id} (Delay: ${ruleDelayMs}ms) in Conversation ${newConversation.id}.`);
             scheduledJobsCount++;
         }
@@ -366,26 +378,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: "Configuração de delay da regra de follow-up inválida." }, { status: 500 });
         }
 
-        // --- PASSO 7: Criar Nova Conversa ---
-        console.log(`API POST /api/webhooks/events: Creating new Conversation record for client ${client.id}`);
-        const conversationChannelType = 'SYSTEM'; // Ou 'EVENT'? Definir o canal para conversas iniciadas por eventos
-        // 'now' já foi definido acima
-        const newConversation = await prisma.conversation.create({
-            data: {
-                workspace_id: workspaceId,
-                client_id: client.id,
-                channel: conversationChannelType,
-                status: ConversationStatus.ACTIVE,
-                is_ai_active: true, // Para follow-ups genéricos, a IA geralmente está ativa
-                last_message_at: now,
-                metadata: { initiatedByEvent: eventName, eventData: eventData },
-            },
-            select: { id: true }
-        });
-        console.log(`API POST /api/webhooks/events: Conversation record ${newConversation.id} created for client ${client.id}.`);
-
-        // --- PASSO 8: Criar Registro FollowUp (com campaign_id) ---
-        console.log(`API POST /api/webhooks/events: Creating new FollowUp record for client ${client.id} (linked to Conv ${newConversation.id}, Campaign ${followUpCampaignId})`);
+        // --- PASSO 8: Criar Registro FollowUp PRIMEIRO (para ter o ID) ---
+        console.log(`API POST /api/webhooks/events: Creating new FollowUp record for client ${client.id} (Campaign ${followUpCampaignId})`);
         const newFollowUp = await prisma.followUp.create({
             data: {
                 workspace_id: workspaceId,
@@ -398,9 +392,29 @@ export async function POST(req: NextRequest) {
             },
             select: { id: true }
         });
-        console.log(`API POST /api/webhooks/events: FollowUp record ${newFollowUp.id} created for client ${client.id}.`);
+        console.log(`API POST /api/webhooks/events: FollowUp record ${newFollowUp.id} created.`);
 
-        // --- PASSO 9: Agendar Primeiro Passo (usando a regra da campanha) ---
+        // --- PASSO 7: Criar Nova Conversa (e associar FollowUp) ---
+        console.log(`API POST /api/webhooks/events: Creating new Conversation record for client ${client.id}`);
+        const conversationChannelType = 'SYSTEM';
+        const newConversation = await prisma.conversation.create({
+            data: {
+                workspace_id: workspaceId,
+                client_id: client.id,
+                channel: conversationChannelType,
+                status: ConversationStatus.ACTIVE,
+                is_ai_active: true, 
+                last_message_at: now,
+                metadata: { initiatedByEvent: eventName, eventData: eventData },
+                followUp: { 
+                    connect: { id: newFollowUp.id } 
+                }
+            },
+            select: { id: true }
+        });
+        console.log(`API POST /api/webhooks/events: Conversation record ${newConversation.id} created and linked to FollowUp ${newFollowUp.id}.`);
+        
+        // --- PASSO 9: Agendar Primeiro Passo...
         const jobData = {
             followUpId: newFollowUp.id,
             stepRuleId: firstRule.id,
@@ -409,12 +423,10 @@ export async function POST(req: NextRequest) {
         };
         const jobOptions = {
             delay: firstDelayMs,
-            jobId: `seq_${newFollowUp.id}_step_${firstRule.id}`, // ID único
+            jobId: `seq_${newFollowUp.id}_step_${firstRule.id}`,
             removeOnComplete: true,
             removeOnFail: 5000,
         };
-
-        // Usando o nome de job original para follow-ups genéricos
         await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
         console.log(`API POST /api/webhooks/events: First sequence job scheduled for FollowUp ${newFollowUp.id} (Rule: ${firstRule.id}, Delay: ${firstDelayMs}ms).`);
 

@@ -143,6 +143,9 @@ model FollowUp {
   campaign    FollowUpCampaign?    @relation(fields: [campaign_id], references: [id])
   ai_analyses FollowUpAIAnalysis[]
 
+  conversation   Conversation? @relation("ConversationToFollowUp", fields: [conversationId], references: [id], onDelete: SetNull)
+  conversationId String?       @unique
+
   @@index([client_id])
   @@index([status])
   @@map("follow_ups")
@@ -454,6 +457,8 @@ model Conversation {
   messages Message[] @relation("ConversationToMessage")
 
   metadata Json?
+
+  followUp   FollowUp? @relation("ConversationToFollowUp")
 
   @@unique([workspace_id, client_id, channel])
   @@unique([workspace_id, channel_conversation_id])
