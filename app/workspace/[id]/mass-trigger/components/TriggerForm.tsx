@@ -97,12 +97,10 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
                     return null; // Ignora linhas sem identificador
                 }
 
-                const name = String(row[1] || '').trim() || undefined;
-
-                // Extrai variáveis das colunas a partir da terceira (índice 2)
+                // Extrai variáveis das colunas a partir da SEGUNDA (índice 1)
                 const variables: Record<string, string> = {};
-                for (let i = 2; i < row.length; i++) {
-                    const varKey = String(i - 1); // Chave "1" para coluna 2, "2" para coluna 3, etc.
+                for (let i = 1; i < row.length; i++) {
+                    const varKey = String(i); // Chave agora é '1' para coluna 2 (índice 1), '2' para coluna 3, etc.
                     const varValue = String(row[i] || '').trim();
                     if (varValue) { // Só adiciona se tiver valor
                          variables[varKey] = varValue;
@@ -111,7 +109,6 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
 
                 return {
                     identifier,
-                    name,
                     variables: Object.keys(variables).length > 0 ? variables : undefined // Só inclui o objeto se houver variáveis
                 };
             })
@@ -370,9 +367,9 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
 
                  {/* Descrição do formato */}
                  <p className="text-xs text-muted-foreground pt-2">
-                   Formato esperado: Coluna 1: Telefone/ID. Coluna 2: Nome (opcional).
+                   Formato esperado: Coluna 1: Telefone/ID.
                    <br/>
-                   Colunas 3, 4, 5... (opcionais): Valores para as variáveis do template {'{{1}}'}, {'{{2}}'}, {'{{3}}'}...
+                   Colunas 2, 3, 4... (opcionais): Valores para as variáveis do template {'{{1}}'}, {'{{2}}'}, {'{{3}}'}...
                    <br/>
                    A primeira linha pode ser um cabeçalho (será ignorada).
                 </p>
