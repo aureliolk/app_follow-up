@@ -1,3 +1,5 @@
+
+// app/workspace/[id]/mass-trigger/page.tsx
 'use server';
 
 import { z } from 'zod';
@@ -6,6 +8,7 @@ import { prisma } from '@/lib/db'; // <<< Corrigido import do Prisma
 import { getServerSession } from 'next-auth/next'; // <<< Importado getServerSession
 import { authOptions } from '@/lib/auth/auth-options'; // <<< Importado authOptions
 import { Prisma } from '@prisma/client';
+import { campaignQueue, CAMPAIGN_SENDER_QUEUE } from '@/lib/queues/campaignQueue'; // <<< Importar a fila >>>
 
 // Schema Zod para validação (sem workspaceId, vem da sessão)
 const CreateTriggerActionSchema = z.object({
@@ -104,6 +107,17 @@ export async function createTriggerAction(
 
     // TODO: Implement logic to schedule the trigger (e.g., add to BullMQ)
 
+    // <<< Adicionar Job à fila BullMQ >>>
+    try {
+        await campaignQueue.add(CAMPAIGN_SENDER_QUEUE, { campaignId: newCampaign.id });
+        console.log(`Job adicionado à fila ${CAMPAIGN_SENDER_QUEUE} para processar campanha ${newCampaign.id}`);
+    } catch (queueError) {
+        // Logar erro ao adicionar à fila, mas não necessariamente falhar a action inteira
+        // pois a campanha já foi salva. Pode ser necessário um mecanismo de retry/verificação posterior.
+        console.error(`Falha ao adicionar job à fila ${CAMPAIGN_SENDER_QUEUE} para campanha ${newCampaign.id}:`, queueError);
+        // Poderia retornar um erro específico aqui ou adicionar um status diferente à campanha
+    }
+
     // Revalidate the path to update the list on the frontend
     revalidatePath(`/workspace/${workspaceId}/mass-trigger`);
 
@@ -125,4 +139,68 @@ export async function createTriggerAction(
   }
 }
 
-// TODO: Add actions for updateTriggerAction, deleteTriggerAction, etc. 
+// TODO: Add actions for updateTriggerAction, deleteTriggerAction, etc.
+
+export async function deleteCampaignAction(
+    campaignId: string
+): Promise<{ success: boolean; error?: string }> {
+    // 1. Obter usuário e workspaceId da sessão
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+        console.error("Erro de Sessão: Usuário não autenticado para deletar campanha.");
+        return { success: false, error: "Usuário não autenticado." };
+    }
+    const userId = session.user.id;
+
+    console.log(`Server Action: User ${userId} attempting to delete campaign ${campaignId}`);
+
+    try {
+        // 2. Buscar a campanha para verificar a propriedade (opcional mas recomendado)
+        //    Alternativamente, incluir workspaceId no deleteMany/delete
+        const campaign = await prisma.campaign.findUnique({
+            where: {
+                id: campaignId,
+            },
+            select: {
+                workspaceId: true, // Precisamos do workspaceId para revalidar o path correto
+                // Poderíamos adicionar verificação se o usuário pertence a este workspaceId aqui
+            }
+        });
+
+        if (!campaign) {
+            return { success: false, error: "Campanha não encontrada." };
+        }
+
+        // TODO: Adicionar verificação de permissão mais robusta se necessário
+        // Ex: Verificar se session.user.workspaceId corresponde a campaign.workspaceId
+        // ou se o usuário é membro do campaign.workspaceId
+
+        // 3. Deletar a campanha (e seus contatos associados, devido ao onDelete: Cascade no schema)
+        await prisma.campaign.delete({
+            where: {
+                id: campaignId,
+                // Poderia adicionar: workspaceId: campaign.workspaceId para segurança extra
+            },
+        });
+
+        console.log(`Campanha ${campaignId} deletada com sucesso.`);
+
+        // 4. Revalidar o path para atualizar a lista na UI
+        //    Precisamos do workspaceId que pegamos da campanha antes de deletar
+        if (campaign.workspaceId) {
+            revalidatePath(`/workspace/${campaign.workspaceId}/mass-trigger`);
+        }
+
+        return { success: true };
+
+    } catch (error) {
+        console.error("Erro ao deletar campanha no banco de dados:", error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            // Ex: Registro não encontrado (pode acontecer se deletado concorrentemente)
+             if (error.code === 'P2025') {
+                 return { success: false, error: "Erro: Campanha não encontrada para exclusão." };
+             }
+        }
+        return { success: false, error: "Falha ao excluir a campanha no servidor." };
+    }
+} 

@@ -11,7 +11,7 @@ interface WhatsAppResponse {
   messages: { id: string }[];
 }
 
-interface WhatsAppApiErrorData {
+export interface WhatsAppApiErrorData {
     message: string;
     type: string;
     code: number;
@@ -25,7 +25,7 @@ interface WhatsAppErrorResponse {
 }
 
 
-interface SendResult {
+export interface SendResult {
   success: boolean;
   wamid?: string; // Add wamid (WhatsApp message ID)
   error?: WhatsAppApiErrorData | { message: string }; // Tipo de erro mais específico

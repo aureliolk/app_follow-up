@@ -5,6 +5,7 @@ import TriggerForm from './components/TriggerForm'; // Importa o formulário
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'; // Usando Shadcn para layout
 import { getServerSession } from 'next-auth/next'; // Importar getServerSession
 import { authOptions } from '@/lib/auth/auth-options'; // Importar authOptions
+import CampaignList from './components/CampaignList'; // Importar o componente CampaignList
 
 export default async function NewCampaignPage({ params }: any) {
   const session = await getServerSession(authOptions); // Obter sessão
@@ -13,22 +14,20 @@ export default async function NewCampaignPage({ params }: any) {
     redirect('/login'); // Ou outra página apropriada
   }
 
-  // Tentar logar o objeto params completo
-  console.log("DEBUG: Params recebidos em mass-trigger/page:", params);
-  const workspaceId = params?.id; // Acessar diretamente
-  console.log("DEBUG: workspaceId extraído:", workspaceId);
+  // <<< Correção: Desestruturar ID diretamente do await params >>>
+  const { id: workspaceId } = await params;
+  // console.log("DEBUG: workspaceId extraído:", workspaceId);
 
-  // Se o ID ainda for undefined, não podemos continuar
+  // Se o ID ainda for undefined/null, não podemos continuar
   if (!workspaceId) {
-    console.error("ERRO: Workspace ID não encontrado nos parâmetros da URL.");
-    notFound(); // Ou mostrar um erro mais específico
+    console.error("ERRO: Workspace ID não encontrado nos parâmetros da URL para Mass Trigger.");
+    notFound();
   }
 
-  // <<< BUSCAR WORKSPACE PELO ID (usando params.id diretamente) >>>
+  // <<< BUSCAR WORKSPACE PELO ID (usando id diretamente) >>>
   const workspace = await prisma.workspace.findUnique({
     where: {
-      // <<< Usar params.id diretamente >>>
-      id: workspaceId, // Usando a variável testada
+      id: workspaceId,
     },
     select: {
       id: true, // Selecionar apenas o ID
@@ -41,8 +40,20 @@ export default async function NewCampaignPage({ params }: any) {
   }
   // <<< FIM BUSCAR WORKSPACE >>>
 
+  // <<< Buscar as campanhas existentes para este workspace >>>
+  const campaigns = await prisma.campaign.findMany({
+    where: {
+      workspaceId: workspaceId,
+    },
+    orderBy: {
+      createdAt: 'desc', // Mostrar as mais recentes primeiro
+    },
+    // TODO: Selecionar apenas os campos necessários para a lista
+    // select: { id: true, name: true, status: true, templateName: true, createdAt: true }
+  });
+
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-6 space-y-8"> {/* Adicionado space-y */}
        <Card >
          <CardHeader>
            <CardTitle>Criar Nova Campanha de Disparo</CardTitle>
@@ -55,6 +66,11 @@ export default async function NewCampaignPage({ params }: any) {
            <TriggerForm workspaceId={workspace.id} />
          </CardContent>
        </Card>
+
+       {/* <<< Lista de Campanhas Criadas >>> */}
+       <h2 className="text-xl font-semibold mt-10 mb-4">Campanhas Criadas</h2>
+       {/* <<< Importar e Renderizar CampaignList >>> */}
+       <CampaignList campaigns={campaigns} />
     </div>
   );
 }

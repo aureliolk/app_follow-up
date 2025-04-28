@@ -12,7 +12,9 @@
     "start:message": "tsx lib/workers/messageProcessor.ts",
     "start:sequence": "tsx lib/workers/sequenceStepProcessor.ts",
     "start:campaign": "tsx lib/workers/campaignWorker.ts",
-    "start:media": "tsx lib/workers/whatsappMediaSenderWorker.ts"
+    "start:media": "tsx lib/workers/whatsappMediaSenderWorker.ts",
+    "start:campaign-processor": "tsx scripts/start-campaign-processor.ts",
+    "start:message-sender": "tsx scripts/start-message-sender.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.5",
@@ -49,6 +51,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "emoji-picker-react": "^4.12.2",
     "form-data": "^4.0.2",
     "google-auth-library": "^9.15.1",
