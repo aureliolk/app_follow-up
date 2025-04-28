@@ -25,12 +25,13 @@ import {
 import CampaignProgressModal from './CampaignProgressModal';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useState } from 'react'; // Importar useState
+import { useState, useEffect } from 'react'; // Importar useState e useEffect
 import { deleteCampaignAction } from '@/lib/actions/triggerActions'; // Importar a Server Action
 import toast from 'react-hot-toast'; // Importar react-hot-toast
 
 interface CampaignListProps {
-    campaigns: Campaign[];
+    initialCampaigns: Campaign[]; // Renomear para clareza
+    workspaceId: string; // << ADICIONAR workspaceId
 }
 
 // Função para mapear status para variantes de Badge
@@ -45,10 +46,86 @@ const getStatusVariant = (status: string): "default" | "secondary" | "destructiv
     }
 };
 
-export default function CampaignList({ campaigns }: CampaignListProps) {
+// <<< Função para traduzir status >>>
+const translateStatus = (status: string): string => {
+    switch (status) {
+        case 'PENDING': return 'Pendente';
+        case 'RUNNING': return 'Em Execução';
+        case 'PAUSED': return 'Pausada';
+        case 'COMPLETED': return 'Concluída';
+        case 'FAILED': return 'Falhou';
+        default: return status; // Retorna o original se não houver tradução
+    }
+};
 
-    // Estado para rastrear qual campanha está sendo deletada
+export default function CampaignList({ initialCampaigns, workspaceId }: CampaignListProps) {
+    // Estado para a lista de campanhas, inicializado com os dados do servidor
+    const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    // <<< Adicionar useEffect para sincronizar com initialCampaigns >>>
+    useEffect(() => {
+        setCampaigns(initialCampaigns);
+    }, [initialCampaigns]);
+
+    // <<< INÍCIO: Lógica SSE >>>
+    useEffect(() => {
+        console.log(`[SSE CampaignList] useEffect triggered. workspaceId: ${workspaceId}`); // << Log inicial
+
+        // << Verifica se workspaceId é válido antes de conectar >>
+        if (!workspaceId || typeof workspaceId !== 'string') {
+            console.log("[SSE CampaignList] Invalid or missing workspaceId. Skipping EventSource setup.");
+            return; // Não tenta conectar sem ID válido
+        }
+
+        console.log(`[SSE CampaignList] Setting up EventSource for workspace: ${workspaceId}`);
+        const eventSource = new EventSource(`/api/sse?workspaceId=${workspaceId}`);
+
+        eventSource.onopen = () => {
+            console.log("[SSE CampaignList] Connection opened.");
+        };
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log("[SSE CampaignList] Message received:", data);
+
+                // Verifica se é uma mensagem de conclusão de campanha
+                if (data.type === 'campaignCompleted' && data.campaignId && data.status === 'COMPLETED') {
+                    console.log(`[SSE CampaignList] Campaign ${data.campaignId} completed event received.`);
+                    // Atualiza o estado local da lista de campanhas
+                    setCampaigns((prevCampaigns) =>
+                        prevCampaigns.map((campaign) =>
+                            campaign.id === data.campaignId
+                                ? { ...campaign, status: 'COMPLETED' }
+                                : campaign
+                        )
+                    );
+                }
+                // TODO: Adicionar lógica para atualizar progresso individual se necessário (usando `data.contactId` e `data.status`)
+
+            } catch (error) {
+                console.error("[SSE CampaignList] Error parsing SSE message:", error);
+            }
+        };
+
+        eventSource.onerror = (error) => {
+            // << Log de erro mais detalhado >>
+            console.error("[SSE CampaignList] EventSource error occurred:", error);
+            // Tentar logar o estado da conexão
+            console.log(`[SSE CampaignList] EventSource readyState on error: ${eventSource.readyState}`);
+            // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+            eventSource.close(); // Fecha explicitamente em caso de erro
+        };
+
+        // Limpeza ao desmontar o componente
+        return () => {
+            console.log(`[SSE CampaignList] Cleanup: Closing EventSource connection. Current readyState: ${eventSource?.readyState}`);
+            eventSource?.close();
+        };
+
+    }, [workspaceId]); // Dependência: workspaceId
+    // <<< FIM: Lógica SSE >>>
 
     const handleDelete = async (campaignId: string) => {
         // Impedir múltiplos cliques
@@ -67,7 +144,11 @@ export default function CampaignList({ campaigns }: CampaignListProps) {
 
             if (result.success) {
                 toast.success('Campanha excluída com sucesso!', { id: toastId });
-                // A revalidação no server action deve atualizar a lista
+                // <<< ATUALIZAR ESTADO LOCAL DIRETAMENTE >>>
+                setCampaigns((prevCampaigns) =>
+                    prevCampaigns.filter((campaign) => campaign.id !== campaignId)
+                );
+                // Não precisa mais depender de revalidação/refresh aqui
             } else {
                 toast.error(`Falha ao excluir: ${result.error || 'Erro desconhecido'}`, { id: toastId });
             }
@@ -98,7 +179,7 @@ export default function CampaignList({ campaigns }: CampaignListProps) {
                         <TableCell className="font-medium">{campaign.name}</TableCell>
                         <TableCell>{campaign.templateName || '-'}</TableCell>
                         <TableCell>
-                            <Badge variant={getStatusVariant(campaign.status)}>{campaign.status}</Badge>
+                            <Badge variant={getStatusVariant(campaign.status)}>{translateStatus(campaign.status)}</Badge>
                         </TableCell>
                         <TableCell>
                             {formatDistanceToNow(new Date(campaign.createdAt), { addSuffix: true, locale: ptBR })}

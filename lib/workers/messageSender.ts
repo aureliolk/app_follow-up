@@ -148,9 +148,41 @@ const messageSenderWorker = new Worker<MessageJobData>(
         console.error(`[MessageSender] Erro ao publicar progresso do contato ${campaignContactId}:`, pubErr);
       }
 
-      // 7. TODO: Verificar se foi o último contato PENDING da campanha.
-      //    Se sim, atualizar o status da Campaign para COMPLETED.
-      //    Isso requer uma contagem ou busca adicional, pode ser otimizado.
+      // --- Início: Lógica de Finalização da Campanha ---
+      // Verifica se ainda existem outros contatos PENDING nesta campanha
+      const pendingCount = await prisma.campaignContact.count({
+        where: {
+          campaignId: campaignId,
+          status: 'PENDING',
+        },
+      });
+
+      if (pendingCount === 0) {
+        console.log(`[MessageSender] Último contato processado para campanha ${campaignId}. Atualizando status para COMPLETED.`);
+        try {
+          await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { status: 'COMPLETED' },
+          });
+
+          // Publica notificação de campanha completa no mesmo canal de progresso
+          await redisConnection.publish(
+            `campaign-progress:${campaignId}`,
+            JSON.stringify({
+              type: 'campaignCompleted', // Adiciona um tipo para diferenciar do progresso
+              campaignId: campaignId,
+              status: 'COMPLETED'
+            })
+          );
+          console.log(`[MessageSender] Notificação de conclusão publicada para campanha ${campaignId}.`);
+
+        } catch (campaignUpdateError) {
+          console.error(`[MessageSender] Falha ao atualizar status final ou publicar conclusão da campanha ${campaignId}:`, campaignUpdateError);
+          // Não relançar o erro aqui para não falhar o job do contato individual,
+          // mas logar é importante.
+        }
+      }
+      // --- Fim: Lógica de Finalização da Campanha ---
 
     } catch (error) {
       console.error(`[MessageSender] Erro ao processar job ${job.id} para contato ${campaignContactId}:`, error);

@@ -16,6 +16,7 @@ import { createTriggerAction } from '@/lib/actions/triggerActions';
 // <<< Importar hook e tipo de template >>>
 import { useWhatsappTemplates } from '@/context/whatsapp-template-context';
 import type { WhatsappTemplate } from '@/lib/types/whatsapp';
+import { useRouter } from 'next/navigation'; // << IMPORTAR useRouter
 
 // <<< DEFINIR PROPS >>>
 interface TriggerFormProps {
@@ -32,6 +33,8 @@ interface Contact {
 
 // <<< USAR PROPS >>>
 export default function TriggerForm({ workspaceId }: TriggerFormProps) {
+  const router = useRouter(); // << OBTER router
+
   const [triggerName, setTriggerName] = useState('');
   const [selectedTemplateName, setSelectedTemplateName] = useState<string>('');
   const [selectedTemplateBody, setSelectedTemplateBody] = useState<string>('');
@@ -218,21 +221,27 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
         });
 
         if (result.success) {
-            toast.success(`Trigger '${triggerName}' criado com sucesso! (ID: ${result.campaignId})`, { id: 'create-trigger' });
-            // TODO: Limpar o formulário ou redirecionar o usuário?
-            // Exemplo de limpar (pode ser ajustado):
-            // setTriggerName('');
-            // setSelectedTemplateName('');
-            // setSelectedTemplateBody('');
-            // setSelectedTemplateLanguage('');
-            // setIntervalSeconds(60);
-            // setStartTime('09:00');
-            // setEndTime('18:00');
-            // setAllowedDays([1, 2, 3, 4, 5]);
-            // setContacts([]);
-            // setFileName(null);
-            // setFileError(null);
-            // setFormError(null);
+            toast.success(`Trigger '${triggerName}' criado com sucesso!`, { id: 'create-trigger' });
+
+            // << Limpar o formulário >>
+            setTriggerName('');
+            setSelectedTemplateName('');
+            setSelectedTemplateBody('');
+            setSelectedTemplateLanguage('');
+            setIntervalSeconds(60);
+            setContacts([]);
+            setFileName(null);
+            setFileError(null);
+            setFormError(null);
+            // Resetar o valor do input de arquivo explicitamente se necessário (requer ref)
+            const fileInput = document.getElementById('contactFile') as HTMLInputElement;
+            if (fileInput) {
+                fileInput.value = ''; // Limpa a seleção do arquivo
+            }
+
+            // << Chamar router.refresh() para atualizar a lista no componente vizinho >>
+            router.refresh();
+
         } else {
             // Exibe o erro retornado pela Action
             setFormError(result.error || 'Falha ao criar o trigger.');

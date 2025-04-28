@@ -70,7 +70,7 @@ export default async function NewCampaignPage({ params }: any) {
        {/* <<< Lista de Campanhas Criadas >>> */}
        <h2 className="text-xl font-semibold mt-10 mb-4">Campanhas Criadas</h2>
        {/* <<< Importar e Renderizar CampaignList >>> */}
-       <CampaignList campaigns={campaigns} />
+       <CampaignList initialCampaigns={campaigns} workspaceId={workspace.id} />
     </div>
   );
 }
