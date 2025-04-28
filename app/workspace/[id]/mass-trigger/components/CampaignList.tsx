@@ -13,6 +13,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Trash2, Eye } from 'lucide-react';
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter
+} from '@/components/ui/dialog';
+import CampaignProgressModal from './CampaignProgressModal';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useState } from 'react'; // Importar useState
@@ -94,9 +104,20 @@ export default function CampaignList({ campaigns }: CampaignListProps) {
                             {formatDistanceToNow(new Date(campaign.createdAt), { addSuffix: true, locale: ptBR })}
                         </TableCell>
                         <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" className="mr-2" title="Ver Detalhes (não implementado)">
-                                <Eye className="h-4 w-4" />
-                            </Button>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="mr-2" title="Ver progresso">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Progresso da Campanha</DialogTitle>
+                                  <DialogDescription>Detalhes de envio por contato.</DialogDescription>
+                                </DialogHeader>
+                                <CampaignProgressModal campaignId={campaign.id} />
+                              </DialogContent>
+                            </Dialog>
                             <Button 
                                 variant="ghost" 
                                 size="sm" 

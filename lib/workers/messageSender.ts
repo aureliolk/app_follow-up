@@ -134,12 +134,19 @@ const messageSenderWorker = new Worker<MessageJobData>(
           data: {
               status: finalStatus,
               sentAt: sendResult.success ? new Date() : null,
-              error: errorMessage, // Use detailed error message or null
-              // Store wamid in metadata if successful (requires metadata JSON field in schema)
-              // metadata: sendResult.success ? { wamid: sendResult.wamid } : { error: sendResult.error },
+              error: errorMessage,
           }
       });
-      console.log(`[MessageSender] Status do contato ${campaignContactId} atualizado para ${finalStatus}. ${sendResult.success ? `Wamid: ${sendResult.wamid}` : ''}`);
+      console.log(`[MessageSender] Status do contato ${campaignContactId} atualizado para ${finalStatus}.`);
+      // Publish progress update via Redis
+      try {
+        await redisConnection.publish(
+          `campaign-progress:${campaignId}`,
+          JSON.stringify({ contactId: campaignContactId, status: finalStatus })
+        );
+      } catch (pubErr: any) {
+        console.error(`[MessageSender] Erro ao publicar progresso do contato ${campaignContactId}:`, pubErr);
+      }
 
       // 7. TODO: Verificar se foi o último contato PENDING da campanha.
       //    Se sim, atualizar o status da Campaign para COMPLETED.

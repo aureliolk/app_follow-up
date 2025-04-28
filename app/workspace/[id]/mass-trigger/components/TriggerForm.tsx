@@ -329,15 +329,47 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
         <CardContent className="space-y-4">
             <div className="grid gap-2">
                 <Label htmlFor="contactFile">Arquivo de Contatos</Label>
+                {/* Input de arquivo real, escondido visualmente mas acessível */}
                 <Input
                     id="contactFile"
                     type="file"
                     accept=".xlsx, .xls, .csv"
                     onChange={handleFileChange}
                     disabled={isLoading}
-                    className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                    className="sr-only" // Esconde o input visualmente
                  />
-                 <p className="text-xs text-muted-foreground">
+                 {/* Botão falso (Label estilizado) que aciona o input escondido */}
+                 <Label
+                    htmlFor="contactFile"
+                    className={`inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 cursor-pointer ${isLoading ? 'cursor-not-allowed opacity-50' : ''}`}
+                 >
+                    <UploadCloud className="mr-2 h-4 w-4" />
+                    {fileName ? 'Trocar Arquivo' : 'Selecionar Arquivo'}
+                 </Label>
+
+                 {/* Exibe o nome do arquivo selecionado ao lado */}
+                 {fileName && !fileError && (
+                     <div className="flex items-center justify-between space-x-2 text-sm text-muted-foreground border p-3 rounded-md">
+                        <span className="truncate flex-1"><strong>{fileName}</strong></span>
+                        <span className="flex-shrink-0 bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
+                            {contacts.length} contatos
+                        </span>
+                        <Button variant="ghost" size="sm" onClick={() => { setFileName(null); setContacts([]); setFileError(null); }} disabled={isLoading} title="Remover arquivo">
+                            <XCircle className="h-4 w-4" />
+                        </Button>
+                     </div>
+                 )}
+
+                 {/* Mensagem de erro */}
+                 {fileError && (
+                     <div className="flex items-center space-x-2 text-sm text-destructive">
+                        <XCircle className="h-4 w-4" />
+                        <span>{fileError}</span>
+                    </div>
+                 )}
+
+                 {/* Descrição do formato */}
+                 <p className="text-xs text-muted-foreground pt-2">
                    Formato esperado: Coluna 1: Telefone/ID. Coluna 2: Nome (opcional).
                    <br/>
                    Colunas 3, 4, 5... (opcionais): Valores para as variáveis do template {'{{1}}'}, {'{{2}}'}, {'{{3}}'}...
@@ -345,23 +377,6 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
                    A primeira linha pode ser um cabeçalho (será ignorada).
                 </p>
             </div>
-            {fileError && (
-                 <div className="flex items-center space-x-2 text-sm text-destructive">
-                    <XCircle className="h-4 w-4" />
-                    <span>{fileError}</span>
-                </div>
-            )}
-            {fileName && !fileError && (
-                 <div className="flex items-center justify-between space-x-2 text-sm text-muted-foreground border p-3 rounded-md">
-                    <span className="truncate flex-1">Arquivo carregado: <strong>{fileName}</strong></span>
-                    <span className="flex-shrink-0 bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
-                        {contacts.length} contatos
-                    </span>
-                    <Button variant="ghost" size="sm" onClick={() => { setFileName(null); setContacts([]); setFileError(null); }} disabled={isLoading}>
-                        <XCircle className="h-4 w-4" />
-                    </Button>
-                 </div>
-            )}
         </CardContent>
       </Card>
 

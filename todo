@@ -1,25 +1,34 @@
-// todo list
+Project: Painel de Progresso de Disparo em Massa
 
-# TODO: Refatoração Trigger em Massa com Variáveis de Template (Abordagem 1)
+1. Backend API
+   - Criar rota GET /api/campaigns/[campaignId]/contacts (ou em app/api/workspaces/[id]/mass-trigger/contacts):
+     • Usar Prisma: campaignContact.findMany({ where: { campaignId } })
+     • Retornar id, contactInfo, contactName, status, sentAt, error
+   - (Opcional) Criar rota SSE /api/campaigns/[campaignId]/progress para updates em tempo real:
+     • subscribeToChannel(`campaign-progress:${campaignId}`)
+     • Publicar no worker de envio (messageSender) eventos via redis.publish
 
-- [ ] Confirmar/Ajustar nomes dos campos nos modelos Prisma `Campaign` e `CampaignContact` (mensagem/corpo, intervalo, horários, dias, isTemplate, templateName, templateLanguage, contactInfo, contactName).
-- [ ] Adicionar campo `variables Json?` ao modelo `CampaignContact` no arquivo `prisma/schema.prisma` para armazenar as variáveis específicas de cada contato.
-- [ ] Executar `npx prisma generate` para atualizar o Prisma Client após modificar o schema.
-- [ ] Atualizar a interface `Contact` em `app/workspace/[slug]/mass-trigger/components/TriggerForm.tsx` para incluir `variables?: Record<string, string>;`.
-- [ ] Modificar a função `handleFileChange` em `TriggerForm.tsx`:
-    - Extrair dados das colunas adicionais (a partir da coluna 2) como valores de variáveis (chave "1" para coluna 2, "2" para coluna 3, etc.).
-    - Armazenar o objeto `variables` extraído dentro de cada objeto `Contact` no estado `contacts`.
-- [ ] Atualizar as descrições/instruções na UI de `TriggerForm.tsx` para informar o usuário sobre a necessidade de incluir colunas para variáveis no arquivo de upload.
-- [ ] Atualizar a função `handleSubmit` em `TriggerForm.tsx` para garantir que o array `contacts` (agora com `variables`) seja passado corretamente para a Server Action.
-- [ ] Atualizar o schema Zod (`CreateTriggerActionSchema`) em `lib/actions/triggerActions.ts` para validar o campo `variables` (opcional) dentro de cada objeto `contact` no array `contacts`.
-- [ ] Implementar a lógica de banco de dados na Server Action `createTriggerAction` (`lib/actions/triggerActions.ts`):
-    - Descomentar/implementar a criação do registro `Campaign` usando `prisma.campaign.create`.
-    - Descomentar/implementar a criação dos registros `CampaignContact` usando `prisma.campaignContact.createMany`, mapeando `identifier`, `name` (opcional) e `variables` (opcional) para os campos corretos do DB (`contactInfo`, `contactName`, `variables`).
-- [ ] Implementar a lógica de agendamento (ex: BullMQ) na Server Action `createTriggerAction` para adicionar um job inicial para processar a campanha criada.
-- [ ] Remover a simulação (`await new Promise...`) da Server Action `createTriggerAction`.
-- [ ] (Tarefa Futura/Worker): Garantir que o worker BullMQ responsável por processar os jobs da campanha:
-    - Recupere o corpo do template (`Campaign.message`).
-    - Recupere as variáveis do contato específico (`CampaignContact.variables`).
-    - Renderize a mensagem final substituindo os placeholders `{{1}}`, `{{2}}`, etc., pelos valores das variáveis antes de enviar.
-- [ ] Testar o fluxo completo: upload de arquivo com variáveis, criação da campanha, verificação no DB, (opcionalmente) início do processamento pelo worker.
+2. Frontend UI
+   - Adicionar ícone de "mostrar progresso" (olho) em cada linha de CampaignList
+     • Ao clicar, abrir modal/drawer CampaignProgressModal
+   - Implementar CampaignProgressModal:
+     • Fetch inicial de GET /api/campaigns/[id]/contacts
+     • Exibir barra de progresso (SENT / total), percentuais
+     • Exibir tabela/lista de contatos com status e, em FAILED, mostrar mensagem de erro
+     • Gerenciar loading e fallback (spinner)
+   - (Opcional) Atualização automática:
+     • Polling com SWR/React Query (refreshInterval)
+     • Ou SSE: usar EventSource para /api/campaigns/[id]/progress
 
+3. Integração e Testes
+   - Reutilizar estilos/components existentes (Shadcn UI)
+   - Escrever testes unitários para a rota de API e componente modal
+   - Validar erros e estados de carregamento
+
+4. Documentação
+   - Atualizar README.md com instruções de uso do painel de progresso
+   - Descrever endpoints e UI
+
+5. Limpeza de Código
+   - Remover rotas e código redundantes
+   - Reaproveitar infra de SSE Redis-subscriber já existente
