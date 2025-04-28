@@ -20,14 +20,7 @@ const CreateTriggerActionSchema = z.object({
     variables: z.record(z.string()).optional(),
   })).min(1, { message: "Pelo menos um contato é necessário."}),
   sendIntervalSeconds: z.number().int().positive({ message: "Intervalo deve ser positivo."}),
-  allowedSendStartTime: z.string().regex(/^\d{2}:\d{2}$/, { message: "Formato de hora inválido (HH:MM)."}),
-  allowedSendEndTime: z.string().regex(/^\d{2}:\d{2}$/, { message: "Formato de hora inválido (HH:MM)."}),
-  allowedSendDays: z.string().refine((val) => {
-      try {
-          const days = JSON.parse(val);
-          return Array.isArray(days) && days.every(d => typeof d === 'number' && d >= 0 && d <= 6);
-      } catch { return false; }
-  }, { message: "Dias permitidos inválidos."}),
+  // removed scheduling by date/time: always allowed any time
   isTemplate: z.boolean(),
   templateName: z.string().optional(),
   templateLanguage: z.string().optional(),
@@ -67,21 +60,22 @@ export async function createTriggerAction(
 
   try {
     // 3. Criar a Campanha no banco de dados
+    // default schedule: send anytime, every day
     const newCampaign = await prisma.campaign.create({
       data: {
         name: data.name,
         message: data.message,
-        workspaceId: workspaceId, // <<< Usando workspaceId do ARGUMENTO >>>
+        workspaceId: workspaceId,
         sendIntervalSeconds: data.sendIntervalSeconds,
-        allowedSendStartTime: data.allowedSendStartTime,
-        allowedSendEndTime: data.allowedSendEndTime,
-        allowedSendDays: data.allowedSendDays,
+        allowedSendStartTime: "00:00",
+        allowedSendEndTime: "23:59",
+        allowedSendDays: JSON.stringify([0,1,2,3,4,5,6]),
         isTemplate: data.isTemplate,
         templateName: data.templateName,
         templateLanguage: data.templateLanguage,
         templateCategory: null,
         status: "PENDING",
-      },
+      }
     });
 
     console.log(`Campanha ${newCampaign.id} criada para workspace ${workspaceId}`);

@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'; // Importa a biblioteca para ler arquivos Excel/CS
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from "@/components/ui/checkbox";
+// import { Checkbox } from "@/components/ui/checkbox"; // removido
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'react-hot-toast'; // Para notificações
 import { Loader2, UploadCloud, XCircle, AlertTriangle } from 'lucide-react'; // Ícones
@@ -29,15 +29,6 @@ interface Contact {
   variables?: Record<string, string>; // Variáveis do template para este contato
 }
 
-const daysOfWeek = [
-  { id: 1, label: 'Segunda' },
-  { id: 2, label: 'Terça' },
-  { id: 3, label: 'Quarta' },
-  { id: 4, label: 'Quinta' },
-  { id: 5, label: 'Sexta' },
-  { id: 6, label: 'Sábado' },
-  { id: 0, label: 'Domingo' }, // Usando 0 para Domingo (padrão Date.getDay())
-];
 
 // <<< USAR PROPS >>>
 export default function TriggerForm({ workspaceId }: TriggerFormProps) {
@@ -46,9 +37,9 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
   const [selectedTemplateBody, setSelectedTemplateBody] = useState<string>('');
   const [selectedTemplateLanguage, setSelectedTemplateLanguage] = useState<string>('');
   const [intervalSeconds, setIntervalSeconds] = useState<number>(60); // Padrão 1 minuto
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('18:00');
-  const [allowedDays, setAllowedDays] = useState<number[]>([1, 2, 3, 4, 5]); // Padrão Seg-Sex
+  // const [startTime, setStartTime] = useState('09:00'); // removido
+  // const [endTime, setEndTime] = useState('18:00'); // removido
+  // const [allowedDays, setAllowedDays] = useState<number[]>([1, 2, 3, 4, 5]); // removido
   const [contacts, setContacts] = useState<Contact[]>([]); // Mudar estado para armazenar objetos Contact
   const [fileName, setFileName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -57,13 +48,7 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
 
   const { templates, loadingTemplates, templateError, fetchTemplatesForWorkspace } = useWhatsappTemplates();
 
-  const handleDayChange = (dayId: number) => {
-    setAllowedDays((prevDays) =>
-      prevDays.includes(dayId)
-        ? prevDays.filter((d) => d !== dayId)
-        : [...prevDays, dayId]
-    );
-  };
+  // const handleDayChange = (dayId: number) => {}; // removido
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -133,10 +118,31 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
             .filter(Boolean); // Remove nulos (linhas ignoradas)
 
         if (parsedContacts.length === 0) {
-             setFileError('Nenhum contato válido encontrado no arquivo.');
-             toast.error('Nenhum contato válido encontrado.', { id: 'file-processing' });
-             setContacts([]);
+            setFileError('Nenhum contato válido encontrado no arquivo.');
+            toast.error('Nenhum contato válido encontrado.', { id: 'file-processing' });
+            setContacts([]);
         } else {
+            // Se template selecionado, validar colunas de variáveis
+            if (selectedTemplateBody) {
+                const matches = Array.from(
+                    selectedTemplateBody.matchAll(/{{\s*(\d+)\s*}}/g)
+                ).map(m => Number(m[1]));
+                const uniqueIndices = Array.from(new Set(matches));
+                if (uniqueIndices.length > 0) {
+                    const missing = uniqueIndices.filter(i =>
+                        !parsedContacts.every(c => c.variables && i in c.variables)
+                    );
+                    if (missing.length > 0) {
+                        const cols = missing.map(i => `{{${i}}}`).join(', ');
+                        const errMsg = `Planilha faltando colunas para as variáveis: ${cols}`;
+                        setFileError(errMsg);
+                        toast.error(errMsg, { id: 'file-processing' });
+                        setContacts([]);
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+            }
             setContacts(parsedContacts);
             toast.success(`Arquivo processado: ${parsedContacts.length} contatos carregados.`, { id: 'file-processing' });
         }
@@ -191,10 +197,7 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
         setFormError('O intervalo entre mensagens deve ser maior que zero.');
         return;
     }
-    if (allowedDays.length === 0) {
-        setFormError('Selecione pelo menos um dia da semana para envio.');
-        return;
-    }
+    // validação de dias removida
     if (contacts.length === 0) {
       setFormError('Carregue um arquivo com a lista de contatos.');
       return;
@@ -204,7 +207,7 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
     toast.loading('Criando trigger...', { id: 'create-trigger' });
 
     try {
-        const allowedDaysString = JSON.stringify(allowedDays.sort());
+        // const allowedDaysString = JSON.stringify(allowedDays.sort()); // removido
 
         // Chama a Server Action
         const result = await createTriggerAction(workspaceId, {
@@ -212,9 +215,6 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
             message: selectedTemplateBody,
             contacts,
             sendIntervalSeconds: intervalSeconds,
-            allowedSendStartTime: startTime,
-            allowedSendEndTime: endTime,
-            allowedSendDays: allowedDaysString,
             isTemplate: true,
             templateName: selectedTemplateName,
             templateLanguage: selectedTemplateLanguage,
@@ -365,68 +365,28 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
         </CardContent>
       </Card>
 
-      {/* Seção 3: Agendamento */}
-       <Card>
+      {/* Seção 3: Intervalo entre Envios */}
+      <Card>
         <CardHeader>
-          <CardTitle>Agendamento e Intervalo</CardTitle>
-          <CardDescription>Controle quando e com que frequência as mensagens serão enviadas.</CardDescription>
+          <CardTitle>Intervalo entre Envios</CardTitle>
+          <CardDescription>Defina quantos segundos devem separar cada mensagem.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="grid gap-2">
-                    <Label htmlFor="intervalSeconds">Intervalo (segundos)</Label>
-                    <Input
-                        id="intervalSeconds"
-                        type="number"
-                        min="1"
-                        value={intervalSeconds}
-                        onChange={(e) => setIntervalSeconds(parseInt(e.target.value, 10) || 1)}
-                        disabled={isLoading}
-                        required
-                     />
-                     <p className="text-xs text-muted-foreground">Tempo mínimo entre envios. Ex: 60 para 1 minuto.</p>
-                 </div>
-                 <div className="grid gap-2">
-                    <Label htmlFor="startTime">Horário de Início</Label>
-                    <Input
-                        id="startTime"
-                        type="time"
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        disabled={isLoading}
-                        required
-                     />
-                 </div>
-                 <div className="grid gap-2">
-                    <Label htmlFor="endTime">Horário de Fim</Label>
-                    <Input
-                        id="endTime"
-                        type="time"
-                        value={endTime}
-                        onChange={(e) => setEndTime(e.target.value)}
-                        disabled={isLoading}
-                        required
-                     />
-                 </div>
-            </div>
-             <div className="grid gap-2">
-                 <Label>Dias da Semana Permitidos</Label>
-                 <div className="flex flex-wrap gap-4">
-                     {daysOfWeek.map((day) => (
-                        <div key={day.id} className="flex items-center space-x-2">
-                            <Checkbox
-                                id={`day-${day.id}`}
-                                checked={allowedDays.includes(day.id)}
-                                onCheckedChange={() => handleDayChange(day.id)}
-                                disabled={isLoading}
-                            />
-                            <Label htmlFor={`day-${day.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                {day.label}
-                            </Label>
-                        </div>
-                    ))}
-                 </div>
-            </div>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 max-w-xs">
+            <Label htmlFor="intervalSeconds">Intervalo (segundos)</Label>
+            <Input
+              id="intervalSeconds"
+              type="number"
+              min="1"
+              value={intervalSeconds}
+              onChange={(e) => setIntervalSeconds(parseInt(e.target.value, 10) || 1)}
+              disabled={isLoading}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Exemplo: 60 envia uma mensagem a cada minuto.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

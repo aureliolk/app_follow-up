@@ -5,7 +5,7 @@ import { redisConnection } from '@/lib/redis';
 import { CAMPAIGN_SENDER_QUEUE } from '@/lib/queues/campaignQueue';
 import { prisma } from '@/lib/db';
 import { messageQueue, MESSAGE_SENDER_QUEUE } from '@/lib/queues/messageQueue';
-import { calculateNextValidSendTime } from '@/lib/timeUtils';
+import { calculateNextValidSendTime } from '@/lib/timeUtils'; // scheduling simplified
 
 console.log(`[Worker] Inicializando Worker para a fila: ${CAMPAIGN_SENDER_QUEUE}`);
 
