@@ -1,2 +1,27 @@
-// todo
+// todo list add feature kanban
 
+# Missão Final: Implementar Dashboard e Kanban (Pipeline)
+
+## Backend (Fundação)
+
+1.  **Schema Prisma (`prisma/schema.prisma`):**
+    *   Adicionar Enums: `DealSource`, `TaskStatus`, `ActivitySource`, `IntegrationType`.\n    *   Adicionar Novos Modelos (no schema `workspace_schema`): `PipelineStage`, `Deal`, `DealNote`, `DealTask`, `DealDocument`, `DealActivityLog`, `Integration`, `PipelineRule`.\n    *   Modificar Modelos Existentes: Adicionar relações em `User` (workspace\_schema), `Client` (conversation\_schema), `Workspace` (workspace\_schema).\n2.  **Migração do Banco:**\n    *   Rodar `npx prisma migrate dev --name add_pipeline_and_integrations`.\n    *   Rodar `npx prisma generate`.\n
+
+## Frontend (Interface e Lógica)
+
+3.  **Dependências:**
+    *   Instalar: `npm install @hello-pangea/dnd recharts date-fns` (Usando `@hello-pangea/dnd` para compatibilidade com React 18).\n4.  **Estrutura de Arquivos e Rotas:**
+    *   Criar página Dashboard: `app/workspace/[id]/dashboard/page.tsx`.\n    *   Criar página Kanban: `app/workspace/[id]/kaban/page.tsx`.\n    *   Criar página Configurações do Kanban (pode ser parte de `kaban/page.tsx` ou rota separada `kaban/settings/page.tsx` - a definir).\n    *   Criar página Integrações: `app/workspace/[id]/integrations/page.tsx`.\n5.  **Componentes UI (Shadcn/ui):**
+    *   Verificar se os componentes necessários (Cards, Modais, Tabelas, etc.) já existem ou precisam ser adicionados via `npx shadcn-ui@latest add [component]`. Reutilizar ao máximo.\n6.  **Componentes Customizados (dentro das rotas `app/workspace/[id]/.../components/` ou em `components/` se reutilizáveis):**
+    *   **Dashboard:**
+        *   `DashboardStats.tsx` (Server Component para buscar dados).\n        *   `DealsByStageChart.tsx` (Client Component usando `recharts`).\n        *   `RecentActivityList.tsx` (Server Component para buscar dados).\n    *   **Kanban/Pipeline (`app/workspace/[id]/kaban/components/`):**
+        *   `KanbanBoard.tsx` (Client Component, usando `@hello-pangea/dnd`).\n        *   `KanbanColumn.tsx` (Client Component).\n        *   `DealCard.tsx` (Client Component).\n        *   `DealDetailModal.tsx` (Client Component, para exibir detalhes ao clicar no card).\n        *   `DealForm.tsx` (Client Component, para criar/editar deals, talvez em modal).\n        *   `NoteForm.tsx` (Client Component, para adicionar notas, talvez em modal).\n        *   `TaskForm.tsx` (Client Component, para adicionar tarefas, talvez em modal).\n        *   `PipelineSettings.tsx` (Componente para a página/seção de configurações do Kanban).\n    *   **Integrações (`app/workspace/[id]/integrations/components/`):**
+        *   `IntegrationsList.tsx` (Server/Client Component para listar integrações).\n        *   `IntegrationForm.tsx` (Client Component para adicionar/editar integrações).\n        *   Componentes específicos por tipo (Ex: `WhatsAppIntegration.tsx`, etc.).\n7.  **Lógica de Backend e Acesso a Dados (`lib/`):**
+        *   Criar funções de acesso ao Prisma em `lib/actions/pipeline.ts` (ou similar) para buscar/atualizar stages, deals, notas, tarefas, etc. (Usar Server Actions ou funções chamadas por Server Components).\n        *   Criar funções de acesso ao Prisma em `lib/actions/integrations.ts` (ou similar).\n        *   Adaptar funções existentes se necessário (ex: buscar cliente com seus deals).\n        *   Definir tipos reutilizáveis em `lib/types/` (ex: tipos para `Deal` com relações incluídas).\n8.  **Navegação:**
+        *   Atualizar `components/layout/sidebar.tsx` (ou onde a navegação principal estiver) para incluir links para "Dashboard", "Kanban" e "Integrações" dentro do contexto do workspace.\n
+
+## Migração e IA
+
+9.  **Script de Migração de Dados:**
+    *   Criar/Adaptar o script `scripts/migrate-clients-to-deals.ts`.\n    *   Executar o script: `npx ts-node scripts/migrate-clients-to-deals.ts`.\n10. **Integração com IA (Passos Futuros/Avançados):**
+    *   Definir lógica da IA para gerenciar deals (`ai_controlled`).\n    *   Implementar execução das `PipelineRule`.\n    *   Criar/usar `DealActivityLog` para registrar ações da IA.\n

@@ -9,10 +9,10 @@ import { notFound } from 'next/navigation'; // <<< Importar notFound
 
 // <<< Tornar async e aceitar params com id >>>
 export default async function IaPage({ params }: { params: { id: string } }) {
-    
-    // <<< Aguardar params e depois extrair ID >>>
-    await params; // <<< Adicionar await aqui
-    const workspaceId = params.id; // Acessar após await
+    console.log("Rendering IaPage, Params:", params);
+
+    // <<< Aguardar e extrair ID diretamente de params >>>
+    const { id: workspaceId } = await params; // <<< Correção aqui >>>
 
     // <<< Verificar se workspaceId existe >>>
     if (!workspaceId) {

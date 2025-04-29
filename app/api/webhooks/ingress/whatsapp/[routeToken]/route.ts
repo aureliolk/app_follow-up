@@ -1,4 +1,5 @@
 // app/api/webhooks/ingress/whatsapp/[routeToken]/route.ts
+
 import { type NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/db';
@@ -285,17 +286,28 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                                     // **************************************************
                                     // <<< INÍCIO: Lógica de Disparo do Follow-up >>>
+                                    // Dispara na PRIMEIRA resposta do cliente, se não houver follow-up ativo.
                                     // **************************************************
-                                    if (wasCreated) {
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nova conversa ${conversation.id}. Iniciando lógica de follow-up...`);
+                                    // Verificar se já existe um follow-up ATIVO para este cliente
+                                    const existingActiveFollowUp = await prisma.followUp.findFirst({
+                                        where: {
+                                            client_id: client.id,
+                                            workspace_id: workspace.id,
+                                            status: FollowUpStatus.ACTIVE // <<< Verifica se está ATIVO
+                                        },
+                                        select: { id: true } // Só precisamos saber se existe
+                                    });
+
+                                    // Só inicia um NOVO follow-up se NÃO houver um ativo
+                                    if (!existingActiveFollowUp) {
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nenhum follow-up ativo encontrado para cliente ${client.id}. Iniciando nova sequência...`);
                                         try {
                                             // 1. Buscar Regras de Follow-up para o Workspace
                                             const followUpRules = await prisma.workspaceAiFollowUpRule.findMany({
                                                 where: { workspace_id: workspace.id },
-                                                orderBy: { created_at: 'asc' }, // Ordenar pela criação ou pelo delay? Melhor pelo delay.
-                                                // orderBy: { delay_milliseconds: 'asc' }, 
+                                                orderBy: { delay_milliseconds: 'asc' }, // <<< ALTERADO para ordenar pelo delay >>>
                                             });
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Encontradas ${followUpRules.length} regras de follow-up para Workspace ${workspace.id}.`);
+                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Encontradas ${followUpRules.length} regras de follow-up para Workspace ${workspace.id} (ordenadas por delay).`); // Log ajustado
 
                                             if (followUpRules.length > 0) {
                                                 // 2. Pegar a primeira regra
@@ -341,7 +353,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                             // Não falhar a resposta para a Meta, apenas logar
                                         }
                                     } else {
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conversa ${conversation.id} já existente. Follow-up não iniciado.`);
+                                        // Já existe um follow-up ativo, não fazer nada
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Follow-up ativo ${existingActiveFollowUp.id} já existe para cliente ${client.id}. Nenhuma nova sequência iniciada.`);
                                     }
                                     // ************************************************
                                     // <<< FIM: Lógica de Disparo do Follow-up >>>
