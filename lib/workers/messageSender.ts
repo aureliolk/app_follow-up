@@ -6,6 +6,8 @@ import { MESSAGE_SENDER_QUEUE } from '@/lib/queues/messageQueue';
 import { prisma } from '@/lib/db';
 import { sendWhatsappTemplateMessage, SendResult, WhatsAppApiErrorData } from '@/lib/channel/whatsappSender';
 import { decrypt } from '@/lib/encryption';
+import { publishConversationUpdate } from '@/lib/services/notifierService';
+import { Prisma } from '@prisma/client';
 // TODO: Importar serviços de canal (ex: import { sendWhatsAppMessage } from '@/lib/channel/whatsappService')
 
 console.log(`[Worker] Inicializando Worker para a fila: ${MESSAGE_SENDER_QUEUE}`);
@@ -15,6 +17,8 @@ interface MessageJobData {
     campaignContactId: string;
     campaignId: string;
     workspaceId: string;
+    messageIdToUpdate: string;
+    conversationId: string;
     // Outros dados podem ser adicionados aqui se necessário
 }
 
@@ -24,12 +28,12 @@ interface MessageJobData {
 const messageSenderWorker = new Worker<MessageJobData>(
   MESSAGE_SENDER_QUEUE,
   async (job: Job<MessageJobData>) => {
-    const { campaignContactId, campaignId, workspaceId } = job.data;
-    console.log(`[MessageSender] Recebido job ${job.id} para enviar mensagem ao contato: ${campaignContactId} (Campanha: ${campaignId})`);
+    const { campaignContactId, campaignId, workspaceId, messageIdToUpdate, conversationId } = job.data;
+    console.log(`[MessageSender] Recebido job ${job.id} para enviar mensagem ${messageIdToUpdate} (Contato: ${campaignContactId}, Campanha: ${campaignId}, Conv: ${conversationId})`);
 
-    if (!campaignContactId || !campaignId || !workspaceId) {
+    if (!campaignContactId || !campaignId || !workspaceId || !messageIdToUpdate || !conversationId) {
         console.error(`[MessageSender] Erro: Job ${job.id} não contém dados necessários.`, job.data);
-        throw new Error("Job data is missing required fields (campaignContactId, campaignId, workspaceId)");
+        throw new Error("Job data is missing required fields (campaignContactId, campaignId, workspaceId, messageIdToUpdate, conversationId)");
     }
 
     try {
@@ -55,10 +59,10 @@ const messageSenderWorker = new Worker<MessageJobData>(
         throw new Error(`Campaign ${campaignId} is not a valid template or missing name/language.`);
       }
 
-      // Se o contato não estiver PENDING, talvez já tenha sido processado por outro job?
-      if (campaignContact.status !== 'PENDING') {
-        console.warn(`[MessageSender] Contato ${campaignContactId} não está PENDING (status: ${campaignContact.status}). Pulando envio.`);
-        return; // Evita reprocessamento
+      // Se o contato não estiver SCHEDULED, algo está errado (já foi processado, falhou no processor, etc.)
+      if (campaignContact.status !== 'SCHEDULED') {
+        console.warn(`[MessageSender] Contato ${campaignContactId} não está SCHEDULED (status: ${campaignContact.status}). Pulando envio.`);
+        return; // Evita processar contatos que não estão no estado esperado
       }
 
       console.log(`[MessageSender] Preparando envio para: ${campaignContact.contactInfo}, Mensagem/Template: ${campaignContact.campaign.templateName || campaignContact.campaign.message.substring(0, 30)}...`);
@@ -99,50 +103,116 @@ const messageSenderWorker = new Worker<MessageJobData>(
                         : {};
 
 
-      // 5. Chamar o serviço do WhatsApp
-      console.log(`[MessageSender] Enviando template ${campaignContact.campaign.templateName} para ${campaignContact.contactInfo}`);
-      const sendResult = await sendWhatsappTemplateMessage({
-          phoneNumberId: workspace.whatsappPhoneNumberId,
-          toPhoneNumber: campaignContact.contactInfo, // Assume contactInfo is the phone number
-          accessToken: accessToken,
-          templateName: campaignContact.campaign.templateName,
-          templateLanguage: campaignContact.campaign.templateLanguage,
-          variables: variables,
-      });
+      // 5. Chamar o serviço do WhatsApp e atualizar Message + Notificar UI
+      let sendResult: SendResult | null = null;
+      let finalMessageStatus: 'SENT' | 'FAILED' = 'FAILED'; // Assume falha inicialmente
+      let errorMessageForDb: string | null = 'Unknown error during sending process';
+      let wamid: string | null = null;
 
+      try {
+          console.log(`[MessageSender ${job.id}] Enviando template ${campaignContact.campaign.templateName} para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate})`);
+          sendResult = await sendWhatsappTemplateMessage({
+              phoneNumberId: workspace.whatsappPhoneNumberId,
+              toPhoneNumber: campaignContact.contactInfo, // Assume contactInfo is the phone number
+              accessToken: accessToken,
+              templateName: campaignContact.campaign.templateName,
+              templateLanguage: campaignContact.campaign.templateLanguage,
+              variables: variables,
+          });
 
-      // 6. Atualizar status do CampaignContact no banco
-      const finalStatus = sendResult.success ? 'SENT' : 'FAILED';
-      let errorMessage: string | null = null;
-      if (!sendResult.success) {
-           if (sendResult.error && typeof sendResult.error === 'object' && 'message' in sendResult.error) {
-                errorMessage = `API Error: ${sendResult.error.message}`;
-                if ('type' in sendResult.error) errorMessage += ` (Type: ${sendResult.error.type})`;
-                if ('code' in sendResult.error) errorMessage += ` (Code: ${sendResult.error.code})`;
-                if ('error_subcode' in sendResult.error) errorMessage += ` (Subcode: ${sendResult.error.error_subcode})`;
-                if ('fbtrace_id' in sendResult.error) errorMessage += ` (Trace: ${sendResult.error.fbtrace_id})`;
-           } else if (sendResult.error) {
-                errorMessage = String(sendResult.error);
-           } else {
-                errorMessage = "Erro desconhecido no envio";
-           }
-           console.error(`[MessageSender] Falha ao enviar para ${campaignContact.contactInfo}. Erro: ${errorMessage}`);
+          // Processa resultado DENTRO do try
+          if (sendResult.success) {
+              finalMessageStatus = 'SENT';
+              wamid = sendResult.wamid;
+              errorMessageForDb = null;
+              console.log(`[MessageSender ${job.id}] Envio bem-sucedido para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate}, WAMID: ${wamid})`);
+          } else {
+              // Monta mensagem de erro detalhada
+              if (sendResult.error && typeof sendResult.error === 'object' && 'message' in sendResult.error) {
+                  errorMessageForDb = `API Error: ${sendResult.error.message}`;
+                  if ('type' in sendResult.error) errorMessageForDb += ` (Type: ${sendResult.error.type})`;
+                  if ('code' in sendResult.error) errorMessageForDb += ` (Code: ${sendResult.error.code})`;
+                  if ('error_subcode' in sendResult.error) errorMessageForDb += ` (Subcode: ${sendResult.error.error_subcode})`;
+                  if ('fbtrace_id' in sendResult.error) errorMessageForDb += ` (Trace: ${sendResult.error.fbtrace_id})`;
+              } else if (sendResult.error) {
+                  errorMessageForDb = String(sendResult.error);
+              } else {
+                  errorMessageForDb = "Erro desconhecido retornado pela API";
+              }
+              console.error(`[MessageSender ${job.id}] Falha ao enviar para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate}). Erro: ${errorMessageForDb}`);
+              // finalMessageStatus já é 'FAILED'
+          }
+
+      } catch (sendError: any) {
+          // Captura erros na própria chamada ou processamento do resultado
+          console.error(`[MessageSender ${job.id}] Erro EXCEPCIONAL durante sendWhatsappTemplateMessage ou processamento do resultado para Msg ${messageIdToUpdate}:`, sendError);
+          errorMessageForDb = `Exception during send: ${sendError?.message || String(sendError)}`;
+          finalMessageStatus = 'FAILED';
       }
 
+      // 6. <<< ATUALIZAR A MENSAGEM no banco de dados >>>
+      try {
+          // Buscar metadados existentes para não sobrescrever
+          const existingMessage = await prisma.message.findUnique({ where: { id: messageIdToUpdate }, select: { metadata: true } });
+          const currentMetadata = (typeof existingMessage?.metadata === 'object' && existingMessage.metadata !== null) ? existingMessage.metadata : {};
+
+          const dataToUpdate: Prisma.MessageUpdateInput = {
+              status: finalMessageStatus,
+              ...(wamid && { channel_message_id: wamid }), // Adiciona wamid se SUCESSO
+              ...(finalMessageStatus === 'FAILED' && {
+                  metadata: { // Adiciona/atualiza erro no metadata se FALHA
+                      ...currentMetadata,
+                      sendError: errorMessageForDb
+                  }
+              })
+          };
+
+          await prisma.message.update({
+              where: { id: messageIdToUpdate },
+              data: dataToUpdate
+          });
+          console.log(`[MessageSender ${job.id}] Mensagem ${messageIdToUpdate} atualizada no DB para status ${finalMessageStatus}.`);
+
+          // 7. <<< PUBLICAR ATUALIZAÇÃO DE STATUS NO REDIS (para UI) >>>
+          await publishConversationUpdate(
+              `chat-updates:${conversationId}`,
+              {
+                  type: 'message_status_updated',
+                  payload: {
+                      messageId: messageIdToUpdate,
+                      conversation_id: conversationId,
+                      newStatus: finalMessageStatus,
+                      providerMessageId: wamid, // Envia o WAMID se disponível
+                      timestamp: new Date().toISOString(),
+                      ...(finalMessageStatus === 'FAILED' && { errorMessage: errorMessageForDb })
+                  }
+              }
+          );
+          console.log(`[MessageSender ${job.id}] Notificação 'message_status_updated' enviada para chat-updates:${conversationId}`);
+
+      } catch (dbOrRedisError: any) {
+          console.error(`[MessageSender ${job.id}] Erro ao atualizar DB ou publicar status Redis para Mensagem ${messageIdToUpdate}:`, dbOrRedisError);
+          // Logar o erro, mas não necessariamente falhar o job aqui,
+          // pois o contato da campanha será atualizado a seguir.
+          // Considerar uma fila de retentativa para essas atualizações secundárias?
+      }
+
+      // 8. <<< ATUALIZAR STATUS DO CAMPAIGN CONTACT (lógica existente) >>>
       await prisma.campaignContact.update({
           where: { id: campaignContactId },
           data: {
-              status: finalStatus,
-              sentAt: sendResult.success ? new Date() : null,
-              error: errorMessage,
+              status: finalMessageStatus, // Usa o mesmo status final (SENT ou FAILED)
+              sentAt: finalMessageStatus === 'SENT' ? new Date() : null,
+              error: errorMessageForDb, // Salva a mensagem de erro detalhada
           }
       });
-      console.log(`[MessageSender] Status do contato ${campaignContactId} atualizado para ${finalStatus}.`);
-      // Publish progress update via Redis
+      console.log(`[MessageSender ${job.id}] Status do CampaignContact ${campaignContactId} atualizado para ${finalMessageStatus}.`);
+      
+      // Publish progress update via Redis (lógica existente)
       try {
         await redisConnection.publish(
           `campaign-progress:${campaignId}`,
-          JSON.stringify({ contactId: campaignContactId, status: finalStatus })
+          JSON.stringify({ contactId: campaignContactId, status: finalMessageStatus })
         );
       } catch (pubErr: any) {
         console.error(`[MessageSender] Erro ao publicar progresso do contato ${campaignContactId}:`, pubErr);
@@ -185,8 +255,51 @@ const messageSenderWorker = new Worker<MessageJobData>(
       // --- Fim: Lógica de Finalização da Campanha ---
 
     } catch (error) {
-      console.error(`[MessageSender] Erro ao processar job ${job.id} para contato ${campaignContactId}:`, error);
-      // Tenta atualizar o status do contato para FAILED se possível
+      console.error(`[MessageSender] Erro GERAL ao processar job ${job.id} para contato ${campaignContactId}:`, error);
+      
+      // <<< INÍCIO: Tentativa de Marcar Mensagem como FAILED em caso de erro GERAL >>>
+      // Tenta marcar a mensagem associada como FAILED se um erro geral ocorrer
+      // ANTES da atualização normal da mensagem.
+      if (messageIdToUpdate) { // Verifica se temos o ID da mensagem
+        try {
+            console.warn(`[MessageSender ${job.id}] Tentando marcar mensagem ${messageIdToUpdate} como FAILED devido a erro GERAL.`);
+            // Buscar metadados existentes
+            const existingMessage = await prisma.message.findUnique({ where: { id: messageIdToUpdate }, select: { metadata: true } });
+            const currentMetadata = (typeof existingMessage?.metadata === 'object' && existingMessage.metadata !== null) ? existingMessage.metadata : {};
+            
+            await prisma.message.update({
+                where: { id: messageIdToUpdate },
+                data: {
+                    status: 'FAILED',
+                    metadata: { 
+                        ...currentMetadata,
+                        jobError: `General Error: ${error instanceof Error ? error.message : String(error)}`
+                    }
+                }
+            });
+            // Tenta notificar a UI sobre a falha
+             if (conversationId) {
+                 await publishConversationUpdate(
+                     `chat-updates:${conversationId}`,
+                     {
+                         type: 'message_status_updated',
+                         payload: {
+                             messageId: messageIdToUpdate,
+                             conversation_id: conversationId,
+                             newStatus: 'FAILED',
+                             errorMessage: `General Error: ${error instanceof Error ? error.message : String(error)}`,
+                             timestamp: new Date().toISOString(),
+                         }
+                     }
+                 );
+             }
+        } catch (failMsgError) {
+            console.error(`[MessageSender ${job.id}] Falha ANINHADA ao tentar marcar mensagem ${messageIdToUpdate} como FAILED após erro geral:`, failMsgError);
+        }
+      }
+      // <<< FIM: Tentativa de Marcar Mensagem como FAILED >>>
+
+      // Tenta atualizar o status do contato para FAILED se possível (lógica existente)
       try {
            await prisma.campaignContact.update({
                 where: { id: campaignContactId },

@@ -6,6 +6,37 @@ import { CAMPAIGN_SENDER_QUEUE } from '@/lib/queues/campaignQueue';
 import { prisma } from '@/lib/db';
 import { messageQueue, MESSAGE_SENDER_QUEUE } from '@/lib/queues/messageQueue';
 import { calculateNextValidSendTime } from '@/lib/timeUtils'; // scheduling simplified
+import { getOrCreateConversation } from '@/lib/services/conversationService';
+import { FollowUpStatus, MessageSenderType, Prisma } from '@prisma/client';
+import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
+import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
+import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
+
+// <<< INÍCIO: Função Auxiliar para Substituir Variáveis >>>
+/**
+ * Substitui placeholders como {{key}} em uma string de template
+ * pelos valores correspondentes em um objeto de variáveis.
+ * @param template A string do template.
+ * @param variables Um objeto onde as chaves são os identificadores das variáveis (ex: "1", "body1") e os valores são o que substituir.
+ * @returns A string com as variáveis substituídas.
+ */
+function substituteTemplateVariables(template: string, variables: Record<string, string>): string {
+    if (!template) return ''; // Retorna vazio se o template for nulo/vazio
+    let substitutedMessage = template;
+    if (variables && typeof variables === 'object') {
+        for (const key in variables) {
+            // Escapa caracteres especiais na chave para usar em RegExp
+            const escapedKey = key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\\\$&');
+            // Cria RegExp para encontrar {{key}} globalmente
+            const regex = new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'g');
+            substitutedMessage = substitutedMessage.replace(regex, variables[key] || ''); // Substitui ou usa string vazia se valor for null/undefined
+        }
+    }
+     // Adicional: Remover quaisquer placeholders {{...}} que não foram substituídos?
+     // substitutedMessage = substitutedMessage.replace(/\\{\\{.*?\\}\\}/g, ''); // Opcional
+    return substitutedMessage;
+}
+// <<< FIM: Função Auxiliar >>>
 
 console.log(`[Worker] Inicializando Worker para a fila: ${CAMPAIGN_SENDER_QUEUE}`);
 
@@ -89,44 +120,190 @@ const campaignProcessorWorker = new Worker(
       let scheduledCount = 0;
 
       for (const contact of contactsToProcess) {
-          // Calcula o próximo horário válido a partir do último agendamento
-          // NOTA: O primeiro contato usa intervalSeconds a partir de 'agora', os subsequentes a partir do anterior.
-          const nextValidTime = calculateNextValidSendTime(
-              lastScheduleTime,
-              scheduledCount === 0 ? 0 : updatedCampaign.sendIntervalSeconds, // Primeiro envio é imediato (delay 0 a partir do 1º slot), os outros têm intervalo
-              updatedCampaign.allowedSendStartTime,
-              updatedCampaign.allowedSendEndTime,
-              allowedDays
-          );
-
-          // Calcula o delay em milissegundos a partir de AGORA
-          const now = Date.now();
-          let delay = nextValidTime.getTime() - now;
-          if (delay < 0) delay = 0; // Garante que o delay não seja negativo
-
-          const jobData = {
-              campaignContactId: contact.id,
-              campaignId: campaignId,
-              workspaceId: updatedCampaign.workspaceId,
-              // Adicionar outros dados necessários para o envio (ex: channelId, template info se não for buscado depois)
-          };
+          // <<< INÍCIO: Lógica de Criação de Conversa e Follow-up >>>
+          let shouldScheduleMessage = true; // Flag para controlar se o job de envio deve ser agendado
+          let conversationId: string | null = null; // <<< Variável para guardar o ID da conversa >>>
+          let clientId: string | null = null; // <<< Variável para guardar o ID do cliente >>>
+          let createdMessageId: string | null = null; // <<< Variável para guardar ID da msg criada >>>
 
           try {
-              await messageQueue.add(MESSAGE_SENDER_QUEUE, jobData, {
-                  delay: delay, // Adiciona o job com o delay calculado
-                  jobId: `msg-${contact.id}` // ID de job único e previsível (opcional)
-              });
-              scheduledCount++;
-              console.log(`[CampaignProcessor] Job para contato ${contact.id} agendado com delay ${delay}ms para ${nextValidTime.toISOString()}`);
-          } catch (queueError) {
-             console.error(`[CampaignProcessor] Falha ao adicionar job à ${MESSAGE_SENDER_QUEUE} para contato ${contact.id}:`, queueError);
-             // Decidir como tratar: parar tudo? Marcar contato como falho? Continuar?
-             // Por enquanto, loga o erro e continua para os próximos contatos.
-             // TODO: Melhorar tratamento de erro aqui.
-          }
+              const clientPhoneNumberRaw = contact.contactInfo;
+              const standardizedPhoneNumber = standardizeBrazilianPhoneNumber(clientPhoneNumberRaw);
 
-          // Atualiza o ponto de partida para o cálculo do próximo contato
-          lastScheduleTime = nextValidTime;
+              if (!standardizedPhoneNumber) {
+                  console.warn(`[CampaignProcessor ${job.id}] Número de contato inválido ou não padronizável: ${clientPhoneNumberRaw} para Contato ${contact.id}. Marcando como FAILED.`);
+                  await prisma.campaignContact.update({
+                      where: { id: contact.id },
+                      data: { status: 'FAILED', error: 'Número de telefone inválido ou não padronizável.' },
+                  });
+                  shouldScheduleMessage = false; // Não agendar mensagem
+                  continue; // Pula para o próximo contato no loop
+              }
+
+              console.log(`[CampaignProcessor ${job.id}] Padronizado ${clientPhoneNumberRaw} -> ${standardizedPhoneNumber}. Buscando/Criando conversa para Contato ${contact.id}...`);
+
+              const { conversation, client, wasCreated } = await getOrCreateConversation(
+                  updatedCampaign.workspaceId, // Usar o workspaceId da campanha atualizada
+                  standardizedPhoneNumber,
+                  contact.contactName || undefined // Passa o nome se existir
+              );
+              conversationId = conversation.id; // <<< Armazena ID da conversa >>>
+              clientId = client.id; // <<< Armazena ID do cliente >>>
+              console.log(`[CampaignProcessor ${job.id}] Conversa ${conversation.id} ${wasCreated ? 'CRIADA' : 'recuperada'} para Cliente ${client.id} (Contato Campanha: ${contact.id})`);
+
+          } catch (convFollowUpError) {
+              console.error(`[CampaignProcessor ${job.id}] Erro crítico durante getOrCreateConversation ou setup de FollowUp para Contato ${contact.id}:`, convFollowUpError);
+              // Marcar contato como FAILED
+               await prisma.campaignContact.update({
+                   where: { id: contact.id },
+                   data: { status: 'FAILED', error: `Erro ao criar/buscar conversa ou iniciar follow-up: ${convFollowUpError instanceof Error ? convFollowUpError.message : String(convFollowUpError)}` },
+               });
+               shouldScheduleMessage = false; // Não agendar mensagem
+               continue; // Pula para o próximo contato no loop
+          }
+          // <<< FIM: Lógica de Criação de Conversa e Follow-up >>>
+
+          // Só agenda o envio se a criação/verificação da conversa e follow-up ocorreram sem erros críticos
+          if (shouldScheduleMessage && conversationId && clientId) { // <<< Adiciona verificação de conversationId e clientId
+
+             // <<< INÍCIO: Salvar Mensagem Inicial e Notificar UI >>>
+             try {
+                const scheduledTimestamp = new Date(); // Hora em que foi agendada
+                const savedMessage = await prisma.message.create({
+                   data: {
+                      conversation_id: conversationId,
+                      sender_type: MessageSenderType.SYSTEM, // Ou AGENT se apropriado
+                      content: substituteTemplateVariables(
+                          updatedCampaign.message, // Template original
+                          (typeof contact.variables === 'object' && contact.variables !== null && !Array.isArray(contact.variables))
+                            ? contact.variables as Record<string, string>
+                            : {} // Objeto de variáveis do contato
+                      ),
+                      status: 'PENDING', // <<< ALTERADO de 'SCHEDULED' para 'PENDING' >>>
+                      timestamp: scheduledTimestamp, // Hora do agendamento
+                      metadata: {
+                         campaignId: updatedCampaign.id,
+                         campaignContactId: contact.id,
+                         isCampaignMessage: true,
+                         ...(updatedCampaign.isTemplate && {
+                             templateName: updatedCampaign.templateName,
+                             templateLanguage: updatedCampaign.templateLanguage,
+                             // Incluir variáveis aqui se necessário/disponível?
+                         })
+                      } as Prisma.JsonObject, // <<< Usar Prisma.JsonObject >>>
+                      channel_message_id: null,
+                      // workspace_id não é campo direto aqui, é via conversation
+                   },
+                   // Incluir dados para notificação se necessário (ex: cliente)
+                   include: { conversation: { select: { client: true } } }
+                });
+                createdMessageId = savedMessage.id;
+                console.log(`[CampaignProcessor ${job.id}] Mensagem inicial ${savedMessage.id} salva (PENDING) para Conv ${conversationId}`); // <<< Log ajustado >>>
+
+                // Notificar front-end sobre a nova mensagem (agora PENDING)
+                await publishConversationUpdate(
+                   `chat-updates:${conversationId}`,
+                   { type: 'new_message', payload: savedMessage } // Envia a mensagem completa salva
+                );
+                console.log(`[CampaignProcessor ${job.id}] Notificação 'new_message' enviada para ${`chat-updates:${conversationId}`}`);
+
+                 // Notificar front-end sobre a atualização na lista de conversas
+                 await publishWorkspaceUpdate(
+                     `workspace-updates:${updatedCampaign.workspaceId}`,
+                     {
+                         type: 'new_message', // Ou um tipo mais específico como 'conversation_updated'
+                         conversationId: conversationId,
+                         lastMessageTimestamp: savedMessage.timestamp.toISOString()
+                     }
+                 );
+                 console.log(`[CampaignProcessor ${job.id}] Notificação 'workspace-updates' enviada para ${`workspace-updates:${updatedCampaign.workspaceId}`}`);
+
+             } catch (saveMsgError) {
+                 console.error(`[CampaignProcessor ${job.id}] Erro ao salvar mensagem inicial PENDING ou notificar UI para Contato ${contact.id}:`, saveMsgError);
+                 // Marcar contato como FAILED e pular agendamento
+                 await prisma.campaignContact.update({
+                     where: { id: contact.id },
+                     data: { status: 'FAILED', error: `Erro ao salvar/notificar mensagem inicial: ${saveMsgError instanceof Error ? saveMsgError.message : String(saveMsgError)}` },
+                 });
+                 shouldScheduleMessage = false; // Redundante devido ao continue, mas seguro
+                 continue; // Pula para o próximo contato
+             }
+             // <<< FIM: Salvar Mensagem Inicial e Notificar UI >>>
+
+              // --- Código existente para agendar job na messageQueue --- 
+              if (!createdMessageId) { // Checagem extra de segurança
+                 console.error(`[CampaignProcessor ${job.id}] Erro INTERNO: createdMessageId não foi definido antes de agendar envio para contato ${contact.id}`);
+                 await prisma.campaignContact.update({ where: { id: contact.id }, data: { status: 'FAILED', error: 'Erro interno: Falha ao obter ID da mensagem salva.' } });
+                 continue;
+              }
+
+              // Calcula o próximo horário válido...
+              const nextValidTime = calculateNextValidSendTime(
+                  lastScheduleTime,
+                  scheduledCount === 0 ? 0 : updatedCampaign.sendIntervalSeconds,
+                  updatedCampaign.allowedSendStartTime,
+                  updatedCampaign.allowedSendEndTime,
+                  allowedDays
+              );
+              // Calcula o delay...
+              const now = Date.now();
+              let delay = nextValidTime.getTime() - now;
+              if (delay < 0) delay = 0;
+
+              const messageJobData = { // Renomeado para clareza
+                  campaignContactId: contact.id,
+                  campaignId: campaignId,
+                  workspaceId: updatedCampaign.workspaceId,
+                  messageIdToUpdate: createdMessageId, // <<< Passa o ID da mensagem criada
+                  conversationId: conversationId, // <<< ADICIONADO >>>
+                  scheduledSendTime: nextValidTime.toISOString(), // <<< Passa a hora agendada
+              };
+
+              try {
+                  await messageQueue.add(MESSAGE_SENDER_QUEUE, messageJobData, {
+                      delay: delay,
+                      jobId: `msg-${contact.id}` // Ou usar messageIdToUpdate? `msg-${createdMessageId}`
+                  });
+                  scheduledCount++;
+                  console.log(`[CampaignProcessor] Job para contato ${contact.id} (Msg ${createdMessageId}) agendado com delay ${delay}ms para ${nextValidTime.toISOString()}`);
+
+                  // Atualizar o status do CampaignContact para SCHEDULED?
+                  // Faz sentido, pois o job foi para a fila
+                  await prisma.campaignContact.update({ where: { id: contact.id }, data: { status: 'SCHEDULED' } });
+
+              } catch (queueError) {
+                 console.error(`[CampaignProcessor] Falha ao adicionar job à ${MESSAGE_SENDER_QUEUE} para contato ${contact.id} (Msg ${createdMessageId}):`, queueError);
+                 // Marcar contato como FAILED e a mensagem também?
+                 await prisma.campaignContact.update({
+                     where: { id: contact.id },
+                     data: { status: 'FAILED', error: `Falha ao agendar job de envio na fila: ${queueError instanceof Error ? queueError.message : String(queueError)}` },
+                 });
+                 // <<< Corrigir atualização da mensagem em caso de falha >>>
+                 try {
+                     // Buscar metadados existentes
+                     const existingMessage = await prisma.message.findUnique({ where: { id: createdMessageId }, select: { metadata: true } });
+                     const currentMetadata = (typeof existingMessage?.metadata === 'object' && existingMessage.metadata !== null) ? existingMessage.metadata : {};
+
+                     await prisma.message.update({
+                         where: { id: createdMessageId },
+                         data: {
+                             status: 'FAILED', // <<< Usar string literal >>>
+                             metadata: { // <<< Armazenar erro em metadata >>>
+                                ...currentMetadata,
+                                queueError: `Falha ao agendar job de envio na fila: ${queueError instanceof Error ? queueError.message : String(queueError)}`
+                             }
+                         }
+                     });
+                 } catch (updateMsgError) {
+                     console.error(`[CampaignProcessor] Falha ANINHADA ao tentar marcar mensagem ${createdMessageId} como FAILED após erro na fila:`, updateMsgError);
+                 }
+                 // <<< Fim Correção >>>
+                 // TODO: Melhorar tratamento de erro aqui.
+              }
+
+              // Atualiza o ponto de partida para o cálculo do próximo contato
+              lastScheduleTime = nextValidTime;
+          } // Fim if (shouldScheduleMessage)
       }
 
       console.log(`[CampaignProcessor] ${scheduledCount} de ${contactsToProcess.length} contatos agendados para campanha ${campaignId}.`);
