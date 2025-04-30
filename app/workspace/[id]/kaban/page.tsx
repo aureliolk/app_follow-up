@@ -22,7 +22,7 @@ interface KanbanPageProps {
 
 // Use PageProps type and ensure component is async
 export default async function KanbanPage({ params }: KanbanPageProps) {
-  const { id: workspaceId } = params;
+  const { id: workspaceId } = await params;
 
   // Fetch data on the server
   let stages: PipelineStageBasic[] = [];

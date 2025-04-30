@@ -112,7 +112,7 @@ interface PipelineSettingsPageProps {
 }
 
 export default async function PipelineSettingsPage({ params }: PipelineSettingsPageProps) {
-  const { id: workspaceId } = params;
+  const { id: workspaceId } = await params;
   
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">

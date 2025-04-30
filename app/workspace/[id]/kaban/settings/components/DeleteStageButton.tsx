@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { toast } from 'react-hot-toast';
 import { deletePipelineStage } from '@/lib/actions/pipelineActions';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,8 +79,8 @@ export function DeleteStageButton({
           <AlertDialogAction
             onClick={handleDelete}
             disabled={isPending}
-            // Use standard destructive button styling from Shadcn
-            className={cn(Button({ variant: "destructive" }))}
+            // Use buttonVariants para obter as classes da variante
+            className={cn(buttonVariants({ variant: "destructive" }))}
           >
             {isPending ? 'Excluindo...' : 'Confirmar Exclusão'}
           </AlertDialogAction>

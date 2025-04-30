@@ -1,8 +1,7 @@
 // apps/next-app/app/workspace/[slug]/page.tsx
-'use client';
 import { useWorkspace } from '@/context/workspace-context';
 import { ArrowUpRight, Users, BarChart2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 // Remover import do serviço, vamos usar o contexto
 // import { followUpService } from '../../follow-up/_services/followUpService';
@@ -12,179 +11,72 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useConversationContext } from '@/context/ConversationContext'; // <<< Importar hook correto
 import type { Campaign, ClientConversation } from '@/app/types'; // <<< Importar tipos se necessário
 
-export default function WorkspaceDashboard() {
-  const { workspace, isLoading: workspaceIsLoading } = useWorkspace(); // Renomear isLoading para evitar conflito
-  // State for dashboard data (will be fetched locally)
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [activeConversations, setActiveConversations] = useState<ClientConversation[]>([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(true); // Start loading
-  const [loadingConversations, setLoadingConversations] = useState(true); // Start loading
-  const [campaignsError, setCampaignsError] = useState<string | null>(null);
-  const [conversationsError, setConversationsError] = useState<string | null>(null);
+// Importa os componentes específicos do Dashboard
+import DashboardStats from './dashboard/components/DashboardStats';
+import DealsByStageChart from './dashboard/components/DealsByStageChart';
+import RecentActivityList from './dashboard/components/RecentActivityList';
 
-  // Opcional: manter um estado de loading combinado se preferir
-  const isLoadingData = loadingCampaigns || loadingConversations || workspaceIsLoading;
-  const dataError = campaignsError || conversationsError; // Combinar erros para exibição
+// Importa a action necessária para o gráfico
+import { getDealsByStageData } from '@/lib/actions/dashboardActions';
 
-  useEffect(() => {
-    if (workspace?.id && !workspaceIsLoading) {
-      console.log(`[WorkspaceDashboard] Workspace ID ${workspace.id} disponível. Buscando dados do dashboard...`);
-      // TODO: Implement direct API calls to fetch campaigns and active conversations
-      const fetchData = async () => {
-        setLoadingCampaigns(true);
-        setLoadingConversations(true);
-        try {
-          // Simulate API calls
-          await new Promise(resolve => setTimeout(resolve, 500));
-          setCampaigns([]); // Placeholder
-          setActiveConversations([]); // Placeholder
-          setCampaignsError(null);
-          setConversationsError(null);
-        } catch (error: any) {
-          const msg = error.message || "Erro ao buscar dados";
-          setCampaignsError(msg);
-          setConversationsError(msg);
-        } finally {
-          setLoadingCampaigns(false);
-          setLoadingConversations(false);
-        }
-      };
-      fetchData();
-    }
-  }, [workspace?.id, workspaceIsLoading]); // Removed context fetch functions from dependencies
+interface WorkspaceDashboardPageProps {
+  params: { id: string }; // Espera o ID da URL
+}
 
-  // Loading inicial do WORKSPACE
-  if (workspaceIsLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <LoadingSpinner message="Carregando workspace..." />
-      </div>
-    );
+// Componente Wrapper para o Gráfico (Busca dados e renderiza o componente)
+async function DealsByStageChartWrapper({ workspaceId }: { workspaceId: string }) {
+  try {
+    const chartData = await getDealsByStageData(workspaceId);
+    return <DealsByStageChart data={chartData} />;
+  } catch (error) {
+    console.error("[DealsByStageChartWrapper] Error fetching chart data:", error);
+    return <Card><CardHeader><CardTitle>Negócios por Etapa</CardTitle></CardHeader><CardContent><p className="text-destructive">Erro ao carregar gráfico.</p></CardContent></Card>;
   }
+}
 
-  if (!workspace) {
-     // Pode acontecer se houver erro no contexto do workspace
-     // Ou se o slug for inválido
-     return <div className="container mx-auto text-center py-10 text-destructive">Workspace não encontrado ou erro ao carregar.</div>;
+// Componente Wrapper para a Lista de Atividades (Chama o componente que busca seus dados)
+async function RecentActivityListWrapper({ workspaceId }: { workspaceId: string }) {
+  try {
+    return <RecentActivityList workspaceId={workspaceId} />;
+  } catch (error) {
+    console.error("[RecentActivityListWrapper] Error rendering activity list:", error);
+    return <Card><CardHeader><CardTitle>Atividade Recente</CardTitle></CardHeader><CardContent><p className="text-destructive">Erro ao carregar atividades.</p></CardContent></Card>;
   }
+}
 
-  // <<< ADICIONAR VERIFICAÇÃO DE LOADING DOS DADOS >>>
-  if (loadingCampaigns || loadingConversations) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        {/* Pode usar a mesma mensagem ou uma diferente */}
-        <LoadingSpinner message="Carregando dados do dashboard..." />
-      </div>
-    );
-  }
+// Página Principal (Async Server Component)
+export default async function WorkspaceDashboardPage({ params }: WorkspaceDashboardPageProps) {
+  const { id: workspaceId } = await params;
 
-  // Tratamento de erro combinado dos dados
-  if (dataError) {
-      return <div className="container mx-auto text-center py-10 text-destructive">Erro ao carregar dados: {dataError}</div>;
+  // Não precisamos mais do useWorkspace aqui se não formos exibir o nome
+  // A validação de acesso deve ocorrer no layout ou middleware
+
+  // Se workspaceId não estiver presente, pode indicar um erro de rota
+  if (!workspaceId) {
+      return <div className="container mx-auto text-center py-10 text-destructive">ID do Workspace não encontrado na URL.</div>;
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-8">
-      <h1 className="text-3xl font-bold text-foreground">
-        Bem-vindo ao {workspace.name}
-      </h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Card Follow-ups Ativos */}
-        <Card className="border-border rounded-xl shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg font-medium">Follow-ups Ativos</CardTitle>
-            <BarChart2 className="text-primary h-5 w-5" />
-          </CardHeader>
-          <CardContent>
-            {/* <<< USAR loadingFollowUps DIRETAMENTE >>> */}
-            {loadingConversations ? (
-              <LoadingSpinner size="small" message="" />
-            ) : activeConversations.length > 0 ? (
-              <div>
-                {/* <<< USAR followUps do contexto >>> */}
-                <p className="text-2xl font-bold text-foreground mb-2">{activeConversations.length}</p>
-                <Link
-                  href={`/workspace/${workspace.id}/conversations`} // Link para a página de conversas
-                  className="text-primary text-sm flex items-center hover:underline"
-                >
-                  Ver conversas <ArrowUpRight className="ml-1 h-3 w-3" />
-                </Link>
-              </div>
-            ) : (
-              <p className="text-muted-foreground text-sm">Nenhum follow-up ativo.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Card Campanhas */}
-        <Card className="border-border rounded-xl shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg font-medium">Campanhas</CardTitle>
-            <BarChart2 className="text-primary h-5 w-5" />
-          </CardHeader>
-          <CardContent>
-            {/* <<< USAR loadingCampaigns DIRETAMENTE >>> */}
-            {loadingCampaigns ? (
-              <LoadingSpinner size="small" message="" />
-            ) : campaigns.length > 0 ? (
-              <div>
-                 {/* <<< USAR campaigns do contexto >>> */}
-                <p className="text-2xl font-bold text-foreground mb-2">{campaigns.length}</p>
-                <Link
-                  href={`/workspace/${workspace.id}/campaigns`} // Ajustar link se necessário
-                  className="text-primary text-sm flex items-center hover:underline"
-                >
-                  Gerenciar campanhas <ArrowUpRight className="ml-1 h-3 w-3" />
-                </Link>
-              </div>
-            ) : (
-              <div>
-                <p className="text-muted-foreground text-sm mb-3">Nenhuma campanha encontrada.</p>
-                <Link
-                  href={`/workspace/${workspace.id}/campaigns/new`} // Ajustar link se necessário
-                  className="text-primary text-sm flex items-center hover:underline"
-                >
-                  Criar campanha <ArrowUpRight className="ml-1 h-3 w-3" />
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Card Equipe */}
-        <Card className="border-border rounded-xl shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg font-medium">Equipe</CardTitle>
-            <Users className="text-primary h-5 w-5" />
-          </CardHeader>
-          <CardContent>
-            {/* A contagem de membros vem do contexto do workspace, manter como está */}
-            {workspace._count?.members ? (
-              <div>
-                <p className="text-2xl font-bold text-foreground mb-2">
-                  {workspace._count.members} {workspace._count.members === 1 ? 'membro' : 'membros'}
-                </p>
-                <Link
-                  href={`/workspace/${workspace.id}/members`}
-                  className="text-primary text-sm flex items-center hover:underline"
-                >
-                  Gerenciar membros <ArrowUpRight className="ml-1 h-3 w-3" />
-                </Link>
-              </div>
-            ) : (
-              <div>
-                <p className="text-muted-foreground text-sm mb-3">Apenas você no workspace.</p>
-                <Link
-                  href={`/workspace/${workspace.id}/members`}
-                  className="text-primary text-sm flex items-center hover:underline"
-                >
-                  Convidar membros <ArrowUpRight className="ml-1 h-3 w-3" />
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+    <div className="p-4 md:p-6 space-y-6 md:space-y-8">
+      {/* Título - Pode ser removido se já estiver no layout */}
+      {/* <h1 className="text-3xl font-bold text-foreground mb-4">Dashboard</h1> */}
+      
+      {/* Componente de Estatísticas Gerais (Server Component que busca seus dados) */}
+      <Suspense fallback={<LoadingSpinner message="Carregando estatísticas..." />}>
+        <DashboardStats workspaceId={workspaceId} />
+      </Suspense>
+      
+      {/* Grid para Gráfico e Lista de Atividades */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+        {/* Wrapper do Gráfico (Server Component que busca dados) */}
+        <Suspense fallback={<Card><CardHeader><CardTitle>Negócios por Etapa</CardTitle></CardHeader><CardContent><LoadingSpinner /></CardContent></Card>}>
+          <DealsByStageChartWrapper workspaceId={workspaceId} /> 
+        </Suspense>
+        
+        {/* Wrapper da Lista de Atividades (Server Component que chama outro Server Component) */}
+        <Suspense fallback={<Card><CardHeader><CardTitle>Atividade Recente</CardTitle></CardHeader><CardContent><LoadingSpinner /></CardContent></Card>}>
+          <RecentActivityListWrapper workspaceId={workspaceId} />
+        </Suspense>
       </div>
     </div>
   );
