@@ -206,6 +206,13 @@ model User {
   created_webhooks  WorkspaceWebhook[]
   owned_workspaces  Workspace[]           @relation("WorkspaceOwner")
 
+  // Kanban/Pipeline Relations
+  assignedDeals       Deal[]            @relation("UserDeals")
+  dealNotes           DealNote[]        @relation("UserDealNotes")
+  dealTasks           DealTask[]        @relation("UserDealTasks")
+  dealDocuments       DealDocument[]    @relation("UserDealDocuments")
+  dealActivityLogs    DealActivityLog[] @relation("UserDealActivityLogs")
+
   @@map("users")
   @@schema("workspace_schema")
 }
@@ -299,6 +306,10 @@ model Workspace {
   evolution_api_instance_name String? @map("evolution_api_instance_name")
 
   tags WorkspaceTag[]
+
+  // Kanban/Pipeline Relations
+  pipelineStages PipelineStage[]
+  deals          Deal[]
 
   @@map("workspaces")
   @@schema("workspace_schema")
@@ -429,6 +440,9 @@ model Client {
   conversations Conversation[] @relation("ClientToConversation")
 
   metadata Json?
+
+  // Kanban/Pipeline Relation
+  deals Deal[]
 
   @@unique([workspace_id, phone_number, channel])
   @@index([workspace_id])
@@ -635,4 +649,191 @@ model AbandonedCartRule {
   @@index([workspace_id, sequenceOrder]) // Index for efficient lookup
   @@map("abandoned_cart_rules")          // Table name in the DB
   @@schema("workspace_schema")           // Place in the same schema
+}
+
+// ==================================
+// ENUMS FOR KANBAN/PIPELINE
+// ==================================
+
+enum DealSource {
+  WEBSITE
+  LINKEDIN
+  GOOGLE_ADS
+  FACEBOOK_ADS
+  REFERRAL
+  EMAIL_MARKETING
+  COLD_CALL
+  EVENT
+  IMPORT
+  MANUAL
+  OTHER
+
+  @@schema("workspace_schema")
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+
+  @@schema("workspace_schema")
+}
+
+enum ActivitySource {
+  AI
+  USER
+  SYSTEM
+
+  @@schema("workspace_schema")
+}
+
+
+// ==================================
+// MODELS FOR KANBAN/PIPELINE (Workspace Schema)
+// ==================================
+
+// Modelo para Etapas do Pipeline (Kanban)
+model PipelineStage {
+  id           String    @id @default(uuid())
+  name         String
+  color        String    @default("#cccccc") // Cor padrão para a coluna
+  order        Int       // Ordem da coluna no Kanban
+  workspace_id String
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  deals Deal[] // Relação com as Negociações/Deals
+  rules PipelineRule[] // Relação com as Regras de Automação
+
+  @@index([workspace_id, order])
+  @@map("pipeline_stages")
+  @@schema("workspace_schema")
+}
+
+// Modelo para Negociações/Deals (Cards do Kanban)
+model Deal {
+  id                String          @id @default(uuid())
+  name              String
+  value             Float?          // Valor estimado da negociação
+  probability       Float?          @default(0) // Probabilidade de fechamento (0 a 1)
+  expectedCloseDate DateTime?       @map("expected_close_date") // Data esperada de fechamento
+  source            DealSource?     // Origem do lead/negociação
+  workspace_id      String
+  workspace         Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  client_id         String          // Relacionado ao Cliente existente
+  client            Client          @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  stage_id          String
+  stage             PipelineStage   @relation(fields: [stage_id], references: [id])
+  assigned_to_id    String?         // ID do usuário responsável
+  assignedTo        User?           @relation("UserDeals", fields: [assigned_to_id], references: [id], onDelete: SetNull)
+  ai_controlled     Boolean         @default(true) @map("ai_controlled") // Se a IA está controlando
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  notes        DealNote[]        // Notas da negociação
+  tasks        DealTask[]        // Tarefas da negociação
+  documents    DealDocument[]    // Documentos da negociação
+  activityLogs DealActivityLog[] // Log de atividades da negociação
+
+  @@index([workspace_id])
+  @@index([client_id])
+  @@index([stage_id])
+  @@index([assigned_to_id])
+  @@map("deals")
+  @@schema("workspace_schema")
+}
+
+// Modelo para Notas da Negociação
+model DealNote {
+  id         String   @id @default(uuid())
+  content    String   @db.Text
+  deal_id    String
+  deal       Deal     @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+  author_id  String   // ID do usuário que criou a nota
+  author     User     @relation("UserDealNotes", fields: [author_id], references: [id])
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([deal_id])
+  @@index([author_id])
+  @@map("deal_notes")
+  @@schema("workspace_schema")
+}
+
+// Modelo para Tarefas da Negociação
+model DealTask {
+  id           String     @id @default(uuid())
+  title        String
+  description  String?    @db.Text
+  dueDate      DateTime?  @map("due_date")
+  status       TaskStatus @default(PENDING)
+  deal_id      String
+  deal         Deal       @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+  assignedToId String?    @map("assigned_to_id") // ID do usuário responsável
+  assignedTo   User?      @relation("UserDealTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  @@index([deal_id])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("deal_tasks")
+  @@schema("workspace_schema")
+}
+
+// Modelo para Documentos da Negociação
+model DealDocument {
+  id           String   @id @default(uuid())
+  name         String
+  type         String   // Ex: pdf, docx, jpg
+  size         Int      // Tamanho em bytes
+  url          String   // URL do arquivo (S3, GCS, etc.)
+  deal_id      String
+  deal         Deal     @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+  uploadedById String   @map("uploaded_by_id") // ID do usuário que fez upload
+  uploadedBy   User     @relation("UserDealDocuments", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([deal_id])
+  @@index([uploadedById])
+  @@map("deal_documents")
+  @@schema("workspace_schema")
+}
+
+// Modelo para Log de Atividades da Negociação
+model DealActivityLog {
+  id        String         @id @default(uuid())
+  action    String         // Ex: "Nota Adicionada", "Email Enviado", "Estágio Alterado"
+  message   String         @db.Text
+  deal_id   String
+  deal      Deal           @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+  user_id   String?        // ID do usuário que realizou a ação (se aplicável)
+  user      User?          @relation("UserDealActivityLogs", fields: [user_id], references: [id], onDelete: SetNull)
+  source    ActivitySource @default(AI) // AI, USER, SYSTEM
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@index([deal_id])
+  @@index([user_id])
+  @@map("deal_activity_logs")
+  @@schema("workspace_schema")
+}
+
+// Modelo para Regras de Automação do Pipeline
+model PipelineRule {
+  id          String        @id @default(uuid())
+  name        String
+  description String?       @db.Text
+  condition   String        @db.Text // Lógica da condição (pode ser JSON ou DSL)
+  action      String        @db.Text // Ação a ser executada (pode ser JSON ou DSL)
+  stage_id    String        // Etapa do pipeline onde a regra se aplica
+  stage       PipelineStage @relation(fields: [stage_id], references: [id], onDelete: Cascade)
+  is_active   Boolean       @default(true) @map("is_active")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@index([stage_id])
+  @@map("pipeline_rules")
+  @@schema("workspace_schema")
 }
