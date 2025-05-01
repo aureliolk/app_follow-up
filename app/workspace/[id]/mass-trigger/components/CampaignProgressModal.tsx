@@ -71,30 +71,35 @@ export default function CampaignProgressModal({ campaignId }: Props) {
       ) : error ? (
         <p className="text-destructive">{error}</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Contato</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Erro</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {contacts.map(c => (
-              <TableRow key={c.id}>
-                <TableCell>{c.contactName || c.contactInfo}</TableCell>
-                <TableCell>
-                  <Badge variant={
-                    c.status === 'SENT' ? 'default' :
-                    c.status === 'FAILED' ? 'destructive' : 'secondary'
-                  }>{c.status}</Badge>
-                </TableCell>
-                <TableCell className="text-xs text-destructive">
-                  {c.error || '-'}</TableCell>
+        <div className="max-h-[60vh] overflow-y-auto border rounded-md">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Contato</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Erro</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {contacts.map(c => (
+                <TableRow key={c.id}>
+                  <TableCell>{c.contactName || c.contactInfo}</TableCell>
+                  <TableCell>
+                    <Badge variant={
+                      c.status === 'SENT' ? 'default' :
+                      c.status === 'FAILED' ? 'destructive' : 'secondary'
+                    }>
+                      {c.status === 'SENT' ? 'ENVIADO' : c.status === 'FAILED' ? 'FALHOU' : c.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-destructive">
+                    {c.error || '-'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </div>
   );

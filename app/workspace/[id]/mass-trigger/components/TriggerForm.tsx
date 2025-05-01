@@ -36,6 +36,9 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
   const router = useRouter(); // << OBTER router
 
   const [triggerName, setTriggerName] = useState('');
+  // Selected template identifier (Meta template id)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  // Selected template display name, body and language
   const [selectedTemplateName, setSelectedTemplateName] = useState<string>('');
   const [selectedTemplateBody, setSelectedTemplateBody] = useState<string>('');
   const [selectedTemplateLanguage, setSelectedTemplateLanguage] = useState<string>('');
@@ -173,9 +176,14 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
     reader.readAsBinaryString(file);
   };
 
-  const handleTemplateChange = (templateName: string) => {
-      setSelectedTemplateName(templateName);
-      const selected = templates.find(t => t.name === templateName);
+  // When a template is selected (value is template.id)
+  const handleTemplateChange = (templateId: string) => {
+      // Store the selected template id
+      setSelectedTemplateId(templateId);
+      // Find the full template object by id
+      const selected = templates.find(t => t.id === templateId);
+      // Update display fields
+      setSelectedTemplateName(selected?.name || '');
       setSelectedTemplateBody(selected?.body || '');
       setSelectedTemplateLanguage(selected?.language || '');
   };
@@ -297,7 +305,7 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
                  </div>
              )}
              <Select
-                 value={selectedTemplateName}
+                 value={selectedTemplateId}
                  onValueChange={handleTemplateChange}
                  disabled={isLoading || loadingTemplates || !!templateError || templates.length === 0}
                  required
@@ -308,7 +316,7 @@ export default function TriggerForm({ workspaceId }: TriggerFormProps) {
                  <SelectContent>
                     {templates.length === 0 && !loadingTemplates && <SelectItem value="" disabled>Nenhum template encontrado</SelectItem>}
                      {templates.map((template) => (
-                         <SelectItem key={template.name} value={template.name}>
+                         <SelectItem key={template.id} value={template.id}>
                              {template.name} ({template.language})
                          </SelectItem>
                      ))}
