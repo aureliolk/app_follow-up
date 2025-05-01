@@ -21,6 +21,10 @@ import { generateChatCompletion } from '../ai/chatService';
 import { publishConversationUpdate, publishWorkspaceUpdate } from '../services/notifierService';
 // <<< Importar Channel Service >>>
 import { sendWhatsAppMessage } from '../services/channelService';
+// <<< Importar Carregador de Ferramentas >>>
+import { getActiveToolsForWorkspace } from '../ai/toolLoader'; 
+// <<< Importar Tipos de Ferramentas da Vercel AI SDK >>>
+import { ToolCall, ToolResult, Tool, ToolContent } from 'ai'; 
 
 const QUEUE_NAME = 'message-processing';
 const BUFFER_TIME_MS = 3000; // 3 segundos de buffer (ajuste se necessário)
@@ -429,56 +433,136 @@ async function processJob(job: Job<JobData>) {
     // --- 8. Processar com IA ---
     console.log(`[MsgProcessor ${jobId}] Processando mensagens com IA...`);
     
-    // Create context for tools to access
-    const context = {
-      toolResponses: []
-    };
-    
-    // Variável para armazenar resposta da IA, que pode ser modificada
-    let aiResponseText = '';
+    // Variável para armazenar resposta FINAL da IA
+    let finalAiResponseText: string | null = null; // Alterado nome para clareza
     
     console.log(`[MsgProcessor ${jobId}] Nome do cliente: ${client?.name}`);
 
     try {
-      // Usar a API de IA da Vercel com o modelo especificado
-      aiResponseText = await generateChatCompletion({
-        messages: aiMessages,
+      // <<< Carregar Ferramentas Ativas >>>
+      console.log(`[MsgProcessor ${jobId}] Carregando ferramentas para workspace ${workspace.id}...`);
+      const activeTools = await getActiveToolsForWorkspace(workspace.id);
+      console.log(`[MsgProcessor ${jobId}] Ferramentas carregadas:`, Object.keys(activeTools));
+
+      // <<< Primeira Chamada à IA >>>
+      console.log(`[MsgProcessor ${jobId}] Primeira chamada a generateChatCompletion...`);
+      let aiResult = await generateChatCompletion({
+        messages: aiMessages, // Histórico formatado
         systemPrompt: systemPrompt,
         modelId: modelId,
         nameIa: workspace.ai_name || undefined,
         conversationId: conversationId,
         workspaceId: workspace.id,
-        context, // Passar o contexto para a função
+        tools: activeTools, // <<< Passar ferramentas carregadas
         clientName: client?.name || ''
       });
+
+      // <<< Loop para Lidar com Tool Calls (se houver) >>>
+      if (aiResult.type === 'tool_calls' && aiResult.calls) {
+        console.log(`[MsgProcessor ${jobId}] IA solicitou ${aiResult.calls.length} ferramenta(s). Executando...`);
+        
+        // Usando 'any' para simplificar os tipos genéricos por enquanto
+        const toolCalls: ToolCall<any, any>[] = aiResult.calls;
+        const toolResults: ToolResult<any, any, any>[] = [];
+
+        // Adiciona a mensagem 'assistant' com as tool_calls ao histórico
+        // Usando asserção de tipo para incluir toolCalls
+        aiMessages.push({ 
+            role: 'assistant', 
+            content: '', 
+            toolCalls: toolCalls 
+        } as CoreMessage); // Asserção de tipo
+
+        for (const toolCall of toolCalls) {
+            const toolName = toolCall.toolName;
+            const toolArgs = toolCall.args;
+            console.log(`[MsgProcessor ${jobId}] Executando ferramenta: ${toolName} com args:`, toolArgs);
+
+            const toolFunction = activeTools[toolName];
+            if (!toolFunction || typeof toolFunction.execute !== 'function') {
+                console.error(`[MsgProcessor ${jobId}] Ferramenta "${toolName}" não encontrada ou não executável.`);
+                toolResults.push({ 
+                    toolCallId: toolCall.toolCallId, 
+                    toolName: toolName,
+                    args: toolArgs,
+                    result: { success: false, error: `Tool '${toolName}' not found or invalid.` } 
+                });
+                continue;
+            }
+
+            try {
+                const result = await toolFunction.execute(toolArgs);
+                console.log(`[MsgProcessor ${jobId}] Resultado da ferramenta ${toolName}:`, result);
+                toolResults.push({ 
+                    toolCallId: toolCall.toolCallId, 
+                    toolName: toolName,
+                    args: toolArgs,
+                    result: result 
+                });
+            } catch (toolError: any) {
+                console.error(`[MsgProcessor ${jobId}] Erro ao executar ferramenta ${toolName}:`, toolError);
+                toolResults.push({ 
+                    toolCallId: toolCall.toolCallId, 
+                    toolName: toolName, 
+                    args: toolArgs,
+                    result: { success: false, error: toolError.message || 'Unknown tool execution error' } 
+                });
+            }
+        }
+        
+        // Adiciona a mensagem 'tool' com os resultados ao histórico
+        // Mapeia toolResults para o formato ToolContent esperado pela Vercel AI SDK
+        const toolContent: ToolContent = toolResults.map(result => ({
+            type: 'tool-result',
+            toolCallId: result.toolCallId,
+            toolName: result.toolName,
+            result: result.result
+        }));
+        aiMessages.push({ role: 'tool', content: toolContent }); 
+
+        // <<< Segunda Chamada à IA com os resultados das ferramentas >>>
+        console.log(`[MsgProcessor ${jobId}] Segunda chamada a generateChatCompletion com resultados das ferramentas...`);
+        aiResult = await generateChatCompletion({
+            messages: aiMessages, // Histórico atualizado
+            systemPrompt: systemPrompt,
+            modelId: modelId,
+            nameIa: workspace.ai_name || undefined,
+            conversationId: conversationId,
+            workspaceId: workspace.id,
+            tools: activeTools,
+            clientName: client?.name || ''
+        });
+      }
+
+      // <<< Processar Resultado Final (após possível loop de ferramentas) >>>
+      if (aiResult.type === 'text') {
+          finalAiResponseText = aiResult.content;
+          console.log(`[MsgProcessor ${jobId}] Resposta final da IA (texto): "${finalAiResponseText?.substring(0,100)}..."`);
+      } else if (aiResult.type === 'tool_calls') {
+          console.warn(`[MsgProcessor ${jobId}] IA ainda retornou tool_calls após o loop. Usando mensagem padrão.`);
+          finalAiResponseText = "Houve um problema ao processar sua solicitação com as ferramentas."; 
+      } else if (aiResult.type === 'empty') {
+          console.warn(`[MsgProcessor ${jobId}] IA não retornou conteúdo final (empty).`);
+          finalAiResponseText = null;
+      } else if (aiResult.type === 'error' && 'error' in aiResult) {
+           // Verifica o tipo E a existência da propriedade 'error'
+           const errorMessage = aiResult.error as string | Error; // Asserção após verificação
+           console.error(`[MsgProcessor ${jobId}] Erro retornado por generateChatCompletion:`, errorMessage);
+           finalAiResponseText = null;
+           throw new Error(typeof errorMessage === 'string' ? errorMessage : errorMessage.message || "Erro desconhecido na geração da IA");
+      } else {
+         console.warn(`[MsgProcessor ${jobId}] Tipo de resposta inesperado da IA: ${(aiResult as any).type}`);
+         finalAiResponseText = null;
+      }
       
     } catch (aiError) {
-      console.error(`[MsgProcessor ${jobId}] Erro ao gerar conteúdo com IA:`, aiError);
-      // Se ocorrer erro na IA, retornar
-      return { handledBatch: true, status: 'ai_error', reason: 'Erro ao gerar texto com IA' };
+       console.error(`[MsgProcessor ${jobId}] Erro CRÍTICO durante o processamento com IA (chamada ou ferramentas):`, aiError);
+       throw aiError;
     }
     
-    // Se nenhum resultado foi retornado da IA, verificar se temos uma resposta da ferramenta para usar
-    if (!aiResponseText || aiResponseText.trim() === '') {
-      console.log(`[MsgProcessor ${jobId}] IA não retornou conteúdo. Verificando respostas de ferramentas...`);
-      
-      // Verificar se temos um responseText de alguma ferramenta no contexto
-      // Isso permite que ferramentas como o Google Calendar forneçam respostas diretas
-      const toolResponses = context.toolResponses || [];
-      const lastToolResponse = toolResponses[toolResponses.length - 1];
-      
-      if (lastToolResponse?.data?.responseText) {
-        console.log(`[MsgProcessor ${jobId}] Usando responseText da ferramenta como resposta.`);
-        aiResponseText = lastToolResponse.data.responseText;
-      } else {
-        // Se não temos resposta da ferramenta, retornar sem enviar mensagem
-        return { handledBatch: true, status: 'empty_response', reason: 'IA não retornou conteúdo' };
-      }
-    }
-
     // --- 9. Salvar e Enviar Resposta da IA ---
-    if (aiResponseText && aiResponseText.trim() !== '') {
-      console.log(`[MsgProcessor ${jobId}] IA retornou conteúdo: "${aiResponseText.substring(0, 100)}..."`);
+    if (finalAiResponseText && finalAiResponseText.trim() !== '') {
+      console.log(`[MsgProcessor ${jobId}] Preparando para salvar e enviar resposta final da IA: "${finalAiResponseText.substring(0, 100)}..."`);
       const newAiMessageTimestamp = new Date();
 
       // <<< USAR AI_NAME DO WORKSPACE PARA O PREFIXO >>>
@@ -489,14 +573,14 @@ async function processJob(job: Job<JobData>) {
           data: {
             conversation_id: conversationId,
             sender_type: MessageSenderType.AI,
-            content: aiResponseText, // <<< USAR CONTEÚDO COM PREFIXO
+            content: finalAiResponseText, // <<< USAR CONTEÚDO FINAL DA IA
             timestamp: newAiMessageTimestamp,
             // <<< Definir Status inicial como PENDING >>>
             status: 'PENDING' // Garante que começa como pendente antes do envio
           },
           select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true } // Select for publish
       });
-      console.log(`[MsgProcessor ${jobId}] Resposta da IA salva (ID: ${newAiMessage.id}) com prefixo.`);
+      console.log(`[MsgProcessor ${jobId}] Resposta final da IA salva (ID: ${newAiMessage.id}).`);
 
       // Publicar nova mensagem IA no canal Redis da CONVERSA
       try {
@@ -585,7 +669,7 @@ async function processJob(job: Job<JobData>) {
                         whatsappPhoneNumberId,
                         clientPhoneNumber,
                         encryptedAccessToken, // Passar o token ENCRIPTADO
-                        aiResponseText, // <<< ENVIAR CONTEÚDO ORIGINAL, SEM PREFIXO
+                        finalAiResponseText, // <<< ENVIAR CONTEÚDO FINAL DA IA
                         aiDisplayName
                     );
                     console.log(`[MsgProcessor ${jobId}] STEP 9: sendWhatsappMessage call completed.`);

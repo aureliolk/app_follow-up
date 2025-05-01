@@ -311,6 +311,9 @@ model Workspace {
   pipelineStages PipelineStage[]
   deals          Deal[]
 
+  // Add this relation field for Custom HTTP Tools
+  customHttpTools CustomHttpTool[]
+
   @@map("workspaces")
   @@schema("workspace_schema")
 }
@@ -836,4 +839,48 @@ model PipelineRule {
   @@index([stage_id])
   @@map("pipeline_rules")
   @@schema("workspace_schema")
+}
+
+// ==================================
+// ENUMS FOR AI TOOLS
+// ==================================
+
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  PATCH
+  DELETE
+
+  @@schema("workspace_schema") // Ensure enum is in the correct schema if needed
+}
+
+// ==================================
+// MODELS FOR AI TOOLS
+// ==================================
+
+// Add this Model
+model CustomHttpTool {
+  id            String     @id @default(cuid())
+  workspaceId   String
+  name          String     // Nome da ferramenta (usado pela IA, ex: buscar_cliente_crm)
+  description   String     @db.Text // Descrição detalhada para a IA entender o uso
+  method        HttpMethod // Método HTTP (GET, POST, etc.)
+  url           String     @db.Text // URL do endpoint
+  headers       Json?      // Cabeçalhos HTTP como JSON (ex: {"Authorization": "Bearer {{API_KEY}}"})
+  // Usaremos JSON Schema para definir os parâmetros esperados pela IA
+  queryParametersSchema Json?      // JSON Schema para parâmetros da URL
+  requestBodySchema     Json?      // JSON Schema para o corpo da requisição (POST/PUT/PATCH)
+  responseSchema        Json?      // (Opcional) JSON Schema para validar/descrever a resposta esperada
+  isEnabled     Boolean    @default(true) // Flag para ativar/desativar
+
+  createdAt     DateTime   @default(now()) @map("created_at") // Added map for consistency
+  updatedAt     DateTime   @updatedAt @map("updated_at") // Added map for consistency
+
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, isEnabled])
+  @@map("custom_http_tools") // Explicit table name
+  @@schema("workspace_schema") // Ensure model is in the correct schema
 }
