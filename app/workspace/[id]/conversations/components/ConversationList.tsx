@@ -7,6 +7,8 @@ import type { ClientConversation } from '@/app/types';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useConversationContext } from '@/context/ConversationContext';
+import { User } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ConversationListProps {
   conversations: ClientConversation[];
@@ -82,10 +84,31 @@ export default function ConversationList({
 
             <div className="flex-grow overflow-hidden">
               <div className="flex justify-between items-center mb-0.5">
-                <h3 className={cn("font-semibold text-sm truncate", isActive ? "text-primary" : "text-foreground", hasUnread && !isActive ? "font-bold" : "")}>
-                  {clientName}
-                </h3>
-                <span className={cn("text-xs text-muted-foreground flex-shrink-0 ml-2", hasUnread && !isActive ? "text-blue-400 font-medium" : "")}>
+                <div className="flex items-center min-w-0">
+                  <h3
+                    className={cn(
+                      "font-semibold text-sm truncate",
+                      isActive ? "text-primary" : "text-foreground",
+                      hasUnread && !isActive ? "font-bold" : ""
+                    )}
+                    title={clientName}
+                  >
+                    {clientName}
+                  </h3>
+                  {!convo.is_ai_active && (
+                    <TooltipProvider delayDuration={100}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <User className="h-3.5 w-3.5 text-muted-foreground ml-1.5 flex-shrink-0" />
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p>IA Pausada (Atendimento Humano)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+                <span className={cn("text-xs text-muted-foreground flex-shrink-0 ml-2", hasUnread && !isActive ? "text-blue-400 font-medium" : "")}> 
                   {lastMessageTime}
                 </span>
               </div>
