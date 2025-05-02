@@ -491,7 +491,8 @@ async function processJob(job: Job<JobData>) {
             }
 
             try {
-                const result = await toolFunction.execute(toolArgs);
+                // A assinatura de execute requer (args, context). Passando contexto vazio por ora.
+                const result = await toolFunction.execute(toolArgs as any, {} as any);
                 console.log(`[MsgProcessor ${jobId}] Resultado da ferramenta ${toolName}:`, result);
                 toolResults.push({ 
                     toolCallId: toolCall.toolCallId, 

@@ -24,16 +24,23 @@ export async function generateCartMessage(
   // Incluir a regra como mensagem inicial para evitar prompt vazio
   const messages: CoreMessage[] = [{ role: 'user', content: rule.message_content }];
   // Chamada ao serviço de IA
-  const text = await generateChatCompletion({
+  const cartResult = await generateChatCompletion({
     messages,
     systemPrompt,
     modelId,
     nameIa: workspace.ai_name,
     clientName,
     conversationId: conversation.id,
-    workspaceId: workspace.id
+    workspaceId: workspace.id,
+    tools: {}
   });
-  return text;
+
+  // Extrair texto, se retornado
+  if (cartResult && typeof cartResult === 'object' && (cartResult as any).type === 'text') {
+    return (cartResult as any).content as string;
+  }
+
+  throw new Error('IA não retornou texto válido para mensagem de carrinho abandonado.');
 }
 
 /**
@@ -63,14 +70,20 @@ export async function generateFollowUpMessage(
   // Incluir a regra como mensagem inicial para evitar prompt vazio
   const messages: CoreMessage[] = [{ role: 'user', content: rule.message_content }];
   // Chamada ao serviço de IA
-  const text = await generateChatCompletion({
+  const followResult = await generateChatCompletion({
     messages,
     systemPrompt,
     modelId,
     nameIa: workspace.ai_name,
     clientName,
     conversationId: context.conversation.id,
-    workspaceId: workspace.id
+    workspaceId: workspace.id,
+    tools: {}
   });
-  return text;
+
+  if (followResult && typeof followResult === 'object' && (followResult as any).type === 'text') {
+    return (followResult as any).content as string;
+  }
+
+  throw new Error('IA não retornou texto válido para follow-up.');
 }
