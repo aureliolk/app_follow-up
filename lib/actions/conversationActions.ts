@@ -17,7 +17,7 @@ export async function deactivateConversationAI(conversationId: string): Promise<
     const updatedConversation = await prisma.conversation.update({
       where: { id: conversationId },
       data: { is_ai_active: false },
-      select: { id: true, is_ai_active: true } // Selecionar apenas campos necessários para confirmação
+      select: { id: true, is_ai_active: true, workspace_id: true }
     });
 
     if (updatedConversation) {
@@ -31,18 +31,19 @@ export async function deactivateConversationAI(conversationId: string): Promise<
               is_ai_active: false, // O novo estado (sempre false aqui)
           },
       };
-      const channel = `chat-updates:${conversationId}`; // Canal específico da conversa
+      const chatChannel = `chat-updates:${conversationId}`; // Canal específico da conversa
+      const workspaceChannel = `workspace-updates:${updatedConversation.workspace_id}`; // Canal do workspace
 
       try {
-           await redisConnection.publish(channel, JSON.stringify(eventPayload));
-           console.log(`[Action] Evento 'ai_status_updated' publicado no canal ${channel}`);
+           await Promise.all([
+             redisConnection.publish(chatChannel, JSON.stringify(eventPayload)),
+             redisConnection.publish(workspaceChannel, JSON.stringify(eventPayload)),
+           ]);
+           console.log(`[Action] Evento 'ai_status_updated' publicado nos canais ${chatChannel} e ${workspaceChannel}`);
            return true; // Sucesso na operação completa (DB + Redis)
       } catch (redisError) {
-           console.error(`[Action|deactivateConversationAI] Falha ao publicar evento 'ai_status_updated' para Conv ${conversationId} após update no DB:`, redisError);
-           // A IA foi desativada no DB, mas o evento falhou.
-           // Considerar o que fazer aqui. Por enquanto, logamos e retornamos true (DB funcionou).
-           // Poderia retornar um status diferente ou lançar um erro específico de Redis.
-           return true; // Indica que o DB foi atualizado, mas houve falha na notificação.
+           console.error(`[Action|deactivateConversationAI] Falha ao publicar evento 'ai_status_updated' para Conv ${conversationId}:`, redisError);
+           return true; // DB ok, falha na notificação
       }
 
     } else {
