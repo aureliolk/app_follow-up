@@ -96,7 +96,187 @@ Body:
             <p className="text-xs text-muted-foreground mt-2">
               Requer autenticação via cabeçalho <code className="font-mono bg-muted px-1 rounded">x-api-key</code> OU uma sessão de usuário válida com permissão no workspace.
             </p>
-             {/* Adicionar mais detalhes aqui: exemplos de resposta, possíveis erros */}
+            {/* Adicionar mais detalhes aqui: exemplos de resposta, possíveis erros */}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* --- Pipeline Stages --- */}
+      <section className="mb-12">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-primary">Pipeline Stages</CardTitle>
+          </CardHeader>
+          <CardContent className="py-6 space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Listar Stages</h3>
+              <p className="text-muted-foreground mb-2">
+                Retorna todos os estágios (colunas) do pipeline de um workspace específico, ordenados pela sua posição.
+              </p>
+              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+                <code>
+                  {`GET /api/workspaces/{workspaceId}/pipeline/stages
+
+Headers:
+{
+  "x-api-key": "SEU_TOKEN_AQUI" // OU Autenticação via Sessão
+}`}
+                </code>
+              </pre>
+              <p className="text-xs text-muted-foreground mt-2">
+                Requer autenticação e que o usuário seja membro do workspace.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Criar Stage</h3>
+              <p className="text-muted-foreground mb-2">
+                Cria um novo estágio (coluna) no pipeline do workspace. O estágio será adicionado ao final da ordem existente.
+              </p>
+              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+                <code>
+                  {`POST /api/workspaces/{workspaceId}/pipeline/stages
+
+Headers:
+{
+  "x-api-key": "SEU_TOKEN_AQUI" // OU Autenticação via Sessão
+}
+
+Body:
+{
+  "name": "Nome do Novo Estágio"
+}`}
+                </code>
+              </pre>
+              <p className="text-xs text-muted-foreground mt-2">
+                Requer autenticação e que o usuário seja membro do workspace. O campo `name` é obrigatório.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* --- Pipeline Deals --- */}
+      <section className="mb-12">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-primary">Pipeline Deals</CardTitle>
+          </CardHeader>
+          <CardContent className="py-6 space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Listar Deals (CARD)</h3>
+              <p className="text-muted-foreground mb-2">
+                Retorna todos os deals (negociações) de um workspace. Opcionalmente, pode-se filtrar por estágio usando o query parameter `stageId`.
+              </p>
+              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+                <code>
+                  {`GET /api/workspaces/{workspaceId}/pipeline/deals?stageId={optionalStageId}
+
+Headers:
+{
+  "x-api-key": "SEU_TOKEN_AQUI" // OU Autenticação via Sessão
+}`}
+                </code>
+              </pre>
+              <p className="text-xs text-muted-foreground mt-2">
+                Requer autenticação e que o usuário seja membro do workspace.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Criar Deal (CARD)</h3>
+              <p className="text-muted-foreground mb-2">
+                Cria um novo deal no pipeline do workspace, associado a um estágio específico.
+              </p>
+              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+                <code>
+                  {`POST /api/workspaces/{workspaceId}/pipeline/deals
+
+Headers:
+{
+  "x-api-key": "SEU_TOKEN_AQUI" // OU Autenticação via Sessão
+}
+
+Body:
+{
+  "title": "Nome do Deal (Obrigatório)",
+  "stageId": "ID_do_estagio (Obrigatório)",
+  "value": 1500.50 (Opcional),
+  "clientId": "ID_do_cliente (Opcional)",
+  "assignedToId": "ID_do_usuario_responsavel (Opcional)"
+  // "source": "MANUAL" (Opcional - Ver DealSource no schema)
+}`}
+                </code>
+              </pre>
+              <p className="text-xs text-muted-foreground mt-2">
+                Requer autenticação e que o usuário seja membro do workspace. `title` e `stageId` são obrigatórios. O deal será criado no final da ordem do estágio especificado.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Obter Deal Específico (CARD)</h3>
+              <p className="text-muted-foreground mb-2">
+                Retorna os detalhes de um deal específico pelo seu ID.
+              </p>
+              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+                <code>
+                  {`GET /api/workspaces/{workspaceId}/pipeline/deals/{dealId}
+
+Headers:
+{
+  "x-api-key": "SEU_TOKEN_AQUI" // OU Autenticação via Sessão
+}`}
+                </code>
+              </pre>
+              <p className="text-xs text-muted-foreground mt-2">
+                Requer autenticação e que o usuário seja membro do workspace.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Mover Deal (CARD)</h3>
+              <p className="text-muted-foreground mb-2">
+                Atualiza um ou mais campos de um deal existente. Pelo menos um campo deve ser fornecido no corpo.
+              </p>
+              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+                <code>
+                  {`PUT /api/workspaces/{workspaceId}/pipeline/deals/{dealId}
+
+Headers:
+{
+  "x-api-key": "SEU_TOKEN_AQUI" // OU Autenticação via Sessão
+}
+
+Body:
+{
+  "stageId": "ID_do_novo_estagio",
+}`}
+                </code>
+              </pre>
+              <p className="text-xs text-muted-foreground mt-2">
+                Requer autenticação e que o usuário seja membro do workspace. Envie apenas os campos que deseja atualizar. Para desassociar `clientId` ou `assignedToId`, envie `null`.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Deletar Deal (CARD)</h3>
+              <p className="text-muted-foreground mb-2">
+                Remove permanentemente um deal do workspace.
+              </p>
+              <pre className="bg-muted p-4 rounded-md text-sm overflow-x-auto">
+                <code>
+                  {`DELETE /api/workspaces/{workspaceId}/pipeline/deals/{dealId}
+
+Headers:
+{
+  "x-api-key": "SEU_TOKEN_AQUI" // OU Autenticação via Sessão
+}`}
+                </code>
+              </pre>
+              <p className="text-xs text-muted-foreground mt-2">
+                Requer autenticação e que o usuário seja membro do workspace. Esta ação é irreversível.
+              </p>
+            </div>
+
           </CardContent>
         </Card>
       </section>
