@@ -32,6 +32,14 @@ const getActiveWorkspaceId = (workspaceCtx: any, providedId?: string): string | 
     return null;
 };
 
+// <<< Adicionar getMessageTypeFromMime aqui >>>
+function getMessageTypeFromMime(mimeType: string): 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' {
+  if (mimeType.startsWith('image/')) return 'IMAGE';
+  if (mimeType.startsWith('video/')) return 'VIDEO';
+  if (mimeType.startsWith('audio/')) return 'AUDIO';
+  return 'DOCUMENT'; // Default
+}
+
 // --- Tipagem do Contexto de Conversa (Estado) --- //
 interface SendTemplateDataType {
     name: string;
@@ -562,18 +570,122 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, [workspaceContext, selectedConversation, session]);
 
     const sendMediaMessage = useCallback(async (conversationId: string, file: File) => {
-        const wsId = getActiveWorkspaceId(workspaceContext, undefined); // Assume context wsId
-        if (!wsId) {
-            toast.error("Não foi possível determinar o workspace ativo.");
+        const wsId = getActiveWorkspaceId(workspaceContext, undefined);
+        if (!wsId || !conversationId || !file) {
+            toast.error("Dados insuficientes para enviar mídia.");
             return;
         }
-        console.log(`[ConversationContext] Placeholder: sendMediaMessage called for conv ${conversationId} in ws ${wsId}. File: ${file.name}, Type: ${file.type}, Size: ${file.size}`);
-        setIsSendingMessage(true); // Reusa o estado de envio
-        // TODO: Implementar chamada à API ou Server Action aqui (provavelmente /api/messages/media)
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simula delay da rede
-        setIsSendingMessage(false);
-        toast("Funcionalidade 'Enviar Mídia' ainda não implementada.");
-    }, [workspaceContext]);
+        
+        // --- Otimista: Adicionar mensagem localmente --- 
+        const optimisticId = `optimistic-${Date.now()}`;
+        const messageType = getMessageTypeFromMime(file.type);
+        const placeholderContent = `[Enviando ${messageType.toLowerCase()} ${file.name}...]`;
+        const prefixedContent = `*${session?.user?.name || 'Agente'}*\n${placeholderContent}`;
+        
+        // Opcional: Criar URL local para preview imediato (imagem/video)
+        let localPreviewUrl: string | null = null;
+        if (messageType === 'IMAGE' || messageType === 'VIDEO') {
+            try {
+                localPreviewUrl = URL.createObjectURL(file);
+            } catch (e) {
+                console.warn("Não foi possível criar URL de objeto para preview:", e);
+            }
+        }
+
+        const optimisticMessage: Message = {
+            id: optimisticId,
+            conversation_id: conversationId,
+            sender_type: 'AGENT',
+            content: prefixedContent, // Conteúdo de placeholder
+            timestamp: new Date().toISOString(),
+            status: 'SENDING',
+            message_type: messageType, 
+            channel_message_id: null,
+            metadata: { 
+                senderName: session?.user?.name || 'Agente',
+                originalFilename: file.name,
+                mimeType: file.type,
+                size: file.size,
+             }, 
+            media_url: localPreviewUrl, // Usa URL local para preview, se disponível
+            media_mime_type: file.type,
+            media_filename: file.name,
+            provider_message_id: null,
+        };
+
+        // Adiciona otimista ao estado
+        if (selectedConversation?.id === conversationId) {
+            setSelectedConversationMessages(prev => [...prev, optimisticMessage]);
+        }
+        setMessageCache(prevCache => ({
+            ...prevCache,
+            [conversationId]: [...(prevCache[conversationId] || []), optimisticMessage]
+        }));
+        // --- Fim da Lógica Otimista ---
+        
+        setIsSendingMessage(true); // Usar o mesmo estado de loading por simplicidade
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('conversationId', conversationId);
+        formData.append('workspaceId', wsId);
+
+        try {
+            console.log(`[ConversationContext] Uploading media file ${file.name} for conv ${conversationId}`);
+            
+            const response = await axios.post<{ success: boolean, data?: Message, error?: string }>(
+                `/api/attachments`,
+                formData, 
+                { 
+                    headers: { 'Content-Type': 'multipart/form-data' } 
+                }
+            );
+
+            if (!response.data.success || !response.data.data) {
+                throw new Error(response.data.error || 'Falha ao fazer upload da mídia');
+            }
+
+            const createdMessage = response.data.data;
+            console.log(`[ConversationContext] Media upload successful. DB Message ID: ${createdMessage.id}`);
+            toast.success("Arquivo enviado!");
+
+            // A API já criou a mensagem e publicou no Redis/SSE.
+            // O handleRealtimeNewMessage deve receber a `createdMessage` e substituir a otimista.
+            // Revogar URL local se foi criada para liberar memória
+            if (localPreviewUrl) {
+                URL.revokeObjectURL(localPreviewUrl);
+            }
+
+        } catch (err: any) {
+            const errorMsg = err.response?.data?.error || err.message || 'Erro desconhecido ao enviar mídia.';
+            console.error("[ConversationContext] Erro ao enviar mídia:", errorMsg);
+            toast.error(`Falha ao enviar ${messageType.toLowerCase()}: ${errorMsg}`);
+            
+            // Revogar URL local se foi criada
+             if (localPreviewUrl) {
+                URL.revokeObjectURL(localPreviewUrl);
+             }
+
+            // Atualizar mensagem otimista para FALHOU
+             const updateStateWithError = () => {
+                 const failedMessage = { ...optimisticMessage, status: 'FAILED', media_url: null } as Message; // Remove preview local no erro
+                 if (selectedConversation?.id === conversationId) {
+                     setSelectedConversationMessages(prev =>
+                         prev.map(m => m.id === optimisticId ? failedMessage : m)
+                     );
+                 }
+                 setMessageCache(prevCache => {
+                     const current = prevCache[conversationId] || [];
+                     return {
+                         ...prevCache,
+                         [conversationId]: current.map(m => m.id === optimisticId ? failedMessage : m)
+                     };
+                 });
+             };
+             updateStateWithError();
+        } finally {
+            setIsSendingMessage(false);
+        }
+    }, [workspaceContext, selectedConversation, session]);
 
     const toggleAIStatus = useCallback(async (conversationId: string, currentAiState: boolean) => {
         const wsId = getActiveWorkspaceId(workspaceContext, undefined); // Assume context wsId
