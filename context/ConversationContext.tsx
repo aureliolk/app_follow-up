@@ -580,12 +580,13 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         // --- Otimista: Adicionar mensagem localmente --- 
         const optimisticId = `optimistic-${Date.now()}`;
         const messageType = getMessageTypeFromMime(file.type);
-        const placeholderContent = `[Enviando ${messageType.toLowerCase()} ${file.name}...]`;
-        const prefixedContent = `*${session?.user?.name || 'Agente'}*\n${placeholderContent}`;
+        // Conteúdo otimista simplificado para mídia:
+        // Apenas o nome do remetente, a UI deve indicar que é mídia.
+        const optimisticContent = `*${session?.user?.name || 'Agente'}*`; 
         
         // Opcional: Criar URL local para preview imediato (imagem/video)
         let localPreviewUrl: string | null = null;
-        if (messageType === 'IMAGE' || messageType === 'VIDEO') {
+        if (messageType === 'IMAGE' || messageType === 'VIDEO' || messageType === 'AUDIO') { // <<< Inclui AUDIO aqui se quisermos tentar preview local
             try {
                 localPreviewUrl = URL.createObjectURL(file);
             } catch (e) {
@@ -597,7 +598,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             id: optimisticId,
             conversation_id: conversationId,
             sender_type: 'AGENT',
-            content: prefixedContent, // Conteúdo de placeholder
+            content: (messageType !== 'AUDIO' && messageType !== 'IMAGE' && messageType !== 'VIDEO' && messageType !== 'DOCUMENT') ? `[Enviando ${file.name}]` : null, // <<< Usar placeholder só se tipo for desconhecido, senão null
             timestamp: new Date().toISOString(),
             status: 'SENDING',
             message_type: messageType, 
@@ -607,6 +608,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 originalFilename: file.name,
                 mimeType: file.type,
                 size: file.size,
+                // Poderia adicionar o optimisticContent aqui se necessário em outro lugar
              }, 
             media_url: localPreviewUrl, // Usa URL local para preview, se disponível
             media_mime_type: file.type,
