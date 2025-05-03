@@ -12,15 +12,13 @@ import { format } from 'date-fns';
 import type { Message } from '@/app/types';
 import { cn } from '@/lib/utils';
 import WhatsappTemplateDialog from '@/components/whatsapp/WhatsappTemplateDialog';
+import { useConversationContext } from '@/context/ConversationContext';
 
 // --- Tipos e Interfaces ---
 
 interface ConversationInputAreaProps {
   conversationId: string;
   workspaceId: string;
-  newMessage: string;
-  setNewMessage: (value: string) => void;
-  handleSendMessage: () => Promise<void>;
   sendMediaMessage: (conversationId: string, file: File) => Promise<void>;
   sendTemplateMessage: (conversationId: string, templateData: any) => Promise<void>;
   isSendingMessage: boolean;
@@ -49,9 +47,6 @@ function getMessageTypeFromMime(mimeType: string): string {
 export default function ConversationInputArea({
   conversationId,
   workspaceId,
-  newMessage,
-  setNewMessage,
-  handleSendMessage,
   sendMediaMessage,
   sendTemplateMessage,
   isSendingMessage,
@@ -61,7 +56,11 @@ export default function ConversationInputArea({
   textareaRef,
 }: ConversationInputAreaProps) {
 
+  // --- Obter função do Contexto ---
+  const { sendManualMessage } = useConversationContext();
+
   // --- Estados e Refs Locais ---
+  const [internalNewMessage, setInternalNewMessage] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<'idle' | 'prompting' | 'granted' | 'denied'>('idle');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -76,7 +75,7 @@ export default function ConversationInputArea({
   // --- Handlers Locais ---
 
   const handleEmojiClick = (emojiData: EmojiClickData) => {
-    setNewMessage(newMessage + emojiData.emoji);
+    setInternalNewMessage(prev => prev + emojiData.emoji);
     setShowEmojiPicker(false);
     textareaRef.current?.focus();
   };
@@ -212,14 +211,22 @@ export default function ConversationInputArea({
 
   // Handler seguro para evitar duplo envio
   const safeHandleSendMessage = useCallback(async () => {
-    if (isSendingMessage || sendingRef.current) return;
+    const trimmedMessage = internalNewMessage.trim();
+    if (!trimmedMessage || isSendingMessage || sendingRef.current || !conversationId) {
+      return;
+    }
+    
     sendingRef.current = true;
+    setInternalNewMessage('');
+
     try {
-      await handleSendMessage();
+      await sendManualMessage(conversationId, trimmedMessage, workspaceId);
+    } catch (error) {
+      console.error('[InputArea Send] Erro sending manual message (context should handle toast):', error);
     } finally {
       sendingRef.current = false;
     }
-  }, [handleSendMessage, isSendingMessage]);
+  }, [internalNewMessage, isSendingMessage, conversationId, workspaceId, sendManualMessage]);
 
   // --- JSX ---
   return (
@@ -242,11 +249,11 @@ export default function ConversationInputArea({
 
       {/* Container Principal - Empilha Linhas */}
       <div className={cn(
-        "flex flex-col gap-2", // Empilha verticalmente com espaçamento
-        isRecording && "hidden" // Esconde se estiver gravando
+        "flex flex-col gap-2",
+        isRecording && "hidden"
       )}>
         {/* Linha Superior: Botões de Ação */}
-        <div className="flex items-center gap-1"> {/* Botões alinhados horizontalmente */}
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
@@ -279,7 +286,6 @@ export default function ConversationInputArea({
              <PopoverContent className="w-full p-0 border-0" side="top" align="start">
                 <EmojiPicker
                   onEmojiClick={handleEmojiClick}
-                  // @ts-ignore
                   theme={Theme.AUTO}
                   lazyLoadEmojis={true}
                   searchPlaceholder="Buscar emoji..."
@@ -291,15 +297,14 @@ export default function ConversationInputArea({
                onSendTemplate={handleSendTemplate}
                disabled={isSendingMessage || isUploading || isRecording || loadingTemplates}
           />
-          {/* Fim dos botões de ação */}
-        </div> {/* Fim da Linha Superior */}
+        </div>
 
         {/* Linha Inferior: Textarea e Botão Enviar/Mic */}
-        <div className="flex items-end gap-1 sm:gap-2"> {/* Itens alinhados na base */}
+        <div className="flex items-end gap-1 sm:gap-2">
           <Textarea
             ref={textareaRef}
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            value={internalNewMessage}
+            onChange={(e) => setInternalNewMessage(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -307,7 +312,7 @@ export default function ConversationInputArea({
               }
             }}
             placeholder="Digite sua mensagem..."
-            className="min-h-[40px] max-h-[150px] resize text-sm flex-grow" // flex-grow faz ocupar espaço
+            className="min-h-[40px] max-h-[150px] resize text-sm flex-grow"
             rows={1}
             disabled={isSendingMessage || isUploading}
             style={{ overflowY: textareaRef.current && textareaRef.current.scrollHeight > 150 ? 'scroll' : 'hidden' }}
@@ -315,22 +320,22 @@ export default function ConversationInputArea({
 
           <Button
             size="icon"
-            onClick={newMessage ? safeHandleSendMessage : handleMicClick}
-            disabled={isSendingMessage || isUploading || (!newMessage && permissionStatus === 'prompting')}
-            aria-label={newMessage ? 'Enviar mensagem' : 'Gravar áudio'}
-            title={newMessage ? 'Enviar mensagem' : 'Gravar áudio'}
-            className="flex-shrink-0" // Impede que o botão encolha
+            onClick={internalNewMessage ? safeHandleSendMessage : handleMicClick}
+            disabled={isSendingMessage || isUploading || (!internalNewMessage && permissionStatus === 'prompting')}
+            aria-label={internalNewMessage ? 'Enviar mensagem' : 'Gravar áudio'}
+            title={internalNewMessage ? 'Enviar mensagem' : 'Gravar áudio'}
+            className="flex-shrink-0"
           >
             {isSendingMessage || isUploading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
-            ) : newMessage ? (
+            ) : internalNewMessage ? (
               <Send className="h-5 w-5" />
             ) : (
               <Mic className="h-5 w-5" />
             )}
           </Button>
-        </div> {/* Fim da Linha Inferior */}
-      </div> {/* Fim do Container Principal */}
+        </div>
+      </div>
     </div>
   );
 }

@@ -20,21 +20,38 @@ export async function GET(request: NextRequest) {
     const encoder = new TextEncoder();
     let streamController: ReadableStreamDefaultController<Uint8Array>;
     let channelName: string | null = null;
+    let pingIntervalId: NodeJS.Timeout | null = null;
 
     const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
+      start(controller) {
         streamController = controller;
         channelName = `workspace-updates:${workspaceId}`;
-        registerControllerForChannel(channelName, controller);
-        subscribeToChannel(channelName);
+        console.log(`[SSE Route] Starting stream for ${channelName}`);
+        // registerControllerForChannel(channelName, controller);
+        // subscribeToChannel(channelName);
+        
         controller.enqueue(
-          encoder.encode(`event: connection_ready\ndata: {"channel":"${channelName}"}\n\n`)
+          encoder.encode(`event: connection_ready\ndata: {"message":"SSE Connected - Ping Only Mode"}\n\n`)
         );
+
+        pingIntervalId = setInterval(() => {
+          try {
+            console.log(`[SSE Route PING ONLY] Sending periodic PING for ${channelName}`);
+            controller.enqueue(encoder.encode(`event: ping\ndata: ${Date.now()}\n\n`));
+          } catch (e: any) {
+            console.error(`[SSE Route PING ONLY] Error sending PING for ${channelName}: ${e.message}`);
+            if (pingIntervalId) clearInterval(pingIntervalId);
+          }
+        }, 5000);
       },
       cancel(reason) {
+        console.log(`[SSE Route PING ONLY] Stream canceled for ${channelName}. Reason: ${reason}`);
+        if (pingIntervalId) clearInterval(pingIntervalId);
         if (channelName && streamController) {
-          unregisterControllerForChannel(channelName, streamController);
-          unsubscribeFromChannel(channelName);
+          // Não precisa mais desregistrar/desinscrever do Redis aqui
+          // console.log(`[SSE Route] Unregistering controller and unsubscribing from ${channelName}`);
+          // unregisterControllerForChannel(channelName, streamController);
+          // unsubscribeFromChannel(channelName);
         }
       }
     });

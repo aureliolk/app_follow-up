@@ -1,4 +1,6 @@
-// apps/next-app/context/ConversationContext.tsx
+// context/ConversationContext.tsx
+
+
 'use client';
 
 import React, {
@@ -12,799 +14,491 @@ import React, {
     Dispatch,
     SetStateAction
 } from 'react';
-import axios, { AxiosError } from 'axios';
-import { useWorkspace } from '@/context/workspace-context';
 import type {
     Message,
     ClientConversation,
 } from '@/app/types';
-import { toast, Toast, DefaultToastOptions } from 'react-hot-toast';
-import { sendWhatsappTemplateAction } from '@/lib/actions/whatsappActions';
+import { useWorkspace } from '@/context/workspace-context';
+import { useSession } from 'next-auth/react';
+import axios from 'axios';
+import { toast } from 'react-hot-toast';
 
-// --- Helper Function ---
+// --- Helper Function --- //
 const getActiveWorkspaceId = (workspaceCtx: any, providedId?: string): string | null => {
     if (providedId) return providedId;
     if (workspaceCtx?.workspace?.id) return workspaceCtx.workspace.id;
-    if (typeof window !== 'undefined') {
-        const storedId = sessionStorage.getItem('activeWorkspaceId');
-        if (storedId) return storedId;
-    }
-    console.warn("[ConversationContext] Could not determine active Workspace ID.");
+    console.warn("[ConversationContext] Could not determine active Workspace ID from context.");
     return null;
 };
 
-// --- Context Type Definition (Renomeado) ---
+// --- Tipagem do Contexto de Conversa (Estado) --- //
 interface ConversationContextType {
-    // Função para enviar mídia (File object)
-    sendMediaMessage: (conversationId: string, file: File) => Promise<void>; // Retorna void pois a atualização vem via SSE
-    // Função para enviar template (objeto com dados do template)
-    sendTemplateMessage: (conversationId: string, templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => Promise<void>;
-
-    // Conversation List State & Actions
+    // Estados
     conversations: ClientConversation[];
     loadingConversations: boolean;
     conversationsError: string | null;
-    fetchConversations: (filter: string, workspaceId?: string) => Promise<void>;
-    updateOrAddConversationInList: (messageData: Message & { last_message_timestamp?: string }) => void;
-
-    // Selected Conversation State & Actions
     selectedConversation: ClientConversation | null;
-    loadingSelectedConversation: boolean;
     selectedConversationMessages: Message[];
     loadingSelectedConversationMessages: boolean;
     selectedConversationError: string | null;
-    selectConversation: (conversation: ClientConversation | null) => void;
-    fetchConversationMessages: (conversationId: string) => Promise<Message[]>;
-    clearMessagesError: () => void;
-    addMessageOptimistically: (message: Message) => void;
-    updateMessageStatus: (tempId: string, finalMessage: Message | null, error?: string) => void;
-
-    // Action States & Handlers
-    isSendingMessage: boolean;
-    sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<void>;
-
-    // Cache Management
-    clearMessageCache: (conversationId: string) => void;
-
-    // SSE related
-    addRealtimeMessage: (message: Message) => void;
-    updateRealtimeMessageContent: (messageData: Partial<Message> & { id: string; conversation_id: string; }) => void;
-    updateRealtimeMessageStatus: (data: {
-        messageId: string;
-        conversation_id: string;
-        newStatus: string;
-        providerMessageId?: string | null;
-        errorMessage?: string | null;
-        media_url?: string | null;
-        content?: string | null;
-        media_mime_type?: string | null;
-        media_filename?: string | null;
-    }) => void;
-
-    // Unread Notifications
+    messageCache: Record<string, Message[]>;
     unreadConversationIds: Set<string>;
     setUnreadConversationIds: Dispatch<SetStateAction<Set<string>>>;
+    isSendingMessage: boolean; // Manter para UI
+    isTogglingAIStatus: boolean; // Manter para UI
 
-    // AI Status Toggle
+    // Funções de Busca/Seleção
+    fetchConversations: (filter?: string, workspaceId?: string) => Promise<void>;
+    fetchConversationMessages: (conversationId: string) => Promise<Message[]>;
+    selectConversation: (conversation: ClientConversation | null) => void;
+    clearMessagesError: () => void;
+
+    // Handlers para serem chamados pelo WebSocketProvider
+    handleRealtimeNewMessage: (message: Message) => void;
+    handleRealtimeStatusUpdate: (data: any) => void;
+    // handleRealtimeContentUpdate: (data: any) => void; // Adicionar se necessário
+    // handleRealtimeAiStatusUpdate: (data: any) => void; // Adicionar se necessário
+
+    // Ações do Usuário (Placeholders - para serem implementadas com Server Actions)
+    sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<void>; 
+    sendTemplateMessage: (conversationId: string, templateData: any) => Promise<void>; 
+    sendMediaMessage: (conversationId: string, file: File) => Promise<void>; 
     toggleAIStatus: (conversationId: string, currentAiState: boolean) => Promise<void>;
-    isTogglingAIStatus: boolean;
 }
 
-// --- Context Creation (Renomeado) ---
+// --- Criação do Contexto --- //
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
 
-// --- Provider Component (Renomeado e Simplificado) ---
+// --- Componente Provider (Estado) --- //
 export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const workspaceContext = useWorkspace();
+    const { data: session } = useSession();
 
-    // --- State (Simplified) ---
+    // --- Estados --- //
     const [conversations, setConversations] = useState<ClientConversation[]>([]);
-    const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const [loadingConversations, setLoadingConversations] = useState(false);
     const [conversationsError, setConversationsError] = useState<string | null>(null);
     const [selectedConversation, setSelectedConversation] = useState<ClientConversation | null>(null);
-    const [loadingSelectedConversation, setLoadingSelectedConversation] = useState(false);
     const [selectedConversationMessages, setSelectedConversationMessages] = useState<Message[]>([]);
     const [loadingSelectedConversationMessages, setLoadingSelectedConversationMessages] = useState(false);
     const [selectedConversationError, setSelectedConversationError] = useState<string | null>(null);
-    const [isSendingMessage, setIsSendingMessage] = useState(false);
-    const [isTogglingAIStatus, setIsTogglingAIStatus] = useState(false);
     const [messageCache, setMessageCache] = useState<Record<string, Message[]>>({});
     const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set());
-    const [pendingStatusUpdates, setPendingStatusUpdates] = useState<Record<string, string>>({});
+    const [isSendingMessage, setIsSendingMessage] = useState(false); 
+    const [isTogglingAIStatus, setIsTogglingAIStatus] = useState(false);
 
-    // --- Error/Cache Clear Functions ---
-    const clearMessagesError = useCallback(() => setSelectedConversationError(null), []);
-    const clearConversationsError = useCallback(() => setConversationsError(null), []);
-    const clearMessageCache = useCallback((conversationId: string) => {
-        setMessageCache(prev => {
-            const newCache = { ...prev };
-            delete newCache[conversationId];
-            return newCache;
-        });
-    }, []);
-
-    // --- API Call Utility (Mantido, pois sendManualMessage usa) ---
-    const handleApiCall = useCallback(async <T,>(
-        apiCall: () => Promise<T>,
-        setLoading: React.Dispatch<React.SetStateAction<boolean>>,
-        setErrorState: React.Dispatch<React.SetStateAction<string | null>> | null,
-        loadingMessage: string | null = 'Processando...',
-        successMessage?: string,
-    ): Promise<T> => {
-        const toastId = loadingMessage ? toast.loading(loadingMessage) : undefined;
-        setLoading(true);
-        if (setErrorState) setErrorState(null);
-        try {
-            const result = await apiCall();
-            if (toastId) toast.dismiss(toastId);
-            if (successMessage) toast.success(successMessage);
-            return result;
-        } catch (error) {
-            if (toastId) toast.dismiss(toastId);
-            const message = error instanceof AxiosError
-                ? error.response?.data?.error || error.response?.data?.message || error.message
-                : (error instanceof Error ? error.message : 'Ocorreu um erro desconhecido.');
-            console.error(`API Call Error (${loadingMessage || 'Task'}):`, error);
-            if (setErrorState) setErrorState(message);
-            toast.error(message);
-            throw new Error(message);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    // --- FUNÇÃO HELPER para tipo de mídia ---
-    const getMessageTypeFromMime = (mimeType: string): string => {
-        if (mimeType.startsWith('image/')) return 'IMAGE';
-        if (mimeType.startsWith('video/')) return 'VIDEO';
-        if (mimeType.startsWith('audio/')) return 'AUDIO';
-        return 'DOCUMENT'; // Default
-    };
-
-    // --- Fetch Messages ---
-    const fetchConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
+    // --- Funções de Busca/Seleção --- //
+    async function fetchConversationMessages(conversationId: string): Promise<Message[]> {
         if (messageCache[conversationId]) {
-            console.log(`[ConversationContext] Cache hit for messages in Conv ${conversationId}`);
             setSelectedConversationMessages(messageCache[conversationId]);
             setLoadingSelectedConversationMessages(false);
             return messageCache[conversationId];
         }
-        console.log(`[ConversationContext] Cache miss. Fetching messages for Conv ${conversationId}`);
         setLoadingSelectedConversationMessages(true);
         setSelectedConversationError(null);
         try {
-            const response = await axios.get<{ success: boolean, data?: Message[], error?: string }>(
-                `/api/conversations/${conversationId}/messages`
-            );
-            if (!response.data.success || !response.data.data) {
-                throw new Error(response.data.error || 'Falha ao carregar mensagens');
-            }
-            const fetchedMessages = response.data.data;
+            const response = await axios.get<{ success: boolean, data?: Message[], error?: string }>(`/api/conversations/${conversationId}/messages`);
+            if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao carregar mensagens da API');
+            const fetchedMessages = response.data.data.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
             setMessageCache(prev => ({ ...prev, [conversationId]: fetchedMessages }));
             setSelectedConversationMessages(fetchedMessages);
-            console.log(`[ConversationContext] Fetched ${fetchedMessages.length} messages for Conv ${conversationId}`);
             return fetchedMessages;
         } catch (err: any) {
-            console.error(`[ConversationContext] Erro ao buscar mensagens para Conv ${conversationId}:`, err);
             const message = err.response?.data?.error || err.message || 'Erro ao buscar mensagens.';
             setSelectedConversationError(message);
             setSelectedConversationMessages([]);
+            toast.error(`Erro ao buscar mensagens: ${message}`);
             return [];
         } finally {
             setLoadingSelectedConversationMessages(false);
         }
-    }, [messageCache]);
+    }
 
-    // --- Select Conversation ---
     const selectConversation = useCallback((conversation: ClientConversation | null) => {
-        console.log(`[ConversationContext] Selecting conversation: ${conversation?.id ?? 'null'}`);
+        const newConversationId = conversation?.id ?? null;
+        const currentConversationId = selectedConversation?.id ?? null;
+        if (newConversationId === currentConversationId) return;
+
+        console.log(`[ConversationContext] Selecting conversation: ${newConversationId}`);
         setSelectedConversation(conversation);
         setSelectedConversationMessages([]);
         setSelectedConversationError(null);
+        setLoadingSelectedConversationMessages(false);
+
         if (conversation) {
             fetchConversationMessages(conversation.id);
             setUnreadConversationIds(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(conversation.id);
-                return newSet;
+                if (prev.has(conversation.id)) {
+                    const newSet = new Set(prev);
+                    newSet.delete(conversation.id);
+                    return newSet;
+                }
+                return prev;
             });
-        } else {
-            // setMessageCache({});
-        }
-    }, [fetchConversationMessages]);
+        } 
+    }, [selectedConversation, setUnreadConversationIds, messageCache]);
 
-    // --- Fetch Conversation List ---
-    const fetchConversations = useCallback(async (filter = 'active', workspaceId?: string) => {
+     const fetchConversations = useCallback(async (filter = 'ATIVAS', workspaceId?: string) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) {
             setConversationsError("Workspace ID não encontrado.");
             setConversations([]);
-            selectConversation(null);
+            selectConversation(null); 
             return;
         }
+        console.log(`[ConversationContext] Fetching conversations for ws: ${wsId}, filter: ${filter}`);
         setLoadingConversations(true);
         setConversationsError(null);
         try {
-            console.log(`[ConversationContext] Fetching conversations for ws: ${wsId}, filter: ${filter}`);
             const response = await axios.get<{ success: boolean, data?: ClientConversation[], error?: string }>(
-                '/api/conversations',
-                { params: { workspaceId: wsId, status: filter } }
+                '/api/conversations', { params: { workspaceId: wsId, status: filter } }
             );
-            if (!response.data.success || !response.data.data) {
-                throw new Error(response.data.error || 'Falha ao carregar conversas');
-            }
+            if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao carregar conversas');
             const fetchedData = response.data.data;
             setConversations(fetchedData);
             console.log(`[ConversationContext] Fetched ${fetchedData.length} conversations with filter ${filter}.`);
 
+            // Lógica de auto-seleção
             const currentSelectedId = selectedConversation?.id;
             const listHasSelected = fetchedData.some(c => c.id === currentSelectedId);
 
-            if (currentSelectedId && !listHasSelected && fetchedData.length === 0) {
-                console.log(`[ConversationContext] fetchConversations: Conv ${currentSelectedId} not in new empty list. Deselecting.`);
-                selectConversation(null);
-            } else if ((!currentSelectedId || !listHasSelected) && fetchedData.length > 0) {
-                console.log(`[ConversationContext] fetchConversations: Selecting first conversation: ${fetchedData[0].id}`);
-                selectConversation(fetchedData[0]);
+            if (currentSelectedId && !listHasSelected) {
+                 // Se a selecionada não está mais na lista (ex: mudou de status), deseleciona ou seleciona a primeira
+                console.log(`[ConversationContext] Selected conversation ${currentSelectedId} not in fetched list (${filter}). ${fetchedData.length > 0 ? 'Selecting first.' : 'Deselecting.'}`);
+                 selectConversation(fetchedData.length > 0 ? fetchedData[0] : null);
+            } else if (!currentSelectedId && fetchedData.length > 0) {
+                // Se nada estava selecionado e a lista não está vazia, seleciona a primeira
+                 console.log(`[ConversationContext] No conversation selected. Selecting first: ${fetchedData[0].id}`);
+                 selectConversation(fetchedData[0]);
             } else if (!currentSelectedId && fetchedData.length === 0) {
+                 // Se nada selecionado e lista vazia, garante deseleção
                  selectConversation(null);
             }
+            // Caso contrário (selecionada está na lista OU nada selecionado e lista vazia), mantém o estado atual.
+
         } catch (err: any) {
             console.error("[ConversationContext] Erro ao buscar conversas:", err);
             const message = err.response?.data?.error || err.message || 'Erro ao buscar conversas.';
             setConversationsError(message);
             setConversations([]);
             selectConversation(null);
+            toast.error(message);
         } finally {
             setLoadingConversations(false);
         }
-    }, [workspaceContext, selectedConversation, selectConversation]);
+    }, [workspaceContext, selectedConversation]);
 
-    // --- Update/Add Conversation in List (for SSE) ---
-    const updateOrAddConversationInList = useCallback((messageData: Message & { last_message_timestamp?: string }) => {
-        console.log("[ConversationContext] updateOrAddConversationInList called with message:", messageData);
-        if (!messageData || !messageData.conversation_id) {
-            console.warn("[ConversationContext] updateOrAddConversationInList: Invalid message data received.", messageData);
-            return;
-        }
+    const clearMessagesError = useCallback(() => {
+        setSelectedConversationError(null);
+    }, []);
 
+    // --- Handlers para WebSocket (Atualizam o estado) --- //
+    const updateOrAddOptimisticallyInList = useCallback((message: Message) => {
+         console.log(`[ConversationContext] updateOrAddOptimisticallyInList called for Msg ID ${message.id}`);
         setConversations(prev => {
-            const conversationId = messageData.conversation_id;
+            const conversationId = message.conversation_id;
             const existingIndex = prev.findIndex(c => c.id === conversationId);
-
             let newList = [...prev];
-
             if (existingIndex !== -1) {
-                // Conversa EXISTE: Atualizar dados relevantes e mover para o topo
-                const existingConvo = newList[existingIndex];
+                // console.log(`[ConversationContext] Updating existing conversation ${conversationId}`);
                 const updatedConvo = {
-                    ...existingConvo,
-                    last_message: messageData, // Atualizar o objeto last_message inteiro
-                    // Reaplicar a conversão para string ISO ou null
-                    last_message_timestamp: messageData.timestamp ? new Date(messageData.timestamp).toISOString() : null,
+                    ...newList[existingIndex],
+                    last_message: message,
+                    last_message_timestamp: message.timestamp ? new Date(message.timestamp).toISOString() : new Date().toISOString(),
+                    status: 'ACTIVE', // Garante que está ativa ao receber msg
                 };
-                // Remover da posição antiga e adicionar no início
                 newList.splice(existingIndex, 1);
                 newList.unshift(updatedConvo);
-                console.log(`[ConversationContext] Updated and moved conversation ${conversationId} to top.`);
             } else {
-                // Conversa NÃO EXISTE: Disparar fetchConversations para buscar a lista atualizada
-                console.warn(`[ConversationContext] New conversation detected (ID: ${conversationId}) from incoming message. Triggering fetchConversations.`);
-                // Não adicionar item parcial. A lista será atualizada pela busca.
-                // Chamada assíncrona, não precisa de await aqui pois só dispara
-                fetchConversations();
-                // Retorna a lista anterior inalterada por enquanto, será substituída pelo fetch.
-                return prev;
+                 console.log(`[ConversationContext] Adding new optimistic conversation ${conversationId}`);
+                 const clientInfo = message.metadata as any;
+                 const partialClient = {
+                     id: clientInfo?.clientId || 'unknown',
+                     name: clientInfo?.clientName || 'Novo Contato',
+                     phone_number: clientInfo?.clientPhone || '',
+                 };
+                const newOptimisticConvo: ClientConversation = {
+                    id: conversationId,
+                    workspace_id: workspaceContext.workspace?.id || 'unknown',
+                    client_id: partialClient.id,
+                    channel: (message.metadata as any)?.channel || 'WHATSAPP',
+                    status: 'ACTIVE',
+                    is_ai_active: true, // Default assumption
+                    last_message_at: message.timestamp ? new Date(message.timestamp).toISOString() : new Date().toISOString(),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    last_message: message,
+                    last_message_timestamp: message.timestamp ? new Date(message.timestamp).toISOString() : new Date().toISOString(),
+                    client: partialClient,
+                    channel_conversation_id: null,
+                    metadata: null,
+                    activeFollowUp: null,
+                };
+                newList.unshift(newOptimisticConvo);
+                 // Consider fetching full conversation details later?
+                 // setTimeout(() => fetchConversations(undefined, workspaceContext.workspace?.id), 5000);
             }
             return newList;
         });
+    }, [workspaceContext.workspace?.id]);
 
-        // Lógica de não lidos - Sempre marcar como não lido se não estiver selecionada
-        if (selectedConversation?.id !== messageData.conversation_id) {
-            setUnreadConversationIds(prev => {
-                const newSet = new Set(prev);
-                newSet.add(messageData.conversation_id);
-                return newSet;
-            });
-            console.log(`Marked conversation ${messageData.conversation_id} as unread.`);
+    const handleRealtimeNewMessage = useCallback((message: Message) => {
+        if (!message || !message.id || !message.conversation_id) {
+             console.warn("[ConversationContext] handleRealtimeNewMessage received invalid message:", message);
+             return;
         }
-    }, [selectedConversation?.id, fetchConversations]); // Adicionar fetchConversations como dependência
+        console.log(`[ConversationContext] handleRealtimeNewMessage: Processing Msg ID ${message.id} for Conv ${message.conversation_id}`);
 
-    // --- Message Actions ---
-    const addMessageOptimistically = useCallback((message: Message) => {
-        console.log("[ConversationContext] Adding optimistic message:", message);
-        setSelectedConversationMessages(prev => [...prev, message]);
-        setMessageCache(prevCache => ({
-            ...prevCache,
-            [message.conversation_id]: [...(prevCache[message.conversation_id] || []), message]
-        }));
-    }, []);
+        // Update Cache
+        setMessageCache(prevCache => {
+            const current = prevCache[message.conversation_id] || [];
+            // Ainda verifica se o ID real já existe para evitar duplicatas de eventos SSE
+            if (current.some(m => m.id === message.id)) {
+                console.log(`[ConversationContext] Realtime message ${message.id} already in cache. Ignoring.`);
+                return prevCache;
+            }
+            // Filtra mensagens otimistas E adiciona a nova mensagem real
+            const newMessages = [
+                ...current.filter(m => !m.id.startsWith('optimistic-')),
+                message
+            ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            console.log(`[ConversationContext] Updating cache for ${message.conversation_id}. Removed optimistic, added real ${message.id}.`);
+            return { ...prevCache, [message.conversation_id]: newMessages };
+        });
 
-    const updateMessageStatus = useCallback((tempId: string, finalMessage: Message | null, error?: string) => {
-        console.log(`[ConversationContext] Updating message status: tempId=${tempId}, finalMessage=`, finalMessage, `error=${error}`);
-        const updateFn = (msgs: Message[]) => msgs.map(msg => {
-            if (msg.id === tempId) {
-                if (finalMessage) {
-                    return { ...finalMessage };
-                } else {
-                    return { ...msg, status: 'FAILED', metadata: { ...(msg.metadata || {}), errorMessage: error || 'Falha no envio' } };
+        // Update selected messages if it's the active conversation
+        if (selectedConversation?.id === message.conversation_id) {
+            setSelectedConversationMessages(prev => {
+                // Verifica se o ID REAL já existe na lista selecionada
+                if (prev.some(m => m.id === message.id)) {
+                    console.log(`[ConversationContext] Realtime message ${message.id} already in selected messages. Ignoring.`);
+                    return prev;
                 }
+                // Filtra mensagens otimistas E adiciona a nova mensagem real
+                const updatedMessages = [
+                    ...prev.filter(m => !m.id.startsWith('optimistic-')),
+                    message
+                ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                console.log(`[ConversationContext] Updating selected messages. Removed optimistic, added real ${message.id}.`);
+                return updatedMessages;
+            });
+        }
+
+        // Update conversation list optimistically (usando a mensagem REAL)
+        updateOrAddOptimisticallyInList(message);
+
+        // Update unread count if not the selected conversation
+        if (selectedConversation?.id !== message.conversation_id) {
+             console.log(`[ConversationContext] Marking ${message.conversation_id} as unread`);
+            setUnreadConversationIds(prev => new Set(prev).add(message.conversation_id));
+        }
+    }, [selectedConversation, messageCache, updateOrAddOptimisticallyInList, setUnreadConversationIds]);
+
+    const handleRealtimeStatusUpdate = useCallback((data: any) => {
+         const { messageId, conversation_id, newStatus, providerMessageId, errorMessage } = data;
+         if (!messageId || !conversation_id || !newStatus) {
+             console.warn("[ConversationContext] handleRealtimeStatusUpdate received invalid data:", data);
+             return;
+         }
+         console.log(`[ConversationContext] handleRealtimeStatusUpdate: Msg ID ${messageId} in Conv ${conversation_id} to ${newStatus}`);
+
+         const updateFn = (msgs: Message[]) => msgs.map(msg => {
+            if (msg.id === messageId) {
+                const updated = { ...msg, status: newStatus };
+                if (providerMessageId !== undefined) updated.provider_message_id = providerMessageId;
+                if (newStatus === 'FAILED' && errorMessage) updated.metadata = { ...(updated.metadata || {}), error: errorMessage };
+                return updated;
             }
             return msg;
-        });
-        setSelectedConversationMessages(updateFn);
-        if (selectedConversation?.id) {
-            setMessageCache(prevCache => ({
-                ...prevCache,
-                [selectedConversation.id]: updateFn(prevCache[selectedConversation.id] || [])
-            }));
-        }
+         });
+
+         // Update Cache
+         setMessageCache(prev => {
+            const current = prev[conversation_id];
+            if (!current || !current.some(m => m.id === messageId)) return prev; // Don't update if not found
+            return { ...prev, [conversation_id]: updateFn(current) };
+         });
+
+         // Update selected messages
+         if (selectedConversation?.id === conversation_id) {
+            setSelectedConversationMessages(updateFn);
+         }
+
+         // Update conversation list (last_message status)
+         setConversations(prev => prev.map(conv => {
+            if (conv.id === conversation_id && conv.last_message?.id === messageId) {
+                // Important: Create new objects for React state update detection
+                const newLastMessage = conv.last_message ? { ...conv.last_message, status: newStatus } : null;
+                return { ...conv, last_message: newLastMessage };
+            }
+            return conv;
+         }));
     }, [selectedConversation?.id]);
 
-    // Modify sendManualMessage to remove optimistic updates
-    const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string): Promise<void> => {
+    // --- Ações do Usuário (Implementação Real) --- //
+    const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) {
-            toast.error('Workspace ID é necessário para enviar mensagem.');
-            throw new Error('Workspace ID é necessário para enviar mensagem.');
+            toast.error("Não foi possível determinar o workspace ativo.");
+            return;
         }
-
-        // Use handleApiCall to make the request and handle loading/error toasts
-        await handleApiCall(
-            async () => {
-                console.log(`[ConversationContext] Sending message non-optimistically to Conv ${conversationId}`);
-                const response = await axios.post<{ success: boolean; wamid?: string; error?: string }>(
-                    `/api/conversations/${conversationId}/messages`,
-                    { content, workspaceId: wsId }
-                );
-
-                if (!response.data.success) {
-                    throw new Error(response.data.error || 'Falha ao enviar mensagem para a API');
-                }
-
-                console.log(`[ConversationContext] Non-optimistic send API call successful (Wamid: ${response.data.wamid || 'N/A'}). Waiting for webhook update.`);
-                // No action needed here on success, webhook/SSE handles UI update.
-            },
-            setIsSendingMessage, // Manages loading state
-            setSelectedConversationError, // Manages error state
-            
-        ).catch(err => {
-            // handleApiCall already shows an error toast.
-            // We just need to re-throw the error if calling code needs to handle it.
-            console.error(`[ConversationContext] Error sending non-optimistic message for Conv ${conversationId}:`, err);
-            // No optimistic message to update to FAILED status.
-            // updateMessageStatus(tempMessageId, null, err.message || 'Erro ao enviar');
-            throw err; // Re-throw so the caller knows about the failure
-        });
-
-        // Function now returns void as there's no immediate message object to return
-    }, [workspaceContext, handleApiCall, setIsSendingMessage, setSelectedConversationError]); // Removed optimistic update dependencies
-
-    // --- FUNÇÃO: Enviar Mídia >>>
-    const sendMediaMessage = useCallback(async (conversationId: string, file: File) => {
-        const wsId = getActiveWorkspaceId(workspaceContext);
-        if (!wsId || !selectedConversation?.client_id) {
-            toast.error('Workspace ou Cliente não selecionado para enviar mídia.');
+        if (!content.trim()) {
+            toast.error("A mensagem não pode estar vazia.");
             return;
         }
 
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('conversationId', conversationId);
-        formData.append('workspaceId', wsId);
-
-        console.log(`[ConversationContext] Sending media for Conv ${conversationId}: ${file.name}`);
-        // Mostrar um loading geral ou no botão enquanto a API é chamada?
-        const toastId = toast.loading(`Enviando ${file.name}...`);
-
-        try {
-            const response = await axios.post<{ success: boolean, data?: Message, error?: string }>(
-                '/api/attachments',
-                formData,
-                { headers: { 'Content-Type': 'multipart/form-data' } }
-            );
-            toast.dismiss(toastId);
-            if (!response.data.success) {
-                throw new Error(response.data.error || 'Falha ao iniciar upload do anexo');
-            }
-            console.log(`[ConversationContext] Media API call successful for ${file.name}. Waiting for SSE update...`);
-            // Mensagem real virá via SSE (`new_message` e depois `message_status_updated`)
-            toast.success(`${file.name} enviado para processamento.`);
-        } catch (error: any) {
-            toast.dismiss(toastId);
-            console.error("[ConversationContext] Erro ao enviar anexo via API:", error);
-            const message = error.response?.data?.error || error.message || 'Erro ao enviar anexo.';
-            // Não há mensagem otimista para atualizar para FAILED.
-            // Apenas mostrar erro.
-            toast.error(`Falha ao enviar ${file.name}: ${message}`);
-        } finally {
-           // setIsUploadingMedia(false); // Remover se o estado for removido
-        }
-    }, [workspaceContext, selectedConversation /* remover addMessageOptimistically e updateMessageStatus se não forem mais usados em outro lugar*/]);
-
-    // <<< FUNÇÃO: Enviar Template (Refatorada) >>>
-    const sendTemplateMessage = useCallback(async (conversationId: string, templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => {
-        const wsId = getActiveWorkspaceId(workspaceContext);
-        const clientId = selectedConversation?.client_id;
-
-        if (!wsId) {
-            toast.error('Workspace ID não encontrado para enviar template.');
-            throw new Error('Workspace ID não encontrado');
-        }
-        if (!clientId) {
-             toast.error('Cliente não selecionado ou ID do cliente não encontrado para enviar template.');
-             throw new Error('ID do Cliente não encontrado');
-        }
-
-        const templateName = templateData.name || 'template_desconhecido';
-        console.log(`[ConversationContext] Calling sendWhatsappTemplateAction for Conv ${conversationId}:`, templateData);
-
-        // Usar toast.promise para feedback visual
-        const promise = sendWhatsappTemplateAction({
-            conversationId,
-            workspaceId: wsId,
-            clientId,
-            templateName: templateData.name,
-            templateLanguage: templateData.language,
-            variables: templateData.variables,
-            templateBody: templateData.body
-        });
-
-        try {
-             await toast.promise(promise, {
-                loading: `Enviando template ${templateName}...`,
-                success: (result) => {
-                    if (!result.success) {
-                        // Se a action retorna sucesso=false, lançamos erro para cair no catch do toast
-                        throw new Error(result.error || 'Falha no envio do template (reportado pela action).');
-                    }
-                    // A mensagem aparecerá via SSE, então só confirmamos o início do envio.
-                    console.log(`[ConversationContext] Server action sendWhatsappTemplateAction successful for Conv ${conversationId}. WAMID: ${result.messageId}`);
-                    return `Template ${templateName} enviado para processamento.`;
-                },
-                error: (err) => {
-                    // Erros lançados pela action ou pelo try/catch abaixo
-                    console.error(`[ConversationContext] Error sending template for Conv ${conversationId}:`, err);
-                    return err.message || 'Erro desconhecido ao enviar template.';
-                },
-            });
-        } catch (error) {
-             // Captura erros caso toast.promise falhe ou a action lance um erro inesperado
-             // O toast.promise já deve ter mostrado o erro, mas logamos aqui também.
-             console.error("[ConversationContext] Underlying error during sendTemplateMessage action call:", error);
-             // Re-lançar o erro para que a UI que chamou (ex: ConversationInputArea) possa saber
-             throw error;
-        }
-
-        /* Código antigo removido:
-        try {
-            const response = await axios.post(
-                `/api/conversations/${conversationId}/send-template`,
-                payload
-            );
-            // ... restante da lógica antiga
-        } catch (error: any) {
-            // ... lógica de erro antiga
-        }
-        */
-    }, [workspaceContext, selectedConversation?.client_id]); // <<< Adicionar clientId como dependência >>>
-
-    // --- Realtime Message Handling (SSE) ---
-    const addRealtimeMessage = useCallback((message: Message) => {
-        console.log(`[CONTEXT_LOG] addRealtimeMessage: Received Msg ID ${message.id} for Conv ${message.conversation_id} with Status ${message.status}`, message);
-
-        // <<< VERIFICAR E APLICAR STATUS PENDENTE ANTES DE ADICIONAR >>>
-        let messageToAdd = { ...message }; // Copiar para modificar
-        const pendingStatus = pendingStatusUpdates[message.id];
-
-        if (pendingStatus) {
-            console.log(`[CONTEXT_LOG] addRealtimeMessage: Found pending status '${pendingStatus}' for Msg ID ${message.id}. Applying.`);
-            messageToAdd.status = pendingStatus;
-            // Remover a entrada do estado pendente APÓS aplicá-la
-            setPendingStatusUpdates(prev => {
-                const newState = { ...prev };
-                delete newState[message.id];
-                console.log(`[CONTEXT_LOG] addRealtimeMessage: Removed pending status for Msg ID ${message.id}. Remaining pending:`, Object.keys(newState));
-                return newState;
-            });
-        } else {
-             console.log(`[CONTEXT_LOG] addRealtimeMessage: No pending status found for Msg ID ${message.id}.`);
-        }
-        // <<< FIM da lógica de status pendente >>>
-        console.log(`[CONTEXT_LOG] addRealtimeMessage: Final messageToAdd for Msg ID ${message.id}:`, messageToAdd);
-
-        const updateFn = (msgs: Message[]) => {
-            // Avoid duplicates
-            if (msgs.some(m => m.id === messageToAdd.id)) {
-                console.warn(`[ConversationContext] addRealtimeMessage: Duplicate message ID ${messageToAdd.id} ignored.`);
-                return msgs;
-            }
-            // Usar messageToAdd (que pode ter o status atualizado)
-            return [...msgs, messageToAdd].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        // Otimista: Adicionar mensagem localmente
+        const optimisticId = `optimistic-${Date.now()}`;
+        const optimisticMessage: Message = {
+            id: optimisticId,
+            conversation_id: conversationId,
+            sender_type: 'AGENT',
+            content: content,
+            timestamp: new Date().toISOString(),
+            status: 'SENDING',
+            message_type: 'TEXT',
+            channel_message_id: null,
+            metadata: { senderName: session?.user?.name || 'Agente' },
+            media_url: null,
+            media_mime_type: null,
+            media_filename: null,
+            provider_message_id: null,
         };
 
-        // Update selected conversation messages if it matches
-        if (selectedConversation?.id === messageToAdd.conversation_id) {
-            setSelectedConversationMessages(updateFn);
+        // Adiciona à lista de mensagens selecionadas (se for a conversa atual)
+        if (selectedConversation?.id === conversationId) {
+            setSelectedConversationMessages(prev => [...prev, optimisticMessage]);
         }
-        // Update cache
-        setMessageCache(prev => {
-            const currentCached = prev[messageToAdd.conversation_id] || [];
-            // Usar messageToAdd no cache também
-            return { ...prev, [messageToAdd.conversation_id]: updateFn(currentCached) };
-        });
+        // Adiciona ao cache
+        setMessageCache(prevCache => ({
+            ...prevCache,
+            [conversationId]: [...(prevCache[conversationId] || []), optimisticMessage]
+        }));
 
-        // Update conversation list preview (usar messageToAdd)
-        updateOrAddConversationInList({
-          ...messageToAdd,
-          last_message_timestamp: typeof messageToAdd.timestamp === 'string'
-            ? messageToAdd.timestamp
-            : (messageToAdd.timestamp ? new Date(messageToAdd.timestamp).toISOString() : undefined)
-        });
-
-        // Handle unread count only if the conversation is not selected
-        if (selectedConversation?.id !== messageToAdd.conversation_id) {
-            setUnreadConversationIds(prev => new Set(prev).add(messageToAdd.conversation_id));
-        }
-
-    }, [selectedConversation?.id, updateOrAddConversationInList, pendingStatusUpdates]); // <<< Adicionar pendingStatusUpdates às dependências >>>
-
-    const updateRealtimeMessageContent = useCallback((messageData: Partial<Message> & { id: string; conversation_id: string; }) => {
-        console.log(`[ConversationContext] updateRealtimeMessageContent for Msg ${messageData.id}`, messageData);
-        // Remove id and conversation_id as they are not part of the Message type fields to update directly
-        const { id, conversation_id, ...updateFields } = messageData;
-
-        const updateFn = (msgs: Message[]) => msgs.map(msg =>
-            msg.id === id ? { ...msg, ...updateFields } : msg
-        );
-
-        if (selectedConversation?.id === conversation_id) {
-            setSelectedConversationMessages(updateFn);
-        }
-        setMessageCache(prev => {
-            const currentCached = prev[conversation_id] || [];
-            return { ...prev, [conversation_id]: updateFn(currentCached) };
-        });
-    }, [selectedConversation?.id]);
-
-    const updateRealtimeMessageStatus = useCallback((data: {
-        messageId: string;
-        conversation_id: string;
-        newStatus: string;
-        providerMessageId?: string | null;
-        errorMessage?: string | null;
-        media_url?: string | null;
-        content?: string | null;
-        media_mime_type?: string | null;
-        media_filename?: string | null;
-    }) => {
-        console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Called for Msg ID ${data.messageId} in Conv ${data.conversation_id} with New Status ${data.newStatus}`, data);
-        const { messageId, conversation_id, newStatus, providerMessageId, media_url, content, media_mime_type, media_filename, errorMessage } = data; // Destructure new fields
-
-        let messageFound = false;
-        const updateFn = (msgs: Message[]) => msgs.map(msg => {
-            if (msg.id === messageId) {
-                console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Found Msg ID ${messageId} in state. Updating status to ${newStatus}.`);
-                messageFound = true; // Marcar que a mensagem foi encontrada na lista atual
-                const updatedMessage = { ...msg, status: newStatus };
-                if (providerMessageId !== undefined) updatedMessage.provider_message_id = providerMessageId;
-                // Apply new fields if they exist in the payload
-                if (media_url !== undefined) updatedMessage.media_url = media_url;
-                if (content !== undefined) updatedMessage.content = content; // Update content (e.g., remove "[Sending...]")
-                if (media_mime_type !== undefined) updatedMessage.media_mime_type = media_mime_type;
-                if (media_filename !== undefined) updatedMessage.media_filename = media_filename;
-                if (errorMessage !== undefined) updatedMessage.metadata = { ...(updatedMessage.metadata || {}), error: errorMessage };
-                 if (newStatus === 'FAILED' && errorMessage) {
-                     updatedMessage.content = `Falha ao enviar: ${errorMessage}`; // Optionally update content on failure
-                 }
-
-                return updatedMessage;
-            }
-            return msg;
-        });
-
-        // Tentar aplicar a atualização nos estados existentes
-        if (selectedConversation?.id === conversation_id) {
-            setSelectedConversationMessages(updateFn);
-        }
-        setMessageCache(prev => {
-            const currentCached = prev[conversation_id] || [];
-            // Ensure cache is updated correctly
-            return { ...prev, [conversation_id]: updateFn(currentCached) };
-        });
-
-        // <<< LÓGICA PARA GUARDAR STATUS PENDENTE SE NÃO ENCONTRADO >>>
-        if (!messageFound) {
-            console.warn(`[CONTEXT_LOG] updateRealtimeMessageStatus: Msg ID ${messageId} NOT FOUND in current state. Adding status '${newStatus}' to pending updates.`);
-            setPendingStatusUpdates(prev => {
-                 const newState = { ...prev, [messageId]: newStatus };
-                 console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Updated pending status. New pending:`, Object.keys(newState));
-                 return newState;
-            });
-        } else {
-             // Se a mensagem foi encontrada e atualizada, remover qualquer status pendente para ela
-             setPendingStatusUpdates(prev => {
-                 if (prev[messageId]) {
-                     console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Removing pending status for Msg ID ${messageId} as it was just updated.`);
-                     const newState = { ...prev };
-                     delete newState[messageId];
-                     console.log(`[CONTEXT_LOG] updateRealtimeMessageStatus: Remaining pending after removal:`, Object.keys(newState));
-                     return newState;
-                 }
-                 return prev;
-             });
-        }
-        // <<< FIM da lógica de status pendente >>>
-
-        // Also update the last message preview in the conversation list if this message is the latest one
-         setConversations(prevConvs => prevConvs.map(conv => {
-             if (conv.id === conversation_id && conv.last_message?.id === messageId) {
-                 // Return a new object to trigger re-render if necessary
-                 return { ...conv, last_message_status: newStatus };
-             }
-             return conv;
-         }));
-
-
-    }, [selectedConversation, setConversations]); // Adicionado setConversations
-
-    // --- Função para alternar o status da IA --- 
-    const toggleAIStatus = useCallback(async (conversationId: string, currentAiState: boolean) => {
-        const newAiState = !currentAiState;
-        console.log(`[ConversationContext] Toggling AI status for Conv ${conversationId} from ${currentAiState} to ${newAiState}`);
-        setIsTogglingAIStatus(true); // Inicia loading específico
-        setSelectedConversationError(null); // Limpa erro anterior
-
+        setIsSendingMessage(true);
         try {
-            // Chamar a API PATCH
-            const response = await axios.patch<{ success: boolean, data?: ClientConversation, error?: string }>(
-                `/api/conversations/${conversationId}`,
-                { is_ai_active: newAiState } // Envia o novo estado
+            console.log(`[ConversationContext] Sending manual message to conv ${conversationId}. Content: ${content}`);
+            const response = await axios.post<{ success: boolean, message?: Message, error?: string }>(
+                `/api/conversations/${conversationId}/messages`,
+                { content } // Corpo da requisição
             );
 
-            if (!response.data.success || !response.data.data) {
-                throw new Error(response.data.error || 'Falha ao atualizar status da IA');
+            if (!response.data.success || !response.data.message) {
+                throw new Error(response.data.error || 'Falha ao enviar mensagem pela API');
             }
 
-            const updatedConversationData = response.data.data;
-            console.log(`[ConversationContext] AI status updated for Conv ${conversationId}. New state: ${updatedConversationData.is_ai_active}`);
+            const sentMessage = response.data.message;
+            console.log(`[ConversationContext] Manual message sent successfully. Server Msg ID: ${sentMessage.id}`);
 
-            // Atualizar o estado da conversa selecionada (se for a mesma)
-            setSelectedConversation(prev => 
-                prev?.id === conversationId ? updatedConversationData : prev
-            );
+            // A lista de conversas será atualizada pelo SSE/WebSocket `handleRealtimeNewMessage`
+            // que deve ser acionado pelo Redis publish na API route.
+            toast.success("Mensagem enviada!");
 
-            // Atualizar a lista de conversas
-            setConversations(prevList => 
-                prevList.map(convo => 
-                    convo.id === conversationId ? updatedConversationData : convo
-                )
-            );
-            toast.success(`IA ${newAiState ? 'iniciada' : 'pausada'} para esta conversa.`);
+        } catch (err: any) {
+            const errorMsg = err.response?.data?.error || err.message || 'Erro desconhecido ao enviar mensagem.';
+            console.error("[ConversationContext] Erro ao enviar mensagem manual:", errorMsg);
+            toast.error(`Falha ao enviar: ${errorMsg}`);
 
-        } catch (error: any) {
-            console.error(`[ConversationContext] Erro ao alternar status da IA para Conv ${conversationId}:`, error);
-            const message = error.response?.data?.error || error.message || 'Erro ao alterar status da IA.';
-            setSelectedConversationError(message); // Pode mostrar erro no contexto da conversa
-            toast.error(message);
-            throw new Error(message); // Propaga o erro se necessário
-        } finally {
-            setIsTogglingAIStatus(false); // Finaliza loading específico
-        }
-    }, [workspaceContext, setSelectedConversationError, setConversations, setSelectedConversation]); // Adicionado setters
-
-    useEffect(() => {
-        const workspaceId = workspaceContext.workspace?.id;
-
-        if (workspaceId) {
-            console.log('[ConversationContext] Setting up SSE listener for workspace:', workspaceId);
-            const eventSource = new EventSource(`/api/sse?workspaceId=${workspaceId}`);
-
-            eventSource.onopen = () => {
-                console.log('[ConversationContext] SSE Connection Opened');
-            };
-
-            eventSource.onerror = (error) => {
-                console.error('[ConversationContext] SSE Error:', error);
-                eventSource.close();
-            };
-
-            eventSource.onmessage = (event) => {
-                try {
-                    const eventData = JSON.parse(event.data);
-                    console.log('[CONTEXT_LOG] SSE Received Event:', eventData);
-
-                    if (eventData.type === 'new_message') {
-                        console.log('[CONTEXT SSE] Received new_message event:', eventData.payload);
-                        addRealtimeMessage(eventData.payload as Message);
-                    } else if (eventData.type === 'message_status_updated') {
-                        console.log('[CONTEXT SSE] Received message_status_updated event:', eventData.payload);
-                        updateRealtimeMessageStatus(eventData.payload);
-                    } else if (eventData.type === 'message_content_updated') {
-                        console.log('[CONTEXT SSE] Received message_content_updated event:', eventData.payload);
-                        updateRealtimeMessageContent(eventData.payload);
-                    } else if (eventData.type === 'ai_status_updated') {
-                        console.log(`[CONTEXT_LOG] Handling ai_status_updated:`, eventData.payload);
-                        const { conversationId, is_ai_active } = eventData.payload;
-
-                        setSelectedConversation(prevSelected => {
-                            if (prevSelected && prevSelected.id === conversationId) {
-                                console.log(`[CONTEXT_LOG] Updating selected conversation ${conversationId} AI status to ${is_ai_active}`);
-                                return { ...prevSelected, is_ai_active: is_ai_active };
-                            }
-                            return prevSelected;
-                        });
-
-                        setConversations(prevList => {
-                            console.log(`[CONTEXT_LOG] Updating conversations list for ${conversationId} AI status to ${is_ai_active}`);
-                            return prevList.map(convo =>
-                                convo.id === conversationId
-                                    ? { ...convo, is_ai_active: is_ai_active }
-                                    : convo
-                            );
-                        });
-
-                        if (selectedConversation?.id === conversationId) {
-                             toast.success(`IA foi ${is_ai_active ? 'reativada' : 'pausada'} automaticamente.`);
-                        }
-
-                    } else {
-                        console.warn('[ConversationContext] Received unknown SSE event type:', eventData.type);
-                    }
-
-                } catch (error) {
-                    console.error('[ConversationContext] Error parsing SSE message:', error, 'Data:', event.data);
+            // Atualizar mensagem otimista para FALHOU
+             const updateStateWithError = () => {
+                 console.log(`[ConversationContext] Updating optimistic message ${optimisticId} to FAILED status.`);
+                // Apenas atualiza o status, já que errorMessage não parece existir no tipo Message
+                const failedMessage = { ...optimisticMessage, status: 'FAILED' } as Message;
+                if (selectedConversation?.id === conversationId) {
+                    setSelectedConversationMessages(prev =>
+                        prev.map(m => m.id === optimisticId ? failedMessage : m)
+                    );
                 }
-            };
+                 setMessageCache(prevCache => {
+                     const current = prevCache[conversationId] || [];
+                     return {
+                         ...prevCache,
+                         [conversationId]: current.map(m => m.id === optimisticId ? failedMessage : m)
+                     };
+                 });
+             };
+             updateStateWithError();
 
-            return () => {
-                console.log('[ConversationContext] Closing SSE connection.');
-                eventSource.close();
-            };
-        } else {
-             console.log('[ConversationContext] Workspace ID not available, SSE listener not started.');
-             return () => {};
+        } finally {
+            setIsSendingMessage(false);
         }
-    }, [workspaceContext.workspace?.id, addRealtimeMessage, updateRealtimeMessageStatus, updateRealtimeMessageContent, selectedConversation?.id]);
+    }, [workspaceContext, selectedConversation, session]);
 
-    // --- Context Value (Simplified) ---
+    const sendTemplateMessage = useCallback(async (conversationId: string, templateData: any) => {
+        const wsId = getActiveWorkspaceId(workspaceContext, undefined); // Assume context wsId
+        if (!wsId) {
+            toast.error("Não foi possível determinar o workspace ativo.");
+            return;
+        }
+        console.log(`[ConversationContext] Placeholder: sendTemplateMessage called for conv ${conversationId} in ws ${wsId}. Data:`, templateData);
+        setIsSendingMessage(true); // Reusa o estado de envio
+        // TODO: Implementar chamada à API ou Server Action aqui
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Simula delay da rede
+        setIsSendingMessage(false);
+        toast("Funcionalidade 'Enviar Template' ainda não implementada.");
+    }, [workspaceContext]);
+
+    const sendMediaMessage = useCallback(async (conversationId: string, file: File) => {
+        const wsId = getActiveWorkspaceId(workspaceContext, undefined); // Assume context wsId
+        if (!wsId) {
+            toast.error("Não foi possível determinar o workspace ativo.");
+            return;
+        }
+        console.log(`[ConversationContext] Placeholder: sendMediaMessage called for conv ${conversationId} in ws ${wsId}. File: ${file.name}, Type: ${file.type}, Size: ${file.size}`);
+        setIsSendingMessage(true); // Reusa o estado de envio
+        // TODO: Implementar chamada à API ou Server Action aqui (provavelmente /api/messages/media)
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Simula delay da rede
+        setIsSendingMessage(false);
+        toast("Funcionalidade 'Enviar Mídia' ainda não implementada.");
+    }, [workspaceContext]);
+
+    const toggleAIStatus = useCallback(async (conversationId: string, currentAiState: boolean) => {
+        const wsId = getActiveWorkspaceId(workspaceContext, undefined); // Assume context wsId
+        if (!wsId) {
+            toast.error("Não foi possível determinar o workspace ativo.");
+            return;
+        }
+        const desiredState = !currentAiState;
+        console.log(`[ConversationContext] Placeholder: toggleAIStatus called for conv ${conversationId} in ws ${wsId}. Setting AI to: ${desiredState}`);
+        setIsTogglingAIStatus(true);
+        // TODO: Implementar chamada à API ou Server Action aqui (provavelmente /api/conversations/:id/toggle-ai)
+        await new Promise(resolve => setTimeout(resolve, 500)); // Simula delay da rede
+        setIsTogglingAIStatus(false);
+        // Lógica otimista pode ser adicionada aqui se necessário, atualizando `conversations` e `selectedConversation`
+        toast(`Funcionalidade 'Alternar Status da IA' para ${desiredState ? 'Ativo' : 'Inativo'} ainda não implementada completamente.`);
+    }, [workspaceContext]);
+
+    // --- Valor do Contexto --- //
     const contextValue = useMemo(() => ({
         conversations,
         loadingConversations,
         conversationsError,
-        fetchConversations,
-        updateOrAddConversationInList,
         selectedConversation,
-        loadingSelectedConversation,
         selectedConversationMessages,
         loadingSelectedConversationMessages,
         selectedConversationError,
-        selectConversation,
-        fetchConversationMessages,
-        clearMessagesError,
-        addMessageOptimistically,
-        updateMessageStatus,
-        isSendingMessage,
-        sendManualMessage,
-        clearMessageCache,
-        addRealtimeMessage,
-        updateRealtimeMessageContent,
-        updateRealtimeMessageStatus,
+        messageCache,
         unreadConversationIds,
         setUnreadConversationIds,
-        sendMediaMessage,
-        sendTemplateMessage,
-        toggleAIStatus,
+        isSendingMessage,
         isTogglingAIStatus,
+        fetchConversations,
+        fetchConversationMessages,
+        selectConversation,
+        clearMessagesError,
+        handleRealtimeNewMessage,
+        handleRealtimeStatusUpdate,
+        sendManualMessage,
+        sendTemplateMessage,
+        sendMediaMessage,
+        toggleAIStatus,
     }), [
-        conversations, loadingConversations, conversationsError, fetchConversations, updateOrAddConversationInList,
-        selectedConversation, loadingSelectedConversation, selectedConversationMessages, loadingSelectedConversationMessages,
-        selectedConversationError, selectConversation, fetchConversationMessages, clearMessagesError,
-        addMessageOptimistically, updateMessageStatus, isSendingMessage, sendManualMessage,
-        clearMessageCache, addRealtimeMessage, updateRealtimeMessageContent, updateRealtimeMessageStatus,
-        unreadConversationIds, setUnreadConversationIds, sendMediaMessage, sendTemplateMessage,
-        toggleAIStatus, isTogglingAIStatus,
+        conversations, loadingConversations, conversationsError, selectedConversation,
+        selectedConversationMessages, loadingSelectedConversationMessages, selectedConversationError,
+        messageCache, unreadConversationIds, isSendingMessage, isTogglingAIStatus,
+        fetchConversations, fetchConversationMessages, selectConversation, clearMessagesError,
+        handleRealtimeNewMessage, handleRealtimeStatusUpdate, sendManualMessage,
+        sendTemplateMessage, sendMediaMessage, toggleAIStatus,
     ]);
 
     return (
@@ -814,11 +508,11 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     );
 };
 
-// --- Custom Hook (Renamed) ---
+// --- Hook Customizado --- //
 export const useConversationContext = (): ConversationContextType => {
     const context = useContext(ConversationContext);
     if (context === undefined) {
         throw new Error('useConversationContext must be used within a ConversationProvider');
     }
     return context;
-};
+}; 

@@ -80,21 +80,22 @@ export function registerControllerForChannel(channel: string, controller: SSECon
     if (controllers) {
          // Verificar se o controller já existe pode ser complexo/impossível, Set lida com isso
         controllers.add(controller);
-        console.log(`[Shared Redis Subscriber] Controller registrado para ${channel}. Total: ${controllers.size}`);
+        console.log(`[CONTEXT_SSE_DEBUG] Controller registrado para ${channel}. Total controllers agora: ${controllers.size}`);
     } else {
          console.error(`[Shared Redis Subscriber] Falha ao obter Set de controllers para ${channel} durante registro.`);
     }
 }
 
 export function unregisterControllerForChannel(channel: string, controller: SSEController): void {
+    console.log(`[CONTEXT_SSE_DEBUG] Tentando desregistrar controller para ${channel}`);
     const controllers = channelControllers.get(channel);
     if (controllers) {
-        controllers.delete(controller);
-        console.log(`[Shared Redis Subscriber] Controller desregistrado de ${channel}. Restantes: ${controllers.size}`);
+        const deleted = controllers.delete(controller);
+        console.log(`[CONTEXT_SSE_DEBUG] Controller desregistrado de ${channel}? ${deleted}. Restantes: ${controllers.size}`);
         if (controllers.size === 0) {
             // Se não há mais controllers, podemos remover o canal do Map
             // A desinscrição do Redis é tratada por unsubscribeFromChannel quando a contagem chega a 0
-            console.log(`[Shared Redis Subscriber] Nenhum controller restante para ${channel}. Removendo entrada do Map.`);
+            console.log(`[CONTEXT_SSE_DEBUG] Nenhum controller restante para ${channel}. Removendo entrada do Map.`);
             channelControllers.delete(channel);
         }
     } else {
@@ -151,10 +152,11 @@ sharedSubscriber.on('message', (channel, message) => {
             // Envia para todos os controllers registrados para este canal
             controllers.forEach(controller => {
                 try {
-                    console.log(`[Shared Redis Subscriber SENDING] Attempting to enqueue for controller on channel ${channel}. Event type: ${eventType}`);
+                    console.log(`[CONTEXT_SSE_DEBUG] >>> PREPARANDO para enfileirar no controller do canal ${channel}. Evento: ${eventType}`);
                     controller.enqueue(encodedMessage);
+                    console.log(`[CONTEXT_SSE_DEBUG] <<< ENFILEIRADO com sucesso no controller do canal ${channel}. Evento: ${eventType}`);
                 } catch (enqueueError: any) {
-                    console.error(`[Shared Redis Subscriber] Erro ao enfileirar mensagem para um controller de ${channel}:`, enqueueError.message);
+                    console.error(`[CONTEXT_SSE_DEBUG] !!! ERRO ao enfileirar no controller do canal ${channel}:`, enqueueError.message);
                     // Considerar remover o controller problemático?
                     // controller.error(enqueueError); // Isso fecharia a stream do cliente
                     // unregisterControllerForChannel(channel, controller); // Desregistra

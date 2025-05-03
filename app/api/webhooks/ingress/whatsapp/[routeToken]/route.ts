@@ -258,8 +258,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         `workspace-updates:${workspace.id}`,
                                         {
                                             type: 'new_message',
-                                            conversationId: conversation.id,
-                                            lastMessageTimestamp: savedMessage.timestamp.toISOString()
+                                            payload: savedMessage 
                                         }
                                     );
 

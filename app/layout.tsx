@@ -15,6 +15,7 @@ import { WorkspaceProvider } from '../context/workspace-context';
 import { ClientProvider } from '../context/client-context';
 import { ConversationProvider } from '../context/ConversationContext';
 import { FollowUpProvider } from "@/context/follow-up-context";
+import { WebSocketProvider } from "@/context/WebSocketProvider";
 
 // Configuração das fontes (copie do seu projeto antigo ou ajuste)
 const geistSans = Geist({
@@ -49,6 +50,7 @@ export default function RootLayout({
           <WorkspaceProvider>
             <ClientProvider>
               <ConversationProvider>
+                <WebSocketProvider>
                 <FollowUpProvider>
                 <div className="flex flex-col min-h-screen">
                   {/* Adicionar Header aqui depois */}
@@ -58,6 +60,7 @@ export default function RootLayout({
                   <Footer />
                 </div>
                 </FollowUpProvider>
+                </WebSocketProvider>
               </ConversationProvider>
             </ClientProvider>
           </WorkspaceProvider>

@@ -11,6 +11,7 @@ import ConversationDetail from './components/ConversationDetail';
 import type { ClientConversation } from '@/app/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useWebSocket } from '@/context/WebSocketProvider';
 
 export default function ConversationsPage() {
   const { workspace, isLoading: workspaceLoading, error: workspaceError } = useWorkspace();
@@ -20,10 +21,11 @@ export default function ConversationsPage() {
     conversationsError,
     selectedConversation,
     selectConversation,
-    fetchConversations,
-    updateOrAddConversationInList
+    fetchConversations
   } = useConversationContext();
-  const eventSourceRef = useRef<EventSource | null>(null);
+  
+  // Usar o hook do WebSocket em vez do SSE
+  const { isConnected, manualConnect } = useWebSocket();
 
   useEffect(() => {
     const wsId = workspace?.id;
@@ -34,61 +36,9 @@ export default function ConversationsPage() {
     }
   }, [workspace?.id, workspaceLoading, fetchConversations]);
 
-  useEffect(() => {
-    const wsId = workspace?.id;
-
-    if (wsId && !workspaceLoading) {
-      console.log(`[ConversationsPage] SSE Effect Setup: Conectando para Workspace ${wsId}`);
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-
-      const eventSource = new EventSource(`/api/workspaces/${wsId}/subscribe`);
-      eventSourceRef.current = eventSource;
-
-      eventSource.onmessage = (event) => {
-        try {
-          const eventData = JSON.parse(event.data);
-          console.log('[ConversationsPage] SSE Message Received:', eventData);
-
-          // Chamar fetchConversations quando uma nova mensagem (ou atualização) chegar para QUALQUER conversa
-          if (eventData.type === 'new_message' || eventData.type === 'conversation_updated') {
-            console.log(`[ConversationsPage] SSE Triggering fetchConversations due to event type: ${eventData.type}`);
-            // Usar o workspaceId atual para garantir que o fetch use o ID correto,
-            // especialmente se o workspace mudar rapidamente (improvável, mas seguro)
-            if (wsId) {
-              fetchConversations('ATIVAS', wsId); // Ou o filtro atual, se relevante
-            } else {
-              console.warn('[ConversationsPage] SSE: Tentando chamar fetchConversations sem wsId.');
-            }
-          }
-
-        } catch (error) { console.error("[ConversationsPage] SSE: Erro ao processar mensagem:", error); }
-      };
-
-      eventSource.onerror = (error) => {
-        console.error("[ConversationsPage] SSE Error:", error);
-        eventSource.close();
-        eventSourceRef.current = null;
-      };
-
-      eventSource.onopen = () => { console.log(`[ConversationsPage] SSE Connection OPENED para Workspace ${wsId}`); };
-
-      return () => {
-        console.log(`[ConversationsPage] SSE Effect Cleanup: Fechando conexão SSE para Workspace ${wsId}`);
-        if (eventSourceRef.current) {
-          eventSourceRef.current.close();
-          eventSourceRef.current = null;
-        }
-      };
-    }
-    else if (eventSourceRef.current) {
-      console.log("[ConversationsPage] SSE Effect Cleanup: Workspace ID indisponível, fechando conexão SSE.");
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-
-  }, [workspace?.id, workspaceLoading, fetchConversations]);
+  // Após a conexão WebSocket ser estabelecida, o WebSocketProvider
+  // já atualiza os dados através dos handlers que foram registrados
+  // no ConversationContext e não precisamos mais do SSE
 
   const handleSelectConversation = useCallback((conversation: ClientConversation | null) => {
     selectConversation(conversation);
@@ -106,6 +56,19 @@ export default function ConversationsPage() {
 
   return (
     <div className="flex flex-col h-full">
+      {!isConnected && (
+        <div className="bg-amber-100 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 border-l-4 p-2 text-sm flex justify-between items-center">
+          <span>Conexão em tempo real indisponível. As atualizações podem estar atrasadas.</span>
+          <Button 
+            onClick={manualConnect}
+            variant="outline" 
+            size="sm" 
+            className="ml-2 bg-amber-200 hover:bg-amber-300 dark:bg-amber-800 dark:hover:bg-amber-700 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100"
+          >
+            Reconectar
+          </Button>
+        </div>
+      )}
       <div className="flex flex-grow overflow-hidden">
         <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background flex-shrink-0">
           <ConversationList

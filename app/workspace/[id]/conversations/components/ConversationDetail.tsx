@@ -70,11 +70,7 @@ export default function ConversationDetail() {
     loadingSelectedConversationMessages: isLoadingMessages,
     selectedConversationError: messageError,
     isSendingMessage,
-    sendManualMessage,
     clearMessagesError,
-    addRealtimeMessage,
-    updateRealtimeMessageContent,
-    updateRealtimeMessageStatus,
     selectConversation,
     sendMediaMessage,
     sendTemplateMessage,
@@ -84,9 +80,7 @@ export default function ConversationDetail() {
   const { updateClient, deleteClient } = useClient();
 
   // --- Local State ---
-  const [newMessage, setNewMessage] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isClientSidebarOpen, setIsClientSidebarOpen] = useState(false);
 
@@ -123,100 +117,10 @@ export default function ConversationDetail() {
     prevMessagesLengthRef.current = messages.length;
   }, [messages, scrollToBottom]);
 
-  // --- SSE Logic ---
-  useEffect(() => {
-    const processedMessageIds = new Set<string>();
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    if (conversation?.id) {
-      const conversationId = conversation.id;
-      let retryCount = 0;
-      const maxRetries = 3;
-      const retryDelay = 2000;
-      const connectSSE = () => {
-        const newEventSource = new EventSource(`/api/sse/conversations/${conversationId}`);
-        eventSourceRef.current = newEventSource;
-        newEventSource.addEventListener('connection_ready', () => { 
-          console.log(`[SSE_LISTENER] Connection Ready for Conv ${conversationId}`);
-          retryCount = 0; 
-        });
-        newEventSource.addEventListener('new_message', (event) => {
-          console.log(`[SSE_LISTENER] Received 'new_message' event for Conv ${conversationId}:`, event.data);
-          try {
-            const messageData = JSON.parse(event.data);
-            if (!messageData.id || processedMessageIds.has(messageData.id)) {
-               console.log(`[SSE_LISTENER] 'new_message' ignored (missing ID or duplicate): ${messageData.id}`);
-               return;
-            }
-            processedMessageIds.add(messageData.id);
-            if (processedMessageIds.size > 50) { processedMessageIds.delete(processedMessageIds.values().next().value); }
-            console.log(`[SSE_LISTENER] Calling addRealtimeMessage with:`, messageData);
-            addRealtimeMessage(messageData);
-          } catch (error) { console.error("[SSE_LISTENER] 'new_message' parse error:", error, event.data); }
-        });
-        newEventSource.addEventListener('message_content_updated', (event) => {
-           console.log(`[SSE_LISTENER] Received 'message_content_updated' event for Conv ${conversationId}:`, event.data);
-           try {
-             const payload = JSON.parse(event.data);
-             if (payload && payload.id && payload.conversation_id) {
-               console.log(`[SSE_LISTENER] Calling updateRealtimeMessageContent with:`, payload);
-               updateRealtimeMessageContent(payload);
-             } else { console.warn("[SSE_LISTENER] Invalid content update payload", payload); }
-           } catch (error) { console.error("[SSE_LISTENER] content update parse error:", error, event.data); }
-        });
-        newEventSource.addEventListener('message_status_updated', (event) => {
-           console.log(`[SSE_LISTENER] Received 'message_status_updated' event for Conv ${conversationId}:`, event.data);
-           try {
-             const payload = JSON.parse(event.data);
-             if (payload && payload.messageId && payload.conversation_id && payload.newStatus) {
-               // Renomear para messageId para consistência com o contexto
-               const statusUpdatePayload = { ...payload, messageId: payload.messageId };
-               console.log(`[SSE_LISTENER] Calling updateRealtimeMessageStatus with:`, statusUpdatePayload);
-               updateRealtimeMessageStatus(statusUpdatePayload);
-             } else { console.warn("[SSE_LISTENER] Invalid status update payload", payload); }
-           } catch (error) { console.error("[SSE_LISTENER] status update parse error:", error, event.data); }
-        });
-        newEventSource.addEventListener('error', (errorEvent) => { // Capturar o objeto de erro
-          console.error(`[SSE_LISTENER] SSE Connection Error for Conv ${conversationId}:`, errorEvent);
-          if (retryCount < maxRetries) {
-            retryCount++;
-            console.log(`[SSE_LISTENER] Retrying SSE connection (Attempt ${retryCount}/${maxRetries}) in ${retryDelay}ms...`);
-            newEventSource.close();
-            eventSourceRef.current = null;
-            setTimeout(connectSSE, retryDelay);
-          } else {
-             console.error(`[SSE_LISTENER] Max retries reached. Giving up on SSE connection for Conv ${conversationId}.`);
-            toast.error('Erro na conexão real-time. Atualize a página.');
-          }
-        });
-      };
-      connectSSE();
-    }
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-    };
-  }, [conversation?.id, addRealtimeMessage, updateRealtimeMessageContent, updateRealtimeMessageStatus]);
-
-  // --- Send Handler ---
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const trimmedMessage = newMessage.trim();
-    if (!trimmedMessage || !conversation?.id || !conversation.workspace_id || !conversation.client_id) return;
-    
-    setNewMessage('');
-
-    try {
-      await sendManualMessage(conversation.id, trimmedMessage, conversation.workspace_id);
-      scrollToBottom('smooth');
-    } catch (error) {
-      console.error('[ConvDetail Send] Error sending message (already handled by context):', error);
-    }
-  };
+  // --- Send Handler (Simplified - Logic moved to input area) ---
+  // const handleSendMessage = async (e?: React.FormEvent) => {
+  //    // Logic moved to ConversationInputArea component
+  // };
 
   // --- Client Sidebar Handlers ---
   const handleSaveClient = async (clientId: string, updatedData: { name?: string | null; phone_number?: string | null; metadata?: any }) => {
@@ -417,9 +321,6 @@ export default function ConversationDetail() {
       <ConversationInputArea
          conversationId={conversation.id}
          workspaceId={conversation.workspace_id}
-         newMessage={newMessage}
-         setNewMessage={setNewMessage}
-         handleSendMessage={handleSendMessage}
          isSendingMessage={isSendingMessage}
          isUploading={false}
          setIsUploading={() => {}}

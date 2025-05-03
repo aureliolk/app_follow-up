@@ -1,4 +1,9 @@
 // app/api/workspaces/[id]/subscribe/route.ts
+// -----------------------------------------------------------
+// DEPRECATED: Esta rota SSE está sendo substituída pelo sistema
+// WebSocket. Será removida após a conclusão da migração.
+// -----------------------------------------------------------
+
 import { type NextRequest } from 'next/server';
 import {
   subscribeToChannel,

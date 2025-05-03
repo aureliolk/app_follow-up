@@ -206,6 +206,9 @@ export interface ClientConversation {
   activeFollowUp?: ActiveFollowUpInfo | null; // Status do FollowUp ativo/pausado do CLIENTE
 
   unread_count?: number; // Se aplicável
+
+  // <<< ADICIONAR ESTE CAMPO >>>
+  last_message_timestamp?: string | null;
 }
 
 // --- Tipos de Follow-up/Campanha Removidos ---
