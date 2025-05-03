@@ -30,7 +30,7 @@
   - [x] Implementar `handleRealtimeStatusUpdate(data)` (atualiza status em cache, msgs selecionadas, `last_message_status` na lista).
   - [ ] (Opcional) Implementar handlers para outros eventos (`ai_status_updated`, `message_content_updated`).
 - [ ] **Ações do Usuário (Implementação Inicial - Será Server Action depois):**
-  - [ ] Recriar `sendManualMessage`.
+  - [x] Recriar `sendManualMessage`.
   - [ ] Recriar `sendTemplateMessage`.
   - [ ] Recriar `sendMediaMessage`.
   - [ ] Recriar `toggleAIStatus`.

@@ -225,8 +225,9 @@ export default function ConversationInputArea({
       console.error('[InputArea Send] Erro sending manual message (context should handle toast):', error);
     } finally {
       sendingRef.current = false;
+      setTimeout(() => textareaRef.current?.focus(), 0);
     }
-  }, [internalNewMessage, isSendingMessage, conversationId, workspaceId, sendManualMessage]);
+  }, [internalNewMessage, isSendingMessage, conversationId, workspaceId, sendManualMessage, textareaRef]);
 
   // --- JSX ---
   return (
@@ -314,7 +315,7 @@ export default function ConversationInputArea({
             placeholder="Digite sua mensagem..."
             className="min-h-[40px] max-h-[150px] resize text-sm flex-grow"
             rows={1}
-            disabled={isSendingMessage || isUploading}
+            disabled={isUploading}
             style={{ overflowY: textareaRef.current && textareaRef.current.scrollHeight > 150 ? 'scroll' : 'hidden' }}
           />
 
