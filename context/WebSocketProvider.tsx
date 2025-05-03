@@ -29,8 +29,8 @@ interface WebSocketContextType {
 // --- Criação do Contexto WebSocket ---
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
-// URL fixa do servidor WebSocket
-const SOCKET_SERVER_URL = 'http://localhost:3001';
+// Lê da variável de ambiente, com fallback para localhost em desenvolvimento
+const SOCKET_SERVER_URL = process.env.NEXT_PUBLIC_WEBSOCKET_URL || 'http://localhost:3001';
 
 // --- Componente Provider WebSocket ---
 export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
