@@ -3,7 +3,9 @@ import { openai } from '@ai-sdk/openai';
 import { generateText, CoreMessage, tool } from 'ai';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
-import { deactivateConversationAI } from '@/lib/actions/conversationActions';
+import { setConversationAIStatus } from '@/lib/actions/conversationActions';
+import { streamText } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
 const humanTransferTool = tool({
   description: 'Transfere a conversa para um atendente humano',
@@ -12,7 +14,7 @@ const humanTransferTool = tool({
     conversationId: z.string().describe('ID da conversa'),
   }),
   execute: async ({ reason, conversationId }) => {
-    deactivateConversationAI(conversationId);
+    setConversationAIStatus(conversationId, false);
     console.log(`[Tool] Transfere a conversa para um atendente humano: ${reason}`);
     return { success: true };
   },

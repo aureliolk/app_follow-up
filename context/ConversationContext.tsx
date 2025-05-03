@@ -23,6 +23,7 @@ import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { sendWhatsappTemplateAction } from '@/lib/actions/whatsappActions';
+import { setConversationAIStatus } from '@/lib/actions/conversationActions';
 
 // --- Helper Function --- //
 const getActiveWorkspaceId = (workspaceCtx: any, providedId?: string): string | null => {
@@ -79,7 +80,7 @@ interface ConversationContextType {
     sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<void>; 
     sendTemplateMessage: (conversationId: string, templateData: SendTemplateDataType) => Promise<void>; 
     sendMediaMessage: (conversationId: string, file: File) => Promise<void>; 
-    toggleAIStatus: (conversationId: string, currentAiState: boolean) => Promise<void>;
+    toggleAIStatus: (conversationId: string, currentStatus: boolean) => Promise<void>;
 }
 
 // --- Criação do Contexto --- //
@@ -687,21 +688,60 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
     }, [workspaceContext, selectedConversation, session]);
 
-    const toggleAIStatus = useCallback(async (conversationId: string, currentAiState: boolean) => {
-        const wsId = getActiveWorkspaceId(workspaceContext, undefined); // Assume context wsId
-        if (!wsId) {
-            toast.error("Não foi possível determinar o workspace ativo.");
-            return;
+    const toggleAIStatus = useCallback(async (conversationId: string, currentStatus: boolean) => {
+        const newStatus = !currentStatus;
+        console.log(`[ConversationContext] Toggling AI status for conv ${conversationId} from ${currentStatus} to ${newStatus}`);
+
+        // Otimista (opcional, mas bom para UI responsiva)
+        // Atualiza o estado local ANTES da chamada da action
+        setConversations(prev =>
+            prev.map(conv =>
+                conv.id === conversationId ? { ...conv, is_ai_active: newStatus } : conv
+            )
+        );
+        if (selectedConversation?.id === conversationId) {
+            setSelectedConversation(prev => prev ? { ...prev, is_ai_active: newStatus } : null);
         }
-        const desiredState = !currentAiState;
-        console.log(`[ConversationContext] Placeholder: toggleAIStatus called for conv ${conversationId} in ws ${wsId}. Setting AI to: ${desiredState}`);
-        setIsTogglingAIStatus(true);
-        // TODO: Implementar chamada à API ou Server Action aqui (provavelmente /api/conversations/:id/toggle-ai)
-        await new Promise(resolve => setTimeout(resolve, 500)); // Simula delay da rede
-        setIsTogglingAIStatus(false);
-        // Lógica otimista pode ser adicionada aqui se necessário, atualizando `conversations` e `selectedConversation`
-        toast(`Funcionalidade 'Alternar Status da IA' para ${desiredState ? 'Ativo' : 'Inativo'} ainda não implementada completamente.`);
-    }, [workspaceContext]);
+
+        try {
+            // Chama a Server Action
+            const success = await setConversationAIStatus(conversationId, newStatus);
+
+            if (success) {
+                 console.log(`[ConversationContext] Server action setConversationAIStatus executada com sucesso para ${conversationId} (novo status: ${newStatus}). Evento Redis deve atualizar estado final.`);
+                // Não precisamos reverter o estado otimista aqui se a action for bem-sucedida,
+                // pois o evento Redis ('ai_status_updated') DEVE chegar e confirmar/corrigir o estado.
+                toast.success(`IA ${newStatus ? 'ativada' : 'desativada'} para esta conversa.`);
+            } else {
+                // A action retornou false, indicando falha ANTES do Redis (ex: ID inválido)
+                 console.error(`[ConversationContext] Server action setConversationAIStatus retornou falha para ${conversationId}. Revertendo estado otimista.`);
+                toast.error(`Falha ao ${newStatus ? 'ativar' : 'desativar'} IA. Tente novamente.`);
+                // Reverter estado otimista
+                 setConversations(prev =>
+                     prev.map(conv =>
+                         conv.id === conversationId ? { ...conv, is_ai_active: currentStatus } : conv
+                     )
+                 );
+                 if (selectedConversation?.id === conversationId) {
+                     setSelectedConversation(prev => prev ? { ...prev, is_ai_active: currentStatus } : null);
+                 }
+            }
+
+        } catch (error: any) {
+            // Erro lançado pela Server Action (provavelmente erro no DB)
+            console.error(`[ConversationContext] Erro ao chamar server action setConversationAIStatus para ${conversationId}:`, error);
+            toast.error(`Erro ao ${newStatus ? 'ativar' : 'desativar'} IA: ${error.message || 'Erro desconhecido'}`);
+            // Reverter estado otimista
+             setConversations(prev =>
+                 prev.map(conv =>
+                     conv.id === conversationId ? { ...conv, is_ai_active: currentStatus } : conv
+                 )
+             );
+             if (selectedConversation?.id === conversationId) {
+                 setSelectedConversation(prev => prev ? { ...prev, is_ai_active: currentStatus } : null);
+             }
+        }
+    }, [selectedConversation?.id]);
 
     // --- Valor do Contexto --- //
     const contextValue = useMemo(() => ({

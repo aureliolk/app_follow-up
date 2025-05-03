@@ -32,7 +32,7 @@
 - [ ] **Ações do Usuário (Implementação Inicial - Será Server Action depois):**
   - [x] Recriar `sendManualMessage`.
   - [x] Recriar `sendTemplateMessage`.
-  - [ ] Recriar `sendMediaMessage`.
+  - [x] Recriar `sendMediaMessage`.
   - [ ] Recriar `toggleAIStatus`.
 - [ ] **Finalização:**
   - [ ] Usar `useMemo` para o valor do contexto.

@@ -1,59 +1,60 @@
+"use server";
+
 import { prisma } from '@/lib/db';
 import { redisConnection } from '@/lib/redis';
 
 /**
- * Desativa a IA para uma conversa específica e publica um evento no Redis.
+ * Define o estado da IA para uma conversa específica e publica um evento no Redis.
  * @param conversationId - O ID da conversa.
+ * @param newStatus - O novo estado desejado para is_ai_active (true ou false).
  * @returns {Promise<boolean>} Retorna true em sucesso, false em falha antes da publicação. Lança erro em falha no DB.
  */
-export async function deactivateConversationAI(conversationId: string): Promise<boolean> {
-  console.log(`[Action] Tentando desativar IA para a conversa: ${conversationId}`);
+export async function setConversationAIStatus(conversationId: string, newStatus: boolean): Promise<boolean> {
+  console.log(`[Action] Tentando definir status da IA para ${newStatus} na conversa: ${conversationId}`);
   if (!conversationId) {
-    console.error('[Action|deactivateConversationAI] ID da conversa não fornecido.');
+    console.error('[Action|setConversationAIStatus] ID da conversa não fornecido.');
     return false; // Retorna false indicando falha antes de tentar DB/Redis
   }
 
   try {
     const updatedConversation = await prisma.conversation.update({
       where: { id: conversationId },
-      data: { is_ai_active: false },
+      data: { is_ai_active: newStatus },
       select: { id: true, is_ai_active: true, workspace_id: true }
     });
 
-    if (updatedConversation) {
-      console.log(`[Action] IA desativada com sucesso no DB para a conversa: ${conversationId}`);
+    if (updatedConversation && updatedConversation.is_ai_active === newStatus) {
+      console.log(`[Action] Status da IA definido para ${newStatus} com sucesso no DB para a conversa: ${conversationId}`);
 
       // Publicar evento no Redis
       const eventPayload = {
-          type: 'ai_status_updated', // Novo tipo de evento
+          type: 'ai_status_updated',
           payload: {
               conversationId: conversationId,
-              is_ai_active: false, // O novo estado (sempre false aqui)
+              is_ai_active: newStatus,
           },
       };
-      const chatChannel = `chat-updates:${conversationId}`; // Canal específico da conversa
-      const workspaceChannel = `workspace-updates:${updatedConversation.workspace_id}`; // Canal do workspace
+      const chatChannel = `chat-updates:${conversationId}`;
+      const workspaceChannel = `workspace-updates:${updatedConversation.workspace_id}`;
 
       try {
            await Promise.all([
              redisConnection.publish(chatChannel, JSON.stringify(eventPayload)),
              redisConnection.publish(workspaceChannel, JSON.stringify(eventPayload)),
            ]);
-           console.log(`[Action] Evento 'ai_status_updated' publicado nos canais ${chatChannel} e ${workspaceChannel}`);
+           console.log(`[Action] Evento 'ai_status_updated' (status: ${newStatus}) publicado nos canais ${chatChannel} e ${workspaceChannel}`);
            return true; // Sucesso na operação completa (DB + Redis)
       } catch (redisError) {
-           console.error(`[Action|deactivateConversationAI] Falha ao publicar evento 'ai_status_updated' para Conv ${conversationId}:`, redisError);
-           return true; // DB ok, falha na notificação
+           console.error(`[Action|setConversationAIStatus] Falha ao publicar evento 'ai_status_updated' para Conv ${conversationId} (status: ${newStatus}):`, redisError);
+           return true;
       }
 
     } else {
-      // Isso não deveria acontecer se o ID for válido e não houver erro no Prisma
-      console.warn(`[Action|deactivateConversationAI] Conversa ${conversationId} não encontrada ou não atualizada (sem erro do Prisma).`);
-      return false; // Falha em encontrar/atualizar
+      console.warn(`[Action|setConversationAIStatus] Conversa ${conversationId} não encontrada ou status não foi atualizado para ${newStatus} (sem erro do Prisma).`);
+      return false; // Falha em encontrar/atualizar ou estado não corresponde
     }
   } catch (error) {
-    console.error(`[Action|deactivateConversationAI] Erro no Prisma ao desativar IA para a conversa ${conversationId}:`, error);
-    // Re-lançar o erro para que o chamador (ex: a tool da IA) possa tratá-lo
+    console.error(`[Action|setConversationAIStatus] Erro no Prisma ao definir status da IA (${newStatus}) para a conversa ${conversationId}:`, error);
     throw new Error(`Falha ao atualizar status da IA no banco de dados para a conversa ${conversationId}`);
   }
 } 

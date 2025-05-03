@@ -1,32 +1,30 @@
 // lib/ai/tools/humanTransferTool.ts
 import { tool } from 'ai';
 import { z } from 'zod';
-import { deactivateConversationAI } from '@/lib/actions/conversationActions';
+import { setConversationAIStatus } from '@/lib/actions/conversationActions';
 
 export const humanTransferTool = tool({
   description: 'Transfere a conversa para um atendente humano quando explicitamente solicitado pelo cliente ou quando a IA não consegue mais ajudar.',
   parameters: z.object({
-    conversationId: z.string().describe('ID da conversa atual'),
+    reason: z.string().describe('Motivo da transferência'),
+    conversationId: z.string().describe('ID da conversa'),
   }),
-  execute: async ({ conversationId }) => {
+  execute: async ({ reason, conversationId }) => {
     try {
-      // A Server Action já deve lidar com a lógica e o feedback para o usuário (via SSE, etc.)
-      await deactivateConversationAI(conversationId);
-      console.log(`[Tool:humanTransfer] Transferência para humano iniciada para conversa: ${conversationId}`);
-      // A resposta para o usuário deve vir da desativação da IA ou do primeiro humano a responder.
-      // Retornar uma mensagem aqui pode causar duplicação ou confusão.
-      return { 
-        success: true, 
-        message: "Transferência solicitada.", // Mensagem interna para o log da ferramenta
-        status: 'pending' // Indica que a ação foi iniciada, mas a conversa continua
-      };
-    } catch (error) {
-        console.error(`[Tool:humanTransfer] Erro ao tentar transferir conversa ${conversationId}:`, error);
-        return { 
-          success: false, 
-          message: "Ocorreu um erro ao tentar transferir para um humano.",
-          status: 'error'
-        };
+      console.log(`[Tool|HumanTransfer] Iniciando transferência para conv ${conversationId}. Motivo: ${reason}`);
+      // Chama a action para desativar a IA (status = false)
+      const success = await setConversationAIStatus(conversationId, false);
+      if (success) {
+        console.log(`[Tool|HumanTransfer] IA desativada com sucesso para conv ${conversationId}.`);
+        // TODO: Adicionar lógica adicional aqui se necessário (ex: notificar supervisores)
+        return { success: true, message: "Transferência iniciada." };
+      } else {
+        console.error(`[Tool|HumanTransfer] Falha ao desativar IA (setConversationAIStatus retornou false) para conv ${conversationId}.`);
+        return { success: false, message: "Falha ao iniciar transferência (erro interno ao definir status da IA)." };
+      }
+    } catch (error: any) {
+      console.error(`[Tool|HumanTransfer] Erro ao executar transferência para conv ${conversationId}:`, error);
+       return { success: false, message: `Erro ao iniciar transferência: ${error.message || 'Erro desconhecido'}` };
     }
   },
 }); 
