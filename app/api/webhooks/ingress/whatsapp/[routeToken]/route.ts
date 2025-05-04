@@ -250,7 +250,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     // Notificar front-end via serviço modularizado
                                     await publishConversationUpdate(
                                         `chat-updates:${conversation.id}`,
-                                        { type: 'new_message', payload: savedMessage }
+                                        { 
+                                            type: 'new_message', 
+                                            payload: {
+                                                ...savedMessage, // Mantém os dados originais da mensagem salva
+                                                workspace_id: workspace.id // <<< ADICIONA O WORKSPACE ID AQUI
+                                            } 
+                                        } 
                                     );
 
                                     // Notificar workspace subscribers via serviço modularizado
