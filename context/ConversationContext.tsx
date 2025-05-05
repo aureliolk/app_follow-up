@@ -113,6 +113,55 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const pusherRef = useRef<Pusher | null>(null);
     const channelRef = useRef<Channel | null>(null);
 
+    // --- Efeito para Carregar Estado Inicial de Não Lidos do Local Storage --- //
+    useEffect(() => {
+      const wsId = workspaceContext.workspace?.id;
+      if (wsId) {
+        const storageKey = `unreadConversationIds_${wsId}`;
+        try {
+          const storedUnread = localStorage.getItem(storageKey);
+          if (storedUnread) {
+            const parsedIds = JSON.parse(storedUnread);
+            if (Array.isArray(parsedIds)) {
+              console.log(`[ConversationContext] Loaded ${parsedIds.length} unread IDs from Local Storage for ${wsId}`);
+              setUnreadConversationIds(new Set(parsedIds));
+            } else {
+              console.warn('[ConversationContext] Invalid data found in Local Storage for unread IDs. Resetting.');
+              localStorage.removeItem(storageKey); // Limpa dado inválido
+              setUnreadConversationIds(new Set());
+            }
+          } else {
+            // Nenhum dado salvo, inicializa vazio (já é o default, mas explícito)
+            setUnreadConversationIds(new Set());
+          }
+        } catch (error) {
+          console.error('[ConversationContext] Error reading unread IDs from Local Storage:', error);
+          setUnreadConversationIds(new Set()); // Reseta em caso de erro
+        }
+      } else {
+        // Sem workspace, reseta o estado
+        setUnreadConversationIds(new Set());
+      }
+    }, [workspaceContext.workspace?.id]); // Executa quando o workspace ID muda
+
+    // --- Efeito para Salvar Estado de Não Lidos no Local Storage --- //
+    useEffect(() => {
+      const wsId = workspaceContext.workspace?.id;
+      // Só salva se houver um workspace ativo
+      if (wsId) {
+        const storageKey = `unreadConversationIds_${wsId}`;
+        try {
+          // Converte o Set para Array antes de salvar
+          const idsToStore = Array.from(unreadConversationIds);
+          localStorage.setItem(storageKey, JSON.stringify(idsToStore));
+          // console.log(`[ConversationContext] Saved ${idsToStore.length} unread IDs to Local Storage for ${wsId}`); // Opcional: logar save
+        } catch (error) {
+          console.error('[ConversationContext] Error saving unread IDs to Local Storage:', error);
+        }
+      }
+      // Não precisamos de um 'else' aqui, pois só queremos salvar quando há workspace
+    }, [unreadConversationIds, workspaceContext.workspace?.id]); // Executa quando o set de IDs ou o workspace mudam
+
     // --- Funções de Busca/Seleção --- //
     async function fetchConversationMessages(conversationId: string): Promise<Message[]> {
         if (messageCache[conversationId]) {
