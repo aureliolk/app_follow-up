@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useSession, signOut, SessionContextValue } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
-import { LogOut, UserCircle, Settings, Layers, Menu, X, Loader2, Sun, Moon } from 'lucide-react';
+import { LogOut, UserCircle, Settings, Layers, Menu, X, Loader2, Sun, Moon, Wifi, WifiOff } from 'lucide-react';
 import { cn } from "@/lib/utils"; // Corrigido
+import { useConversationContext } from '@/context/ConversationContext'; // Importar o contexto
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // Importar Tooltip
 
 // --- Definição de Tipos Estendidos para NextAuth ---
 import 'next-auth';
@@ -71,6 +73,7 @@ export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const { isPusherConnected } = useConversationContext(); // Obter estado da conexão
   const isLandingPage = pathname === '/';
 
   
@@ -130,6 +133,24 @@ export default function Header() {
             ) : session ? (
               // Navegação Autenticada (Sem mudanças aqui)
               <>
+                {/* Indicador de Conexão Pusher */}
+                <TooltipProvider delayDuration={100}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center">
+                        {isPusherConnected ? (
+                          <Wifi className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <WifiOff className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>Conexão Tempo Real: {isPusherConnected ? 'Ativa' : 'Inativa'}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
                 <Link
                   href="/workspaces"
                   className={cn(

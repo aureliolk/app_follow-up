@@ -12,7 +12,8 @@ import React, {
     useMemo,
     useEffect,
     Dispatch,
-    SetStateAction
+    SetStateAction,
+    useRef
 } from 'react';
 import type {
     Message,
@@ -24,6 +25,8 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { sendWhatsappTemplateAction } from '@/lib/actions/whatsappActions';
 import { setConversationAIStatus } from '@/lib/actions/conversationActions';
+import Pusher from 'pusher-js';
+import type { Channel } from 'pusher-js';
 
 // --- Helper Function --- //
 const getActiveWorkspaceId = (workspaceCtx: any, providedId?: string): string | null => {
@@ -61,8 +64,9 @@ interface ConversationContextType {
     messageCache: Record<string, Message[]>;
     unreadConversationIds: Set<string>;
     setUnreadConversationIds: Dispatch<SetStateAction<Set<string>>>;
-    isSendingMessage: boolean; // Manter para UI
-    isTogglingAIStatus: boolean; // Manter para UI
+    isSendingMessage: boolean;
+    isTogglingAIStatus: boolean;
+    isPusherConnected: boolean;
 
     // Funções de Busca/Seleção
     fetchConversations: (filter?: string, workspaceId?: string) => Promise<void>;
@@ -101,8 +105,13 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [selectedConversationError, setSelectedConversationError] = useState<string | null>(null);
     const [messageCache, setMessageCache] = useState<Record<string, Message[]>>({});
     const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set());
-    const [isSendingMessage, setIsSendingMessage] = useState(false); 
+    const [isSendingMessage, setIsSendingMessage] = useState(false);
     const [isTogglingAIStatus, setIsTogglingAIStatus] = useState(false);
+    const [isPusherConnected, setIsPusherConnected] = useState(false);
+
+    // --- Refs para Pusher --- //
+    const pusherRef = useRef<Pusher | null>(null);
+    const channelRef = useRef<Channel | null>(null);
 
     // --- Funções de Busca/Seleção --- //
     async function fetchConversationMessages(conversationId: string): Promise<Message[]> {
@@ -745,6 +754,145 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
     }, [selectedConversation?.id]);
 
+    // --- Efeito para Gerenciar Conexão Pusher --- //
+    useEffect(() => {
+        const workspaceId = workspaceContext.workspace?.id;
+
+        // Função de limpeza para desconectar e desinscrever
+        const cleanupPusher = () => {
+            if (channelRef.current) {
+                // Remove listeners específicos antes de desinscrever
+                channelRef.current.unbind_all();
+                // Remove o próprio bind (boa prática)
+                channelRef.current.unbind('new_message', handleRealtimeNewMessage);
+                channelRef.current.unbind('message_status_update', handleRealtimeStatusUpdate);
+                // TODO: Adicionar unbind para 'ai_status_update' se implementado
+                console.log(`[Pusher] Unbinding listeners from channel: ${channelRef.current.name}`);
+            }
+            if (pusherRef.current) {
+                console.log('[Pusher] Disconnecting...');
+                pusherRef.current.disconnect();
+                pusherRef.current = null;
+                channelRef.current = null;
+                setIsPusherConnected(false);
+            }
+        };
+
+        if (workspaceId) {
+            console.log(`[Pusher] Workspace ID ${workspaceId} available. Setting up Pusher.`);
+            cleanupPusher(); // Garante limpeza antes de conectar
+
+            // Valida se as chaves públicas estão presentes
+            const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+            const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+
+            if (!pusherKey || !pusherCluster) {
+                console.error('[Pusher] Error: NEXT_PUBLIC_PUSHER_KEY or NEXT_PUBLIC_PUSHER_CLUSTER is not defined.');
+                toast.error('Erro de configuração do Pusher (Frontend). Verifique as variáveis de ambiente.');
+                return; // Não tenta conectar
+            }
+
+            try {
+                pusherRef.current = new Pusher(pusherKey, {
+                    cluster: pusherCluster,
+                    authEndpoint: '/api/pusher/auth', // Endpoint criado no backend
+                    // auth: { // Se precisar passar headers customizados para auth (raro)
+                    //   headers: { 'X-Custom-Header': 'value' }
+                    // },
+                    forceTLS: true // Garante HTTPS
+                });
+
+                const pusherInstance = pusherRef.current;
+
+                pusherInstance.connection.bind('connected', () => {
+                    console.log('[Pusher] Connection successful!');
+                    setIsPusherConnected(true);
+                });
+
+                pusherInstance.connection.bind('disconnected', () => {
+                    console.warn('[Pusher] Disconnected.');
+                    setIsPusherConnected(false);
+                    // Lógica de reconexão pode ser adicionada aqui se necessário,
+                    // mas o pusher-js geralmente tenta reconectar automaticamente.
+                });
+
+                pusherInstance.connection.bind('error', (err: any) => {
+                    console.error('[Pusher] Connection error:', err);
+                    setIsPusherConnected(false);
+                    // Erros comuns: auth falhou (403), problema de rede, config errada.
+                    if (err.error?.data?.code === 4004) { // Exemplo de código de erro específico
+                        toast.error('Pusher: App não existe ou cluster errado.');
+                    } else if (err.error?.data?.code === 4001) {
+                        toast.error('Pusher: Key inválida.');
+                    }
+                    // Considerar outros erros
+                });
+
+                // Inscrever no canal específico do workspace
+                const channelName = `private-workspace-${workspaceId}`;
+                console.log(`[Pusher] Subscribing to channel: ${channelName}`);
+                channelRef.current = pusherInstance.subscribe(channelName);
+                const channelInstance = channelRef.current;
+
+                // Bind para evento de sucesso na inscrição (opcional, mas útil para debug)
+                channelInstance.bind('pusher:subscription_succeeded', () => {
+                    console.log(`[Pusher] Successfully subscribed to ${channelName}`);
+                    // Se precisar, pode chamar alguma função aqui após inscrição bem sucedida
+                });
+
+                // Bind para evento de falha na inscrição (importante para debug de auth)
+                channelInstance.bind('pusher:subscription_error', (status: number) => {
+                    console.error(`[Pusher] Failed to subscribe to ${channelName}. Status: ${status}`);
+                    // Status 403 geralmente indica problema no endpoint /api/pusher/auth
+                    // Status 401 pode indicar problema com a key/secret no backend
+                    toast.error(`Falha ao conectar ao canal (${status}). Verifique permissões ou logs do servidor.`);
+                    setIsPusherConnected(false); // Considerar conexão falha se não puder inscrever
+                });
+
+                // --- Vincular Handlers de Eventos --- //
+                console.log(`[Pusher] Binding event handlers to ${channelName}`);
+
+                // Tenta parsear o payload JSON antes de passar para o handler
+                const bindJsonEvent = (eventName: string, handler: (data: any) => void) => {
+                    channelInstance.bind(eventName, (jsonData: any) => {
+                        console.log(`[Pusher] Received raw event '${eventName}':`, jsonData);
+                        try {
+                            // Pusher envia como string, precisamos parsear
+                            const parsedData = (typeof jsonData === 'string') ? JSON.parse(jsonData) : jsonData;
+                            // Verifica se o payload esperado existe (estrutura definida na API)
+                            if (parsedData && parsedData.payload) {
+                                console.log(`[Pusher] Parsed payload for '${eventName}':`, parsedData.payload);
+                                handler(parsedData.payload); // Passa apenas o payload para o handler
+                            } else {
+                                console.warn(`[Pusher] Received event '${eventName}' but payload is missing or invalid:`, parsedData);
+                            }
+                        } catch (error) {
+                            console.error(`[Pusher] Error parsing JSON for event '${eventName}':`, error, 'Raw data:', jsonData);
+                        }
+                    });
+                };
+
+                bindJsonEvent('new_message', handleRealtimeNewMessage);
+                bindJsonEvent('message_status_update', handleRealtimeStatusUpdate);
+                // TODO: Adicionar bind para 'ai_status_update' se/quando implementado
+                // bindJsonEvent('ai_status_update', handleRealtimeAiStatusUpdate);
+
+            } catch (error) {
+                console.error('[Pusher] Failed to initialize Pusher:', error);
+                toast.error('Erro ao inicializar a conexão em tempo real.');
+                cleanupPusher(); // Limpa em caso de erro na inicialização
+            }
+
+        } else {
+            console.log('[Pusher] No workspace ID available. Cleaning up existing connection if any.');
+            cleanupPusher(); // Limpa se não houver workspace ID
+        }
+
+        // Função de limpeza do useEffect: garante desconexão ao desmontar ou mudar workspace
+        return cleanupPusher;
+
+    }, [workspaceContext.workspace?.id, handleRealtimeNewMessage, handleRealtimeStatusUpdate]); // Dependências
+
     // --- Valor do Contexto --- //
     const contextValue = useMemo(() => ({
         conversations,
@@ -759,6 +907,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         setUnreadConversationIds,
         isSendingMessage,
         isTogglingAIStatus,
+        isPusherConnected,
         fetchConversations,
         fetchConversationMessages,
         selectConversation,
@@ -773,6 +922,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         conversations, loadingConversations, conversationsError, selectedConversation,
         selectedConversationMessages, loadingSelectedConversationMessages, selectedConversationError,
         messageCache, unreadConversationIds, isSendingMessage, isTogglingAIStatus,
+        isPusherConnected,
         fetchConversations, fetchConversationMessages, selectConversation, clearMessagesError,
         handleRealtimeNewMessage, handleRealtimeStatusUpdate, sendManualMessage,
         sendTemplateMessage, sendMediaMessage, toggleAIStatus,

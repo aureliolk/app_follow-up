@@ -12,6 +12,7 @@ import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃ
 import { getOrCreateConversation } from '@/lib/services/conversationService';
 import { saveMessageRecord } from '@/lib/services/persistenceService';
 import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
+import pusher from '@/lib/pusher'; // <-- Adicionar importação do Pusher
 
 
 // Define a type for the selected message fields
@@ -267,6 +268,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                             payload: savedMessage 
                                         }
                                     );
+
+                                    // --- Disparar evento Pusher para notificar a UI ---
+                                    try {
+                                        const channelName = `private-workspace-${workspace.id}`;
+                                        const eventPayload = JSON.stringify({ type: 'new_message', payload: savedMessage });
+                                        await pusher.trigger(channelName, 'new_message', eventPayload);
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Pusher event 'new_message' triggered on channel ${channelName} for msg ${savedMessage.id}`);
+                                    } catch (pusherError) {
+                                        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Failed to trigger Pusher event for msg ${savedMessage.id}:`, pusherError);
+                                        // Não falhar o processamento do webhook por causa do Pusher, apenas logar.
+                                    }
+                                    // --- Fim do disparo Pusher ---
 
                                     // --- Enqueue Job para Processamento da Mensagem (IA, etc.) ---
                                     // É importante que este job NÃO dependa do início do follow-up

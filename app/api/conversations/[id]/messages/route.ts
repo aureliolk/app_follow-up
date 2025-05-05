@@ -9,6 +9,7 @@ import { redisConnection } from '@/lib/redis';
 import type { Message } from "@/app/types";
 import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
 import { sendOperatorMessage } from '@/lib/services/conversationService';
+import pusher from '@/lib/pusher';
 
 export async function GET(
   req: NextRequest,
@@ -178,16 +179,16 @@ export async function POST(
     if (result.success && result.message) {
         console.log(`API POST Messages (${conversationId}): Service call successful. Message ID: ${result.message.id}`);
 
-        // Opcional: Publicar evento no Redis para atualização da UI via SSE
+        // Publicar evento para atualização em tempo real via Pusher
+        // O eventPayload deve conter a mensagem completa para a UI
+        const eventPayload = JSON.stringify({ type: 'new_message', payload: result.message });
+        const channelName = `private-workspace-${result.message.conversation.workspace_id}`; // Corrigido: Usar o workspaceId da conversa
         try {
-            const redis = redisConnection;
-            // Usar o formato esperado pelo frontend/SSE handler
-            const eventPayload = JSON.stringify({ type: 'new_message', payload: result.message });
-            await redis.publish(`chat-updates:${conversationId}`, eventPayload);
-             console.log(`API POST Messages (${conversationId}): Published 'new_message' event to Redis channel chat-updates:${conversationId}`);
-        } catch(pubError) {
-            console.error(`API POST Messages (${conversationId}): Failed to publish new message event to Redis:`, pubError);
-            // Não falhar a requisição inteira por causa disso, apenas logar.
+          await pusher.trigger(channelName, 'new_message', eventPayload);
+          console.log(`[API POST /messages] Pusher event triggered on channel ${channelName}`);
+        } catch (pusherError) {
+          console.error(`API POST Messages (${conversationId}): Failed to trigger Pusher event:`, pusherError);
+          // Considerar logar o erro ou alguma forma de fallback/notificação
         }
 
         // Retornar a mensagem criada pelo serviço

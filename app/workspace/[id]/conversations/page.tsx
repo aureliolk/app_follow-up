@@ -11,7 +11,6 @@ import ConversationDetail from './components/ConversationDetail';
 import type { ClientConversation } from '@/app/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useWebSocket } from '@/context/WebSocketProvider';
 
 export default function ConversationsPage() {
   const { workspace, isLoading: workspaceLoading, error: workspaceError } = useWorkspace();
@@ -23,9 +22,6 @@ export default function ConversationsPage() {
     selectConversation,
     fetchConversations
   } = useConversationContext();
-  
-  // Usar o hook do WebSocket em vez do SSE
-  const { isConnected, manualConnect } = useWebSocket();
 
   useEffect(() => {
     const wsId = workspace?.id;
@@ -35,10 +31,6 @@ export default function ConversationsPage() {
       fetchConversations(currentFilter, wsId);
     }
   }, [workspace?.id, workspaceLoading, fetchConversations]);
-
-  // Após a conexão WebSocket ser estabelecida, o WebSocketProvider
-  // já atualiza os dados através dos handlers que foram registrados
-  // no ConversationContext e não precisamos mais do SSE
 
   const handleSelectConversation = useCallback((conversation: ClientConversation | null) => {
     selectConversation(conversation);
@@ -56,19 +48,6 @@ export default function ConversationsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {!isConnected && (
-        <div className="bg-amber-100 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 border-l-4 p-2 text-sm flex justify-between items-center">
-          <span>Conexão em tempo real indisponível. As atualizações podem estar atrasadas.</span>
-          <Button 
-            onClick={manualConnect}
-            variant="outline" 
-            size="sm" 
-            className="ml-2 bg-amber-200 hover:bg-amber-300 dark:bg-amber-800 dark:hover:bg-amber-700 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100"
-          >
-            Reconectar
-          </Button>
-        </div>
-      )}
       <div className="flex flex-grow overflow-hidden">
         <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background flex-shrink-0">
           <ConversationList

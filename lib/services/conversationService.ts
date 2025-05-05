@@ -170,12 +170,15 @@ const pendingMessageSelect = {
     status: true,
     metadata: true,
     providerMessageId: true,
+    conversation: {
+        select: { workspace_id: true }
+    }
 };
 type PendingMessageType = Prisma.MessageGetPayload<{ select: typeof pendingMessageSelect }>;
 
 interface SendOperatorMessageResult {
     success: boolean;
-    message?: PendingMessageType; // Retorna a mensagem criada
+    message?: PendingMessageType; // Retorna a mensagem criada (agora com workspace_id)
     error?: string;
     statusCode?: number;
 }
