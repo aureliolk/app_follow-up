@@ -250,54 +250,78 @@ export async function sendOperatorMessage(
             senderDisplayName // Passar nome do operador para o sender (se ele usar)
         );
 
-        if (!sendResult.success) {
-            console.error(`[Svc SendOperatorMsg] WhatsApp send failed:`, sendResult.error);
-            throw new Error(`Falha ao enviar via WhatsApp: ${JSON.stringify(sendResult.error)}`); // Erro será pego abaixo
-        }
-        console.log(`[Svc SendOperatorMsg] WhatsApp send initiated successfully (Wamid: ${sendResult.wamid}) for msg ${pendingMessage.id}`);
+        if (sendResult.success && sendResult.wamid) {
+            console.log(`[Svc SendOperatorMsg] WhatsApp send initiated successfully (Wamid: ${sendResult.wamid}) for msg ${pendingMessage.id}`);
+            // Atualizar status para SENT e guardar o WAMID no channel_message_id E providerMessageId
+            pendingMessage = await prisma.message.update({
+                where: { id: pendingMessage.id },
+                data: { 
+                    status: 'SENT',
+                    channel_message_id: sendResult.wamid, // WAMID aqui
+                    providerMessageId: sendResult.wamid   // <<< ADICIONAR WAMID AQUI TAMBÉM >>>
+                }, 
+                select: pendingMessageSelect
+            });
+            console.log(`[Svc SendOperatorMsg] Updated message ${pendingMessage.id} to SENT with channel_message_id and providerMessageId: ${sendResult.wamid}`);
 
-        // Atualizar a mensagem no banco com o WAMID recebido E status SENT
-        if (sendResult.wamid) {
-             try {
-                  // Atualizar status para SENT e guardar o WAMID no channel_message_id
-                  pendingMessage = await prisma.message.update({
-                      where: { id: pendingMessage.id },
-                      data: { 
-                          status: 'SENT', // <<< SET STATUS TO SENT
-                          channel_message_id: sendResult.wamid // <<< USE channel_message_id
-                      }, 
-                      select: pendingMessageSelect // Re-selecionar para obter o objeto atualizado
-                  });
-                  console.log(`[Svc SendOperatorMsg] Updated message ${pendingMessage.id} to SENT with channel_message_id: ${sendResult.wamid}`);
-
-                  // <<< Atualizar last_message_at da Conversa APÓS envio iniciado >>>
-                  await prisma.conversation.update({
-                      where: { id: conversationId },
-                      data: { last_message_at: pendingMessage.timestamp } // Usa o timestamp da mensagem enviada
-                  });
-                  console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after successful send.`);
-
-             } catch (updateError) {
-                  // Logar erro, mas não falhar a operação principal, pois o envio foi iniciado.
-                  // O webhook de status pode eventualmente corrigir isso se a mensagem for encontrada de outra forma.
-                  console.error(`[Svc SendOperatorMsg] Failed to update status/channel_message_id for message ${pendingMessage.id} OR conversation timestamp:`, updateError);
-             }
-        } else {
-            console.warn(`[Svc SendOperatorMsg] WhatsApp send succeeded for msg ${pendingMessage.id}, but no WAMID was returned.`);
-            // <<< Mesmo sem WAMID, atualizar last_message_at se o envio foi ok >>>
+            // Atualizar last_message_at da Conversa
             try {
                 await prisma.conversation.update({
-                   where: { id: conversationId },
-                   data: { last_message_at: pendingMessage.timestamp } // Usa o timestamp da mensagem enviada
+                    where: { id: conversationId },
+                    data: { last_message_at: pendingMessage.timestamp } // Usar o timestamp da mensagem PENDING
                 });
-                console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after successful send (no WAMID returned).`);
+                console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after successful send.`);
             } catch (convUpdateError) {
-                console.error(`[Svc SendOperatorMsg] Failed to update conversation timestamp after successful send (no WAMID):`, convUpdateError);
+                console.error(`[Svc SendOperatorMsg] Error updating conversation ${conversationId} last_message_at:`, convUpdateError);
+                // Não falhar a operação principal por isso
             }
-        }
+            
+            return { success: true, message: pendingMessage };
 
-        // 4. Sucesso (Envio iniciado ou processado internamente)
-         return { success: true, message: pendingMessage }; // Retornar a mensagem (potencialmente atualizada)
+        } else if (sendResult.success && !sendResult.wamid) {
+            // Sucesso no envio, mas sem WAMID retornado (raro, mas tratar)
+            console.warn(`[Svc SendOperatorMsg] WhatsApp send reported success but NO WAMID returned for msg ${pendingMessage.id}. Setting to SENT, but providerMessageId will be null.`);
+            pendingMessage = await prisma.message.update({
+                where: { id: pendingMessage.id },
+                data: { 
+                    status: 'SENT',
+                    // providerMessageId permanece null ou o que já estava
+                }, 
+                select: pendingMessageSelect
+            });
+             // Atualizar last_message_at da Conversa
+            // ... (mesma lógica de atualização do last_message_at acima)
+            try {
+                await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { last_message_at: pendingMessage.timestamp }
+                });
+                console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at (no WAMID).`);
+            } catch (convUpdateError) {
+                console.error(`[Svc SendOperatorMsg] Error updating conversation ${conversationId} last_message_at (no WAMID):`, convUpdateError);
+            }
+            return { success: true, message: pendingMessage };
+
+        } else {
+            // Envio falhou conforme reportado por sendWhatsappMessage
+            let errorMessage = 'Falha no envio pelo WhatsApp (reportado pelo sender)';
+            if (sendResult.error) {
+                if (typeof sendResult.error === 'string') {
+                    errorMessage = sendResult.error;
+                } else if (typeof sendResult.error === 'object' && sendResult.error !== null && 'message' in sendResult.error && typeof (sendResult.error as any).message === 'string') {
+                    errorMessage = (sendResult.error as any).message;
+                } else {
+                    try {
+                        errorMessage = JSON.stringify(sendResult.error);
+                    } catch (e) {
+                        // Se JSON.stringify falhar, mantenha a mensagem padrão
+                    }
+                }
+            }
+            console.error(`[Svc SendOperatorMsg] WhatsApp send FAILED for msg ${pendingMessage.id}. Error: ${errorMessage}`);
+            // O bloco catch abaixo vai cuidar de setar para FAILED e retornar o erro.
+            throw new Error(errorMessage);
+        }
 
     } catch (error: any) {
         console.error(`[Svc SendOperatorMsg] Error sending message for conv ${conversationId}:`, error);

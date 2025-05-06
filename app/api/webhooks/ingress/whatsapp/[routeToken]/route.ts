@@ -33,6 +33,24 @@ interface RouteParams {
     }
 }
 
+// --- Função auxiliar para mapear status do WhatsApp para status do DB ---
+function whatsappStatusToDbStatus(whatsappStatus: string): string {
+    const lowerStatus = whatsappStatus.toLowerCase();
+    switch (lowerStatus) {
+        case 'sent':
+            return 'SENT';
+        case 'delivered':
+            return 'DELIVERED';
+        case 'read':
+            return 'READ';
+        case 'failed':
+            return 'FAILED';
+        default:
+            console.warn(`[whatsappStatusToDbStatus] Unknown WhatsApp status: ${whatsappStatus}. Returning as raw.`);
+            return whatsappStatus.toUpperCase(); // Retornar em maiúsculas como fallback
+    }
+}
+
 // --- Função auxiliar para buscar Workspace e segredos ---
 async function getWorkspaceByRouteToken(routeToken: string) {
     if (!routeToken) return null;
@@ -385,281 +403,139 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                         // <<< INÍCIO: Processamento de Statuses >>>
                         if (change.field === 'messages' && change.value?.statuses?.length > 0) {
                             console.log(`[WH_STATUS_LOG] Processing ${change.value.statuses.length} status update(s).`);
-                            for (const statusUpdate of change.value.statuses) {
-                                const messageIdFromWhatsapp = statusUpdate.id; // ID da mensagem original (wamid)
-                                const newStatus = statusUpdate.status.toUpperCase(); // sent, delivered, read -> SENT, DELIVERED, READ
-                                const recipientIdRaw = statusUpdate.recipient_id; // Número original do destinatário (cliente)
-                                const timestamp = parseInt(statusUpdate.timestamp, 10) * 1000;
-                                const conversationIdentifier = statusUpdate.conversation?.id; // ID da conversa na API do WhatsApp (pode ser útil)
 
-                                // Padronizar número do destinatário
-                                const recipientId = standardizeBrazilianPhoneNumber(recipientIdRaw);
-                                if (!recipientId) {
-                                    console.warn(`[WH_STATUS_LOG] Recipient ID inválido ou não padronizável: ${recipientIdRaw} para WAMID ${messageIdFromWhatsapp}. Ignorando status.`);
-                                    continue; // Pular este status
-                                }
-                                console.log(`[WH_STATUS_LOG] Recipient ID padronizado de ${recipientIdRaw} para ${recipientId}`);
-
-                                console.log(`[WH_STATUS_LOG] Processing Status: WAMID=${messageIdFromWhatsapp}, Status=${newStatus}, Recipient=${recipientId}, ConvID_WPP=${conversationIdentifier}`);
-
-                                // Validar status conhecido
-                                const validStatuses = ['SENT', 'DELIVERED', 'READ', 'FAILED'];
-                                if (!validStatuses.includes(newStatus)) {
-                                    console.warn(`[WH_STATUS_LOG] Unknown status '${newStatus}' for WAMID ${messageIdFromWhatsapp}. Ignoring.`);
+                            for (const status of change.value.statuses) {
+                                const recipientPhoneNumberRaw = status.recipient_id;
+                                const recipientPhoneNumber = standardizeBrazilianPhoneNumber(recipientPhoneNumberRaw);
+                                if (!recipientPhoneNumber) {
+                                    console.warn(`[WH_STATUS_LOG] Recipient ID ${recipientPhoneNumberRaw} inválido ou não padronizável. Pulando status ${status.id}.`);
                                     continue;
                                 }
+                                console.log(`[WH_STATUS_LOG] Recipient ID padronizado de ${recipientPhoneNumberRaw} para ${recipientPhoneNumber}`);
+                                console.log(`[WH_STATUS_LOG] Processing Status: WAMID=${status.id}, Status=${status.status.toUpperCase()}, Recipient=${recipientPhoneNumber}, ConvID_WPP=${status.conversation?.id}`);
 
-                                let messageInDb: SelectedMessageInfo | null = null; // Use the new type
+                                let targetMessage: SelectedMessageInfo | null = null;
                                 let targetConversationId: string | null = null;
 
-                                // --- Lógica para encontrar a mensagem/conversa no DB --- 
-                                try {
-                                    // <<< PASSO 1: Encontrar o Cliente pelo telefone e workspace >>>
-                                    const clientRecord = await prisma.client.findFirst({
-                                        where: { 
-                                            workspace_id: workspace.id, 
-                                            phone_number: recipientId 
-                                        },
-                                        select: { id: true }
-                                    });
+                                targetMessage = await prisma.message.findFirst({
+                                    where: { providerMessageId: status.id },
+                                    select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, channel_message_id: true, metadata: true }
+                                });
 
-                                    if (!clientRecord) {
-                                        console.warn(`[WH_STATUS_LOG] Client not found for phone ${recipientId} in workspace ${workspace.id}. Skipping status update for WAMID ${messageIdFromWhatsapp}.`);
-                                        continue; // Pula para o próximo status update
-                                    }
-                                    const clientId = clientRecord.id; 
-
-                                    if (newStatus === 'SENT') {
-                                        // Para SENT, buscar a conversa e a última msg PENDING
-                                        // <<< PASSO 2 (SENT): Encontrar a Conversa específica do WhatsApp >>>
-                                        const conversation = await prisma.conversation.findUnique({
+                                if (targetMessage) {
+                                    console.log(`[WH_STATUS_LOG] Found message by WAMID ${status.id} (ID: ${targetMessage.id}). Treating as status update (original status was ${targetMessage.status}).`);
+                                    targetConversationId = targetMessage.conversation_id;
+                                } else {
+                                    if (status.status.toLowerCase() === 'sent') { // Chave minúscula para switch
+                                        const conversationForRecipient = await prisma.conversation.findFirst({
                                             where: {
-                                                workspace_id_client_id_channel: {
-                                                    workspace_id: workspace.id,
-                                                    client_id: clientId, // <<< Usa o clientId encontrado
-                                                    channel: 'WHATSAPP'
-                                                }
+                                                workspace_id: workspace.id,
+                                                client: { phone_number: recipientPhoneNumber }
                                             },
                                             select: { id: true }
                                         });
-
-                                        if (!conversation) {
-                                            console.warn(`[WH_STATUS_LOG] SENT Status: Conversation not found for recipient ${recipientId} in workspace ${workspace.id}. Cannot find PENDING message.`);
-                                            continue;
-                                        }
-                                        targetConversationId = conversation.id;
-
-                                        // Buscar a última mensagem PENDING e assert type
-                                        messageInDb = await prisma.message.findFirst({
-                                            where: {
-                                                conversation_id: targetConversationId,
-                                                status: 'PENDING',
-                                                sender_type: 'SYSTEM', // Ou 'AGENT' se for o caso
-                                                // Não usar providerMessageId ou channel_message_id aqui
-                                            },
-                                            orderBy: { timestamp: 'desc' },
-                                            select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, channel_message_id: true, metadata: true }
-                                        }) as SelectedMessageInfo | null; 
-
-                                        if (messageInDb) {
-                                            console.log(`[WH_STATUS_LOG] SENT Status: Found PENDING message (ID: ${messageInDb.id}) for Conv ${targetConversationId}.`);
-                                        } else {
-                                            console.warn(`[WH_STATUS_LOG] SENT Status: PENDING message from SYSTEM/AGENT not found for Conv ${targetConversationId}. Might have been processed already or race condition.`);
-                                            // Poderia tentar buscar por WAMID se já foi atualizado por outra via?
-                                            // Buscar por WAMID (usando channel_message_id)
-                                            messageInDb = await prisma.message.findFirst({
-                                                where: { channel_message_id: messageIdFromWhatsapp },
-                                                select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, channel_message_id: true, metadata: true }
-                                            }) as SelectedMessageInfo | null; 
-                                            if (messageInDb) {
-                                                console.log(`[WH_STATUS_LOG] SENT Status: Found message by WAMID ${messageIdFromWhatsapp} (ID: ${messageInDb.id}). Treating as status update (original status was ${newStatus}).`);
-                                            } else {
-                                                console.warn(`[WH_STATUS_LOG] SENT Status: Message with WAMID ${messageIdFromWhatsapp} also not found. Ignoring.`);
-                                                continue;
-                                            }
-                                        }
-                                    } else { // Para DELIVERED, READ, FAILED - Tentar buscar por WAMID, com fallback
-                                        // <<< TENTATIVA 1: Buscar por WAMID (não precisa do cliente) >>>
-                                        messageInDb = await prisma.message.findFirst({
-                                            where: { channel_message_id: messageIdFromWhatsapp },
-                                            select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, channel_message_id: true, metadata: true }
-                                        }) as SelectedMessageInfo | null;
-
-                                        if (!messageInDb) {
-                                            // <<< TENTATIVA 2 (Fallback): Buscar última SENT na conversa >>>
-                                            console.warn(`[WH_STATUS_LOG] ${newStatus} Status: Message not found by WAMID ${messageIdFromWhatsapp}. Attempting fallback search...`);
-                                            // <<< PASSO 2 (Fallback): Encontrar a Conversa específica do WhatsApp >>>
-                                            const conversationForFallback = await prisma.conversation.findUnique({
+                                        if (conversationForRecipient) {
+                                            targetConversationId = conversationForRecipient.id;
+                                            targetMessage = await prisma.message.findFirst({
                                                 where: {
-                                                    workspace_id_client_id_channel: {
-                                                        workspace_id: workspace.id,
-                                                        client_id: clientId, // <<< Usa o clientId encontrado
-                                                        channel: 'WHATSAPP'
-                                                    }
+                                                    conversation_id: targetConversationId,
+                                                    sender_type: 'AGENT',
+                                                    status: 'PENDING',
                                                 },
-                                                select: { id: true }
+                                                orderBy: { timestamp: 'desc' },
+                                                select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, channel_message_id: true, metadata: true }
                                             });
-
-                                            if (conversationForFallback) {
-                                                targetConversationId = conversationForFallback.id;
-                                                messageInDb = await prisma.message.findFirst({
-                                                    where: {
-                                                        conversation_id: targetConversationId,
-                                                        status: 'SENT', // Buscar a que foi marcada como SENT
-                                                        sender_type: 'SYSTEM', // Ou AGENT
-                                                        // providerMessageId: null // <<< REMOVER ESTA CONDIÇÃO NO FALLBACK
-                                                    },
-                                                    orderBy: { timestamp: 'desc' },
-                                                    select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, channel_message_id: true, metadata: true }
-                                                }) as SelectedMessageInfo | null; 
-                                                if (messageInDb) {
-                                                    console.log(`[WH_STATUS_LOG] ${newStatus} Status: Found potential message (ID: ${messageInDb.id}) via fallback search (Last SENT). Assuming it matches WAMID ${messageIdFromWhatsapp}.`);
-                                                    // ATENÇÃO: Se encontrar via fallback, PRECISAMOS salvar o WAMID agora.
-                                                    await prisma.message.update({ where: { id: messageInDb.id }, data: { channel_message_id: messageIdFromWhatsapp } });
-                                                    console.log(`[WH_STATUS_LOG] ${newStatus} Status: Updated WAMID ${messageIdFromWhatsapp} for message ${messageInDb.id} found via fallback.`);
-                                                } else {
-                                                    console.warn(`[WH_STATUS_LOG] ${newStatus} Status: Fallback search failed for Conv ${targetConversationId}. Ignoring status update.`);
-                                                    // Não continuar se fallback falhou
-                                                    continue; // <<< Adicionar continue aqui
-                                                }
+                                            if (targetMessage) {
+                                                console.log(`[WH_STATUS_LOG] Fallback: Found PENDING message ${targetMessage.id} for recipient ${recipientPhoneNumber} to update to SENT.`);
                                             } else {
-                                                console.warn(`[WH_STATUS_LOG] ${newStatus} Status: Conversation not found for fallback search (Recipient: ${recipientId}). Ignoring.`);
-                                                continue; // <<< Adicionar continue aqui
+                                                console.log(`[WH_STATUS_LOG] SENT Status: PENDING message from AGENT not found for Conv ${targetConversationId}.`);
                                             }
-                                        } // Fim if (!messageInDb) para DELIVERED/READ/FAILED
-                                    } // Fim else (DELIVERED/READ/FAILED)
-
-                                    // Garantir que targetConversationId foi definido se encontramos a mensagem
-                                    if (messageInDb && !targetConversationId) {
-                                        targetConversationId = messageInDb.conversation_id;
-                                    }
-
-                                    // Proceder somente se messageInDb foi encontrado por um dos métodos
-                                    if (!messageInDb) {
-                                        console.warn(`[WH_STATUS_LOG] ${newStatus} Status: Message with WAMID ${messageIdFromWhatsapp} not found after all attempts. Ignoring.`);
-                                        continue;
-                                    }
-
-                                } catch (dbError) { // <<< CATCH GERAL PARA ERRO NA BUSCA
-                                    console.error(`[WH_STATUS_LOG] Error during DB search for WAMID ${messageIdFromWhatsapp} / Recipient ${recipientId}:`, dbError);
-                                    continue; // Pular para o próximo status se a busca falhar
-                                }
-                                // --- Fim: Lógica para encontrar mensagem --- 
-
-                                // Se messageInDb foi encontrado (e targetConversationId definido)
-                                // O código abaixo só executa se messageInDb não for null E targetConversationId estiver definido
-                                // --- Atualizar DB e Preparar Evento Redis --- 
-                                let eventTypeToPublish: string | null = null;
-                                let payloadToPublish: any = null;
-                                let shouldUpdateDb = true;
-
-                                // Lógica para não regredir status (opcional mas recomendado)
-                                const statusOrder: Record<string, number> = { PENDING: 0, SENT: 1, DELIVERED: 2, READ: 3, FAILED: 4 };
-                                if (statusOrder[newStatus] <= statusOrder[messageInDb.status]) {
-                                    console.log(`[WH_STATUS_LOG] Status ${newStatus} for Msg ${messageInDb.id} is not newer than current status ${messageInDb.status}. Skipping DB update and Redis publish.`);
-                                    shouldUpdateDb = false;
-                                    // Explicitly check for null instead of relying on truthiness
-                                    if (newStatus === 'SENT' && messageInDb.channel_message_id === null) {
-                                        console.log(`[WH_STATUS_LOG] Msg ${messageInDb.id} status is already SENT or later, but WAMID is missing. Updating WAMID only.`);
-                                        shouldUpdateDb = true; // Forçar update do WAMID
-                                    } else {
-                                        continue; // Pular o resto se não for atualizar
-                                    }
-                                }
-
-                                // Determinar tipo de evento e payload para Redis
-                                if (newStatus === 'SENT') {
-                                    eventTypeToPublish = 'new_message'; // Ou 'message_status_updated'? Decidir
-                                    try {
-                                        // Buscar a mensagem completa atualizada (incluindo o WAMID que será setado)
-                                        // O update do DB acontece depois, então buscamos ANTES e adicionamos o WAMID manualmente ao payload
-                                        const fullMessage = await prisma.message.findUnique({
-                                            where: { id: messageInDb.id },
-                                            // Incluir todos os campos necessários para o tipo Message da UI
-                                            include: { conversation: { select: { client: true } } } // Exemplo para pegar dados do cliente
-                                        });
-                                        if (!fullMessage) throw new Error('Full message not found after SENT status');
-
-                                        // Adicionar/Atualizar campos para o payload SSE
-                                        payloadToPublish = {
-                                            ...fullMessage,
-                                            status: 'SENT', // Garantir status
-                                            providerMessageId: messageIdFromWhatsapp, // Manter providerMessageId por enquanto
-                                            channel_message_id: messageIdFromWhatsapp, // Adicionar channel_message_id
-                                            message_type: fullMessage.media_url ? 'MEDIA' : 'TEXT',
-                                        };
-                                        console.log(`[WH_STATUS_LOG] Preparing 'new_message' (or status update) event for Msg ID ${messageInDb.id}`);
-                                    } catch (fetchError) {
-                                        console.error(`[WH_STATUS_LOG] Failed to fetch full message for SENT status (Msg ID: ${messageInDb.id}):`, fetchError);
-                                        continue;
-                                    }
-                                } else if (newStatus === 'DELIVERED' || newStatus === 'READ' || newStatus === 'FAILED') {
-                                    eventTypeToPublish = 'message_status_updated';
-                                    payloadToPublish = {
-                                        messageId: messageInDb.id,
-                                        conversation_id: targetConversationId,
-                                        newStatus: newStatus,
-                                        providerMessageId: messageIdFromWhatsapp,
-                                        timestamp: new Date(timestamp).toISOString(),
-                                        // Incluir errorMessage se status for FAILED? Buscar do erro original?
-                                        ...(newStatus === 'FAILED' && { errorMessage: statusUpdate.errors?.[0]?.message || 'Falha no envio pelo WhatsApp' })
-                                    };
-                                    console.log(`[WH_STATUS_LOG] Preparing 'message_status_updated' (${newStatus}) event for Msg ID ${messageInDb.id}`);
-                                }
-
-                                // Atualizar Mensagem no Banco de Dados (se necessário)
-                                if (shouldUpdateDb) {
-                                    try {
-                                        const dataToUpdate: Prisma.MessageUpdateInput = { status: newStatus };
-                                        console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${messageInDb.id}: Checking if WAMID should be added. NewStatus=${newStatus}, Existing WAMID=${messageInDb.channel_message_id}`);
-
-                                        if (newStatus === 'SENT' || messageInDb.channel_message_id === null) { 
-                                            console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${messageInDb.id}: Adding/Updating WAMID to ${messageIdFromWhatsapp}`);
-                                            dataToUpdate.channel_message_id = messageIdFromWhatsapp;
+                                        } else {
+                                             console.log(`[WH_STATUS_LOG] SENT Status: No conversation found for recipient ${recipientPhoneNumber}.`);
                                         }
-                                        if (newStatus === 'FAILED') {
-                                            // Refine metadata check and spread
-                                            const currentMetadata = (typeof messageInDb.metadata === 'object' && messageInDb.metadata !== null) ? messageInDb.metadata : {};
-                                            dataToUpdate.metadata = {
-                                                ...currentMetadata,
-                                                error: statusUpdate.errors?.[0]?.message || 'Falha reportada pelo WhatsApp'
-                                            };
-                                        }
-
-                                        await prisma.message.update({
-                                            where: { id: messageInDb.id },
-                                            data: dataToUpdate
-                                        });
-                                        console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${messageInDb.id}: DB Update successful. Status=${newStatus}` + (dataToUpdate.channel_message_id ? `, WAMID=${dataToUpdate.channel_message_id}` : '. No WAMID updated.'));
-                                    } catch (updateError) {
-                                        console.error(`[WH_STATUS_LOG DB_UPDATE] Failed to update message ${messageInDb.id} status in DB:`, updateError);
-                                        continue;
                                     }
-                                } else if (eventTypeToPublish && payloadToPublish) {
-                                    // Se não precisou atualizar DB, mas temos evento para publicar (ex: status repetido mas WAMID já estava lá)
-                                    console.log(`[WH_STATUS_LOG] DB update skipped for Msg ${messageInDb.id}, but proceeding to publish Redis event.`);
-                                } else {
-                                    console.log(`[WH_STATUS_LOG] No DB update needed and no event to publish for Msg ${messageInDb.id}.`);
+                                }
+                                
+                                if (!targetMessage || !targetConversationId) {
+                                    console.warn(`[WH_STATUS_LOG] Could not find target message or conversation for WAMID ${status.id}. Skipping.`);
                                     continue;
                                 }
 
-                                // Publicar no Redis (se evento foi preparado)
-                                if (eventTypeToPublish && payloadToPublish) {
-                                    try {
-                                        const conversationChannel = `chat-updates:${targetConversationId}`;
-                                        const redisPayload = {
-                                            type: eventTypeToPublish,
-                                            payload: payloadToPublish
+                                const currentStatusOrder = ['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED'];
+                                const dbNewStatus = whatsappStatusToDbStatus(status.status); // Uso da função corrigida
+                                
+                                const existingStatusIndex = currentStatusOrder.indexOf(targetMessage.status);
+                                const newStatusIndex = currentStatusOrder.indexOf(dbNewStatus);
+
+                                if (newStatusIndex > existingStatusIndex || (dbNewStatus === 'FAILED' && targetMessage.status !== 'FAILED')) {
+                                    console.log(`[WH_STATUS_LOG DB_UPDATE] Progressing status for Msg ${targetMessage.id} from ${targetMessage.status} to ${dbNewStatus}.`);
+                                    
+                                    let dataToUpdate: Prisma.MessageUpdateInput = { status: dbNewStatus };
+                                    console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: Checking WAMID. NewStatus=${dbNewStatus}, Existing ProviderID=${targetMessage.providerMessageId}, Status WAMID=${status.id}`);
+
+                                    // Se o status for SENT e a mensagem no DB não tiver providerMessageId, ou se o providerMessageId for diferente do WAMID do status (para casos de fallback)
+                                    if (dbNewStatus === 'SENT' && (!targetMessage.providerMessageId || targetMessage.providerMessageId !== status.id) && status.id) {
+                                        dataToUpdate.providerMessageId = status.id;
+                                        // channel_message_id também era usado para WAMID, garantir consistência se ele também for diferente
+                                        if (targetMessage.channel_message_id !== status.id) {
+                                            dataToUpdate.channel_message_id = status.id;
+                                        }
+                                        console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: Updating WAMID (providerMessageId/channel_message_id) to ${status.id}`);
+                                    }
+                                    // Para outros status progressivos, se o providerMessageId estiver faltando ou for diferente (raro, mas garante consistência)
+                                    else if ((dbNewStatus === 'DELIVERED' || dbNewStatus === 'READ') && (!targetMessage.providerMessageId || targetMessage.providerMessageId !== status.id) && status.id) {
+                                        dataToUpdate.providerMessageId = status.id;
+                                        if (targetMessage.channel_message_id !== status.id) {
+                                            dataToUpdate.channel_message_id = status.id;
+                                        }
+                                        console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: Correcting WAMID (providerMessageId/channel_message_id) to ${status.id} for status ${dbNewStatus}.`);
+                                    }
+
+                                    if (dbNewStatus === 'FAILED' && status.errors) {
+                                        const errorInfo = status.errors[0];
+                                        const currentMetadata = (typeof targetMessage.metadata === 'object' && targetMessage.metadata !== null) ? targetMessage.metadata : {};
+                                        dataToUpdate.metadata = {
+                                            ...currentMetadata,
+                                            errorCode: errorInfo?.code,
+                                            errorTitle: errorInfo?.title,
+                                            errorMessage: errorInfo?.message,
+                                            errorDetails: errorInfo?.error_data?.details,
                                         };
-                                        await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
-                                        console.log(`[WH_STATUS_LOG] Published event '${eventTypeToPublish}' to ${conversationChannel} for Msg ID ${messageInDb.id}`);
-                                    } catch (publishError) {
-                                        console.error(`[WH_STATUS_LOG] Failed to publish event for Msg ID ${messageInDb.id} to Redis:`, publishError);
+                                        console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: Adding FAILED error details to metadata.`);
+                                    }
+                                    
+                                    try {
+                                        await prisma.message.update({
+                                            where: { id: targetMessage.id },
+                                            data: dataToUpdate
+                                        });
+                                        console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: DB Update successful. Status=${dbNewStatus}.` + (dataToUpdate.providerMessageId ? ` WAMID=${dataToUpdate.providerMessageId}`: ''));
+                                    } catch (dbError) {
+                                        console.error(`[WH_STATUS_LOG DB_UPDATE] Error updating message ${targetMessage.id} in DB:`, dbError);
+                                    }
+    
+                                    const payloadToPublish = {
+                                        messageId: targetMessage.id,
+                                        conversation_id: targetConversationId,
+                                        newStatus: dbNewStatus,
+                                        providerMessageId: status.id,
+                                        errorMessage: dbNewStatus === 'FAILED' ? (status.errors?.[0]?.title || 'Failed') : undefined
+                                    };
+                                    console.log(`[WH_STATUS_LOG] Preparing 'message_status_updated' (${dbNewStatus}) for Msg ID ${targetMessage.id}`);
+        
+                                    const channelName = `private-workspace-${workspace.id}`;
+                                    const eventPayloadPusher = { type: 'message_status_update', payload: payloadToPublish };
+
+                                    try {
+                                        await pusher.trigger(channelName, 'message_status_update', eventPayloadPusher);
+                                        console.log(`[WH_STATUS_LOG] Pusher event 'message_status_update' triggered on ${channelName} for Msg ID ${targetMessage.id}`);
+                                    } catch (pusherError: any) {
+                                        console.error(`[WH_STATUS_LOG] Failed to trigger Pusher event for Msg ID ${targetMessage.id}:`, pusherError?.message || pusherError);
                                     }
                                 } else {
-                                    console.log(`[WH_STATUS_LOG] No event prepared to publish for Msg ID ${messageInDb.id}.`);
+                                    console.log(`[WH_STATUS_LOG] Received status '${status.status}' (maps to ${dbNewStatus}) for Msg ID ${targetMessage.id}, but current status is '${targetMessage.status}' (${existingStatusIndex} >= ${newStatusIndex}) or new status is not FAILED while current is. No update or Pusher event needed.`);
                                 }
-                            } // Fim loop statusUpdate
+                            }
                         } // <<< FIM: Processamento de Statuses >>>
 
                     } // Fim loop changes
