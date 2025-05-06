@@ -338,123 +338,95 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     const handleRealtimeNewMessage = useCallback((message: Message) => {
         if (!message || !message.id || !message.conversation_id) {
-             console.warn("[ConversationContext] handleRealtimeNewMessage received invalid message:", message);
+             console.warn("[ConversationContext] handleRealtimeNewMessage received invalid message structure:", message);
              return;
         }
-        // console.log(`[ConversationContext] handleRealtimeNewMessage: Processing Msg ID ${message.id} for Conv ${message.conversation_id}`); // DEBUG
 
         setMessageCache(prevCache => {
             const current = prevCache[message.conversation_id] || [];
             if (current.some(m => m.id === message.id)) {
-                // console.log(`[ConversationContext] Realtime message ${message.id} already in cache. Ignoring.`); // DEBUG
                 return prevCache;
             }
             const newMessages = [
                 ...current.filter(m => !m.id.startsWith('optimistic-')),
                 message
             ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-            // console.log(`[ConversationContext] Updating cache for ${message.conversation_id}. Removed optimistic, added real ${message.id}.`); // DEBUG
             return { ...prevCache, [message.conversation_id]: newMessages };
         });
 
+        // Atualiza as Mensagens Selecionadas (SE for a conversa ativa)
         if (selectedConversation?.id === message.conversation_id) {
             setSelectedConversationMessages(prev => {
+                // Evita duplicados no estado selecionado
                 if (prev.some(m => m.id === message.id)) {
-                    // console.log(`[ConversationContext] Realtime message ${message.id} already in selected messages. Ignoring.`); // DEBUG
-                    return prev;
+                    return prev; // Retorna o estado anterior sem adicionar
                 }
+                // Adiciona nova mensagem e remove otimistas
                 const updatedMessages = [
                     ...prev.filter(m => !m.id.startsWith('optimistic-')),
                     message
                 ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                // console.log(`[ConversationContext] Updating selected messages. Removed optimistic, added real ${message.id}.`); // DEBUG
-                return updatedMessages;
+                return updatedMessages; // Retorna o novo estado com a mensagem adicionada
             });
         }
         updateOrAddOptimisticallyInList(message);
         if (selectedConversation?.id !== message.conversation_id) {
-            // console.log(`[ConversationContext] Marking ${message.conversation_id} as unread`); // DEBUG
             setUnreadConversationIds(prev => new Set(prev).add(message.conversation_id));
         }
     }, [selectedConversation, messageCache, updateOrAddOptimisticallyInList, setUnreadConversationIds]);
 
     const handleRealtimeStatusUpdate = useCallback((data: any) => {
-         // console.log(`[ConversationContext] handleRealtimeStatusUpdate PAYLOAD RECEIVED:`, data); // DEBUG
          const { messageId, conversation_id, newStatus, providerMessageId, errorMessage } = data;
          if (!messageId || !conversation_id || !newStatus) {
              console.warn("[ConversationContext] handleRealtimeStatusUpdate received invalid data structure in payload:", data);
              return;
          }
-         // console.log(`[ConversationContext] Processing status update: Msg ID ${messageId} in Conv ${conversation_id} to ${newStatus}`); // DEBUG
 
          setMessageCache(prevCache => {
-             const newCache = { ...prevCache };
-             const convMessages = newCache[conversation_id];
-             if (convMessages && Array.isArray(convMessages)) {
-                 const msgIndex = convMessages.findIndex(m =>
-                     m.id === messageId ||
-                     (m.id.startsWith('optimistic-') && m.provider_message_id === providerMessageId)
-                 );
-                 if (msgIndex !== -1) {
-                     const updatedMessages = [...convMessages];
-                     updatedMessages[msgIndex] = {
-                         ...updatedMessages[msgIndex],
-                         status: newStatus,
-                         ...(newStatus === 'FAILED' && errorMessage && {
-                             metadata: { ...updatedMessages[msgIndex].metadata, errorMessage }
-                         })
-                     };
-                     newCache[conversation_id] = updatedMessages;
-                     // console.log(`[ConversationContext] Message ${messageId} status updated to ${newStatus} in general cache for conv ${conversation_id}.`); // DEBUG
-                     return newCache;
-                 } else {
-                     // console.log(`[ConversationContext] Message ${messageId} not found in general cache for conv ${conversation_id} to update status.`); // DEBUG
-                 }
-             } else {
-                  // console.log(`[ConversationContext] No messages found in cache for conv ${conversation_id} to update status.`); // DEBUG
-             }
-             return prevCache;
+             const conversationMessages = prevCache[conversation_id];
+             if (!conversationMessages) return prevCache;
+
+             const messageIndex = conversationMessages.findIndex(m => m.id === messageId || (providerMessageId && m.provider_message_id === providerMessageId));
+             if (messageIndex === -1) return prevCache;
+
+             const updatedMessages = [...conversationMessages];
+             const updatedMessage = {
+                 ...updatedMessages[messageIndex],
+                 status: newStatus,
+                 provider_message_id: providerMessageId || updatedMessages[messageIndex].provider_message_id,
+                 error_message: errorMessage || null,
+             };
+             updatedMessages[messageIndex] = updatedMessage;
+             return { ...prevCache, [conversation_id]: updatedMessages };
          });
 
          if (selectedConversation?.id === conversation_id) {
-             setSelectedConversationMessages(prevMessages => {
-                 const msgIndex = prevMessages.findIndex(m =>
-                     m.id === messageId ||
-                     (m.id.startsWith('optimistic-') && m.provider_message_id === providerMessageId)
-                 );
-                 if (msgIndex !== -1) {
-                     const updatedMessages = [...prevMessages];
-                     updatedMessages[msgIndex] = {
-                         ...updatedMessages[msgIndex],
-                         status: newStatus,
-                          ...(newStatus === 'FAILED' && errorMessage && {
-                             metadata: { ...updatedMessages[msgIndex].metadata, errorMessage }
-                         })
-                     };
-                     // console.log(`[ConversationContext] Message ${messageId} status updated to ${newStatus} in selectedMessages.`); // DEBUG
-                     return updatedMessages;
-                 }
-                 // console.log(`[ConversationContext] Message ${messageId} not found in selectedMessages to update status.`); // DEBUG
-                 return prevMessages;
+             setSelectedConversationMessages(prev => {
+                 const messageIndex = prev.findIndex(m => m.id === messageId || (providerMessageId && m.provider_message_id === providerMessageId));
+                 if (messageIndex === -1) return prev;
+
+                 const updatedMessages = [...prev];
+                 const updatedMessage = {
+                     ...updatedMessages[messageIndex],
+                     status: newStatus,
+                     provider_message_id: providerMessageId || updatedMessages[messageIndex].provider_message_id,
+                     error_message: errorMessage || null,
+                 };
+                 updatedMessages[messageIndex] = updatedMessage;
+                 return updatedMessages;
              });
          }
-
-         setConversations(prevConversations =>
-             prevConversations.map(conv => {
-                 if (conv.id === conversation_id && conv.last_message?.id === messageId) {
-                      // console.log(`[ConversationContext] Updating last_message status for conversation ${conversation_id} in list.`); // DEBUG
-                     return {
-                         ...conv,
-                         last_message: {
-                             ...conv.last_message,
-                             status: newStatus,
-                         },
-                     };
-                 }
-                 return conv;
-             })
-         );
-    }, [selectedConversation, setMessageCache, setSelectedConversationMessages, setConversations]);
+         // Atualiza o status na lista geral de conversas se necessário (ex: para mostrar "falha" na lista)
+         setConversations(prev => prev.map(conv => {
+             if (conv.id === conversation_id && conv.last_message?.id === messageId) {
+                 return {
+                     ...conv,
+                     last_message_status: newStatus,
+                 };
+             }
+             return conv;
+         }));
+    }, [selectedConversation, messageCache, setMessageCache, setSelectedConversationMessages, setConversations]);
 
     // --- Ações do Usuário (precisam estar declaradas antes do useEffect do Pusher) --- //
     const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string) => {

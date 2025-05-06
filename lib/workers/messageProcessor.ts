@@ -19,6 +19,8 @@ import { Readable } from 'stream';
 import { generateChatCompletion } from '../ai/chatService';
 // <<< Importar Notifier Service >>>
 import { publishConversationUpdate, publishWorkspaceUpdate } from '../services/notifierService';
+// Import Pusher server to notify real-time clients
+import pusher from '@/lib/pusher';
 // <<< Importar Channel Service >>>
 import { sendWhatsAppMessage } from '../services/channelService';
 // <<< Importar Carregador de Ferramentas >>>
@@ -607,6 +609,15 @@ async function processJob(job: Job<JobData>) {
             // <<< USAR notifierService >>>
             await publishConversationUpdate(conversationChannel, newAiMessagePayload);
             console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada no canal Redis da CONVERSA.`);
+            // Também notifica via Pusher para clientes em tempo real
+            try {
+                const pusherPayload = JSON.stringify(newAiMessagePayload);
+                const workspaceChannel = `private-workspace-${workspaceId}`;
+                await pusher.trigger(workspaceChannel, 'new_message', pusherPayload);
+                console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada via Pusher no canal ${workspaceChannel}.`);
+            } catch (pusherError) {
+                console.error(`[MsgProcessor ${jobId}] Erro ao publicar mensagem da IA via Pusher:`, pusherError);
+            }
         } catch (aiMsgPublishError) {
             console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR mensagem da IA no Redis (Canal Conversa):`, aiMsgPublishError);
         }
