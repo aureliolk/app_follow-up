@@ -182,7 +182,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, []);
 
     // --- Funções de Busca/Seleção --- //
-    async function fetchConversationMessages(conversationId: string): Promise<Message[]> {
+    const fetchConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
         if (messageCache[conversationId]) {
             setSelectedConversationMessages(messageCache[conversationId]);
             setLoadingSelectedConversationMessages(false);
@@ -206,7 +206,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         } finally {
             setLoadingSelectedConversationMessages(false);
         }
-    }
+    }, [messageCache, setMessageCache, setSelectedConversationMessages, setLoadingSelectedConversationMessages, setSelectedConversationError]);
 
     const selectConversation = useCallback((conversation: ClientConversation | null) => {
         const newConversationId = conversation?.id ?? null;
@@ -237,7 +237,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         if (!wsId) {
             setConversationsError("Workspace ID não encontrado.");
             setConversations([]);
-            selectConversation(null); 
+            selectConversation(null);
             return;
         }
         // console.log(`[ConversationContext] Fetching conversations for ws: ${wsId}, filter: ${filter}`); // DEBUG
@@ -280,7 +280,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         } finally {
             setLoadingConversations(false);
         }
-    }, [workspaceContext, selectedConversation, selectConversation]);
+    }, [workspaceContext.workspace?.id, selectedConversation?.id, selectConversation]);
 
     const clearMessagesError = useCallback(() => {
         setSelectedConversationError(null);
