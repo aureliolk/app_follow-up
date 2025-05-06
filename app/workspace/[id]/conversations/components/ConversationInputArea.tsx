@@ -297,6 +297,7 @@ export default function ConversationInputArea({
           <WhatsappTemplateDialog
                onSendTemplate={handleSendTemplate}
                disabled={isSendingMessage || isUploading || isRecording || loadingTemplates}
+               isSendingTemplate={isSendingMessage}
           />
         </div>
 

@@ -23,6 +23,7 @@ import { toast } from 'react-hot-toast';
 interface WhatsappTemplateDialogProps {
   onSendTemplate: (templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => void;
   disabled?: boolean; // Para desabilitar o botão trigger
+  isSendingTemplate?: boolean; // Exibe loading ao enviar o template
 }
 
 // Mock/Placeholder para tipo de Template (definir melhor depois ou importar de @/app/types)
@@ -35,7 +36,7 @@ interface WhatsappTemplateDialogProps {
 // }
 
 
-export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: WhatsappTemplateDialogProps) {
+export default function WhatsappTemplateDialog({ onSendTemplate, disabled, isSendingTemplate }: WhatsappTemplateDialogProps) {
   const { templates, loadingTemplates, templateError } = useWhatsappTemplates();
 
   // Estados internos do diálogo
@@ -75,7 +76,7 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
   };
 
   // Função para inserir o template após preencher variáveis
-  const handleInsertTemplateWithVariables = () => {
+  const handleInsertTemplateWithVariables = async () => {
     if (!selectedTemplateForEditing) return;
 
     let allVariablesFilled = true;
@@ -91,14 +92,19 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
         return;
     }
 
-    onSendTemplate({
+    try {
+      await onSendTemplate({
         name: selectedTemplateForEditing.name,
         language: selectedTemplateForEditing.language,
         variables: variableValues,
         body: selectedTemplateForEditing.body
-    });
-    resetDialogState();
-    setShowTemplateDialog(false);
+      });
+      setShowTemplateDialog(false);
+      resetDialogState();
+    } catch (error) {
+      console.error('[WhatsappTemplateDialog] Error sending template:', error);
+      // O contexto já exibirá toast de erro
+    }
   };
 
   // Função para voltar da view de variáveis para a lista
@@ -137,7 +143,7 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
         <DialogHeader>
           {selectedTemplateForEditing ? (
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={handleBackToTemplateList} className="-ml-2">
+              <Button variant="ghost" size="icon" onClick={handleBackToTemplateList} className="-ml-2" disabled={isSendingTemplate}>
                 <ArrowLeft className="h-4 w-4" />
               </Button>
               <DialogTitle>Preencher Variáveis: {selectedTemplateForEditing.name}</DialogTitle>
@@ -171,14 +177,22 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled }: Wha
                       onChange={(e) => handleVariableChange(variableKey, e.target.value)}
                       className="col-span-3"
                       placeholder={`Valor para {{${variableKey}}}`}
+                      disabled={isSendingTemplate}
                     />
                   </div>
                 ))}
               </div>
             </DialogScrollArea>
             <DialogFooter className="mt-auto pt-4 border-t">
-              <Button onClick={handleInsertTemplateWithVariables}>
-                Enviar Template
+              <Button
+                onClick={handleInsertTemplateWithVariables}
+                disabled={isSendingTemplate}
+              >
+                {isSendingTemplate ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  'Enviar Template'
+                )}
               </Button>
             </DialogFooter>
           </div>

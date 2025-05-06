@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { sendWhatsappTemplateMessage } from '@/lib/channel/whatsappSender';
 import { decrypt } from '@/lib/encryption'; // Assumindo que as credenciais estão criptografadas
 import { publishConversationUpdate } from '@/lib/services/notifierService';
+import pusher from '@/lib/pusher';
 import type { Message } from '@/app/types';
 
 interface SendTemplateArgs {
@@ -127,6 +128,7 @@ export async function sendWhatsappTemplateAction(
           status: messageStatus,
           timestamp: new Date(),
           channel_message_id: wamid,
+          providerMessageId: wamid,
           media_url: null,
           media_mime_type: null,
         },
@@ -135,12 +137,41 @@ export async function sendWhatsappTemplateAction(
 
        if (createdMessage) {
          const redisChannel = `chat-updates:${args.conversationId}`;
-         const payload = {
-           type: 'new_message',
-           payload: createdMessage
-         };
-         await publishConversationUpdate(redisChannel, payload);
-         console.log(`[Server Action] Published 'new_message' to Redis channel ${redisChannel}`);
+        const payload = {
+          type: 'new_message',
+          payload: createdMessage
+        };
+        await publishConversationUpdate(redisChannel, payload);
+        console.log(`[Server Action] Published 'new_message' to Redis channel ${redisChannel}`);
+        // Notificar via Pusher para atualização imediata na UI
+        try {
+          const pusherPayload = JSON.stringify({ type: 'new_message', payload: createdMessage });
+          const pusherChannel = `private-workspace-${args.workspaceId}`;
+          await pusher.trigger(pusherChannel, 'new_message', pusherPayload);
+          console.log(`[Server Action] Pusher event 'new_message' triggered on channel ${pusherChannel}`);
+        } catch (pusherError) {
+          console.error('[Server Action] Error triggering Pusher for template message:', pusherError);
+        }
+        // Publicar atualização de status da mensagem (SENT)
+        try {
+          const statusPayload = {
+            payload: {
+              messageId: createdMessage.id,
+              conversation_id: args.conversationId,
+              newStatus: messageStatus,
+              providerMessageId: wamid,
+            }
+          };
+          // Redis/SSE
+          await publishConversationUpdate(redisChannel, statusPayload);
+          console.log(`[Server Action] Published 'message_status_update' to Redis channel ${redisChannel}`);
+          // Pusher
+          const statusPusherChannel = `private-workspace-${args.workspaceId}`;
+          await pusher.trigger(statusPusherChannel, 'message_status_update', statusPayload);
+          console.log(`[Server Action] Pusher event 'message_status_update' triggered on channel ${statusPusherChannel}`);
+        } catch (statusError) {
+          console.error('[Server Action] Error publishing status update for template message:', statusError);
+        }
        }
 
     } catch (dbError) {
