@@ -78,8 +78,8 @@ interface ConversationContextType {
     // Handlers para serem chamados pelo WebSocketProvider
     handleRealtimeNewMessage: (message: Message) => void;
     handleRealtimeStatusUpdate: (data: any) => void;
+    handleRealtimeAIStatusUpdate: (data: { conversationId: string; is_ai_active: boolean }) => void;
     // handleRealtimeContentUpdate: (data: any) => void; // Adicionar se necessário
-    // handleRealtimeAiStatusUpdate: (data: any) => void; // Adicionar se necessário
 
     // Ações do Usuário (Placeholders - para serem implementadas com Server Actions)
     sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<void>; 
@@ -427,6 +427,26 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
              return conv;
          }));
     }, [selectedConversation, messageCache, setMessageCache, setSelectedConversationMessages, setConversations]);
+
+    // NEW HANDLER FUNCTION for AI status updates from Pusher
+    const handleRealtimeAIStatusUpdate = useCallback((data: { conversationId: string; is_ai_active: boolean }) => {
+        const { conversationId, is_ai_active } = data;
+        console.log(`[ConversationContext] Received 'ai_status_updated' event via Pusher. Conv ID: ${conversationId}, New AI Status: ${is_ai_active}`);
+
+        setConversations(prev =>
+            prev.map(conv =>
+                conv.id === conversationId ? { ...conv, is_ai_active: is_ai_active } : conv
+            )
+        );
+
+        if (selectedConversation?.id === conversationId) {
+            setSelectedConversation(prev => prev ? { ...prev, is_ai_active: is_ai_active } : null);
+        }
+
+        // Opcional: Adicionar um toast ou log para confirmar a atualização via Pusher
+        // toast.info(`Status da IA atualizado para conversa ${conversationId} via evento.`);
+
+    }, [selectedConversation?.id]);
 
     // --- Ações do Usuário (precisam estar declaradas antes do useEffect do Pusher) --- //
     const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string) => {
@@ -839,6 +859,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             try {
               channelRef.current.unbind('new_message', handleRealtimeNewMessage);
               channelRef.current.unbind('message_status_update', handleRealtimeStatusUpdate);
+              channelRef.current.unbind('ai_status_updated', handleRealtimeAIStatusUpdate);
             } catch (unbindError) {
               console.warn('[Pusher] Error during specific unbind:', unbindError);
             }
@@ -940,6 +961,23 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             });
             // console.log(`[Pusher] Event 'message_status_update' bound.`); // DEBUG
 
+            // Bind for AI status updates
+            // console.log(`[Pusher] Attempting to bind event 'ai_status_updated' directly to channel ${channelName}`); // DEBUG
+            channelInstance.bind('ai_status_updated', (jsonData: any) => {
+                // console.log(`[Pusher] Raw data received for 'ai_status_updated':`, jsonData); // DEBUG
+                try {
+                    const parsedData = (typeof jsonData === 'string') ? JSON.parse(jsonData) : jsonData;
+                    if (parsedData && parsedData.payload) {
+                        handleRealtimeAIStatusUpdate(parsedData.payload);
+                    } else {
+                        console.warn(`[Pusher] Received event 'ai_status_updated' but payload is missing or invalid:`, parsedData);
+                    }
+                } catch (error) {
+                    console.error(`[Pusher] Error parsing JSON for event 'ai_status_updated':`, error, 'Raw data:', jsonData);
+                }
+            });
+            // console.log(`[Pusher] Event 'ai_status_updated' bound.`); // DEBUG
+
           } catch (error) {
             console.error('[Pusher] Failed to initialize Pusher:', error);
             toast.error('Erro ao inicializar a conexão em tempo real.');
@@ -953,7 +991,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
         return cleanupPusher;
 
-    }, [workspaceContext.workspace?.id, loadingPusherConfig, pusherConfig, handleRealtimeNewMessage, handleRealtimeStatusUpdate]); // Adiciona dependências de config
+    }, [workspaceContext.workspace?.id, loadingPusherConfig, pusherConfig, handleRealtimeNewMessage, handleRealtimeStatusUpdate, handleRealtimeAIStatusUpdate]); // Adiciona dependências de config
 
     // --- Valor do Contexto --- //
     const contextValue = useMemo(() => ({
@@ -977,6 +1015,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         clearMessagesError,
         handleRealtimeNewMessage,
         handleRealtimeStatusUpdate,
+        handleRealtimeAIStatusUpdate,
         sendManualMessage,
         sendTemplateMessage,
         sendMediaMessage,
@@ -987,7 +1026,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         messageCache, unreadConversationIds, isSendingMessage, isTogglingAIStatus,
         isPusherConnected, loadingPusherConfig,
         fetchConversations, fetchConversationMessages, selectConversation, clearMessagesError,
-        handleRealtimeNewMessage, handleRealtimeStatusUpdate, sendManualMessage,
+        handleRealtimeNewMessage, handleRealtimeStatusUpdate, handleRealtimeAIStatusUpdate, sendManualMessage,
         sendTemplateMessage, sendMediaMessage, toggleAIStatus,
     ]);
 
