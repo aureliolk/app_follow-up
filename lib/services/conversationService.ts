@@ -269,13 +269,31 @@ export async function sendOperatorMessage(
                       select: pendingMessageSelect // Re-selecionar para obter o objeto atualizado
                   });
                   console.log(`[Svc SendOperatorMsg] Updated message ${pendingMessage.id} to SENT with channel_message_id: ${sendResult.wamid}`);
+
+                  // <<< Atualizar last_message_at da Conversa APÓS envio iniciado >>>
+                  await prisma.conversation.update({
+                      where: { id: conversationId },
+                      data: { last_message_at: pendingMessage.timestamp } // Usa o timestamp da mensagem enviada
+                  });
+                  console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after successful send.`);
+
              } catch (updateError) {
                   // Logar erro, mas não falhar a operação principal, pois o envio foi iniciado.
                   // O webhook de status pode eventualmente corrigir isso se a mensagem for encontrada de outra forma.
-                  console.error(`[Svc SendOperatorMsg] Failed to update status/channel_message_id for message ${pendingMessage.id}:`, updateError);
+                  console.error(`[Svc SendOperatorMsg] Failed to update status/channel_message_id for message ${pendingMessage.id} OR conversation timestamp:`, updateError);
              }
         } else {
             console.warn(`[Svc SendOperatorMsg] WhatsApp send succeeded for msg ${pendingMessage.id}, but no WAMID was returned.`);
+            // <<< Mesmo sem WAMID, atualizar last_message_at se o envio foi ok >>>
+            try {
+                await prisma.conversation.update({
+                   where: { id: conversationId },
+                   data: { last_message_at: pendingMessage.timestamp } // Usa o timestamp da mensagem enviada
+                });
+                console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after successful send (no WAMID returned).`);
+            } catch (convUpdateError) {
+                console.error(`[Svc SendOperatorMsg] Failed to update conversation timestamp after successful send (no WAMID):`, convUpdateError);
+            }
         }
 
         // 4. Sucesso (Envio iniciado ou processado internamente)
@@ -292,8 +310,16 @@ export async function sendOperatorMessage(
                      data: { status: 'FAILED', errorMessage: error.message, metadata: { ...existingMetadata, error: error.message } }
                  });
                  console.log(`[Svc SendOperatorMsg] Updated message ${pendingMessage.id} to FAILED.`);
+
+                 // <<< Mesmo em caso de falha, atualizar last_message_at para manter a conversa no topo >>>
+                 await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { last_message_at: pendingMessage.timestamp } // Usa o timestamp da mensagem que falhou
+                 });
+                 console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after FAILED message.`);
+
              } catch (updateError) {
-                  console.error(`[Svc SendOperatorMsg] CRITICAL: Failed to update message ${pendingMessage.id} to FAILED after send error:`, updateError);
+                  console.error(`[Svc SendOperatorMsg] CRITICAL: Failed to update message ${pendingMessage.id} to FAILED or conversation timestamp after send error:`, updateError);
              }
         }
         return { success: false, error: error.message || 'Erro interno ao enviar mensagem.', statusCode: 500 };
