@@ -142,14 +142,14 @@ const campaignProcessorWorker = new Worker(
 
               console.log(`[CampaignProcessor ${job.id}] Padronizado ${clientPhoneNumberRaw} -> ${standardizedPhoneNumber}. Buscando/Criando conversa para Contato ${contact.id}...`);
 
-              const { conversation, client, wasCreated } = await getOrCreateConversation(
+              const { conversation, client, conversationWasCreated, clientWasCreated } = await getOrCreateConversation(
                   updatedCampaign.workspaceId, // Usar o workspaceId da campanha atualizada
                   standardizedPhoneNumber,
                   contact.contactName || undefined // Passa o nome se existir
               );
               conversationId = conversation.id; // <<< Armazena ID da conversa >>>
               clientId = client.id; // <<< Armazena ID do cliente >>>
-              console.log(`[CampaignProcessor ${job.id}] Conversa ${conversation.id} ${wasCreated ? 'CRIADA' : 'recuperada'} para Cliente ${client.id} (Contato Campanha: ${contact.id})`);
+              console.log(`[CampaignProcessor ${job.id}] Conversa ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'recuperada'} para Cliente ${client.id} (Contato Campanha: ${contact.id}) (${clientWasCreated ? 'NOVO CLIENTE' : 'CLIENTE EXISTENTE'})`);
 
           } catch (convFollowUpError) {
               console.error(`[CampaignProcessor ${job.id}] Erro crítico durante getOrCreateConversation ou setup de FollowUp para Contato ${contact.id}:`, convFollowUpError);
