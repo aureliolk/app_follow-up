@@ -665,48 +665,71 @@ async function processJob(job: Job<JobData>) {
             if (whatsappAccessToken && whatsappPhoneNumberId && clientPhoneNumber) {
                 try {
                     console.log(`[MsgProcessor ${jobId}] STEP 9: Attempting sendWhatsappMessage to ${clientPhoneNumber}...`);
-                    // <<< USAR channelService >>>
+
                     const sendResult = await sendWhatsAppMessage(
                         whatsappPhoneNumberId,
                         clientPhoneNumber,
-                        encryptedAccessToken, // Passar o token ENCRIPTADO
-                        finalAiResponseText, // <<< ENVIAR CONTEÚDO FINAL DA IA
-                        aiDisplayName
+                        encryptedAccessToken,
+                        finalAiResponseText,
+                        workspace.ai_name || undefined
                     );
-                    console.log(`[MsgProcessor ${jobId}] STEP 9: sendWhatsappMessage call completed.`);
+
+                     console.log(`[MsgProcessor ${jobId}] Resultado do envio WhatsApp:`, sendResult);
+
                     if (sendResult.success && sendResult.wamid) {
-                        console.log(`[MsgProcessor ${jobId}] STEP 9: WhatsApp send SUCCESS. Message ID: ${sendResult.wamid}`);
-                        
-                        // <<< LOG DETALHADO ANTES DO UPDATE >>>
-                        const updateData = { 
-                            channel_message_id: sendResult.wamid, 
-                            status: 'SENT'
-                        };
-                        console.log(`[MsgProcessor ${jobId}] STEP 9: PREPARING to update message ${newAiMessage.id} with data:`, JSON.stringify(updateData));
-                        
+                        console.log(`[MsgProcessor ${jobId}] Envio WhatsApp da IA bem-sucedido. WAMID: ${sendResult.wamid}`);
                         try {
+                            // <<< CORREÇÃO AQUI: Atualizar providerMessageId >>>
+                            const dataToUpdate = {
+                                channel_message_id: sendResult.wamid,
+                                providerMessageId: sendResult.wamid, // <<< Adicionar providerMessageId
+                                status: 'SENT' as const
+                            };
+                            console.log(`[MsgProcessor ${jobId}] Atualizando mensagem IA ${newAiMessage.id} com dados:`, dataToUpdate);
                             await prisma.message.update({
                                 where: { id: newAiMessage.id },
-                                data: updateData
+                                data: dataToUpdate
                             });
-                            // <<< LOG DE SUCESSO APÓS UPDATE >>>
-                            console.log(`[MsgProcessor ${jobId}] STEP 9: SUCCESS updating message ${newAiMessage.id} status to SENT.`);
-                        } catch (updateError: any) {
-                             // <<< LOG DETALHADO DO ERRO >>>
-                             console.error(`[MsgProcessor ${jobId}] STEP 9: ERROR updating message ${newAiMessage.id} status/channel_id. Data attempted: ${JSON.stringify(updateData)}`, updateError);
-                             // Log o erro completo, pode ter mais detalhes
-                             console.error(`[MsgProcessor ${jobId}] STEP 9: Full update error object:`, updateError);
+                            console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para SENT.`);
+                        } catch (updateError) {
+                            console.error(`[MsgProcessor ${jobId}] Falha ao atualizar status/WAMID da mensagem IA ${newAiMessage.id}:`, updateError);
                         }
-                        // <<< LOG APÓS TENTATIVA (SEMPRE RODA) >>>
-                        console.log(`[MsgProcessor ${jobId}] STEP 9: Finished attempt to update status/channel_id for message ${newAiMessage.id}.`);
-
                     } else {
-                        console.error(`[MsgProcessor ${jobId}] STEP 9: WhatsApp send FAILED:`, JSON.stringify(sendResult.error || 'Erro desconhecido'));
+                         // <<< TRATAR FALHA OU WAMID AUSENTE >>>
+                         console.error(`[MsgProcessor ${jobId}] Envio WhatsApp da IA FALHOU ou WAMID ausente. Error: ${sendResult.error}`);
+                         try {
+                             await prisma.message.update({
+                                 where: { id: newAiMessage.id }, // Usa o ID da mensagem IA salva
+                                 data: { 
+                                     status: 'FAILED', 
+                                     // Tenta extrair uma mensagem de erro, senão usa um padrão
+                                     errorMessage: typeof sendResult.error === 'string' 
+                                                            ? sendResult.error 
+                                                            : (typeof sendResult.error === 'object' && sendResult.error !== null && 'message' in sendResult.error)
+                                                                ? String((sendResult.error as any).message)
+                                                                : 'Falha no envio ou WAMID ausente' 
+                                 }
+                             });
+                             console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para FAILED (falha no envio).`);
+                         } catch (failUpdateError) {
+                             console.error(`[MsgProcessor ${jobId}] CRITICAL: Falha ao atualizar mensagem IA ${newAiMessage.id} para FAILED após falha no envio:`, failUpdateError);
+                         }
                     }
-                } catch (decryptOrSendError: any) {
-                     console.error(`[MsgProcessor ${jobId}] STEP 9: ERROR in decrypt/send block:`, decryptOrSendError.message);
-                     // Considerar se este erro deveria ir para o catch principal? Provavelmente sim.
-                     // throw decryptOrSendError; // <<< Poderia adicionar isso para garantir que vá ao catch principal
+                } catch (sendError: any) {
+                    // <<< TRATAR EXCEÇÃO NO ENVIO >>>
+                    console.error(`[MsgProcessor ${jobId}] Erro ao chamar sendWhatsAppMessage para resposta IA:`, sendError);
+                     try {
+                         await prisma.message.update({
+                             where: { id: newAiMessage.id }, // Usa o ID da mensagem IA salva
+                             data: { 
+                                 status: 'FAILED', 
+                                 errorMessage: sendError?.message ?? 'Erro desconhecido ao enviar via WhatsApp' 
+                             }
+                         });
+                         console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para FAILED (exceção no envio).`);
+                     } catch (failUpdateError) {
+                         console.error(`[MsgProcessor ${jobId}] CRITICAL: Falha ao atualizar mensagem IA ${newAiMessage.id} para FAILED após exceção no envio:`, failUpdateError);
+                     }
                 }
             } else {
                  console.error(`[MsgProcessor ${jobId}] STEP 9: Missing data for WhatsApp send (Token: ${!!whatsappAccessToken}, PhoneID: ${!!whatsappPhoneNumberId}, ClientPhone: ${!!clientPhoneNumber}).`);

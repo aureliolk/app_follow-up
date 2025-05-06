@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { FollowUpStatus, MessageSenderType, ConversationStatus } from '@prisma/client';
 import { decrypt } from '@/lib/encryption';
-import { sendWhatsappMessage } from "@/lib/channel/whatsappSender";
+import { sendWhatsAppMessage } from "@/lib/services/channelService";
 import { Prisma } from '@prisma/client';
 
 // Context shapes for services
@@ -239,15 +239,12 @@ export async function sendOperatorMessage(
             throw new Error('Configuração do WhatsApp incompleta.'); // Erro será pego abaixo
         }
 
-        const decryptedToken = decrypt(whatsappAccessToken);
-         if (!decryptedToken) throw new Error("Token de acesso descriptografado está vazio.");
-
-        const sendResult = await sendWhatsappMessage(
+        const sendResult = await sendWhatsAppMessage(
             whatsappPhoneNumberId,
             clientPhoneNumber,
-            decryptedToken,
-            content, // Enviar conteúdo original, sem prefixo manual
-            senderDisplayName // Passar nome do operador para o sender (se ele usar)
+            whatsappAccessToken,
+            content,
+            senderDisplayName
         );
 
         if (sendResult.success && sendResult.wamid) {
@@ -303,7 +300,7 @@ export async function sendOperatorMessage(
             return { success: true, message: pendingMessage };
 
         } else {
-            // Envio falhou conforme reportado por sendWhatsappMessage
+            // Envio falhou conforme reportado por sendWhatsAppMessage
             let errorMessage = 'Falha no envio pelo WhatsApp (reportado pelo sender)';
             if (sendResult.error) {
                 if (typeof sendResult.error === 'string') {
