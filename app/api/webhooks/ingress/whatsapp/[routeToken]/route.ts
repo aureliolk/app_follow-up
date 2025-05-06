@@ -13,6 +13,7 @@ import { getOrCreateConversation } from '@/lib/services/conversationService';
 import { saveMessageRecord } from '@/lib/services/persistenceService';
 import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
 import pusher from '@/lib/pusher'; // <-- Adicionar importação do Pusher
+import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
 
 
 // Define a type for the selected message fields
@@ -183,14 +184,42 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Remetente padronizado de ${senderPhoneNumberRaw} para ${senderPhoneNumber}`);
                                     
                                     // Obter ou criar conversa e client usando serviço modularizado
-                                    const { conversation, client, wasCreated } = await getOrCreateConversation(
+                                    const { conversation, client, clientWasCreated, conversationWasCreated } = await getOrCreateConversation(
                                         workspace.id,
                                         senderPhoneNumber,
                                         senderName // <<< Passar o nome extraído
                                     );
                                     console.log(
-                                        `[WHATSAPP WEBHOOK - POST ${routeToken}] Conversation ${conversation.id} ${wasCreated ? 'criada' : 'recuperada'} para client ${client.id}.` + (senderName ? ` (Nome: ${senderName})` : '') // Log opcional do nome
+                                        `[WHATSAPP WEBHOOK - POST ${routeToken}] Client ${client.id} ${clientWasCreated ? 'CRIADO' : 'existente'}. Conversation ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'existente'}.`
                                     );
+
+                                    // <<< INÍCIO: Lógica para criar Deal se novo cliente >>>
+                                    if (clientWasCreated) {
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Novo cliente ${client.id} criado. Tentando criar Deal no Kanban...`);
+                                        try {
+                                            const stages = await getPipelineStages(workspace.id);
+                                            if (stages && stages.length > 0) {
+                                                const firstStage = stages[0];
+                                                const dealName = `Novo Lead - ${client.name || client.phone_number}`;
+                                                
+                                                await createDeal(workspace.id, {
+                                                    name: dealName,
+                                                    stageId: firstStage.id,
+                                                    clientId: client.id,
+                                                    value: null, // Ou 0, ou um valor padrão se aplicável
+                                                    // assigned_to_id: null, // Opcional
+                                                    // ai_controlled: true // Opcional, se o default do schema não for suficiente
+                                                });
+                                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Deal "${dealName}" criado com sucesso para cliente ${client.id} no estágio "${firstStage.name}".`);
+                                            } else {
+                                                console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nenhum estágio de pipeline encontrado para workspace ${workspace.id}. Deal não criado para novo cliente ${client.id}.`);
+                                            }
+                                        } catch (dealError) {
+                                            console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro ao criar Deal para novo cliente ${client.id}:`, dealError);
+                                            // Não falhar o webhook por isso, apenas logar.
+                                        }
+                                    }
+                                    // <<< FIM: Lógica para criar Deal se novo cliente >>>
 
                                     let messageContent: string | null = null;
                                     const messageType = message.type;

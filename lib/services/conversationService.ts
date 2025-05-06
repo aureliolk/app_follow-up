@@ -98,12 +98,12 @@ export async function getOrCreateConversation(
   workspaceId: string,
   phoneNumber: string,
   clientName?: string | null
-): Promise<{ client: Client; conversation: Conversation; wasCreated: boolean }> {
+): Promise<{ client: Client; conversation: Conversation; conversationWasCreated: boolean; clientWasCreated: boolean }> {
   // 1) Cliente
   let client = await prisma.client.findFirst({
     where: { workspace_id: workspaceId, phone_number: phoneNumber }
   });
-  let clientCreated = false;
+  let clientWasCreated = false;
   if (!client) {
     client = await prisma.client.create({
       data: { 
@@ -113,7 +113,7 @@ export async function getOrCreateConversation(
         metadata: {} 
       }
     });
-    clientCreated = true;
+    clientWasCreated = true;
   } else if (!client.name && clientName) {
     // Cliente existe, mas sem nome -> Atualiza com o nome recebido
     client = await prisma.client.update({
@@ -124,7 +124,7 @@ export async function getOrCreateConversation(
 
   // 2) Conversa
   let conversation: Conversation;
-  let wasCreated = false;
+  let conversationWasCreated = false;
   try {
     conversation = await prisma.conversation.create({
       data: {
@@ -136,7 +136,7 @@ export async function getOrCreateConversation(
         last_message_at: new Date()
       }
     });
-    wasCreated = true;
+    conversationWasCreated = true;
   } catch (e: any) {
     // Se já existir pela chave única workspace_id+client_id+channel, atualiza
     if (e.code === 'P2002') {
@@ -157,7 +157,7 @@ export async function getOrCreateConversation(
       throw e;
     }
   }
-  return { client, conversation, wasCreated };
+  return { client, conversation, conversationWasCreated, clientWasCreated };
 }
 
 // Tipo para a mensagem pendente retornada
