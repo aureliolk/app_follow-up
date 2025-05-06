@@ -126,53 +126,45 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
           if (storedUnread) {
             const parsedIds = JSON.parse(storedUnread);
             if (Array.isArray(parsedIds)) {
-              console.log(`[ConversationContext] Loaded ${parsedIds.length} unread IDs from Local Storage for ${wsId}`);
+              // console.log(`[ConversationContext] Loaded ${parsedIds.length} unread IDs from Local Storage for ${wsId}`); // DEBUG
               setUnreadConversationIds(new Set(parsedIds));
             } else {
               console.warn('[ConversationContext] Invalid data found in Local Storage for unread IDs. Resetting.');
-              localStorage.removeItem(storageKey); // Limpa dado inválido
+              localStorage.removeItem(storageKey);
               setUnreadConversationIds(new Set());
             }
-          } else {
-            // Nenhum dado salvo, inicializa vazio (já é o default, mas explícito)
-            setUnreadConversationIds(new Set());
           }
         } catch (error) {
           console.error('[ConversationContext] Error reading unread IDs from Local Storage:', error);
-          setUnreadConversationIds(new Set()); // Reseta em caso de erro
+          setUnreadConversationIds(new Set());
         }
       } else {
-        // Sem workspace, reseta o estado
         setUnreadConversationIds(new Set());
       }
-    }, [workspaceContext.workspace?.id]); // Executa quando o workspace ID muda
+    }, [workspaceContext.workspace?.id]);
 
     // --- Efeito para Salvar Estado de Não Lidos no Local Storage --- //
     useEffect(() => {
       const wsId = workspaceContext.workspace?.id;
-      // Só salva se houver um workspace ativo
       if (wsId) {
         const storageKey = `unreadConversationIds_${wsId}`;
         try {
-          // Converte o Set para Array antes de salvar
           const idsToStore = Array.from(unreadConversationIds);
           localStorage.setItem(storageKey, JSON.stringify(idsToStore));
-          // console.log(`[ConversationContext] Saved ${idsToStore.length} unread IDs to Local Storage for ${wsId}`); // Opcional: logar save
         } catch (error) {
           console.error('[ConversationContext] Error saving unread IDs to Local Storage:', error);
         }
       }
-      // Não precisamos de um 'else' aqui, pois só queremos salvar quando há workspace
-    }, [unreadConversationIds, workspaceContext.workspace?.id]); // Executa quando o set de IDs ou o workspace mudam
+    }, [unreadConversationIds, workspaceContext.workspace?.id]);
 
     // --- Efeito para Buscar Configuração Pusher da API --- //
     useEffect(() => {
-      console.log('[ConversationContext] Fetching Pusher config from API...');
+      // console.log('[ConversationContext] Fetching Pusher config from API...'); // DEBUG
       setLoadingPusherConfig(true);
       axios.get<{ pusherKey: string; pusherCluster: string }>('/api/config')
         .then(response => {
           if (response.data && response.data.pusherKey && response.data.pusherCluster) {
-            console.log('[ConversationContext] Pusher config received:', response.data);
+            // console.log('[ConversationContext] Pusher config received:', response.data); // DEBUG
             setPusherConfig(response.data);
           } else {
             throw new Error('Invalid config data received from API');
@@ -182,12 +174,12 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
           const errorMsg = error.response?.data?.error || error.message || 'Failed to fetch Pusher configuration';
           console.error('[ConversationContext] Error fetching Pusher config:', errorMsg);
           toast.error(`Erro ao carregar configuração real-time: ${errorMsg}`);
-          setPusherConfig(null); // Reseta config em caso de erro
+          setPusherConfig(null);
         })
         .finally(() => {
           setLoadingPusherConfig(false);
         });
-    }, []); // Roda apenas uma vez na montagem do provider
+    }, []);
 
     // --- Funções de Busca/Seleção --- //
     async function fetchConversationMessages(conversationId: string): Promise<Message[]> {
@@ -221,7 +213,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         const currentConversationId = selectedConversation?.id ?? null;
         if (newConversationId === currentConversationId) return;
 
-        console.log(`[ConversationContext] Selecting conversation: ${newConversationId}`);
+        // console.log(`[ConversationContext] Selecting conversation: ${newConversationId}`); // DEBUG
         setSelectedConversation(conversation);
         setSelectedConversationMessages([]);
         setSelectedConversationError(null);
@@ -238,7 +230,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 return prev;
             });
         } 
-    }, [selectedConversation, setUnreadConversationIds, messageCache]);
+    }, [selectedConversation, setUnreadConversationIds, messageCache, fetchConversationMessages]);
 
      const fetchConversations = useCallback(async (filter = 'ATIVAS', workspaceId?: string) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
@@ -248,7 +240,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             selectConversation(null); 
             return;
         }
-        console.log(`[ConversationContext] Fetching conversations for ws: ${wsId}, filter: ${filter}`);
+        // console.log(`[ConversationContext] Fetching conversations for ws: ${wsId}, filter: ${filter}`); // DEBUG
         setLoadingConversations(true);
         setConversationsError(null);
         try {
@@ -258,7 +250,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             if (!response.data.success || !response.data.data) throw new Error(response.data.error || 'Falha ao carregar conversas');
             const fetchedData = response.data.data;
             setConversations(fetchedData);
-            console.log(`[ConversationContext] Fetched ${fetchedData.length} conversations with filter ${filter}.`);
+            // console.log(`[ConversationContext] Fetched ${fetchedData.length} conversations with filter ${filter}.`); // DEBUG
 
             // Lógica de auto-seleção
             const currentSelectedId = selectedConversation?.id;
@@ -266,11 +258,11 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
             if (currentSelectedId && !listHasSelected) {
                  // Se a selecionada não está mais na lista (ex: mudou de status), deseleciona ou seleciona a primeira
-                console.log(`[ConversationContext] Selected conversation ${currentSelectedId} not in fetched list (${filter}). ${fetchedData.length > 0 ? 'Selecting first.' : 'Deselecting.'}`);
+                // console.log(`[ConversationContext] Selected conversation ${currentSelectedId} not in fetched list (${filter}). ${fetchedData.length > 0 ? 'Selecting first.' : 'Deselecting.'}`); // DEBUG
                  selectConversation(fetchedData.length > 0 ? fetchedData[0] : null);
             } else if (!currentSelectedId && fetchedData.length > 0) {
                 // Se nada estava selecionado e a lista não está vazia, seleciona a primeira
-                 console.log(`[ConversationContext] No conversation selected. Selecting first: ${fetchedData[0].id}`);
+                 // console.log(`[ConversationContext] No conversation selected. Selecting first: ${fetchedData[0].id}`); // DEBUG
                  selectConversation(fetchedData[0]);
             } else if (!currentSelectedId && fetchedData.length === 0) {
                  // Se nada selecionado e lista vazia, garante deseleção
@@ -288,7 +280,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         } finally {
             setLoadingConversations(false);
         }
-    }, [workspaceContext, selectedConversation]);
+    }, [workspaceContext, selectedConversation, selectConversation]);
 
     const clearMessagesError = useCallback(() => {
         setSelectedConversationError(null);
@@ -296,13 +288,13 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     // --- Handlers (precisam estar declarados antes do useEffect do Pusher) --- //
     const updateOrAddOptimisticallyInList = useCallback((message: Message) => {
-         console.log(`[ConversationContext] updateOrAddOptimisticallyInList called for Msg ID ${message.id}`);
+        // console.log(`[ConversationContext] updateOrAddOptimisticallyInList called for Msg ID ${message.id}`); // DEBUG
         setConversations(prev => {
             const conversationId = message.conversation_id;
             const existingIndex = prev.findIndex(c => c.id === conversationId);
             let newList = [...prev];
             if (existingIndex !== -1) {
-                // console.log(`[ConversationContext] Updating existing conversation ${conversationId}`);
+                // console.log(`[ConversationContext] Updating existing conversation ${conversationId}`); // DEBUG
                 const updatedConvo = {
                     ...newList[existingIndex],
                     last_message: message,
@@ -312,7 +304,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 newList.splice(existingIndex, 1);
                 newList.unshift(updatedConvo);
             } else {
-                 console.log(`[ConversationContext] Adding new optimistic conversation ${conversationId}`);
+                 // console.log(`[ConversationContext] Adding new optimistic conversation ${conversationId}`); // DEBUG
                  const clientInfo = message.metadata as any;
                  const partialClient = {
                      id: clientInfo?.clientId || 'unknown',
@@ -349,93 +341,120 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
              console.warn("[ConversationContext] handleRealtimeNewMessage received invalid message:", message);
              return;
         }
-        console.log(`[ConversationContext] handleRealtimeNewMessage: Processing Msg ID ${message.id} for Conv ${message.conversation_id}`);
+        // console.log(`[ConversationContext] handleRealtimeNewMessage: Processing Msg ID ${message.id} for Conv ${message.conversation_id}`); // DEBUG
 
-        // Update Cache
         setMessageCache(prevCache => {
             const current = prevCache[message.conversation_id] || [];
-            // Ainda verifica se o ID real já existe para evitar duplicatas de eventos SSE
             if (current.some(m => m.id === message.id)) {
-                console.log(`[ConversationContext] Realtime message ${message.id} already in cache. Ignoring.`);
+                // console.log(`[ConversationContext] Realtime message ${message.id} already in cache. Ignoring.`); // DEBUG
                 return prevCache;
             }
-            // Filtra mensagens otimistas E adiciona a nova mensagem real
             const newMessages = [
                 ...current.filter(m => !m.id.startsWith('optimistic-')),
                 message
             ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-            console.log(`[ConversationContext] Updating cache for ${message.conversation_id}. Removed optimistic, added real ${message.id}.`);
+            // console.log(`[ConversationContext] Updating cache for ${message.conversation_id}. Removed optimistic, added real ${message.id}.`); // DEBUG
             return { ...prevCache, [message.conversation_id]: newMessages };
         });
 
-        // Update selected messages if it's the active conversation
         if (selectedConversation?.id === message.conversation_id) {
             setSelectedConversationMessages(prev => {
-                // Verifica se o ID REAL já existe na lista selecionada
                 if (prev.some(m => m.id === message.id)) {
-                    console.log(`[ConversationContext] Realtime message ${message.id} already in selected messages. Ignoring.`);
+                    // console.log(`[ConversationContext] Realtime message ${message.id} already in selected messages. Ignoring.`); // DEBUG
                     return prev;
                 }
-                // Filtra mensagens otimistas E adiciona a nova mensagem real
                 const updatedMessages = [
                     ...prev.filter(m => !m.id.startsWith('optimistic-')),
                     message
                 ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                console.log(`[ConversationContext] Updating selected messages. Removed optimistic, added real ${message.id}.`);
+                // console.log(`[ConversationContext] Updating selected messages. Removed optimistic, added real ${message.id}.`); // DEBUG
                 return updatedMessages;
             });
         }
-
-        // Update conversation list optimistically (usando a mensagem REAL)
         updateOrAddOptimisticallyInList(message);
-
-        // Update unread count if not the selected conversation
         if (selectedConversation?.id !== message.conversation_id) {
-             console.log(`[ConversationContext] Marking ${message.conversation_id} as unread`);
+            // console.log(`[ConversationContext] Marking ${message.conversation_id} as unread`); // DEBUG
             setUnreadConversationIds(prev => new Set(prev).add(message.conversation_id));
         }
     }, [selectedConversation, messageCache, updateOrAddOptimisticallyInList, setUnreadConversationIds]);
 
     const handleRealtimeStatusUpdate = useCallback((data: any) => {
+         // console.log(`[ConversationContext] handleRealtimeStatusUpdate PAYLOAD RECEIVED:`, data); // DEBUG
          const { messageId, conversation_id, newStatus, providerMessageId, errorMessage } = data;
          if (!messageId || !conversation_id || !newStatus) {
-             console.warn("[ConversationContext] handleRealtimeStatusUpdate received invalid data:", data);
+             console.warn("[ConversationContext] handleRealtimeStatusUpdate received invalid data structure in payload:", data);
              return;
          }
-         console.log(`[ConversationContext] handleRealtimeStatusUpdate: Msg ID ${messageId} in Conv ${conversation_id} to ${newStatus}`);
+         // console.log(`[ConversationContext] Processing status update: Msg ID ${messageId} in Conv ${conversation_id} to ${newStatus}`); // DEBUG
 
-         const updateFn = (msgs: Message[]) => msgs.map(msg => {
-            if (msg.id === messageId) {
-                const updated = { ...msg, status: newStatus };
-                if (providerMessageId !== undefined) updated.provider_message_id = providerMessageId;
-                if (newStatus === 'FAILED' && errorMessage) updated.metadata = { ...(updated.metadata || {}), error: errorMessage };
-                return updated;
-            }
-            return msg;
+         setMessageCache(prevCache => {
+             const newCache = { ...prevCache };
+             const convMessages = newCache[conversation_id];
+             if (convMessages && Array.isArray(convMessages)) {
+                 const msgIndex = convMessages.findIndex(m =>
+                     m.id === messageId ||
+                     (m.id.startsWith('optimistic-') && m.provider_message_id === providerMessageId)
+                 );
+                 if (msgIndex !== -1) {
+                     const updatedMessages = [...convMessages];
+                     updatedMessages[msgIndex] = {
+                         ...updatedMessages[msgIndex],
+                         status: newStatus,
+                         ...(newStatus === 'FAILED' && errorMessage && {
+                             metadata: { ...updatedMessages[msgIndex].metadata, errorMessage }
+                         })
+                     };
+                     newCache[conversation_id] = updatedMessages;
+                     // console.log(`[ConversationContext] Message ${messageId} status updated to ${newStatus} in general cache for conv ${conversation_id}.`); // DEBUG
+                     return newCache;
+                 } else {
+                     // console.log(`[ConversationContext] Message ${messageId} not found in general cache for conv ${conversation_id} to update status.`); // DEBUG
+                 }
+             } else {
+                  // console.log(`[ConversationContext] No messages found in cache for conv ${conversation_id} to update status.`); // DEBUG
+             }
+             return prevCache;
          });
 
-         // Update Cache
-         setMessageCache(prev => {
-            const current = prev[conversation_id];
-            if (!current || !current.some(m => m.id === messageId)) return prev; // Don't update if not found
-            return { ...prev, [conversation_id]: updateFn(current) };
-         });
-
-         // Update selected messages
          if (selectedConversation?.id === conversation_id) {
-            setSelectedConversationMessages(updateFn);
+             setSelectedConversationMessages(prevMessages => {
+                 const msgIndex = prevMessages.findIndex(m =>
+                     m.id === messageId ||
+                     (m.id.startsWith('optimistic-') && m.provider_message_id === providerMessageId)
+                 );
+                 if (msgIndex !== -1) {
+                     const updatedMessages = [...prevMessages];
+                     updatedMessages[msgIndex] = {
+                         ...updatedMessages[msgIndex],
+                         status: newStatus,
+                          ...(newStatus === 'FAILED' && errorMessage && {
+                             metadata: { ...updatedMessages[msgIndex].metadata, errorMessage }
+                         })
+                     };
+                     // console.log(`[ConversationContext] Message ${messageId} status updated to ${newStatus} in selectedMessages.`); // DEBUG
+                     return updatedMessages;
+                 }
+                 // console.log(`[ConversationContext] Message ${messageId} not found in selectedMessages to update status.`); // DEBUG
+                 return prevMessages;
+             });
          }
 
-         // Update conversation list (last_message status)
-         setConversations(prev => prev.map(conv => {
-            if (conv.id === conversation_id && conv.last_message?.id === messageId) {
-                // Important: Create new objects for React state update detection
-                const newLastMessage = conv.last_message ? { ...conv.last_message, status: newStatus } : null;
-                return { ...conv, last_message: newLastMessage };
-            }
-            return conv;
-         }));
-    }, [selectedConversation?.id]);
+         setConversations(prevConversations =>
+             prevConversations.map(conv => {
+                 if (conv.id === conversation_id && conv.last_message?.id === messageId) {
+                      // console.log(`[ConversationContext] Updating last_message status for conversation ${conversation_id} in list.`); // DEBUG
+                     return {
+                         ...conv,
+                         last_message: {
+                             ...conv.last_message,
+                             status: newStatus,
+                         },
+                     };
+                 }
+                 return conv;
+             })
+         );
+    }, [selectedConversation, setMessageCache, setSelectedConversationMessages, setConversations]);
 
     // --- Ações do Usuário (precisam estar declaradas antes do useEffect do Pusher) --- //
     const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string) => {
@@ -457,7 +476,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             sender_type: 'AGENT',
             content: content,
             timestamp: new Date().toISOString(),
-            status: 'SENDING',
+            status: 'PENDING',
             message_type: 'TEXT',
             channel_message_id: null,
             metadata: { senderName: session?.user?.name || 'Agente' },
@@ -479,7 +498,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
         setIsSendingMessage(true);
         try {
-            console.log(`[ConversationContext] Sending manual message to conv ${conversationId}. Content: ${content}`);
+            // console.log(`[ConversationContext] Sending manual message to conv ${conversationId}. Content: ${content}`); // DEBUG
             const response = await axios.post<{ success: boolean, message?: Message, error?: string }>(
                 `/api/conversations/${conversationId}/messages`,
                 { content } // Corpo da requisição
@@ -490,7 +509,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             }
 
             const sentMessage = response.data.message;
-            console.log(`[ConversationContext] Manual message sent successfully. Server Msg ID: ${sentMessage.id}`);
+            // console.log(`[ConversationContext] Manual message sent successfully. Server Msg ID: ${sentMessage.id}`); // DEBUG
 
             // A lista de conversas será atualizada pelo SSE/WebSocket `handleRealtimeNewMessage`
             // que deve ser acionado pelo Redis publish na API route.
@@ -834,7 +853,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     useEffect(() => {
         // Só executa se a config foi carregada e temos um workspace
         if (loadingPusherConfig || !pusherConfig) {
-          console.log('[Pusher] Waiting for config or workspace...', { loadingPusherConfig, hasConfig: !!pusherConfig });
+          // console.log('[Pusher] Waiting for config or workspace...', { loadingPusherConfig, hasConfig: !!pusherConfig }); // DEBUG
           return;
         }
 
@@ -843,10 +862,15 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         // Função de limpeza para desconectar e desinscrever
         const cleanupPusher = () => {
           if (channelRef.current) {
-            channelRef.current.unbind_all();
-            channelRef.current.unbind('new_message', handleRealtimeNewMessage);
-            channelRef.current.unbind('message_status_update', handleRealtimeStatusUpdate);
-            console.log(`[Pusher] Unbinding listeners from channel: ${channelRef.current.name}`);
+            // Explicitly unbind specific handlers before unbinding all
+            // console.log(`[Pusher] Unbinding specific listeners from channel: ${channelRef.current.name}`); // DEBUG
+            try {
+              channelRef.current.unbind('new_message', handleRealtimeNewMessage);
+              channelRef.current.unbind('message_status_update', handleRealtimeStatusUpdate);
+            } catch (unbindError) {
+              console.warn('[Pusher] Error during specific unbind:', unbindError);
+            }
+            channelRef.current.unbind_all(); // Unbind any remaining
           }
           if (pusherRef.current) {
             console.log('[Pusher] Disconnecting...');
@@ -858,15 +882,14 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         };
 
         if (workspaceId) {
-          console.log(`[Pusher] Workspace ID ${workspaceId} and Pusher config available. Setting up Pusher.`);
+          // console.log(`[Pusher] Workspace ID ${workspaceId} and Pusher config available. Setting up Pusher.`); // DEBUG
           cleanupPusher(); // Garante limpeza antes de conectar
 
-          // USA A CONFIG BUSCADA AQUI
           const { pusherKey, pusherCluster } = pusherConfig;
 
           try {
-            pusherRef.current = new Pusher(pusherKey, { // Usa pusherKey buscado
-              cluster: pusherCluster,                 // Usa pusherCluster buscado
+            pusherRef.current = new Pusher(pusherKey, {
+              cluster: pusherCluster,
               authEndpoint: '/api/pusher/auth',
               forceTLS: true
             });
@@ -886,11 +909,19 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             pusherInstance.connection.bind('error', (err: any) => {
               console.error('[Pusher] Connection error:', err);
               setIsPusherConnected(false);
-              // ... (tratamento de erro como estava) ...
+              if (err.error?.data?.code === 4004) {
+                toast.error("Erro de conexão: App Pusher não existe ou ID incorreto.");
+              } else if (err.error?.data?.code >= 4100 && err.error?.data?.code < 4200) {
+                toast.error("Erro de conexão: Problema de autenticação.");
+              } else if (err.error?.data?.code >= 4200 && err.error?.data?.code < 4300) {
+                toast.error("Erro de conexão: Problema com o servidor.");
+              } else {
+                toast.error(`Erro de conexão Pusher: ${err.error?.data?.message || 'Desconhecido'}`);
+              }
             });
 
             const channelName = `private-workspace-${workspaceId}`;
-            console.log(`[Pusher] Subscribing to channel: ${channelName}`);
+            // console.log(`[Pusher] Subscribing to channel: ${channelName}`); // DEBUG
             channelRef.current = pusherInstance.subscribe(channelName);
             const channelInstance = channelRef.current;
 
@@ -898,32 +929,44 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
               console.log(`[Pusher] Successfully subscribed to ${channelName}`);
             });
 
-            channelInstance.bind('pusher:subscription_error', (errorData: any) => { // Usa errorData
+            channelInstance.bind('pusher:subscription_error', (errorData: any) => {
               console.error(`[Pusher] Failed to subscribe to ${channelName}. Error data:`, errorData);
               const status = errorData?.status || errorData?.statusCode || 'unknown';
               toast.error(`Falha ao conectar ao canal (Status: ${status}). Verifique permissões ou logs do servidor.`);
               setIsPusherConnected(false);
             });
 
-            console.log(`[Pusher] Binding event handlers to ${channelName}`);
-            const bindJsonEvent = (eventName: string, handler: (data: any) => void) => {
-              channelInstance.bind(eventName, (jsonData: any) => {
-                // ... (lógica de parse JSON como estava) ...
+            // console.log(`[Pusher] Attempting to bind event 'new_message' directly to channel ${channelName}`); // DEBUG
+            channelInstance.bind('new_message', (jsonData: any) => {
+                // console.log(`[Pusher] Raw data received for 'new_message':`, jsonData); // DEBUG
                 try {
-                  const parsedData = (typeof jsonData === 'string') ? JSON.parse(jsonData) : jsonData;
-                  if (parsedData && parsedData.payload) {
-                    handler(parsedData.payload);
-                  } else {
-                     console.warn(`[Pusher] Received event '${eventName}' but payload is missing or invalid:`, parsedData);
-                  }
+                    const parsedData = (typeof jsonData === 'string') ? JSON.parse(jsonData) : jsonData;
+                    if (parsedData && parsedData.payload) {
+                        handleRealtimeNewMessage(parsedData.payload);
+                    } else {
+                        console.warn(`[Pusher] Received event 'new_message' but payload is missing or invalid:`, parsedData);
+                    }
                 } catch (error) {
-                  console.error(`[Pusher] Error parsing JSON for event '${eventName}':`, error, 'Raw data:', jsonData);
+                    console.error(`[Pusher] Error parsing JSON for event 'new_message':`, error, 'Raw data:', jsonData);
                 }
-              });
-            };
+            });
+            // console.log(`[Pusher] Event 'new_message' bound.`); // DEBUG
 
-            bindJsonEvent('new_message', handleRealtimeNewMessage);
-            bindJsonEvent('message_status_update', handleRealtimeStatusUpdate);
+            // console.log(`[Pusher] Attempting to bind event 'message_status_update' directly to channel ${channelName}`); // DEBUG
+            channelInstance.bind('message_status_update', (jsonData: any) => {
+                // console.log(`[Pusher] Raw data received for 'message_status_update':`, jsonData); // DEBUG
+                try {
+                    const parsedData = (typeof jsonData === 'string') ? JSON.parse(jsonData) : jsonData;
+                    if (parsedData && parsedData.payload) {
+                        handleRealtimeStatusUpdate(parsedData.payload);
+                    } else {
+                        console.warn(`[Pusher] Received event 'message_status_update' but payload is missing or invalid:`, parsedData);
+                    }
+                } catch (error) {
+                    console.error(`[Pusher] Error parsing JSON for event 'message_status_update':`, error, 'Raw data:', jsonData);
+                }
+            });
+            // console.log(`[Pusher] Event 'message_status_update' bound.`); // DEBUG
 
           } catch (error) {
             console.error('[Pusher] Failed to initialize Pusher:', error);
@@ -932,7 +975,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
           }
 
         } else {
-          console.log('[Pusher] No workspace ID available. Cleaning up existing connection if any.');
+          // console.log('[Pusher] No workspace ID available. Cleaning up existing connection if any.'); // DEBUG
           cleanupPusher();
         }
 
