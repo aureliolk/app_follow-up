@@ -81,6 +81,9 @@ interface ConversationContextType {
     handleRealtimeAIStatusUpdate: (data: { conversationId: string; is_ai_active: boolean }) => void;
     // handleRealtimeContentUpdate: (data: any) => void; // Adicionar se necessário
 
+    // Funções de Ação Direta no Contexto
+    selectConversationForClient: (clientId: string, workspaceId: string) => Promise<ClientConversation | null>;
+
     // Ações do Usuário (Placeholders - para serem implementadas com Server Actions)
     sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<void>; 
     sendTemplateMessage: (conversationId: string, templateData: SendTemplateDataType) => Promise<void>; 
@@ -841,6 +844,64 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
     }, [selectedConversation?.id]);
 
+    const selectConversationForClient = useCallback(async (clientId: string, workspaceId: string): Promise<ClientConversation | null> => {
+        if (!clientId || !workspaceId) {
+            console.warn("[ConversationContext] selectConversationForClient: clientId ou workspaceId faltando.");
+            toast.error("Não foi possível selecionar a conversa: dados incompletos.");
+            return null;
+        }
+        console.log(`[ConversationContext] Tentando selecionar/buscar conversa para cliente ${clientId} no workspace ${workspaceId}`);
+        setLoadingSelectedConversationMessages(true); // Indicar carregamento
+        setSelectedConversationError(null);
+
+        try {
+            // Tenta buscar conversas existentes para o cliente neste workspace
+            // Esta API precisa suportar a query por clientId e workspaceId
+            const response = await axios.get<{ success: boolean, data?: ClientConversation[], error?: string }>(
+                '/api/conversations', 
+                { params: { workspaceId, clientId, status: 'ALL' } } // status ALL para pegar qualquer uma, ou ATIVAS
+            );
+
+            let conversationToSelect: ClientConversation | null = null;
+
+            if (response.data.success && response.data.data && response.data.data.length > 0) {
+                // Pega a conversa com a data de `last_message_at` mais recente
+                conversationToSelect = response.data.data.sort((a,b) => 
+                    new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
+                )[0];
+                console.log(`[ConversationContext] Conversa encontrada via API para cliente ${clientId}: ${conversationToSelect.id}`);
+            } else {
+                // Se não encontrou via API (ou API não suporta filtro por clientId), tenta no cache
+                console.warn(`[ConversationContext] Nenhuma conversa encontrada via API para cliente ${clientId}. Tentando buscar no cache de conversas.`);
+                const cachedConversation = conversations.find(c => c.client_id === clientId && c.workspace_id === workspaceId);
+                if (cachedConversation) {
+                    conversationToSelect = cachedConversation;
+                    console.log(`[ConversationContext] Conversa encontrada no cache para cliente ${clientId}: ${conversationToSelect.id}`);
+                } else {
+                    console.warn(`[ConversationContext] Nenhuma conversa encontrada para cliente ${clientId} (nem API, nem cache).`);
+                    toast.error("Nenhuma conversa ativa encontrada para este cliente.");
+                    setLoadingSelectedConversationMessages(false);
+                    return null;
+                }
+            }
+
+            if (conversationToSelect) {
+                selectConversation(conversationToSelect); // Função existente no contexto para definir selectedConversation e carregar mensagens
+                // setLoadingSelectedConversationMessages(false); // selectConversation já deve lidar com isso
+                return conversationToSelect;
+            }
+            // Este ponto não deveria ser alcançado se uma das lógicas acima funcionou
+            setLoadingSelectedConversationMessages(false);
+            return null;
+
+        } catch (error: any) {
+            console.error(`[ConversationContext] Erro ao buscar/selecionar conversa para cliente ${clientId}:`, error);
+            toast.error(`Erro ao carregar conversa: ${error.message || 'Erro desconhecido'}`);
+            setLoadingSelectedConversationMessages(false);
+            return null;
+        }
+    }, [selectConversation, conversations, setLoadingSelectedConversationMessages, setSelectedConversationError]);
+
     // --- Efeito para Gerenciar Conexão Pusher (agora usa config buscada) --- //
     useEffect(() => {
         // Só executa se a config foi carregada e temos um workspace
@@ -1016,6 +1077,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         handleRealtimeNewMessage,
         handleRealtimeStatusUpdate,
         handleRealtimeAIStatusUpdate,
+        selectConversationForClient,
         sendManualMessage,
         sendTemplateMessage,
         sendMediaMessage,
@@ -1026,7 +1088,9 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         messageCache, unreadConversationIds, isSendingMessage, isTogglingAIStatus,
         isPusherConnected, loadingPusherConfig,
         fetchConversations, fetchConversationMessages, selectConversation, clearMessagesError,
-        handleRealtimeNewMessage, handleRealtimeStatusUpdate, handleRealtimeAIStatusUpdate, sendManualMessage,
+        handleRealtimeNewMessage, handleRealtimeStatusUpdate, handleRealtimeAIStatusUpdate, 
+        selectConversationForClient,
+        sendManualMessage,
         sendTemplateMessage, sendMediaMessage, toggleAIStatus,
     ]);
 

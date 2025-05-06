@@ -11,6 +11,7 @@ import { FollowUpStatus, MessageSenderType, Prisma } from '@prisma/client';
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
+import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
 
 // <<< INÍCIO: Função Auxiliar para Substituir Variáveis >>>
 /**
@@ -150,6 +151,32 @@ const campaignProcessorWorker = new Worker(
               conversationId = conversation.id; // <<< Armazena ID da conversa >>>
               clientId = client.id; // <<< Armazena ID do cliente >>>
               console.log(`[CampaignProcessor ${job.id}] Conversa ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'recuperada'} para Cliente ${client.id} (Contato Campanha: ${contact.id}) (${clientWasCreated ? 'NOVO CLIENTE' : 'CLIENTE EXISTENTE'})`);
+
+              // <<< INÍCIO: Lógica para criar Deal se novo cliente >>>
+              if (clientWasCreated) {
+                  console.log(`[CampaignProcessor ${job.id}] Novo cliente ${client.id} criado via campanha. Tentando criar Deal no Kanban...`);
+                  try {
+                      const stages = await getPipelineStages(updatedCampaign.workspaceId);
+                      if (stages && stages.length > 0) {
+                          const firstStage = stages[0];
+                          const dealName = `Lead Campanha: ${client.name || client.phone_number}`;
+                          
+                          await createDeal(updatedCampaign.workspaceId, {
+                              name: dealName,
+                              stageId: firstStage.id,
+                              clientId: client.id,
+                              value: null, // Ou 0, ou um valor padrão se aplicável
+                          });
+                          console.log(`[CampaignProcessor ${job.id}] Deal "${dealName}" criado com sucesso para cliente ${client.id} no estágio "${firstStage.name}".`);
+                      } else {
+                          console.warn(`[CampaignProcessor ${job.id}] Nenhum estágio de pipeline encontrado para workspace ${updatedCampaign.workspaceId}. Deal não criado para novo cliente ${client.id} da campanha.`);
+                      }
+                  } catch (dealError) {
+                      console.error(`[CampaignProcessor ${job.id}] Erro ao criar Deal para novo cliente ${client.id} da campanha:`, dealError);
+                      // Não interromper o processamento da campanha por isso, apenas logar.
+                  }
+              }
+              // <<< FIM: Lógica para criar Deal se novo cliente >>>
 
           } catch (convFollowUpError) {
               console.error(`[CampaignProcessor ${job.id}] Erro crítico durante getOrCreateConversation ou setup de FollowUp para Contato ${contact.id}:`, convFollowUpError);

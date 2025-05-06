@@ -6,6 +6,9 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Bot, StickyNote, CheckSquare } from 'lucide-react';
 import type { DealWithClient } from '@/lib/types/pipeline'; // Import the correct type
+import { useRouter } from 'next/navigation'; // IMPORT useRouter
+import { useConversationContext } from '@/context/ConversationContext'; // IMPORT ConversationContext
+import { toast } from 'react-hot-toast'; // IMPORT toast for error handling
 // import DealDetailModal from './DealDetailModal'; // Placeholder for detail modal
 
 interface DealCardProps {
@@ -22,18 +25,31 @@ const formatCurrency = (value: number) => {
 };
 
 export default function DealCard({ deal, index }: DealCardProps) {
-  // State to control detail modal visibility (implement later)
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const router = useRouter(); // INIT router
+  const { selectConversationForClient } = useConversationContext(); // GET selectConversationForClient from context
 
-  const openDetailModal = () => {
-    // Logic to open modal
-    setIsDetailModalOpen(true);
-    console.log(`Open details for deal: ${deal.id}`);
-    // TODO: Implement Deal Detail Modal
-  };
+  // REMOVE Modal state and functions
+  // const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  // const openDetailModal = () => { ... };
+  // const closeDetailModal = () => { ... };
 
-  const closeDetailModal = () => {
-    setIsDetailModalOpen(false);
+  const handleCardClick = async () => {
+    if (!deal.client?.id || !deal.workspace_id) {
+      toast.error("Dados do cliente ou workspace ausentes no deal.");
+      console.warn("[DealCard] Client ID or Workspace ID missing from deal:", deal);
+      return;
+    }
+    
+    console.log(`[DealCard] Card clicado. Tentando navegar para conversa do cliente: ${deal.client.id} (Deal: ${deal.id}) no workspace: ${deal.workspace_id}`);
+
+    const conversation = await selectConversationForClient(deal.client.id, deal.workspace_id);
+
+    if (conversation) {
+      router.push(`/workspace/${deal.workspace_id}/conversations`);
+    } else {
+      // selectConversationForClient já deve ter mostrado um toast de erro.
+      console.warn(`[DealCard] Não foi possível selecionar ou encontrar conversa para cliente ${deal.client.id}. Navegação cancelada.`);
+    }
   };
 
   // Extract potential counts (handle if not present)
@@ -54,8 +70,8 @@ export default function DealCard({ deal, index }: DealCardProps) {
             style={{
               ...provided.draggableProps.style, // Apply styles from dnd
             }}
-            onClick={openDetailModal} // Open modal on click
-            title={`Clique para ver detalhes de ${deal.name}`}
+            onClick={handleCardClick} // UPDATED onClick handler
+            title={`Conversar com ${deal.client?.name || deal.name}`}
           >
             <Card className="p-3 bg-card hover:bg-card/90 cursor-pointer">
               {/* Card Header: Name and AI Badge */}
@@ -102,7 +118,7 @@ export default function DealCard({ deal, index }: DealCardProps) {
         )}
       </Draggable>
 
-      {/* Render Detail Modal Conditionally (Implement later) */}
+      {/* REMOVE Modal rendering */}
       {/* {isDetailModalOpen && <DealDetailModal dealId={deal.id} onClose={closeDetailModal} />} */}
     </>
   );

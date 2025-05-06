@@ -455,7 +455,17 @@ export async function createDeal(
         
     console.log(`[Action|createDeal] Deal "${data.name}" (ID: ${newDeal.id}) created successfully.`);
 
-    revalidatePath(`/workspace/${workspaceId}/kaban`);
+    try {
+      revalidatePath(`/workspace/${workspaceId}/kaban`);
+    } catch (error: any) {
+      if (error.message && error.message.includes('Invariant: static generation store missing')) {
+        console.warn(`[Action|createDeal] Skipping revalidatePath for /workspace/${workspaceId}/kaban due to non-HTTP context (e.g., worker). Deal ${newDeal.id} was created.`);
+      } else {
+        // Se for outro erro da revalidação, podemos optar por relançá-lo ou logar como crítico
+        console.error(`[Action|createDeal] Error during revalidatePath for deal ${newDeal.id}:`, error);
+        // Dependendo da política, poderia relançar: throw error;
+      }
+    }
 
     // Need to cast because the included client might make TS think it's not just Prisma.DealGetPayload
     // but the structure matches DealWithClient
