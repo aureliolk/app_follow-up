@@ -793,6 +793,22 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         const newStatus = !currentStatus;
         console.log(`[ConversationContext] Toggling AI status for conv ${conversationId} from ${currentStatus} to ${newStatus}`);
 
+        const wsId = getActiveWorkspaceId(workspaceContext);
+        if (!wsId) {
+            console.error("[ConversationContext] Workspace ID não encontrado para toggleAIStatus.");
+            toast.error("Erro crítico: Workspace não identificado ao tentar alterar status da IA.");
+            // Reverter otimismo se wsId não for encontrado, pois a action não será chamada
+            setConversations(prev =>
+                prev.map(conv =>
+                    conv.id === conversationId ? { ...conv, is_ai_active: currentStatus } : conv
+                )
+            );
+            if (selectedConversation?.id === conversationId) {
+                setSelectedConversation(prev => prev ? { ...prev, is_ai_active: currentStatus } : null);
+            }
+            return;
+        }
+
         // Otimista (opcional, mas bom para UI responsiva)
         // Atualiza o estado local ANTES da chamada da action
         setConversations(prev =>
@@ -805,8 +821,9 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
 
         try {
-            // Chama a Server Action
-            const success = await setConversationAIStatus(conversationId, newStatus);
+            // A CHAMADA QUE PRECISA SER ATUALIZADA
+            // Adicionar wsId à chamada da action
+            const success = await setConversationAIStatus(conversationId, newStatus, wsId);
 
             if (success) {
                  console.log(`[ConversationContext] Server action setConversationAIStatus executada com sucesso para ${conversationId} (novo status: ${newStatus}). Evento Redis deve atualizar estado final.`);
@@ -842,7 +859,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                  setSelectedConversation(prev => prev ? { ...prev, is_ai_active: currentStatus } : null);
              }
         }
-    }, [selectedConversation?.id]);
+    }, [workspaceContext, selectedConversation?.id, setConversations, setSelectedConversation]);
 
     const selectConversationForClient = useCallback(async (clientId: string, workspaceId: string): Promise<ClientConversation | null> => {
         if (!clientId || !workspaceId) {

@@ -1,8 +1,9 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // Importar a fila
 import { z } from 'zod';
-import { generateChatCompletion } from '@/lib/ai/chatService';
-import { CoreMessage } from 'ai';
+
+import { CoreMessage, tool, generateText } from 'ai';
+import { setConversationAIStatus } from "@/lib/actions/conversationActions";
+import { openai } from '@ai-sdk/openai';
 
 
 // Você pode adicionar um handler GET para simplesmente verificar se a rota está funcionando
@@ -13,33 +14,53 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
     try {
-      let userMessageContent = "Me diga uma curiosidade sobre o Brasil."; // Mensagem padrão
       const body = await req.json();
       const systemPrompt = body.system;
+      const message = body.message;
+      const actualWorkspaceId = body.workspaceId;
+      const actualConversationId = body.conversationId;
+
+      console.log("workspaceId: ", actualWorkspaceId);
+      console.log("conversationId: ", actualConversationId);
+
 
   
       // Monta as mensagens no formato esperado
-      const messages: CoreMessage[] = [{ role: 'user', content: "" }];
+      const messages: CoreMessage[] = [{ role: 'user', content: message }];
       
       // Chama o modelo diretamente
-      const aiResponseText = await generateChatCompletion({
+      const aiResponseText = await generateText({
         messages: messages,
-        systemPrompt: systemPrompt,
-        modelId: "gpt-4o-mini",
-        nameIa: "gpt-4o-mini",
-        conversationId: "",
-        workspaceId: "",
-        clientName: "",
+        model: openai("gpt-4o-mini"),
+        system: systemPrompt,
         tools: {
-          "get_current_weather": {
-            description: "Get the current weather in a given location",
-            parameters: z.object({
-              location: z.string(),
-            }),
-          },
+          humanTransferTool: tool({
+            description: 'Transferir a conversa para um humano. Após a transferência ser confirmada internamente, informe ao usuário de forma concisa que a conversa foi transferida.',
+            parameters: z.object({}),
+            execute: async () => {
+              // Chamar a Server Action para desativar a IA
+              try {
+                const aiStatusUpdated = await setConversationAIStatus(actualConversationId, false, actualWorkspaceId);
+                if (aiStatusUpdated) {
+                  console.log(`IA desativada para a conversa ${actualConversationId} no workspace ${actualWorkspaceId}`);
+                } else {
+                  console.warn(`Não foi possível desativar a IA para a conversa ${actualConversationId} no workspace ${actualWorkspaceId} através da action.`);
+                }
+              } catch (error) {
+                console.error(`Erro ao tentar desativar a IA para a conversa ${actualConversationId}:`, error);
+                return "Erro ao processar a transferência.";
+              }
+
+              return "A transferência para um humano foi processada com sucesso.";
+            },
+          }),
         },
         });
-  
+
+      if( aiResponseText.toolResults.length > 0){
+        return NextResponse.json({ response: aiResponseText.toolResults[0].result }, { status: 200 });
+      }
+
       // Retorna a resposta da IA
       return NextResponse.json({ response: aiResponseText }, { status: 200 });
   

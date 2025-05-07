@@ -297,7 +297,6 @@ async function processJob(job: Job<JobData>) {
 
     } else {
          console.log(`[MsgProcessor ${jobId}] Mensagem ${newMessageId} não contém mídia válida ou token ausente. Pulando processamento de mídia.`);
-         // aiAnalysisResult remains null, finalContentForDb remains original currentMessage.content
     }
 
     // --- Check if AI Processing Should Be Skipped (AFTER potential media update) ---
@@ -357,7 +356,7 @@ async function processJob(job: Job<JobData>) {
     console.log(`[MsgProcessor ${jobId}] Histórico carregado com ${orderedHistory.length} mensagens.`);
 
     // --- 6. Formatar Mensagens para Vercel AI SDK (Multimodal) ---
-    // Mapeamento assíncrono necessário se precisarmos buscar/ler buffers de imagem aqui
+
     const aiMessagesPromises = orderedHistory.map(async (msg): Promise<CoreMessage> => {
 
         if (msg.sender_type === MessageSenderType.CLIENT) {
@@ -430,24 +429,13 @@ async function processJob(job: Job<JobData>) {
     // --- 7. Obter Prompt e Modelo --- 
     const modelId = workspace.ai_model_preference || 'gpt-4o';
     const systemPrompt = workspace.ai_default_system_prompt ?? undefined;
-    console.log(`[MsgProcessor ${jobId}] Usando Modelo: ${modelId}, Prompt: ${!!systemPrompt}`);
-
-    // --- 8. Processar com IA ---
-    console.log(`[MsgProcessor ${jobId}] Processando mensagens com IA...`);
     
     // Variável para armazenar resposta FINAL da IA
     let finalAiResponseText: string | null = null; // Alterado nome para clareza
-    
-    console.log(`[MsgProcessor ${jobId}] Nome do cliente: ${client?.name}`);
 
     try {
-      // <<< Carregar Ferramentas Ativas >>>
-      console.log(`[MsgProcessor ${jobId}] Carregando ferramentas para workspace ${workspace.id}...`);
-      const activeTools = await getActiveToolsForWorkspace(workspace.id);
-      console.log(`[MsgProcessor ${jobId}] Ferramentas carregadas:`, Object.keys(activeTools));
-
-      // <<< Primeira Chamada à IA >>>
-      console.log(`[MsgProcessor ${jobId}] Primeira chamada a generateChatCompletion...`);
+    //   const activeTools = await getActiveToolsForWorkspace(workspace.id);
+  
       let aiResult = await generateChatCompletion({
         messages: aiMessages, // Histórico formatado
         systemPrompt: systemPrompt,
@@ -455,108 +443,13 @@ async function processJob(job: Job<JobData>) {
         nameIa: workspace.ai_name || undefined,
         conversationId: conversationId,
         workspaceId: workspace.id,
-        tools: activeTools, // <<< Passar ferramentas carregadas
         clientName: client?.name || ''
       });
 
-      // <<< Loop para Lidar com Tool Calls (se houver) >>>
-      if (aiResult.type === 'tool_calls' && aiResult.calls) {
-        console.log(`[MsgProcessor ${jobId}] IA solicitou ${aiResult.calls.length} ferramenta(s). Executando...`);
-        
-        // Usando 'any' para simplificar os tipos genéricos por enquanto
-        const toolCalls: ToolCall<any, any>[] = aiResult.calls;
-        const toolResults: ToolResult<any, any, any>[] = [];
 
-        // Adiciona a mensagem 'assistant' com as tool_calls ao histórico
-        // Usando asserção de tipo para incluir toolCalls
-        aiMessages.push({ 
-            role: 'assistant', 
-            content: '', 
-            toolCalls: toolCalls 
-        } as CoreMessage); // Asserção de tipo
-
-        for (const toolCall of toolCalls) {
-            const toolName = toolCall.toolName;
-            const toolArgs = toolCall.args;
-            console.log(`[MsgProcessor ${jobId}] Executando ferramenta: ${toolName} com args:`, toolArgs);
-
-            const toolFunction = activeTools[toolName];
-            if (!toolFunction || typeof toolFunction.execute !== 'function') {
-                console.error(`[MsgProcessor ${jobId}] Ferramenta "${toolName}" não encontrada ou não executável.`);
-                toolResults.push({ 
-                    toolCallId: toolCall.toolCallId, 
-                    toolName: toolName,
-                    args: toolArgs,
-                    result: { success: false, error: `Tool '${toolName}' not found or invalid.` } 
-                });
-                continue;
-            }
-
-            try {
-                // A assinatura de execute requer (args, context). Passando contexto vazio por ora.
-                const result = await toolFunction.execute(toolArgs as any, {} as any);
-                console.log(`[MsgProcessor ${jobId}] Resultado da ferramenta ${toolName}:`, result);
-                toolResults.push({ 
-                    toolCallId: toolCall.toolCallId, 
-                    toolName: toolName,
-                    args: toolArgs,
-                    result: result 
-                });
-            } catch (toolError: any) {
-                console.error(`[MsgProcessor ${jobId}] Erro ao executar ferramenta ${toolName}:`, toolError);
-                toolResults.push({ 
-                    toolCallId: toolCall.toolCallId, 
-                    toolName: toolName, 
-                    args: toolArgs,
-                    result: { success: false, error: toolError.message || 'Unknown tool execution error' } 
-                });
-            }
-        }
-        
-        // Adiciona a mensagem 'tool' com os resultados ao histórico
-        // Mapeia toolResults para o formato ToolContent esperado pela Vercel AI SDK
-        const toolContent: ToolContent = toolResults.map(result => ({
-            type: 'tool-result',
-            toolCallId: result.toolCallId,
-            toolName: result.toolName,
-            result: result.result
-        }));
-        aiMessages.push({ role: 'tool', content: toolContent }); 
-
-        // <<< Segunda Chamada à IA com os resultados das ferramentas >>>
-        console.log(`[MsgProcessor ${jobId}] Segunda chamada a generateChatCompletion com resultados das ferramentas...`);
-        aiResult = await generateChatCompletion({
-            messages: aiMessages, // Histórico atualizado
-            systemPrompt: systemPrompt,
-            modelId: modelId,
-            nameIa: workspace.ai_name || undefined,
-            conversationId: conversationId,
-            workspaceId: workspace.id,
-            tools: activeTools,
-            clientName: client?.name || ''
-        });
-      }
-
-      // <<< Processar Resultado Final (após possível loop de ferramentas) >>>
-      if (aiResult.type === 'text') {
-          finalAiResponseText = aiResult.content;
-          console.log(`[MsgProcessor ${jobId}] Resposta final da IA (texto): "${finalAiResponseText?.substring(0,100)}..."`);
-      } else if (aiResult.type === 'tool_calls') {
-          console.warn(`[MsgProcessor ${jobId}] IA ainda retornou tool_calls após o loop. Usando mensagem padrão.`);
-          finalAiResponseText = "Houve um problema ao processar sua solicitação com as ferramentas."; 
-      } else if (aiResult.type === 'empty') {
-          console.warn(`[MsgProcessor ${jobId}] IA não retornou conteúdo final (empty).`);
-          finalAiResponseText = null;
-      } else if (aiResult.type === 'error' && 'error' in aiResult) {
-           // Verifica o tipo E a existência da propriedade 'error'
-           const errorMessage = aiResult.error as string | Error; // Asserção após verificação
-           console.error(`[MsgProcessor ${jobId}] Erro retornado por generateChatCompletion:`, errorMessage);
-           finalAiResponseText = null;
-           throw new Error(typeof errorMessage === 'string' ? errorMessage : errorMessage.message || "Erro desconhecido na geração da IA");
-      } else {
-         console.warn(`[MsgProcessor ${jobId}] Tipo de resposta inesperado da IA: ${(aiResult as any).type}`);
-         finalAiResponseText = null;
-      }
+      console.log(`[MsgProcessor ${jobId}] Resposta final da IA:`, aiResult.response);
+      
+      finalAiResponseText = aiResult.response;
       
     } catch (aiError) {
        console.error(`[MsgProcessor ${jobId}] Erro CRÍTICO durante o processamento com IA (chamada ou ferramentas):`, aiError);
@@ -565,11 +458,7 @@ async function processJob(job: Job<JobData>) {
     
     // --- 9. Salvar e Enviar Resposta da IA ---
     if (finalAiResponseText && finalAiResponseText.trim() !== '') {
-      console.log(`[MsgProcessor ${jobId}] Preparando para salvar e enviar resposta final da IA: "${finalAiResponseText.substring(0, 100)}..."`);
       const newAiMessageTimestamp = new Date();
-
-      // <<< USAR AI_NAME DO WORKSPACE PARA O PREFIXO >>>
-      const aiDisplayName = workspace.ai_name || "*Beatriz*"; // Usar padrão se não definido
 
       // Salvar resposta da IA
       const newAiMessage = await prisma.message.create({

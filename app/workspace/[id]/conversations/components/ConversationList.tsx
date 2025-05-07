@@ -9,19 +9,23 @@ import { useState, useEffect } from 'react';
 import { useConversationContext } from '@/context/ConversationContext';
 import { User } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useRouter, usePathname } from 'next/navigation';
 
 interface ConversationListProps {
   conversations: ClientConversation[];
   selectedConversationId: string | null;
   onSelectConversation: (conversation: ClientConversation) => void;
+  basePath: string;
 }
 
 export default function ConversationList({
   conversations,
   selectedConversationId,
   onSelectConversation,
+  basePath,
 }: ConversationListProps) {
   const { unreadConversationIds } = useConversationContext(); // Get unread IDs
+  const router = useRouter();
 
   useEffect(() => {
     console.log('[ConversationList] Unread IDs atualizado:', unreadConversationIds);
@@ -62,7 +66,11 @@ export default function ConversationList({
         return (
           <button
             key={convo.id}
-            onClick={() => onSelectConversation(convo)}
+            onClick={() => {
+              onSelectConversation(convo);
+              const newPath = `${basePath}/${convo.id}`;
+              router.push(newPath, { scroll: false });
+            }}
             className={cn(
               'relative w-full text-left px-4 py-3 border-b border-border cursor-pointer transition-colors duration-150 flex items-start gap-3',
               isActive
