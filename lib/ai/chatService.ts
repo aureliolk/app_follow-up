@@ -12,7 +12,7 @@ export interface ChatRequestPayload {
   clientName: string;
   conversationId: string;
   workspaceId: string; // Adicionando workspaceId aqui
-  tools: Record<string, Tool<any, any>>;
+  tools?: Record<string, Tool<any, any>>;
   context?: {
     toolResponses?: Array<{
       toolCallId: string;
@@ -73,11 +73,6 @@ export async function generateChatCompletion({
         toolResultsCount: toolResults?.length || 0,
     });
 
-    // 4. Lidar com a resposta (texto ou chamadas de ferramenta)
-    // Esta função agora foca em retornar a resposta direta da IA (texto)
-    // A lógica de chamar a ferramenta e reenviar a resposta deve ocorrer no chamador (API route/Server Action)
-    // para seguir o padrão do Vercel AI SDK.
-    // Por ora, retornamos o texto se houver, ou indicamos chamadas de ferramenta.
 
     if (text) {
       console.log(`[chatService] Texto gerado pela IA para Conv ${conversationId}:`, text);
