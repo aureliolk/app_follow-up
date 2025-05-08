@@ -113,25 +113,34 @@ export default function ConversationsPage() {
                 variant={aiFilter === 'all' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setAiFilter('all')}
-                className="flex-1"
+                className="flex-1 flex items-center justify-center"
               >
-                Todos ({countAll})
+                Todos
+                <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                  {countAll}
+                </span>
               </Button>
               <Button
                 variant={aiFilter === 'human' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setAiFilter('human')}
-                className="flex-1"
+                className="flex-1 flex items-center justify-center"
               >
-                Humanos ({countHuman})
+                Humanos
+                <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                  {countHuman}
+                </span>
               </Button>
               <Button
                 variant={aiFilter === 'ai' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setAiFilter('ai')}
-                className="flex-1"
+                className="flex-1 flex items-center justify-center"
               >
-                IA ({countAi})
+                IA
+                <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                  {countAi}
+                </span>
               </Button>
             </div>
           </div>
