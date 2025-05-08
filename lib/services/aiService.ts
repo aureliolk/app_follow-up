@@ -81,9 +81,5 @@ export async function generateFollowUpMessage(
     tools: {}
   });
 
-  if (followResult && typeof followResult === 'object' && (followResult as any).type === 'text') {
-    return (followResult as any).content as string;
-  }
-
-  throw new Error('IA não retornou texto válido para follow-up.');
+  return followResult.response as string
 }

@@ -57,7 +57,7 @@ export async function generateChatCompletion({
 
     const { text, toolResults } = await generateText({
       model: modelInstance,
-      maxTokens: 1500, // Pode ser configurável
+      maxTokens: 4096, // Pode ser configurável
       system: systemMessage,
       messages,
       tools: {
