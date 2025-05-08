@@ -46,7 +46,7 @@ export async function generateChatCompletion({
 
     const baseInstructions = `
     Data e hora atual: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
-    Fuso Horario do Cliente: America/Sao_Paulo
+    Timezone do cliente: America/Sao_Paulo
     Nome do cliente: ${clientName}
     Id da conversa: ${conversationId}
     Voce e capaz de Escutar audio e ver imagens. se o cliente pergunta se vc pode ver uma imagem, vc deve responder que sim. se o cliente pergunta se vc pode ouvir um audio, vc deve responder que sim.
@@ -81,7 +81,6 @@ export async function generateChatCompletion({
             return "A transferência para um humano foi processada com sucesso.";
           },
         }),
-        listCalendarEventsTool,
         scheduleCalendarEventTool,
       } // Passa as ferramentas carregadas
     });
@@ -89,7 +88,7 @@ export async function generateChatCompletion({
     console.log(`[chatService] toolResults:`, toolResults);
 
     if(toolResults.length > 0){
-      if(toolResults[0].toolName === 'listCalendarEventsTool' || toolResults[0].toolName === 'scheduleCalendarEventTool'){
+      if( toolResults[0].toolName === 'scheduleCalendarEventTool'){
         const result = toolResults[0].result;
         if (typeof result === 'object' && result !== null && 'responseText' in result && typeof result.responseText === 'string') {
           return { response: result.responseText };
