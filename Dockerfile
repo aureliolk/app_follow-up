@@ -10,8 +10,14 @@ RUN npm install -g pnpm
 # Definir diretório de trabalho
 WORKDIR /app
 
-# Instalar ffmpeg
-RUN apk update && apk add --no-cache ffmpeg
+# Instalar ffmpeg e tzdata para configuração do fuso horário
+RUN apk update && \
+    apk add --no-cache ffmpeg tzdata
+
+# Configurar o fuso horário para America/Sao_Paulo
+ENV TZ=America/Sao_Paulo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone
 
 # Instalar dependências primeiro para aproveitar o cache do Docker
 COPY package.json pnpm-lock.yaml ./
