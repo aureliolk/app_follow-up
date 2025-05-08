@@ -8,6 +8,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { v4 as uuidv4 } from 'uuid';
+import { setConversationAIStatus } from '@/lib/actions/conversationActions';
 
 // Descoberta do documento para APIs usadas
 // const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'; // Não é mais tão necessário com a SDK
@@ -285,8 +286,9 @@ export const scheduleCalendarEventTool = tool({
     startDateTime: z.string().describe('Data e hora de início no formato ISO (YYYY-MM-DDTHH:MM:SS). Por exemplo: "2024-08-15T14:00:00".'),
     endDateTime: z.string().optional().describe('Data e hora de fim no formato ISO (YYYY-MM-DDTHH:MM:SS). Se não fornecido, o evento durará 1 hora.'),
     timeZone: z.string().optional().default('America/Sao_Paulo').describe('Fuso horário para o evento, padrão "America/Sao_Paulo".'),
-    attendees: z.array(z.string().email("Formato de e-mail inválido para um dos participantes.")).optional().describe('Lista de e-mails dos participantes a serem convidados.'),
-    sendUpdates: z.enum(['all', 'externalOnly', 'none']).optional().default('all').describe('Configuração para envio de notificações de convite: "all", "externalOnly", ou "none". Padrão "all".')
+    attendees: z.array(z.string()).optional().describe('Lista de e-mails dos participantes a serem convidados.'),
+    sendUpdates: z.enum(['all', 'externalOnly', 'none']).optional().default('all').describe('Configuração para envio de notificações de convite: "all", "externalOnly", ou "none". Padrão "all".'),
+    conversationId: z.string().describe('O ID da conversa atual.')
   }),
   execute: async ({
     summary,
@@ -296,9 +298,10 @@ export const scheduleCalendarEventTool = tool({
     endDateTime,
     // timeZone = 'America/Sao_Paulo',
     attendees = [],
-    sendUpdates = 'all'
+    sendUpdates = 'all',
+    conversationId
   }) => {
-    console.log(`[scheduleCalendarEventTool] Iniciando: "${summary}" para ${startDateTime}`);
+    console.log(`[scheduleCalendarEventTool] Iniciando: "${summary}" para ${startDateTime}, ConvID: ${conversationId}`);
     if (!currentWorkspaceId) {
       console.error('[scheduleCalendarEventTool] WorkspaceId não configurado.');
       return {
@@ -308,6 +311,15 @@ export const scheduleCalendarEventTool = tool({
       };
     }
     const workspaceId = currentWorkspaceId;
+
+    if (!conversationId) {
+      console.error('[scheduleCalendarEventTool] conversationId não fornecido pela IA.');
+      return {
+        status: 'error',
+        message: 'Erro interno: ID da conversa não fornecido.',
+        responseText: 'Desculpe, não consegui identificar a conversa atual para concluir a ação. Por favor, tente novamente.'
+      };
+    }
 
     try {
       const authClient = await getGoogleAuthClient(workspaceId);
@@ -448,6 +460,20 @@ export const scheduleCalendarEventTool = tool({
       }
       if (attendees && attendees.length > 0 && sendUpdates !== 'none') {
         confirmationText += ` Os convites foram enviados para os participantes.`;
+      }
+
+      try {
+        console.log(`[scheduleCalendarEventTool] Evento agendado com sucesso. Pausando IA para ConvID: ${conversationId} no WksID: ${workspaceId}...`);
+        const aiStatusUpdated = await setConversationAIStatus(conversationId, false, workspaceId);
+        if (aiStatusUpdated) {
+          console.log(`[scheduleCalendarEventTool] IA pausada com sucesso para ${conversationId}.`);
+        } else {
+          console.warn(`[scheduleCalendarEventTool] Ação setConversationAIStatus retornou falha (pode ser ID inválido?) para ${conversationId}.`);
+          // Não vamos falhar o agendamento por causa disso, mas logamos.
+        }
+      } catch (statusError) {
+        console.error(`[scheduleCalendarEventTool] Erro ao tentar pausar IA para ${conversationId} após agendamento:`, statusError);
+        // Não falhar o retorno do agendamento, apenas logar o erro da pausa.
       }
 
       return {
