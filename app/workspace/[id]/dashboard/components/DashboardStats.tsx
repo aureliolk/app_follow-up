@@ -34,7 +34,7 @@ export default async function DashboardStats({ workspaceId }: { workspaceId: str
   // TODO: Add more stats like Total Deals Value, Conversion Rate when available in actions
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {/* Active Conversations Card */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -64,7 +64,7 @@ export default async function DashboardStats({ workspaceId }: { workspaceId: str
       </Card>
 
       {/* Team Members Card */}
-      <Card>
+      {/* <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Membros da Equipe</CardTitle>
           <Users className="h-4 w-4 text-muted-foreground" />
@@ -75,7 +75,7 @@ export default async function DashboardStats({ workspaceId }: { workspaceId: str
             Convidar / Gerenciar <ArrowUpRight className="h-3 w-3 ml-1" />
           </Link>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* Active Follow-ups Card */}
       <Card>
