@@ -10,6 +10,8 @@ export interface DashboardGeneralStatsData {
   activeConversationsCount: number;
   totalClientsCount: number;
   teamMembersCount: number;
+  activeFollowUpsCount: number;
+  convertedFollowUpsCount: number;
 }
 
 export async function getDashboardGeneralStats(workspaceId: string): Promise<DashboardGeneralStatsData> {
@@ -21,7 +23,7 @@ export async function getDashboardGeneralStats(workspaceId: string): Promise<Das
   // TODO: Implement permission checks
 
   try {
-    const [activeConversationsCount, totalClientsCount, teamMembersCount] = await prisma.$transaction([
+    const [activeConversationsCount, totalClientsCount, teamMembersCount, activeFollowUpsCount, convertedFollowUpsCount] = await prisma.$transaction([
       prisma.conversation.count({
         where: { 
           workspace_id: workspaceId, 
@@ -34,12 +36,26 @@ export async function getDashboardGeneralStats(workspaceId: string): Promise<Das
       prisma.workspaceMember.count({
         where: { workspace_id: workspaceId },
       }),
+      prisma.followUp.count({
+        where: {
+          workspace_id: workspaceId,
+          status: 'ACTIVE'
+        },
+      }),
+      prisma.followUp.count({
+        where: {
+          workspace_id: workspaceId,
+          status: 'CONVERTED'
+        },
+      }),
     ]);
 
     return {
       activeConversationsCount,
       totalClientsCount,
       teamMembersCount,
+      activeFollowUpsCount,
+      convertedFollowUpsCount,
     };
   } catch (error) {
     console.error(`[Action Error: getDashboardGeneralStats] Failed to fetch stats for workspace ${workspaceId}:`, error);
