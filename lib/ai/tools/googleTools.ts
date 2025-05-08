@@ -294,7 +294,7 @@ export const scheduleCalendarEventTool = tool({
     location,
     startDateTime,
     endDateTime,
-    timeZone = 'America/Sao_Paulo',
+    // timeZone = 'America/Sao_Paulo',
     attendees = [],
     sendUpdates = 'all'
   }) => {
@@ -357,7 +357,7 @@ export const scheduleCalendarEventTool = tool({
           timeMin: finalStartDateTime,
           timeMax: finalEndDateTime,
           items: [{ id: 'primary' }], // Verifica o calendário primário do usuário autenticado
-          timeZone: timeZone, // O fuso horário da consulta
+          // timeZone: timeZone, // O fuso horário da consulta
         },
       };
 
@@ -409,8 +409,8 @@ export const scheduleCalendarEventTool = tool({
         summary: summary,
         description: description || '',
         location: location || '',
-        start: { dateTime: finalStartDateTime, timeZone: timeZone },
-        end: { dateTime: finalEndDateTime, timeZone: timeZone },
+        start: { dateTime: finalStartDateTime },
+        end: { dateTime: finalEndDateTime },
         attendees: attendees.map(email => ({ email })),
         reminders: { useDefault: true },
         conferenceData: {
