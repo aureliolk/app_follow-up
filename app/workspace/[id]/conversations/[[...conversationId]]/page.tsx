@@ -98,6 +98,11 @@ export default function ConversationsPage() {
 
   const baseConversationsPath = `/workspace/${workspace?.id}/conversations`;
 
+  // Calcular contagens para os filtros
+  const countAll = conversations.length;
+  const countHuman = conversations.filter(convo => convo.is_ai_active === false).length;
+  const countAi = conversations.filter(convo => convo.is_ai_active === true).length;
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-grow overflow-hidden">
@@ -110,7 +115,7 @@ export default function ConversationsPage() {
                 onClick={() => setAiFilter('all')}
                 className="flex-1"
               >
-                Todos
+                Todos ({countAll})
               </Button>
               <Button
                 variant={aiFilter === 'human' ? 'secondary' : 'ghost'}
@@ -118,7 +123,7 @@ export default function ConversationsPage() {
                 onClick={() => setAiFilter('human')}
                 className="flex-1"
               >
-                Humanos
+                Humanos ({countHuman})
               </Button>
               <Button
                 variant={aiFilter === 'ai' ? 'secondary' : 'ghost'}
@@ -126,7 +131,7 @@ export default function ConversationsPage() {
                 onClick={() => setAiFilter('ai')}
                 className="flex-1"
               >
-                IA
+                IA ({countAi})
               </Button>
             </div>
           </div>
