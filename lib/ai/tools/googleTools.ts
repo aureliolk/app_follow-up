@@ -273,8 +273,11 @@ export const listCalendarEventsTool = tool({
  * Ferramenta para agendar evento no Google Calendar COM CRIAÇÃO DE LINK DO MEET
  */
 export const scheduleCalendarEventTool = tool({
-  description: `Use essa ferramenta para agendar um evento no Google Calendar do usuário.
-    Sempre informe ao usuário que um link do Meet foi gerado junto com o evento.`,
+  description: `Agenda um novo evento no Google Calendar do usuário e cria automaticamente um link do Google Meet.
+    IMPORTANTE: ANTES DE AGENDAR, esta ferramenta VERIFICA SE HÁ EVENTOS CONFLITANTES no horário solicitado.
+    Se houver conflito, informará quais eventos estão causando o problema e NÃO agendará.
+    Se o horário estiver livre, o evento será agendado com o link do Meet.
+    Sempre informe ao usuário sobre o resultado (agendado com sucesso, ou conflito encontrado, ou erro).`,
   parameters: z.object({
     summary: z.string().describe('Título/assunto do evento. Seja conciso e claro.'),
     description: z.string().optional().describe('Descrição detalhada do evento. Inclua pautas ou informações relevantes.'),
@@ -282,7 +285,7 @@ export const scheduleCalendarEventTool = tool({
     startDateTime: z.string().describe('Data e hora de início no formato ISO (YYYY-MM-DDTHH:MM:SS). Por exemplo: "2024-08-15T14:00:00".'),
     endDateTime: z.string().optional().describe('Data e hora de fim no formato ISO (YYYY-MM-DDTHH:MM:SS). Se não fornecido, o evento durará 1 hora.'),
     timeZone: z.string().optional().default('America/Sao_Paulo').describe('Fuso horário para o evento, padrão "America/Sao_Paulo".'),
-    attendees: z.array(z.string().email()).optional().describe('Lista de e-mails dos participantes a serem convidados.'),
+    attendees: z.array(z.string().email("Formato de e-mail inválido para um dos participantes.")).optional().describe('Lista de e-mails dos participantes a serem convidados.'),
     sendUpdates: z.enum(['all', 'externalOnly', 'none']).optional().default('all').describe('Configuração para envio de notificações de convite: "all", "externalOnly", ou "none". Padrão "all".')
   }),
   execute: async ({
@@ -295,7 +298,7 @@ export const scheduleCalendarEventTool = tool({
     attendees = [],
     sendUpdates = 'all'
   }) => {
-    console.log(`[scheduleCalendarEventTool] Executando com Meet...`);
+    console.log(`[scheduleCalendarEventTool] Iniciando: "${summary}" para ${startDateTime}`);
     if (!currentWorkspaceId) {
       console.error('[scheduleCalendarEventTool] WorkspaceId não configurado.');
       return {
@@ -305,7 +308,6 @@ export const scheduleCalendarEventTool = tool({
       };
     }
     const workspaceId = currentWorkspaceId;
-    console.log(`[scheduleCalendarEventTool] Agendando evento com Meet para workspace ${workspaceId} com params:`, { summary, startDateTime, attendees });
 
     try {
       const authClient = await getGoogleAuthClient(workspaceId);
@@ -320,66 +322,101 @@ export const scheduleCalendarEventTool = tool({
 
       const calendar = google.calendar({ version: 'v3', auth: authClient });
 
-      // --- Processamento e Validação de Datas (similar ao que você já tem) ---
+      // --- Processamento e Validação de Datas ---
       let finalStartDateTime: string;
       let finalEndDateTime: string;
 
-      // Validação básica de datas de entrada
       if (!startDateTime || !isValid(new Date(startDateTime))) {
         console.error('[scheduleCalendarEventTool] startDateTime inválido:', startDateTime);
-        // Tentar parsear com a função auxiliar se for uma data natural, caso contrário, erro.
-        // Para simplificar aqui, vamos assumir que a IA já deve fornecer no formato ISO.
-        // Se não, você pode integrar sua `parseNaturalDateToISO` aqui ou no prompt da IA.
         return {
             status: 'error',
             message: 'Data de início inválida. Forneça no formato YYYY-MM-DDTHH:MM:SS.',
             responseText: 'Por favor, forneça uma data e hora de início válidas (por exemplo, "2024-08-15T14:00:00") para o evento.'
-        }
+        };
       }
       finalStartDateTime = new Date(startDateTime).toISOString();
 
       if (endDateTime && isValid(new Date(endDateTime))) {
         finalEndDateTime = new Date(endDateTime).toISOString();
       } else {
-        // Se endDateTime não fornecido ou inválido, definir como 1 hora após o início
         const startDateObj = new Date(finalStartDateTime);
         finalEndDateTime = new Date(startDateObj.getTime() + 60 * 60 * 1000).toISOString(); // +1 hora
-        console.log(`[scheduleCalendarEventTool] endDateTime não fornecido ou inválido, definido para 1h após o início: ${finalEndDateTime}`);
+        console.log(`[scheduleCalendarEventTool] endDateTime não fornecido/inválido, definido para 1h após o início: ${finalEndDateTime}`);
       }
 
-      // Garantir que a data final seja SEMPRE posterior à data inicial
       if (new Date(finalEndDateTime) <= new Date(finalStartDateTime)) {
-        console.warn(`[scheduleCalendarEventTool] Data de fim (${finalEndDateTime}) é anterior ou igual à data de início (${finalStartDateTime}). Ajustando para 1h após o início.`);
+        console.warn(`[scheduleCalendarEventTool] Data de fim (${finalEndDateTime}) <= início (${finalStartDateTime}). Ajustando.`);
         finalEndDateTime = new Date(new Date(finalStartDateTime).getTime() + 60 * 60 * 1000).toISOString();
       }
       // --- Fim do Processamento de Datas ---
 
+      // 1. VERIFICAR DISPONIBILIDADE (FREE/BUSY) ANTES DE AGENDAR
+      console.log(`[scheduleCalendarEventTool] Verificando disponibilidade de ${finalStartDateTime} a ${finalEndDateTime} no calendário 'primary'`);
+      const freeBusyRequest: calendar_v3.Params$Resource$Freebusy$Query = {
+        requestBody: {
+          timeMin: finalStartDateTime,
+          timeMax: finalEndDateTime,
+          items: [{ id: 'primary' }], // Verifica o calendário primário do usuário autenticado
+          timeZone: timeZone, // O fuso horário da consulta
+        },
+      };
+
+      const freeBusyResponse = await calendar.freebusy.query(freeBusyRequest);
+      const busySlots = freeBusyResponse.data.calendars?.primary?.busy;
+
+      if (busySlots && busySlots.length > 0) {
+        console.warn(`[scheduleCalendarEventTool] Conflito de horário detectado. Slots ocupados:`, busySlots);
+        let conflictingEventsDetails = "Você já tem compromissos neste horário.";
+        try {
+          // Tentar obter detalhes dos eventos conflitantes para uma mensagem melhor
+          const conflictingEventsList = await calendar.events.list({
+            calendarId: 'primary',
+            timeMin: finalStartDateTime,
+            timeMax: finalEndDateTime,
+            singleEvents: true,
+            orderBy: 'startTime',
+            maxResults: 5, // Limitar para não sobrecarregar
+          });
+
+          if (conflictingEventsList.data.items && conflictingEventsList.data.items.length > 0) {
+            conflictingEventsDetails = "Você já tem os seguintes compromissos neste horário:\n" +
+              conflictingEventsList.data.items.map(event => {
+                const eventStart = event.start?.dateTime || event.start?.date;
+                const eventEnd = event.end?.dateTime || event.end?.date;
+                const startStr = eventStart ? format(new Date(eventStart), 'HH:mm', { locale: ptBR }) : 'horário de início desconhecido';
+                const endStr = eventEnd ? format(new Date(eventEnd), 'HH:mm', { locale: ptBR }) : 'horário de fim desconhecido';
+                return `- "${event.summary || '(Sem título)'}" (de ${startStr} a ${endStr})`;
+              }).join('\n');
+          }
+        } catch (listError) {
+          console.error("[scheduleCalendarEventTool] Erro ao buscar detalhes dos eventos conflitantes:", listError);
+          // A mensagem genérica de conflito será usada
+        }
+
+        return {
+          status: 'conflict',
+          message: 'Conflito de horário detectado. O evento não foi agendado.',
+          data: {
+            busySlots: busySlots, // Informação para depuração ou lógica mais avançada
+          },
+          responseText: `Não é possível agendar "${summary}" neste horário. ${conflictingEventsDetails} Gostaria de tentar outro horário ou agendar mesmo assim?` // A IA pode perguntar se quer agendar mesmo assim, ou sugerir outro horário.
+        };
+      }
+
+      // 2. SE NÃO HOUVER CONFLITOS, AGENDAR O EVENTO
+      console.log(`[scheduleCalendarEventTool] Horário livre. Prosseguindo com o agendamento de "${summary}".`);
       const eventRequestBody: calendar_v3.Schema$Event = {
         summary: summary,
-        description: description || '', // Garante que seja uma string
-        location: location || '',     // Garante que seja uma string
-        start: {
-          dateTime: finalStartDateTime, // Formato ISO com timezone Z (UTC) ou com offset
-          timeZone: timeZone, // O Google Calendar usa isso para exibir corretamente no fuso do usuário
-        },
-        end: {
-          dateTime: finalEndDateTime,
-          timeZone: timeZone,
-        },
+        description: description || '',
+        location: location || '',
+        start: { dateTime: finalStartDateTime, timeZone: timeZone },
+        end: { dateTime: finalEndDateTime, timeZone: timeZone },
         attendees: attendees.map(email => ({ email })),
-        reminders: { // Lembretes padrão do calendário do usuário
-          useDefault: true,
-        },
-        // AQUI ESTÁ A MÁGICA PARA O GOOGLE MEET
+        reminders: { useDefault: true },
         conferenceData: {
           createRequest: {
-            requestId: uuidv4(), // Um ID único para esta solicitação de conferência
-            conferenceSolutionKey: {
-              type: 'hangoutsMeet', // Especifica que queremos uma solução Google Meet
-            },
-            // status: { // Opcional
-            //   statusCode: 'confirmed', // Se o evento já deve ser considerado confirmado
-            // }
+            requestId: uuidv4(),
+            conferenceSolutionKey: { type: 'hangoutsMeet' },
           },
         },
       };
@@ -389,10 +426,8 @@ export const scheduleCalendarEventTool = tool({
       const response = await calendar.events.insert({
         calendarId: 'primary',
         requestBody: eventRequestBody,
-        sendNotifications: sendUpdates !== 'none', // sendUpdates (do Google) é booleano, mapeamos nosso enum para ele.
-                                                   // Para um controle mais fino (all, externalOnly, none), o parâmetro 'sendUpdates' da API é usado.
-        sendUpdates: sendUpdates, // Passa o parâmetro 'sendUpdates' diretamente
-        conferenceDataVersion: 1, // !! IMPORTANTE para que `conferenceData.createRequest` funcione !!
+        sendUpdates: sendUpdates,
+        conferenceDataVersion: 1,
       });
 
       const createdEvent = response.data;
@@ -400,11 +435,10 @@ export const scheduleCalendarEventTool = tool({
       if (createdEvent.hangoutLink) {
         console.log(`[scheduleCalendarEventTool] Link do Meet gerado: ${createdEvent.hangoutLink}`);
       } else {
-        console.warn(`[scheduleCalendarEventTool] Link do Meet NÃO foi gerado. Verifique a configuração e o conferenceDataVersion.`);
+        console.warn(`[scheduleCalendarEventTool] Link do Meet NÃO foi gerado.`);
       }
 
-      // Formatar resposta amigável
-      const startDateObj = new Date(createdEvent.start!.dateTime!);
+      const startDateObj = new Date(createdEvent.start!.dateTime!); // Usar ! pois esperamos que dateTime exista para eventos agendados (não dia inteiro)
       const dayDescription = format(startDateObj, "EEEE, dd 'de' MMMM", { locale: ptBR });
       const startTimeStr = format(startDateObj, "HH:mm", { locale: ptBR });
 
@@ -412,10 +446,9 @@ export const scheduleCalendarEventTool = tool({
       if (createdEvent.hangoutLink) {
         confirmationText += ` Um link do Google Meet também foi criado e adicionado ao evento.`;
       }
-      if (attendees && attendees.length > 0) {
+      if (attendees && attendees.length > 0 && sendUpdates !== 'none') {
         confirmationText += ` Os convites foram enviados para os participantes.`;
       }
-
 
       return {
         status: 'success',
@@ -423,7 +456,7 @@ export const scheduleCalendarEventTool = tool({
         data: {
           eventId: createdEvent.id,
           link: createdEvent.htmlLink,
-          meetLink: createdEvent.hangoutLink, // Importante retornar o link do Meet
+          meetLink: createdEvent.hangoutLink,
           summary: createdEvent.summary,
           start: createdEvent.start,
           end: createdEvent.end,
@@ -434,21 +467,18 @@ export const scheduleCalendarEventTool = tool({
       };
 
     } catch (error: any) {
-      console.error('[scheduleCalendarEventTool] Erro ao agendar evento com Meet:', error);
+      console.error('[scheduleCalendarEventTool] Erro ao agendar evento:', error);
       let userFriendlyMessage = 'Desculpe, ocorreu um erro inesperado ao tentar agendar o evento. Por favor, tente novamente mais tarde.';
+      // ... (sua lógica existente de tratamento de erro específico para Google API errors, auth errors etc.)
       if (error.response?.data?.error) {
-        console.error('[scheduleCalendarEventTool] Detalhes do erro da API Google:', error.response.data.error);
         const googleError = error.response.data.error;
-        if (googleError.message) {
-          userFriendlyMessage = `Erro ao agendar no Google Calendar: ${googleError.message}.`;
-        }
+        userFriendlyMessage = `Erro ao agendar no Google Calendar: ${googleError.message || 'Erro desconhecido da API'}.`;
         if (googleError.status === 'UNAUTHENTICATED' || error.code === 401 || error.code === 403 || googleError.error === 'invalid_grant') {
-          userFriendlyMessage = 'Não consegui agendar o evento. Parece que há um problema com a conexão ao Google Calendar. Por favor, vá às Configurações > Integrações e tente reconectar sua conta Google.';
+          userFriendlyMessage = 'Não consegui agendar o evento devido a um problema de autenticação com o Google Calendar. Por favor, verifique sua conexão nas Configurações > Integrações.';
         }
       } else if (error.message?.includes('ENCRYPTION_KEY') || error.message?.includes('Credenciais do cliente Google')) {
         userFriendlyMessage = 'Desculpe, estou com um problema de configuração interna e não consigo agendar o evento no momento.';
       }
-
       return {
         status: 'error',
         message: `Erro ao agendar evento: ${error.message}`,
