@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { CoreMessage, tool, generateText } from 'ai';
 import { setConversationAIStatus } from "@/lib/actions/conversationActions";
+import { setCurrentWorkspaceId, listCalendarEventsTool, scheduleCalendarEventTool } from '@/lib/ai/tools/googleTools';
 import { openai } from '@ai-sdk/openai';
 
 
@@ -18,11 +19,8 @@ export async function POST(req: NextRequest) {
       const systemPrompt = body.system;
       const message = body.message;
       const actualWorkspaceId = body.workspaceId;
-      const actualConversationId = body.conversationId;
-
-      console.log("workspaceId: ", actualWorkspaceId);
-      console.log("conversationId: ", actualConversationId);
-
+      const actualConversationId = body.conversationId; 
+      setCurrentWorkspaceId(actualWorkspaceId);
 
   
       // Monta as mensagens no formato esperado
@@ -32,7 +30,7 @@ export async function POST(req: NextRequest) {
       const aiResponseText = await generateText({
         messages: messages,
         model: openai("gpt-4o-mini"),
-        system: systemPrompt,
+        system: `Data e hora atual: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} ${systemPrompt}`,
         tools: {
           humanTransferTool: tool({
             description: 'Transferir a conversa para um humano. Após a transferência ser confirmada internamente, informe ao usuário de forma concisa que a conversa foi transferida.',
@@ -54,6 +52,8 @@ export async function POST(req: NextRequest) {
               return "A transferência para um humano foi processada com sucesso.";
             },
           }),
+          listCalendarEventsTool,
+          scheduleCalendarEventTool,
         },
         });
 

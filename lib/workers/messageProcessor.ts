@@ -447,9 +447,9 @@ async function processJob(job: Job<JobData>) {
       });
 
 
-      console.log(`[MsgProcessor ${jobId}] Resposta final da IA:`, aiResult.response);
+      console.log(`[MsgProcessor ${jobId}] Resposta final da IA:`, aiResult);
       
-      finalAiResponseText = aiResult.response;
+      finalAiResponseText = aiResult.response as string;
       
     } catch (aiError) {
        console.error(`[MsgProcessor ${jobId}] Erro CRÍTICO durante o processamento com IA (chamada ou ferramentas):`, aiError);
@@ -457,7 +457,7 @@ async function processJob(job: Job<JobData>) {
     }
     
     // --- 9. Salvar e Enviar Resposta da IA ---
-    if (finalAiResponseText && finalAiResponseText.trim() !== '') {
+    if (finalAiResponseText ) {
       const newAiMessageTimestamp = new Date();
 
       // Salvar resposta da IA

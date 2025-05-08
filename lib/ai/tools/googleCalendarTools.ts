@@ -168,21 +168,8 @@ export const checkCalendarAvailabilityTool = tool({
 
       // Criar cliente do Google Calendar
       const calendar = google.calendar({ version: 'v3', auth: authClient });
-      
-      console.log(`[GoogleCalendarTool] Cliente autenticado criado. Verificando calendários...`);
-      console.log(`[GoogleCalendarTool] Verificando disponibilidade para: ${formattedStartDateTime} - ${formattedEndDateTime}`);
+     
 
-      // Verificar a propriedade 'credentials' do cliente para diagnóstico
-      console.log(`[GoogleCalendarTool] Token atual: ${JSON.stringify({
-        hasAccessToken: !!authClient?.credentials?.access_token,
-        hasRefreshToken: !!authClient?.credentials?.refresh_token,
-        scopes: authClient?.credentials?.scope,
-        tokenType: authClient?.credentials?.token_type,
-        expiryDate: authClient?.credentials?.expiry_date
-      }, null, 2)}`);
-
-      // SIMPLIFICAÇÃO: Em vez de buscar eventos específicos, apenas testamos se conseguimos
-      // listar os calendários do usuário como uma forma de verificar se a autenticação funciona
       try {
         console.log(`[GoogleCalendarTool] Testando acesso listando calendários do usuário...`);
         const calendarList = await calendar.calendarList.list();
