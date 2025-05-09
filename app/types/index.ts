@@ -109,6 +109,7 @@ export interface Client {
   phone_number?: string | null;
   name?: string | null;
   channel?: string | null;
+  tags?: string[] | null; // Campo adicionado para suportar as tags no ClientList
   created_at: string | Date; // Pode ser string ou Date dependendo da API/contexto
   updated_at: string | Date;
   metadata?: any | null; // Manter 'any' ou definir uma estrutura se conhecida
@@ -123,6 +124,7 @@ export type ClientFormData = {
   phone_number?: string | null; // Tornar opcional para corresponder ao update
   external_id?: string | null; // Opcional no form?
   channel?: string | null; // Opcional no form?
+  tags?: string[] | null; // Campo adicionado para editar tags no formulário de cliente
   // Metadata não será editável via form simples
 };
 
