@@ -108,7 +108,7 @@ export default function WorkspacesList() {
     <div className="bg-background min-h-screen pt-20">
       <div className="container mx-auto px-4 max-w-7xl py-8">
         {isSuperAdmin && (
-          <div className="mb-6 bg-purple-900/20 border border-purple-500/30 rounded-lg p-3 text-purple-200 text-sm">
+          <div className="mb-6 bg-primary/10 border border-primary/30 rounded-lg p-3 text-primary dark:text-primary/90 text-sm">
             <strong>Modo Administrador:</strong> Visualizando todos os workspaces do sistema
           </div>
         )}
@@ -222,7 +222,7 @@ export default function WorkspacesList() {
                             </>
                           )}
                           {workspace.owner?.id === session?.user?.id && (
-                            <span className="ml-1 px-1.5 py-0.5 bg-purple-900/50 text-purple-300 text-[10px] rounded">Você</span>
+                            <span className="ml-1 px-1.5 py-0.5 bg-primary/10 border border-primary/30 rounded-lg text-primary dark:text-primary/90">Você</span>
                           )}
                           <span>• Criado em: {new Date(workspace.created_at || workspace.created_at).toLocaleDateString()}</span>
                         </div>
