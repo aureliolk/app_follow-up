@@ -1,12 +1,10 @@
 // app/api/webhooks/ingress/whatsapp/[routeToken]/route.ts
 
 import { type NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { prisma } from '@/lib/db';
-import { decrypt } from '@/lib/encryption';
-import { redisConnection } from '@/lib/redis'; // Importar conexão Redis
+
 import { addMessageProcessingJob } from '@/lib/queues/queueService'; // Importar função de enfileiramento
-import { ConversationStatus, Prisma, Message as PrismaMessage, FollowUpStatus } from '@prisma/client'; // Importar tipos necessários E FollowUpStatus
+import { Prisma, FollowUpStatus } from '@prisma/client'; // Importar tipos necessários E FollowUpStatus
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< IMPORTAR a fila de sequência
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
 import { getOrCreateConversation } from '@/lib/services/conversationService';

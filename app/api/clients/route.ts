@@ -6,6 +6,11 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 import { Prisma } from '@prisma/client';
+import { getOrCreateConversation } from '@/lib/services/conversationService';
+import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
+import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
+
+
 
 // Schema para criação de cliente
 const clientCreateSchema = z.object({
@@ -121,6 +126,8 @@ export async function POST(req: NextRequest) {
     const { workspaceId, name, phone_number, external_id, channel } = validation.data;
     console.log(`API POST Clients: Tentando criar no Workspace ${workspaceId} por User ${userId}`);
 
+    const phoneNumber = standardizeBrazilianPhoneNumber(phone_number);
+
     // Verificar permissão para criar (MEMBER ou ADMIN)
     const hasPermission = await checkPermission(workspaceId, userId, 'MEMBER'); // Ou ADMIN se preferir
     if (!hasPermission) {
@@ -129,18 +136,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar se já existe um cliente com o mesmo telefone/canal (se fornecido)
-    if (phone_number && channel) {
+    if (phoneNumber && channel) {
          const existingClient = await prisma.client.findUnique({
              where: {
                  workspace_id_phone_number_channel: {
                      workspace_id: workspaceId,
-                     phone_number: phone_number,
+                     phone_number: phoneNumber,
                      channel: channel.toUpperCase(), // Normalizar canal
                  }
              }
          });
          if (existingClient) {
-              console.warn(`API POST Clients: Cliente já existe com telefone ${phone_number} e canal ${channel}`);
+              console.warn(`API POST Clients: Cliente já existe com telefone ${phoneNumber} e canal ${channel}`);
               return NextResponse.json({ success: false, error: 'Cliente já existe com este telefone e canal neste workspace.' }, { status: 409 });
          }
     }
@@ -149,12 +156,39 @@ export async function POST(req: NextRequest) {
       data: {
         workspace_id: workspaceId,
         name: name,
-        phone_number: phone_number,
+        phone_number: phoneNumber,
         external_id: external_id,
         channel: channel ? channel.toUpperCase() : null, // Normalizar canal
         // metadata pode ser adicionado se necessário
       },
     });
+
+    // Criar conversa associada ao cliente
+    await getOrCreateConversation(workspaceId, phoneNumber, name);
+
+    // <<< INÍCIO: Lógica para criar Deal se novo cliente >>>
+  try {
+    console.log(`[Svc getOrCreateConversation] Tentando criar Deal para novo cliente ${newClient.id}...`);
+    const stages = await getPipelineStages(workspaceId);
+    if (stages && stages.length > 0) {
+      const firstStage = stages[0];
+      const dealName = `Novo Lead - ${newClient.name || newClient.phone_number}`;
+
+      await createDeal(workspaceId, {
+        name: dealName,
+        stageId: firstStage.id,
+        clientId: newClient.id,
+        value: null, // Ou 0, ou um valor padrão se aplicável
+        // assigned_to_id: null, // Opcional
+        // ai_controlled: true // Opcional, se o default do schema não for suficiente
+      });
+    } else {
+      console.log(`[Svc getOrCreateConversation] Nenhum estágio de pipeline encontrado para workspace ${workspaceId}. Deal não criado para novo cliente ${newClient.id}.`);
+    }
+  } catch (dealError) {
+    console.error(`[Svc getOrCreateConversation] Erro ao criar Deal para novo cliente ${newClient.id}:`, dealError);
+  }
+  // <<< FIM: Lógica para criar Deal se novo cliente >>>
 
     console.log(`API POST Clients: Cliente ${newClient.id} criado com sucesso.`);
     return NextResponse.json({ success: true, data: newClient }, { status: 201 });
