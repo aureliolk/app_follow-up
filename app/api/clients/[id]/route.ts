@@ -56,8 +56,16 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Cliente não encontrado' }, { status: 404 });
     }
 
+    // Processar cliente para adicionar tags do metadata
+    const clientWithTags = {
+      ...client,
+      tags: client.metadata && typeof client.metadata === 'object' && 'tags' in client.metadata 
+        ? (Array.isArray(client.metadata.tags) ? client.metadata.tags : [])
+        : []
+    };
+
     console.log(`GET /api/clients/${clientId}: Cliente encontrado.`);
-    return NextResponse.json({ success: true, data: client });
+    return NextResponse.json({ success: true, data: clientWithTags });
 
   } catch (error) {
     console.error(`GET /api/clients/[id]: Error fetching client:`, error);
