@@ -29,24 +29,49 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId');
-    console.log(`API GET Clients: Buscando para workspaceId: ${workspaceId}`);
+    const searchTerm = url.searchParams.get('search') || '';
+    const page = parseInt(url.searchParams.get('page') || '1', 10);
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+
+    console.log(`API GET Clients: Buscando para workspaceId: ${workspaceId}, search: "${searchTerm}", page: ${page}, limit: ${limit}`);
 
     if (!workspaceId) {
       console.error("API GET Clients: Erro - ID do Workspace é obrigatório.");
       return NextResponse.json({ success: false, error: 'ID do Workspace é obrigatório' }, { status: 400 });
     }
 
-    // Verificar permissão (VIEWER é suficiente)
     const hasAccess = await checkPermission(workspaceId, userId, 'VIEWER');
     if (!hasAccess) {
       console.warn(`API GET Clients: Permissão negada para User ${userId} no Workspace ${workspaceId}`);
       return NextResponse.json({ success: false, error: 'Permissão negada para acessar este workspace' }, { status: 403 });
     }
 
+    const whereClause: Prisma.ClientWhereInput = {
+      workspace_id: workspaceId,
+    };
+
+    if (searchTerm) {
+      whereClause.OR = [
+        {
+          name: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+        {
+          phone_number: {
+            contains: searchTerm,
+            mode: 'insensitive',
+          },
+        },
+      ];
+    }
+
     const clients = await prisma.client.findMany({
-      where: { workspace_id: workspaceId },
+      where: whereClause,
       orderBy: { created_at: 'desc' },
-      // Selecionar campos necessários para a lista
+      skip: (page - 1) * limit,
+      take: limit,
       select: {
           id: true,
           name: true,
@@ -58,8 +83,15 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    console.log(`API GET Clients: Encontrados ${clients.length} clientes para workspace ${workspaceId}.`);
-    return NextResponse.json({ success: true, data: clients });
+    // Para determinar hasMore, poderíamos buscar limit + 1 itens e verificar se veio mais um
+    // Ou, fazer uma contagem total, mas é menos eficiente para paginação simples.
+    // Por simplicidade, se o número de clientes retornados for igual ao limite, assumimos que pode haver mais.
+    // Uma forma mais robusta seria comparar com o total de clientes que correspondem ao filtro,
+    // mas isso exigiria outra query de contagem.
+    const hasMore = clients.length === limit;
+
+    console.log(`API GET Clients: Encontrados ${clients.length} clientes. HasMore: ${hasMore}`);
+    return NextResponse.json({ success: true, data: clients, hasMore: hasMore });
 
   } catch (error) {
     console.error('API GET Clients: Erro interno:', error);

@@ -3,8 +3,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useWorkspace } from '@/context/workspace-context';
-import { Loader2, PlusCircle, Users } from 'lucide-react'; // Ícone Users para o botão
+import { Loader2, PlusCircle, Users, Search } from 'lucide-react'; // Ícone Users para o botão, Search para busca
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input'; // Importar Input
 import ClientList from './components/ClientList';
 import ClientFormModal from './components/ClientFormModal';
 import ErrorMessage from '@/components/ui/ErrorMessage';
@@ -14,47 +15,72 @@ import type { Client } from '@/app/types';
 import { useClient } from '@/context/client-context';
 import { Card, CardContent } from '@/components/ui/card';
 
+// Definir o número de clientes por página
+const CLIENTS_PER_PAGE = 20;
+
 export default function WorkspaceClientsPage() {
   const { workspace, isLoading: workspaceLoading } = useWorkspace();
   const {
-    clients,          // <<< Usar estado do contexto
-    loadingClients,   // <<< Usar loading do contexto
-    clientsError,     // <<< Usar erro do contexto
-    fetchClients,     // <<< Usar função do contexto
-    deleteClient,     // <<< Usar função do contexto
-    clearClientsError // <<< Função para limpar erro
+    clients,
+    loadingClients,
+    clientsError,
+    fetchClients,
+    deleteClient,
+    clearClientsError,
+    hasMoreClients, // <<< Esperado do contexto
+    isLoadingMoreClients // <<< Esperado do contexto para loading de "load more"
   } = useClient();
 
-  // Estado do Modal e Deleção permanecem locais
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [pageError, setPageError] = useState<string | null>(null); // Para erros específicos da página (deleção)
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Função para buscar clientes (chama o contexto)
-  const loadClients = useCallback(async () => {
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+    setCurrentPage(1); // Reset page on new search
+    // A busca será acionada pelo useEffect abaixo
+  };
+
+  const loadClients = useCallback(async (page: number, search: string, append: boolean = false) => {
     if (!workspace) return;
-    setPageError(null); // Limpa erros da página antes de buscar
-    clearClientsError(); // Limpa erros do contexto
+    setPageError(null);
+    if (page === 1 && !append) { // Limpa erros do contexto apenas na carga inicial ou nova busca
+        clearClientsError();
+    }
     try {
-      console.log(`ClientsPage: Chamando fetchClients do contexto para workspace: ${workspace.id}`);
-      await fetchClients(workspace.id);
+      console.log(`ClientsPage: Chamando fetchClients para workspace: ${workspace.id}, page: ${page}, search: ${search}, append: ${append}`);
+      // A função fetchClients no contexto precisará ser atualizada para lidar com 'append'
+      await fetchClients(workspace.id, search, page, CLIENTS_PER_PAGE, append);
       console.log("ClientsPage: fetchClients concluído.");
     } catch (err) {
-      console.error('ClientsPage: Erro ao chamar fetchClients do contexto:', err);
-      // O erro já deve estar em clientsError
+      console.error('ClientsPage: Erro ao chamar fetchClients:', err);
+      // O erro já deve estar em clientsError ou ser tratado no contexto
     }
-  }, [workspace, fetchClients, clearClientsError]); // Adicionar clearClientsError
+  }, [workspace, fetchClients, clearClientsError]);
 
-  // Carregar clientes inicialmente ou quando o workspace mudar
+  // Efeito para carregar clientes na montagem, mudança de workspace, termo de busca ou página
   useEffect(() => {
     if (workspace && !workspaceLoading) {
-      loadClients();
+      // Carrega a primeira página quando o termo de busca muda ou o workspace é carregado
+      console.log(`useEffect (search/workspace): Carregando clientes. Search: "${searchTerm}", Page: 1`);
+      loadClients(1, searchTerm, false);
     }
-    // Cleanup opcional
-    // return () => { /* ... */ };
-  }, [workspace, workspaceLoading, loadClients]); // Usar loadClients
+  }, [workspace, workspaceLoading, searchTerm, loadClients]); // Não incluir currentPage aqui para evitar loops com o loadMore
 
+
+  // Função para carregar mais clientes (infinite scroll)
+  const loadMoreClients = () => {
+    if (!loadingClients && !isLoadingMoreClients && hasMoreClients && workspace) {
+      console.log("ClientsPage: Carregando mais clientes...");
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage); // Atualiza a página atual
+      loadClients(nextPage, searchTerm, true); // Chama loadClients para buscar e anexar
+    }
+  };
+  
   // --- Handlers do Modal ---
   const handleOpenCreateModal = () => {
     setEditingClient(null);
@@ -84,7 +110,9 @@ export default function WorkspaceClientsPage() {
        console.log(`ClientsPage: Chamando deleteClient do contexto para ID: ${clientId}`);
        await deleteClient(clientId, workspace.id); // <<< Chama a função do contexto
        toast.success('Cliente excluído com sucesso.');
-       // A lista deve ser atualizada automaticamente pelo contexto
+       // Recarregar os clientes da página atual após a exclusão, respeitando o searchterm
+       setCurrentPage(1); // Reset to first page after delete or ensure list is refreshed correctly
+       loadClients(1, searchTerm, false);
      } catch (err: any) {
        console.error('ClientsPage: Erro ao excluir cliente via contexto:', err);
        const message = err.response?.data?.error || err.message || 'Falha ao excluir cliente.';
@@ -121,6 +149,20 @@ export default function WorkspaceClientsPage() {
         </Button>
       </div>
 
+      {/* Campo de Busca - Adicionado abaixo do cabeçalho e acima do Erro/Card */}
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Buscar cliente por nome, telefone..."
+            className="w-full pl-10 pr-4 py-2 border rounded-lg shadow-sm"
+            value={searchTerm}
+            onChange={handleSearchChange}
+          />
+        </div>
+      </div>
+
       {/* Exibe erro geral da página ou do contexto */}
       {displayError && (
           <div className="mb-6"> {/* Adiciona margem abaixo se houver erro */}
@@ -137,17 +179,24 @@ export default function WorkspaceClientsPage() {
          </CardHeader> */}
          <CardContent className="p-0"> {/* Remover padding do CardContent se a tabela já tiver */}
             {/* Usa loadingClients do contexto */}
-           {loadingClients && clients.length === 0 ? ( // Mostra spinner inicial
+           {loadingClients && clients.length === 0 && currentPage === 1 ? ( // Mostra spinner inicial apenas na primeira carga da primeira página
              <div className="p-6"> {/* Adicionar padding interno para o spinner */}
                 <LoadingSpinner message="Carregando clientes..." />
              </div>
            ) : (
+            <>
              <ClientList
-               // clients={clients} // Não precisa passar, ClientList usa o hook
+               // clients={clients} // Não precisa passar, ClientList usa o hook useClient()
                onEdit={handleOpenEditModal}
                onDelete={handleDeleteClient}
                deletingId={isDeleting}
+               // Passar a função loadMoreClients e hasMoreClients para o ClientList
+               // para que ele possa adicionar um observer ou botão de "Carregar Mais"
+               loadMoreClients={loadMoreClients}
+               hasMoreClients={hasMoreClients}
+               isLoadingMoreClients={isLoadingMoreClients}
              />
+            </>
            )}
          </CardContent>
       </Card>
