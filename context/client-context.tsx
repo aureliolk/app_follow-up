@@ -49,7 +49,6 @@ const getContextWorkspaceId = (workspaceCtx: any, providedId?: string): string |
     return null;
 };
 
-
 // Provider Component
 export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const workspaceContext = useWorkspace(); // Usar o contexto do workspace
@@ -60,6 +59,22 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [hasMoreClients, setHasMoreClients] = useState(true); // Estado para controlar paginação
 
   const clearClientsError = useCallback(() => setClientsError(null), []);
+
+  // Função para processar um cliente e adicionar campo tags do metadata
+  const processClientWithTags = useCallback((client: any): Client => {
+    let tags: string[] = [];
+    // Extrair tags do metadata se existirem
+    if (client.metadata && typeof client.metadata === 'object' && 'tags' in client.metadata) {
+      const metadataTags = client.metadata.tags;
+      if (Array.isArray(metadataTags)) {
+        tags = metadataTags;
+      }
+    }
+    return {
+      ...client,
+      tags
+    };
+  }, []);
 
   // Função para buscar clientes com paginação e busca
   const fetchClients = useCallback(async (
@@ -81,7 +96,24 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return;
     }
 
-    console.log(`ClientContext: Fetching clients for workspace ${wsId}, search: "${searchTerm}", page: ${page}, limit: ${limit}, append: ${append}`);
+    // Processar searchTerm para busca por tags (tags:nomedatag)
+    let searchParams: Record<string, string> = {
+      workspaceId: wsId,
+      page: String(page),
+      limit: String(limit),
+    };
+
+    const tagMatch = searchTerm.match(/^tags:(.+)$/i);
+    if (tagMatch) {
+      // Se for busca por tag, enviar parâmetro específico
+      searchParams.tagSearch = tagMatch[1].trim();
+      console.log(`ClientContext: Searching by tag: "${searchParams.tagSearch}"`);
+    } else {
+      // Busca normal
+      searchParams.search = searchTerm;
+    }
+
+    console.log(`ClientContext: Fetching clients for workspace ${wsId}, search params:`, searchParams);
     
     if (append) {
       setIsLoadingMoreClients(true);
@@ -93,23 +125,21 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setClientsError(null);
 
     try {
-      const params = new URLSearchParams({
-        workspaceId: wsId,
-        search: searchTerm,
-        page: String(page),
-        limit: String(limit),
-      });
+      const params = new URLSearchParams(searchParams);
       const response = await axios.get<ClientsApiResponse>(`/api/clients?${params.toString()}`);
       
       // A API agora deve retornar um objeto com { data: Client[], hasMore: boolean }
       const { data: fetchedClientsList, hasMore } = response.data;
 
-      console.log(`ClientContext: Fetched ${fetchedClientsList.length} clients. HasMore: ${hasMore}`);
+      // Processar tags para cada cliente
+      const clientsWithTags = fetchedClientsList.map(client => processClientWithTags(client));
+
+      console.log(`ClientContext: Fetched ${clientsWithTags.length} clients. HasMore: ${hasMore}`);
       
       if (append) {
-        setClients(prevClients => [...prevClients, ...fetchedClientsList]);
+        setClients(prevClients => [...prevClients, ...clientsWithTags]);
       } else {
-        setClients(fetchedClientsList);
+        setClients(clientsWithTags);
       }
       setHasMoreClients(hasMore);
 
@@ -124,7 +154,7 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setLoadingClients(false);
       setIsLoadingMoreClients(false);
     }
-  }, [workspaceContext]); 
+  }, [workspaceContext, processClientWithTags]); 
 
 
   // Função para criar cliente
@@ -141,7 +171,7 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (!response.data.success) {
             throw new Error(response.data.error || 'Falha ao criar cliente');
         }
-        const newClient = response.data.data;
+        const newClient = processClientWithTags(response.data.data);
         console.log(`ClientContext: Client created ${newClient.id}. Refreshing list...`);
         // Atualiza a lista localmente ou busca novamente
         // fetchClients(wsId); // Comentado para evitar recarga total. Adicionar na lista é melhor.
@@ -157,7 +187,7 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setClientsError(message);
         throw new Error(message);
      }
-  }, [workspaceContext, fetchClients]);
+  }, [workspaceContext, fetchClients, processClientWithTags]);
 
   // Função para atualizar cliente
   const updateClient = useCallback(async (clientId: string, data: ClientFormData, workspaceId?: string): Promise<Client> => {
@@ -173,7 +203,7 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
          if (!response.data.success) {
             throw new Error(response.data.error || 'Falha ao atualizar cliente');
         }
-        const updatedClient = response.data.data;
+        const updatedClient = processClientWithTags(response.data.data);
         console.log(`ClientContext: Client updated ${updatedClient.id}. Refreshing list...`);
          // Atualiza a lista localmente ou busca novamente
         // fetchClients(wsId); // Comentado.
@@ -186,7 +216,7 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setClientsError(message);
         throw new Error(message);
      }
-  }, [workspaceContext, fetchClients]);
+  }, [workspaceContext, fetchClients, processClientWithTags]);
 
   // Função para excluir cliente
   const deleteClient = useCallback(async (clientId: string, workspaceId?: string): Promise<void> => {
