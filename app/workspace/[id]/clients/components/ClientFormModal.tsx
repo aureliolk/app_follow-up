@@ -13,7 +13,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
+import { Loader2, X, Plus } from 'lucide-react';
 import { useClient } from '@/context/client-context';
 import type { Client, ClientFormData } from '@/app/types';
 import { toast } from 'react-hot-toast';
@@ -29,6 +30,7 @@ const defaultFormData: ClientFormData = {
   phone_number: '',
   external_id: '',
   channel: '',
+  tags: [],
 };
 
 export default function ClientFormModal({
@@ -40,6 +42,7 @@ export default function ClientFormModal({
   const [formData, setFormData] = useState<ClientFormData>(defaultFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [newTag, setNewTag] = useState<string>('');
 
   useEffect(() => {
     if (isOpen) {
@@ -51,6 +54,7 @@ export default function ClientFormModal({
           phone_number: initialData.phone_number || '',
           external_id: initialData.external_id || '',
           channel: initialData.channel || '',
+          tags: initialData.tags || [],
         });
       } else {
         setFormData(defaultFormData); // Reset para criação
@@ -61,6 +65,36 @@ export default function ClientFormModal({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddTag = () => {
+    if (!newTag.trim()) return;
+    
+    // Verificar se a tag já existe
+    if (formData.tags?.includes(newTag.trim())) {
+      toast.error('Esta tag já existe');
+      return;
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      tags: [...(prev.tags || []), newTag.trim()]
+    }));
+    setNewTag('');
+  };
+  
+  const handleRemoveTag = (tagToRemove: string) => {
+    setFormData(prev => ({
+      ...prev,
+      tags: (prev.tags || []).filter(tag => tag !== tagToRemove)
+    }));
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddTag();
+    }
   };
 
   const handleSubmitInternal = async (e: React.FormEvent) => {
@@ -74,16 +108,23 @@ export default function ClientFormModal({
     setFormError(null);
 
     try {
+      // Preparar dados para incluir tags no metadata
+      const clientDataWithMetadata = {
+        ...formData,
+        metadata: {
+          tags: formData.tags || []
+        }
+      };
+
       if (initialData?.id) {
         // --- Edição ---
-        console.log(`Modal: Atualizando cliente ${initialData.id}`);
-        // Passa apenas os dados do formulário
-        await updateClient(initialData.id, formData);
+        console.log(`Modal: Atualizando cliente ${initialData.id}`, clientDataWithMetadata);
+        await updateClient(initialData.id, clientDataWithMetadata);
         toast.success('Cliente atualizado com sucesso!');
       } else {
         // --- Criação ---
-        console.log("Modal: Criando novo cliente");
-        await createClient(formData);
+        console.log("Modal: Criando novo cliente", clientDataWithMetadata);
+        await createClient(clientDataWithMetadata);
         toast.success('Cliente criado com sucesso!');
       }
       onClose();
@@ -165,6 +206,49 @@ export default function ClientFormModal({
               disabled={isSubmitting}
                placeholder="ID do contato no sistema de origem"
             />
+          </div>
+
+          {/* Campo Tags */}
+          <div className="space-y-1.5">
+            <Label htmlFor="tags" className="text-foreground">Tags</Label>
+            <div className="flex space-x-2">
+              <Input
+                id="newTag"
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onKeyPress={handleKeyPress}
+                className="bg-input border-input flex-1"
+                disabled={isSubmitting}
+                placeholder="Adicionar nova tag"
+              />
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="icon" 
+                onClick={handleAddTag}
+                disabled={isSubmitting || !newTag.trim()}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {formData.tags?.map(tag => (
+                <Badge key={tag} variant="secondary" className="p-1 px-2">
+                  {tag}
+                  <button 
+                    type="button" 
+                    className="ml-1 text-muted-foreground hover:text-foreground"
+                    onClick={() => handleRemoveTag(tag)}
+                    disabled={isSubmitting}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              {!formData.tags?.length && (
+                <span className="text-xs text-muted-foreground">Nenhuma tag adicionada</span>
+              )}
+            </div>
           </div>
 
           <DialogFooter className="pt-4 border-t border-border">

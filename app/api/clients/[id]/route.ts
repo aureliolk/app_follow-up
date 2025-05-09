@@ -104,7 +104,10 @@ export async function PUT(
     // Verificar se o cliente pertence ao workspace antes de atualizar
     const existingClient = await prisma.client.findFirst({
       where: { id: clientId, workspace_id: workspaceId },
-      select: { id: true } // Só precisamos saber se existe
+      select: { 
+        id: true,
+        metadata: true // Buscar metadata existente
+      }
     });
     if (!existingClient) {
          return NextResponse.json({ success: false, error: 'Cliente não encontrado neste workspace' }, { status: 404 });
@@ -126,6 +129,17 @@ export async function PUT(
          if (duplicateClient) {
               return NextResponse.json({ success: false, error: 'Já existe outro cliente com este telefone e canal neste workspace.' }, { status: 409 });
          }
+    }
+
+    // Processar metadata: se existir tags no novo metadata, preserva outros dados do metadata existente
+    if (updateData.metadata) {
+      // Se o updateData.metadata contiver tags, mesclar com o metadata existente
+      if (existingClient.metadata && typeof existingClient.metadata === 'object') {
+        updateData.metadata = {
+          ...existingClient.metadata,
+          ...updateData.metadata
+        };
+      }
     }
 
     const updatedClient = await prisma.client.update({

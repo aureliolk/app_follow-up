@@ -35,10 +35,11 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId');
     const searchTerm = url.searchParams.get('search') || '';
+    const tagSearch = url.searchParams.get('tagSearch') || '';
     const page = parseInt(url.searchParams.get('page') || '1', 10);
     const limit = parseInt(url.searchParams.get('limit') || '20', 10);
 
-    console.log(`API GET Clients: Buscando para workspaceId: ${workspaceId}, search: "${searchTerm}", page: ${page}, limit: ${limit}`);
+    console.log(`API GET Clients: Buscando para workspaceId: ${workspaceId}, search: "${searchTerm}", tagSearch: "${tagSearch}", page: ${page}, limit: ${limit}`);
 
     if (!workspaceId) {
       console.error("API GET Clients: Erro - ID do Workspace é obrigatório.");
@@ -55,7 +56,13 @@ export async function GET(req: NextRequest) {
       workspace_id: workspaceId,
     };
 
-    if (searchTerm) {
+    if (tagSearch) {
+      // Busca por tag no campo metadata.tags
+      whereClause.metadata = {
+        path: ['tags'],
+        array_contains: [tagSearch]
+      };
+    } else if (searchTerm) {
       whereClause.OR = [
         {
           name: {
@@ -83,20 +90,33 @@ export async function GET(req: NextRequest) {
           phone_number: true,
           channel: true,
           external_id: true,
+          metadata: true, // Selecionar metadata em vez de tags
           created_at: true,
           updated_at: true,
       }
     });
 
-    // Para determinar hasMore, poderíamos buscar limit + 1 itens e verificar se veio mais um
-    // Ou, fazer uma contagem total, mas é menos eficiente para paginação simples.
-    // Por simplicidade, se o número de clientes retornados for igual ao limite, assumimos que pode haver mais.
-    // Uma forma mais robusta seria comparar com o total de clientes que correspondem ao filtro,
-    // mas isso exigiria outra query de contagem.
+    // Transformar os clientes para adicionar tags do metadata
+    const clientsWithTags = clients.map(client => {
+      // Extrair tags do metadata de forma segura
+      let tags: string[] = [];
+      if (client.metadata && typeof client.metadata === 'object' && 'tags' in client.metadata) {
+        const metadataTags = (client.metadata as any).tags;
+        if (Array.isArray(metadataTags)) {
+          tags = metadataTags;
+        }
+      }
+      
+      return {
+        ...client,
+        tags
+      };
+    });
+
     const hasMore = clients.length === limit;
 
     console.log(`API GET Clients: Encontrados ${clients.length} clientes. HasMore: ${hasMore}`);
-    return NextResponse.json({ success: true, data: clients, hasMore: hasMore });
+    return NextResponse.json({ success: true, data: clientsWithTags, hasMore: hasMore });
 
   } catch (error) {
     console.error('API GET Clients: Erro interno:', error);
@@ -159,7 +179,7 @@ export async function POST(req: NextRequest) {
         phone_number: phoneNumber,
         external_id: external_id,
         channel: channel ? channel.toUpperCase() : null, // Normalizar canal
-        // metadata pode ser adicionado se necessário
+        metadata: body.metadata || null, // Adicionar metadata para tags
       },
     });
 

@@ -155,12 +155,15 @@ export default function WorkspaceClientsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Buscar cliente por nome, telefone..."
+            placeholder="Buscar por nome, telefone ou tags:nomedatag"
             className="w-full pl-10 pr-4 py-2 border rounded-lg shadow-sm"
             value={searchTerm}
             onChange={handleSearchChange}
           />
         </div>
+        <p className="text-xs text-muted-foreground mt-1 ml-1">
+          Dica: Use o formato <span className="font-mono bg-muted px-1 rounded">tags:nomedatag</span> para filtrar por tags específicas.
+        </p>
       </div>
 
       {/* Exibe erro geral da página ou do contexto */}
