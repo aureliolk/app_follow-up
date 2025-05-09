@@ -70,30 +70,32 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
     console.log(`GET /api/conversations/${conversationId}: Conversation found.`);
 
-    // 5. Buscar FollowUp Ativo (se solicitado)
+    // 5. Buscar FollowUp (se solicitado)
     let activeFollowUp = null;
-    if (includeFollowUp && conversation.client_id) {
-      console.log(`GET /api/conversations/${conversationId}: Fetching active follow-up for client ${conversation.client_id}...`);
-      activeFollowUp = await prisma.followUp.findFirst({
+    if (includeFollowUp) {
+      console.log(`GET /api/conversations/${conversationId}: Fetching followups for this conversation...`);
+      
+      // Buscar apenas por conversationId diretamente
+      const followupByConversation = await prisma.followUp.findFirst({
         where: {
-          client_id: conversation.client_id,
+          conversationId: conversationId,
           workspace_id: workspaceId,
-          status: FollowUpStatus.ACTIVE, // Busca apenas follow-ups ATIVOS
+          status: { in: [FollowUpStatus.ACTIVE, FollowUpStatus.CONVERTED, FollowUpStatus.PAUSED] },
+        },
+        select: {
+          id: true,
+          status: true,
         },
         orderBy: {
-          started_at: 'desc', // Pega o mais recente se houver múltiplos (não deveria)
-        },
-        // Selecionar apenas os campos necessários para a UI
-        select: {
-            id: true,
-            status: true,
-            // Adicione outros campos se o ClientConversation type precisar
+          updated_at: 'desc', // O mais recentemente atualizado
         }
       });
-      if (activeFollowUp) {
-         console.log(`GET /api/conversations/${conversationId}: Active follow-up found (ID: ${activeFollowUp.id})`);
+      
+      if (followupByConversation) {
+        activeFollowUp = followupByConversation;
+        console.log(`GET /api/conversations/${conversationId}: Found followup by conversation ID (ID: ${activeFollowUp.id}, Status: ${activeFollowUp.status})`);
       } else {
-         console.log(`GET /api/conversations/${conversationId}: No active follow-up found.`);
+        console.log(`GET /api/conversations/${conversationId}: No followup directly linked to this conversation.`);
       }
     }
 

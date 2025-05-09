@@ -54,41 +54,58 @@ export async function loadAbandonedCartContext(
 }
 
 /**
- * Carrega dados necessários para processar follow-up por inatividade.
- */
-/**
  * Carrega dados de followUp, cliente e regras para fluxo de inatividade.
  */
 export async function loadFollowUpContext(
   followUpId: string,
   workspaceId: string
 ): Promise<FollowUpContext> {
-  const followUp = await prisma.followUp.findUniqueOrThrow({
-    where: { id: followUpId },
-    include: {
-      client: true,
-      workspace: {
-        include: {
-          ai_follow_up_rules: {
-            orderBy: { delay_milliseconds: 'asc' },
+  try {
+    // Usar findUnique em vez de findUniqueOrThrow para evitar exceção
+    const followUp = await prisma.followUp.findUnique({
+      where: { id: followUpId },
+      include: {
+        client: true,
+        workspace: {
+          include: {
+            ai_follow_up_rules: {
+              orderBy: { delay_milliseconds: 'asc' },
+            }
           }
         }
       }
+    });
+
+    // Se não encontrou o followUp, throw com mensagem clara
+    if (!followUp) {
+      throw new Error(`FollowUp ${followUpId} não encontrado. Provavelmente já foi convertido ou cancelado.`);
     }
-  });
-  if (followUp.workspace_id !== workspaceId) {
-    throw new Error(`FollowUp ${followUpId} não pertence ao workspace ${workspaceId}`);
+
+    if (followUp.workspace_id !== workspaceId) {
+      throw new Error(`FollowUp ${followUpId} não pertence ao workspace ${workspaceId}`);
+    }
+
+    // Verificar se o followUp está em um estado terminal
+    if (followUp.status === FollowUpStatus.CONVERTED || 
+        followUp.status === FollowUpStatus.CANCELLED || 
+        followUp.status === FollowUpStatus.COMPLETED) {
+      throw new Error(`FollowUp ${followUpId} está com status ${followUp.status}. Não deve ser processado.`);
+    }
+
+    // Buscar conversa ativa para este cliente no workspace
+    const conversation = await prisma.conversation.findFirstOrThrow({
+      where: {
+        workspace_id: workspaceId,
+        client_id: followUp.client_id,
+        status: ConversationStatus.ACTIVE
+      },
+      orderBy: { last_message_at: 'desc' }
+    });
+    return { followUp, client: followUp.client, workspace: followUp.workspace, conversation };
+  } catch (error) {
+    // Repassar o erro com contexto detalhado para que o worker possa tratá-lo corretamente
+    throw error;
   }
-  // Buscar conversa ativa para este cliente no workspace
-  const conversation = await prisma.conversation.findFirstOrThrow({
-    where: {
-      workspace_id: workspaceId,
-      client_id: followUp.client_id,
-      status: ConversationStatus.ACTIVE
-    },
-    orderBy: { last_message_at: 'desc' }
-  });
-  return { followUp, client: followUp.client, workspace: followUp.workspace, conversation };
 }
 
 /**

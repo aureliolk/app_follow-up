@@ -9,6 +9,8 @@ import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { v4 as uuidv4 } from 'uuid';
 import { setConversationAIStatus } from '@/lib/actions/conversationActions';
+import { markFollowUpConverted } from '@/lib/services/followUpService';
+import { FollowUpStatus } from '@prisma/client';
 
 // Descoberta do documento para APIs usadas
 // const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'; // Não é mais tão necessário com a SDK
@@ -46,7 +48,7 @@ async function getGoogleAuthClient(workspaceId: string): Promise<OAuth2Client | 
       console.error('[GoogleCalendarTool] ENCRYPTION_KEY não definida no ambiente.');
       throw new Error('ENCRYPTION_KEY não definida no ambiente.');
     }
-    
+
     const refreshToken = decrypt(workspace.google_refresh_token);
     if (!refreshToken) {
       console.error('[GoogleCalendarTool] Falha ao descriptografar o refresh_token.');
@@ -58,8 +60,8 @@ async function getGoogleAuthClient(workspaceId: string): Promise<OAuth2Client | 
     const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/google-auth/callback';
 
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-        console.error('[GoogleCalendarTool] GOOGLE_CLIENT_ID ou GOOGLE_CLIENT_SECRET não definidos no ambiente.');
-        throw new Error('Credenciais do cliente Google não configuradas.');
+      console.error('[GoogleCalendarTool] GOOGLE_CLIENT_ID ou GOOGLE_CLIENT_SECRET não definidos no ambiente.');
+      throw new Error('Credenciais do cliente Google não configuradas.');
     }
 
     const oAuth2Client = new OAuth2Client(
@@ -71,27 +73,27 @@ async function getGoogleAuthClient(workspaceId: string): Promise<OAuth2Client | 
     oAuth2Client.setCredentials({
       refresh_token: refreshToken
     });
-    
+
     // Forçar a renovação do access_token para garantir que está fresco
     // Isso também valida o refresh_token.
     // A biblioteca faz isso automaticamente na primeira chamada se o access_token estiver expirado ou ausente,
     // mas podemos ser explícitos para capturar erros de autenticação mais cedo.
     try {
-        await oAuth2Client.getAccessToken();
-        console.log(`[GoogleCalendarTool] Access token obtido/renovado para workspace ${workspaceId}`);
+      await oAuth2Client.getAccessToken();
+      console.log(`[GoogleCalendarTool] Access token obtido/renovado para workspace ${workspaceId}`);
     } catch (tokenError: any) {
-        console.error(`[GoogleCalendarTool] Erro ao obter/renovar access token para workspace ${workspaceId}:`, tokenError.message);
-        // Se o erro for 'invalid_grant', o refresh_token pode ter sido revogado ou estar inválido.
-        if (tokenError.response?.data?.error === 'invalid_grant') {
-            console.error(`[GoogleCalendarTool] Refresh token inválido para workspace ${workspaceId}. O usuário pode precisar reconectar.`);
-             // Aqui você poderia, opcionalmente, limpar o refresh_token do banco de dados
-            // await prisma.workspace.update({
-            //   where: { id: workspaceId },
-            //   data: { google_refresh_token: null, google_access_token_expires_at: null },
-            // });
-            return null; // Indica que a autenticação falhou
-        }
-        throw tokenError; // Propaga outros erros de token
+      console.error(`[GoogleCalendarTool] Erro ao obter/renovar access token para workspace ${workspaceId}:`, tokenError.message);
+      // Se o erro for 'invalid_grant', o refresh_token pode ter sido revogado ou estar inválido.
+      if (tokenError.response?.data?.error === 'invalid_grant') {
+        console.error(`[GoogleCalendarTool] Refresh token inválido para workspace ${workspaceId}. O usuário pode precisar reconectar.`);
+        // Aqui você poderia, opcionalmente, limpar o refresh_token do banco de dados
+        // await prisma.workspace.update({
+        //   where: { id: workspaceId },
+        //   data: { google_refresh_token: null, google_access_token_expires_at: null },
+        // });
+        return null; // Indica que a autenticação falhou
+      }
+      throw tokenError; // Propaga outros erros de token
     }
 
     return oAuth2Client;
@@ -154,7 +156,7 @@ export const listCalendarEventsTool = tool({
       let finalTimeMax: string;
 
       const now = new Date();
-      
+
       if (startDateTime && isValid(new Date(startDateTime))) {
         finalTimeMin = new Date(startDateTime).toISOString();
       } else {
@@ -176,7 +178,7 @@ export const listCalendarEventsTool = tool({
         console.warn(`[listCalendarEventsTool] timeMax (${finalTimeMax}) é anterior ou igual a timeMin (${finalTimeMin}). Ajustando timeMax para 24h após timeMin.`);
         finalTimeMax = new Date(new Date(finalTimeMin).getTime() + 24 * 60 * 60 * 1000).toISOString();
       }
-      
+
       console.log(`[listCalendarEventsTool] Buscando eventos de ${finalTimeMin} a ${finalTimeMax}`);
 
       const requestParams: calendar_v3.Params$Resource$Events$List = {
@@ -196,7 +198,7 @@ export const listCalendarEventsTool = tool({
       const events = response.data.items;
 
       if (!events || events.length === 0) {
-        const noEventsMessage = q 
+        const noEventsMessage = q
           ? `Nenhum evento encontrado contendo "${q}" no período de ${format(new Date(finalTimeMin), 'dd/MM/yyyy HH:mm')} a ${format(new Date(finalTimeMax), 'dd/MM/yyyy HH:mm')}.`
           : `Nenhum evento encontrado no período de ${format(new Date(finalTimeMin), 'dd/MM/yyyy HH:mm')} a ${format(new Date(finalTimeMax), 'dd/MM/yyyy HH:mm')}.`;
         return {
@@ -210,16 +212,16 @@ export const listCalendarEventsTool = tool({
       const formattedEvents = events.map((event: calendar_v3.Schema$Event) => {
         const start = event.start?.dateTime || event.start?.date; // Eventos de dia inteiro usam 'date'
         const end = event.end?.dateTime || event.end?.date;
-        
+
         let eventString = `- "${event.summary || '(Sem título)'}"`;
         if (start) {
-            const startDateObj = new Date(start);
-            eventString += ` começando em ${format(startDateObj, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`;
-            if (event.start?.timeZone) eventString += ` (${event.start.timeZone})`;
+          const startDateObj = new Date(start);
+          eventString += ` começando em ${format(startDateObj, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`;
+          if (event.start?.timeZone) eventString += ` (${event.start.timeZone})`;
         }
         if (end && end !== start) {
-            const endDateObj = new Date(end);
-            eventString += ` e terminando em ${format(endDateObj, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`;
+          const endDateObj = new Date(end);
+          eventString += ` e terminando em ${format(endDateObj, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`;
         }
         if (event.location) eventString += ` em "${event.location}"`;
         if (event.hangoutLink) eventString += ` (Meet: ${event.hangoutLink})`;
@@ -239,7 +241,7 @@ export const listCalendarEventsTool = tool({
       });
 
       const summaryText = `Encontrei ${formattedEvents.length} evento(s) para você:\n${formattedEvents.map(e => e.eventString).join('\n')}`;
-      
+
       return {
         status: 'success',
         message: `Foram encontrados ${formattedEvents.length} eventos.`,
@@ -263,7 +265,7 @@ export const listCalendarEventsTool = tool({
         userFriendlyMessage = 'Desculpe, estou com um problema de configuração interna e não consigo acessar o calendário no momento.';
       }
 
-      return  userFriendlyMessage
+      return userFriendlyMessage
     }
   }
 });
@@ -341,9 +343,9 @@ export const scheduleCalendarEventTool = tool({
       if (!startDateTime || !isValid(new Date(startDateTime))) {
         console.error('[scheduleCalendarEventTool] startDateTime inválido:', startDateTime);
         return {
-            status: 'error',
-            message: 'Data de início inválida. Forneça no formato YYYY-MM-DDTHH:MM:SS.',
-            responseText: 'Por favor, forneça uma data e hora de início válidas (por exemplo, "2024-08-15T14:00:00") para o evento.'
+          status: 'error',
+          message: 'Data de início inválida. Forneça no formato YYYY-MM-DDTHH:MM:SS.',
+          responseText: 'Por favor, forneça uma data e hora de início válidas (por exemplo, "2024-08-15T14:00:00") para o evento.'
         };
       }
       finalStartDateTime = new Date(startDateTime).toISOString();
@@ -432,7 +434,7 @@ export const scheduleCalendarEventTool = tool({
           },
         },
       };
-      
+
       console.log('[scheduleCalendarEventTool] Enviando requisição para criar evento:', JSON.stringify(eventRequestBody, null, 2));
 
       const response = await calendar.events.insert({
@@ -474,6 +476,44 @@ export const scheduleCalendarEventTool = tool({
       } catch (statusError) {
         console.error(`[scheduleCalendarEventTool] Erro ao tentar pausar IA para ${conversationId} após agendamento:`, statusError);
         // Não falhar o retorno do agendamento, apenas logar o erro da pausa.
+      }
+
+      // Buscar detalhes da conversa primeiro
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { 
+          client_id: true, 
+          workspace_id: true,
+          followUp: {
+            select: { 
+              id: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      if (!conversation) {
+        console.warn(`[scheduleCalendarEventTool] Conversa ${conversationId} não encontrada.`);
+      } else {
+        // Verificar se a conversa tem um followup diretamente associado
+        if (conversation.followUp) {
+          if (conversation.followUp.status === FollowUpStatus.ACTIVE || conversation.followUp.status === FollowUpStatus.PAUSED) {
+            console.log(`[scheduleCalendarEventTool] Conversa ${conversationId} tem followup (ID: ${conversation.followUp.id}) associado diretamente. Marcando como CONVERTED.`);
+            
+            const convertResult = await markFollowUpConverted(conversation.followUp.id);
+            
+            if (convertResult) {
+              console.log(`[scheduleCalendarEventTool] Follow-up ${conversation.followUp.id} marcado como convertido com sucesso após agendamento de evento.`);
+            } else {
+              console.warn(`[scheduleCalendarEventTool] Não foi possível marcar follow-up ${conversation.followUp.id} como convertido (pode já estar em outro estado).`);
+            }
+          } else {
+            console.log(`[scheduleCalendarEventTool] Conversa ${conversationId} tem followup (ID: ${conversation.followUp.id}), mas já está com status ${conversation.followUp.status}.`);
+          }
+        } else {
+          console.log(`[scheduleCalendarEventTool] Conversa ${conversationId} não tem followup associado.`);
+        }
       }
 
       return {

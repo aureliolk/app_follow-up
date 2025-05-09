@@ -385,13 +385,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                                         data: {
                                                             workspace_id: workspace.id,
                                                             client_id: client.id,
+                                                            conversationId: conversation.id, // Associar diretamente à conversa
                                                             status: FollowUpStatus.ACTIVE, // Usar Enum
                                                             started_at: new Date(),
                                                             current_sequence_step_order: 0, // Começa em 0
                                                             next_sequence_message_at: new Date(Date.now() + firstDelayMs),
                                                         },
                                                     });
-                                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Registro FollowUp ${newFollowUp.id} criado.`);
+                                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Registro FollowUp ${newFollowUp.id} criado e associado à conversa ${conversation.id}.`);
 
                                                     // 4. Agendar Job para o Primeiro Passo
                                                     const jobData = {

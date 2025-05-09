@@ -82,8 +82,16 @@ export async function markFollowUpConverted(followUpId: string): Promise<Prisma.
     throw new Error("FollowUp ID é obrigatório para marcar como convertido.");
   }
 
-  // Usar transação para garantir atomicidade entre update do DB e tentativa de remoção da fila?
-  // Por enquanto, faremos sequencialmente: atualiza DB, depois remove da fila.
+  // Verificar se o followup existe
+  const followUpExists = await prisma.followUp.findUnique({
+    where: { id: followUpId },
+    select: { id: true }
+  });
+
+  if (!followUpExists) {
+    console.warn(`[FollowUpService] Follow-up ${followUpId} não encontrado.`);
+    return null;
+  }
   
   // 1. Atualizar Status no Banco de Dados
   let updatedFollowUp: Prisma.FollowUpGetPayload<{ select: { id: true, status: true } }>;

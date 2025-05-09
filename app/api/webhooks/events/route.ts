@@ -277,6 +277,13 @@ export async function POST(req: NextRequest) {
         });
         console.log(`API POST /api/webhooks/events: [Abandoned Cart] Conversation record ${newConversation.id} created and linked to FollowUp ${newAbandonedCartFollowUp.id}.`);
 
+        // 3. Atualizar o followUp para incluir o conversationId diretamente
+        await prisma.followUp.update({
+            where: { id: newAbandonedCartFollowUp.id },
+            data: { conversationId: newConversation.id }
+        });
+        console.log(`API POST /api/webhooks/events: [Abandoned Cart] FollowUp ${newAbandonedCartFollowUp.id} atualizado com conversationId ${newConversation.id}.`);
+
         // 4. Agendar um Job para CADA Regra de Carrinho
         let scheduledJobsCount = 0;
         for (const rule of abandonedCartRules) {
@@ -414,6 +421,13 @@ export async function POST(req: NextRequest) {
         });
         console.log(`API POST /api/webhooks/events: Conversation record ${newConversation.id} created and linked to FollowUp ${newFollowUp.id}.`);
         
+        // Atualizar o followUp para incluir o conversationId diretamente
+        await prisma.followUp.update({
+            where: { id: newFollowUp.id },
+            data: { conversationId: newConversation.id }
+        });
+        console.log(`API POST /api/webhooks/events: FollowUp ${newFollowUp.id} atualizado com conversationId ${newConversation.id}.`);
+
         // --- PASSO 9: Agendar Primeiro Passo...
         const jobData = {
             followUpId: newFollowUp.id,
