@@ -9,6 +9,7 @@ import { authOptions } from "@/lib/auth/auth-options";
 import WhatsappSettingsForm from '../components/WhatsappSettingsForm';
 import WebhookInfoDisplay from '../components/WebhookInfoDisplay';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import GoogleIntegrationsCard from '../components/GoogleIntegrationsCard';
 
 interface WhatsappIntegrationPageProps {
     params: {
@@ -16,8 +17,7 @@ interface WhatsappIntegrationPageProps {
     };
 }
 
-// TODO: Implementar descriptografia segura se os tokens/segredos forem criptografados no DB
-// TODO: Atualizar o retorno para incluir dados da Evolution API
+
 async function getWorkspaceWhatsappSettings(id: string) {
     const workspace = await prisma.workspace.findUnique({
         where: { id },
@@ -69,13 +69,13 @@ export default async function WhatsappIntegrationPage({ params }: WhatsappIntegr
         notFound();
     }
 
-    const appBaseUrl = process.env.NEXTAUTH_URL || 'https://app.lumibot.com.br';
+    const appBaseUrl = process.env.NEXTAUTH_URL;
     const webhookUrl = settings.whatsappWebhookRouteToken
         ? `${appBaseUrl}/api/webhooks/ingress/whatsapp/${settings.whatsappWebhookRouteToken}`
         : null;
 
     return (
-        <div className="p-4 md:p-6 space-y-8"> 
+        <div className="p-4 md:p-6 space-y-8">
             <h1 className="text-2xl font-bold text-foreground">
                 Integração WhatsApp (Cloud API)
             </h1>
@@ -115,6 +115,9 @@ export default async function WhatsappIntegrationPage({ params }: WhatsappIntegr
                         <WhatsappSettingsForm currentSettings={settings} />
                     </CardContent>
                 </Card>
+                <div>
+                    <GoogleIntegrationsCard />
+                </div>
             </div>
         </div>
     );

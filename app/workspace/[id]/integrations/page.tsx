@@ -4,6 +4,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Info, Rss, Zap } from "lucide-react"; // Ícones
 import WhatsappIntegrationTabContent from "./components/WhatsappIntegrationTabContent"; // Assumindo que moveremos o conteúdo para cá
+import GoogleIntegrationsCard from "./components/GoogleIntegrationsCard";
 // import GoogleIntegrationsCard from "../ia/components/GoogleIntegrationsCard"; // Remover import não utilizado
 
 interface IntegrationsPageProps {
@@ -52,7 +53,7 @@ export default async function IntegrationsPage({ params }: IntegrationsPageProps
       {/* Abas para cada Integração */}
       <Tabs defaultValue="whatsapp" className="w-full">
         {/* Ajustar para apenas 1 coluna inicialmente */}
-        <TabsList className="grid w-full grid-cols-1 md:w-[200px]"> 
+        <TabsList className="grid w-full grid-cols-1 md:w-[200px]">
           <TabsTrigger value="whatsapp">
             <Zap className="h-4 w-4 mr-1.5" /> WhatsApp
           </TabsTrigger>
@@ -65,10 +66,11 @@ export default async function IntegrationsPage({ params }: IntegrationsPageProps
           <WhatsappIntegrationTabContent slug={slug} />
         </TabsContent>
 
-        {/* Remover TabsContent do Google Calendar */}
-        {/* <TabsContent value="google-calendar" className="mt-6"> ... </TabsContent> */}
+
 
       </Tabs>
+
+    
     </div>
   );
 }

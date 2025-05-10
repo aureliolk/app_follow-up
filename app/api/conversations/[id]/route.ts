@@ -83,8 +83,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           status: { in: [FollowUpStatus.ACTIVE, FollowUpStatus.CONVERTED, FollowUpStatus.PAUSED] },
         },
         select: {
-          id: true,
-          status: true,
+            id: true,
+            status: true,
         },
         orderBy: {
           updated_at: 'desc', // O mais recentemente atualizado

@@ -105,7 +105,7 @@ export default function GoogleIntegrationsCard() {
                         {isConnecting ? 'Redirecionando...' : 'Conectar Google Calendar'}
                     </Button>
                 ) : (
-                     <div className="flex flex-col space-y-4">
+                     <div className="flex flex-col space-y-4 items-end">
                        <div className="flex items-center space-x-2">
                          <Check className="h-5 w-5 text-green-600" />
                          <span>
@@ -131,7 +131,7 @@ export default function GoogleIntegrationsCard() {
                          </Button>
                          
                          {/* Botão para forçar reconexão */}
-                         <Button
+                         {/* <Button
                            variant="outline"
                            size="sm"
                            onClick={() => handleDisconnect(true)}
@@ -148,11 +148,12 @@ export default function GoogleIntegrationsCard() {
                                </>
                              )}
                            </span>
-                         </Button>
+                         </Button> */}
                        </div>
                      </div>
                 )}
             </div>
+            {/* Aqui */}
           </div>
         )}
       </CardContent>

@@ -1,7 +1,7 @@
 // app/workspace/[slug]/ia/page.tsx
 import AISettingsForm from "./components/AISettingsForm";
 import AiFollowUpRules from "./components/AiFollowUpRules";
-import GoogleIntegrationsCard from "./components/GoogleIntegrationsCard";
+import GoogleIntegrationsCard from "../integrations/components/GoogleIntegrationsCard";
 import AbandonedCartRules from "./components/AbandonedCartRules";
 import { prisma } from '@/lib/db'; // <<< Importar Prisma
 import { WorkspaceAiFollowUpRule, AbandonedCartRule } from '@prisma/client'; // <<< Importar tipos Prisma
@@ -73,11 +73,6 @@ export default async function IaPage({ params }: { params: { id: string } }) {
                     {fetchError} Não foi possível carregar todas as configurações. Tente recarregar a página.
                 </div>
             )}
-
-            {/* Card de Integrações Google */}
-            <div>
-                <GoogleIntegrationsCard />
-            </div>
 
             {/* Card de Configurações Gerais da IA */}
             <div>

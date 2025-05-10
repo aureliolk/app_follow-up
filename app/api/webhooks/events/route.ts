@@ -427,7 +427,7 @@ export async function POST(req: NextRequest) {
             data: { conversationId: newConversation.id }
         });
         console.log(`API POST /api/webhooks/events: FollowUp ${newFollowUp.id} atualizado com conversationId ${newConversation.id}.`);
-
+        
         // --- PASSO 9: Agendar Primeiro Passo...
         const jobData = {
             followUpId: newFollowUp.id,
