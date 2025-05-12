@@ -33,7 +33,7 @@ export default function WorkspacesList() {
     if (status === 'unauthenticated') {
       router.push('/auth/login');
     } else if (status === 'authenticated' && !isLoading && workspaces.length === 1 && !isSuperAdmin) {
-      router.push(`/workspace/${workspaces[0].slug}`);
+      router.push(`/workspace/${workspaces[0].id}`);
     }
   }, [status, router, isLoading, workspaces, isSuperAdmin]);
 
