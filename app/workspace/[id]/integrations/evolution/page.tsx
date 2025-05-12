@@ -89,14 +89,14 @@ export default function EvolutionIntegrationPage() {
           console.log(`[checkStatus] Status não é 'open': ${result.connectionStatus}. Definindo instanceData para mostrar QR/Connecting.`);
           // Se a instância existe mas não está 'open', precisamos mostrar a tela de "connecting"
           // A action fetchEvolutionInstanceStatusAction não retorna QR/Pairing code, então focamos no status e token.
-          setInstanceData({
-            instanceName: workspaceId, // Ou result.details?.instanceName se disponível e preferível
-            status: result.connectionStatus || 'connecting', // Usar o status retornado
-            token: result.tokenHash || '', // Usar o tokenHash retornado
-            // qrCodeBase64, pairingCode serão nulos aqui, a UI deve lidar com isso
-          });
+          setInstanceData((prevData) => ({
+            ...(prevData || { instanceName: workspaceId, token: result.tokenHash || '' }), // Mantém dados anteriores se existirem
+            status: result.connectionStatus || 'connecting', // Atualiza apenas o status
+            token: result.tokenHash || (prevData?.token ?? ''), // Atualiza token se disponível, ou mantém anterior
+            // qrCodeBase64 e pairingCode do prevData serão mantidos automaticamente pelo spread (...)
+          }));
           setConnectionDetails(null); // Garantir que não estamos no estado "conectado"
-          setInstanceTokenHash(result.tokenHash || null); // Manter o token hash visível
+          setInstanceTokenHash(result.tokenHash || instanceTokenHash); // Atualiza ou mantém o hash
           // O useEffect que depende de instanceData deve iniciar o polling automaticamente
           // startPolling(); // Não precisa chamar diretamente, o useEffect [instanceData, connectionDetails] cuida disso.
         }
