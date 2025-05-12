@@ -201,3 +201,113 @@ export async function updateGoogleCalendarConversionAction(
     return { success: false, error: 'Erro do servidor ao atualizar a configuração.' };
   }
 }
+
+// --- Evolution API Actions ---
+
+// Schema para criação da instância Evolution (simplificado)
+const CreateEvolutionInstanceSchema = z.object({
+  workspaceId: z.string().uuid('ID do Workspace inválido.'),
+});
+
+// Tipo de retorno esperado da action (sem alterações)
+interface EvolutionInstanceResult extends ActionResult {
+  instanceData?: {
+    instanceName: string;
+    status: string;
+    token: string; // O "hash" na resposta original
+    pairingCode?: string;
+    qrCodeBase64?: string;
+    qrCodeCount?: number;
+  };
+}
+
+// Server Action para criar/conectar instância na Evolution API (simplificada)
+export async function createEvolutionInstanceAction(
+  data: z.infer<typeof CreateEvolutionInstanceSchema>
+): Promise<EvolutionInstanceResult> {
+  // TODO: Adicionar verificação de permissão do usuário
+
+  const validation = CreateEvolutionInstanceSchema.safeParse(data);
+  if (!validation.success) {
+    return { success: false, error: validation.error.errors[0]?.message || 'Dados inválidos.' };
+  }
+
+  const { workspaceId } = validation.data;
+  // instanceName e providedPhoneNumber removidos
+
+  try {
+
+    // 1. Buscar configurações do Workspace (apenas a API key é necessária aqui)
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: {
+        evolution_api_key: true,
+      },
+    });
+
+    // 2. Montar Payload para a API Evolution (simplificado)
+    const targetUrl = process.env.apiUrlEvolution + '/instance/create';
+    console.log(`[ACTION createEvolutionInstance] Target URL:`, targetUrl);
+
+    const payload = {
+      instanceName: workspaceId, // Usa o workspaceId como nome da instância
+      token: crypto.randomBytes(16).toString('hex'), // Continua usando a variável de ambiente (confirmar se é isso mesmo)
+      qrcode: true,
+      integration: "WHATSAPP-BAILEYS",
+      // webhook e number removidos do payload inicial
+      events: ["MESSAGES_UPSERT"],
+      webhook_by_events: false,
+      groups_ignore: true
+    };
+
+    console.log(`[ACTION createEvolutionInstance] Chamando ${targetUrl} com payload:`, payload);
+
+    // 4. Fazer a chamada para a API Externa (inalterado)
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'apikey': process.env.apiKeyEvolution,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseBody = await response.json();
+
+    if (!response.ok) {
+      console.error('[ACTION createEvolutionInstance] Erro da API Evolution:', responseBody);
+      throw new Error(responseBody.message || responseBody.error || `Erro ${response.status} ao criar instância.`);
+    }
+
+    console.log('[ACTION createEvolutionInstance] Resposta da API Evolution:', responseBody);
+
+    // 5. Processar e retornar sucesso (inalterado, mas instanceName agora será o workspaceId)
+    const instanceData = responseBody.instance;
+    const qrCodeData = responseBody.qrcode;
+
+    // TODO: Salvar o instanceId retornado (`instanceData.instanceId`) e o nome (workspaceId) no workspace?
+    // await prisma.workspace.update({
+    //   where: {id: workspaceId},
+    //   data: {
+    //      evolution_api_instance_id: instanceData.instanceId,
+    //      evolution_api_instance_name: workspaceId // Salva o nome usado
+    //   }
+    // });
+
+    return {
+      success: true,
+      instanceData: {
+        instanceName: instanceData.instanceName, // Retornado pela API (deve ser o workspaceId)
+        status: instanceData.status,
+        token: responseBody.hash,
+        pairingCode: qrCodeData?.pairingCode,
+        qrCodeBase64: qrCodeData?.base64,
+        qrCodeCount: qrCodeData?.count,
+      }
+    };
+
+  } catch (error: any) {
+    console.error(`[ACTION ERROR] Falha ao criar instância Evolution para ${workspaceId}:`, error);
+    return { success: false, error: error.message || 'Erro do servidor ao criar instância Evolution.' };
+  }
+}

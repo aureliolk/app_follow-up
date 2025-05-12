@@ -1,81 +1,20 @@
-// app/workspace/[slug]/settings/integrations/whatsapp/page.tsx
-import { prisma } from '@/lib/db';
-import { notFound, redirect } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth/auth-options";
-import WhatsappSettingsForm from '../components/WhatsappSettingsForm';
-import WebhookInfoDisplay from '../components/WebhookInfoDisplay';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import GoogleIntegrationsCard from '../components/GoogleIntegrationsCard';
+import GoogleIntegrationsCard from "../components/GoogleIntegrationsCard";
+import WebhookInfoDisplay from "../components/WebhookInfoDisplay";
+import WhatsappSettingsForm from "../components/WhatsappSettingsForm";
 
 interface WhatsappIntegrationPageProps {
-    params: {
-        id: string;
-    };
+    webhookUrl: string;
+    verifyToken: string;
+    settings: any;
 }
 
-
-async function getWorkspaceWhatsappSettings(id: string) {
-    const workspace = await prisma.workspace.findUnique({
-        where: { id },
-        select: {
-            id: true,
-            name: true,
-            whatsappPhoneNumberId: true,
-            whatsappBusinessAccountId: true,
-            whatsappAccessToken: true,
-            whatsappAppSecret: true,
-            whatsappWebhookVerifyToken: true,
-            whatsappWebhookRouteToken: true,
-            active_whatsapp_integration_type: true,
-            evolution_api_endpoint: true,
-            evolution_api_key: true,
-            evolution_api_instance_name: true
-        },
-    });
-
-    if (!workspace) {
-        return null;
-    }
-
-    return {
-        workspaceId: workspace.id,
-        workspaceName: workspace.name,
-        phoneNumberId: workspace.whatsappPhoneNumberId || '',
-        businessAccountId: workspace.whatsappBusinessAccountId || '',
-        webhookVerifyToken: workspace.whatsappWebhookVerifyToken || '',
-        whatsappWebhookRouteToken: workspace.whatsappWebhookRouteToken || null,
-        isAccessTokenSet: !!workspace.whatsappAccessToken,
-        isAppSecretSet: !!workspace.whatsappAppSecret,
-        activeIntegration: workspace.active_whatsapp_integration_type,
-        evolutionApiEndpoint: workspace.evolution_api_endpoint || '',
-        evolutionApiInstanceName: workspace.evolution_api_instance_name || '',
-        isEvolutionApiKeySet: !!workspace.evolution_api_key,
-    };
-}
-
-export default async function WhatsappIntegrationPage({ params }: WhatsappIntegrationPageProps) {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-        redirect('/login');
-    }
-
-    const settings = await getWorkspaceWhatsappSettings((await params).id);
-
-    if (!settings) {
-        notFound();
-    }
-
-    const appBaseUrl = process.env.NEXTAUTH_URL;
-    const webhookUrl = settings.whatsappWebhookRouteToken
-        ? `${appBaseUrl}/api/webhooks/ingress/whatsapp/${settings.whatsappWebhookRouteToken}`
-        : null;
-
+export default function WhatsappIntegrationPage({ webhookUrl, verifyToken, settings }: WhatsappIntegrationPageProps) {
+    
     return (
-        <div className="p-4 md:p-6 space-y-8">
+        <div>
             <h1 className="text-2xl font-bold text-foreground">
                 Integração WhatsApp (Cloud API)
             </h1>
@@ -99,7 +38,7 @@ export default async function WhatsappIntegrationPage({ params }: WhatsappIntegr
                     <CardContent>
                         <WebhookInfoDisplay
                             webhookUrl={webhookUrl}
-                            verifyToken={settings.webhookVerifyToken}
+                            verifyToken={verifyToken}
                         />
                     </CardContent>
                 </Card>
@@ -118,5 +57,7 @@ export default async function WhatsappIntegrationPage({ params }: WhatsappIntegr
                 <GoogleIntegrationsCard />
             </div>
         </div>
-    );
+    )
 }
+
+

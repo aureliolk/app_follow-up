@@ -62,7 +62,7 @@ export default function WorkspaceLayout({
     { href: '/ia', label: 'IA', icon: BrainCog },
     { href: '/mass-trigger', label: 'Disparador', icon: CheckSquare },
     { href: '/kaban', label: 'Kanban', icon: Grid2x2 },
-    { href: '/integrations/whatsapp', label: 'Integrações', icon: Cable },
+    { href: '/integrations', label: 'Integrações', icon: Cable },
     { href: '/members', label: 'Membros', icon: Users },
     { href: '/settings', label: 'Configurações', icon: Settings },
   ];

@@ -1,78 +1,91 @@
-// app/workspace/[slug]/integrations/page.tsx
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+// app/workspace/[slug]/settings/integrations/whatsapp/page.tsx
+import { prisma } from '@/lib/db';
+import { notFound, redirect } from 'next/navigation';
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth/auth-options";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Info, Rss, Zap } from "lucide-react"; // Ícones
-import WhatsappIntegrationTabContent from "./components/WhatsappIntegrationTabContent"; // Assumindo que moveremos o conteúdo para cá
-import GoogleIntegrationsCard from "./components/GoogleIntegrationsCard";
-// import GoogleIntegrationsCard from "../ia/components/GoogleIntegrationsCard"; // Remover import não utilizado
+import WhatsappIntegrationPage from './whatsapp/page';
+import GoogleIntegrationsCard from './components/GoogleIntegrationsCard';
+import EvolutionIntegrationPage from './evolution/page';
 
-interface IntegrationsPageProps {
+interface WhatsappIntegrationPageProps {
   params: {
-    slug: string;
+    id: string;
   };
 }
 
-export default async function IntegrationsPage({ params }: IntegrationsPageProps) {
-  const { slug } = await params; // Corrigido: Await params
 
-  // TODO: Buscar dados gerais do workspace se necessário para o card do Google ou outros
+async function getWorkspaceWhatsappSettings(id: string) {
+  const workspace = await prisma.workspace.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      whatsappPhoneNumberId: true,
+      whatsappBusinessAccountId: true,
+      whatsappAccessToken: true,
+      whatsappAppSecret: true,
+      whatsappWebhookVerifyToken: true,
+      whatsappWebhookRouteToken: true,
+      active_whatsapp_integration_type: true,
+      evolution_api_endpoint: true,
+      evolution_api_key: true,
+      evolution_api_instance_name: true
+    },
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  return {
+    workspaceId: workspace.id,
+    workspaceName: workspace.name,
+    phoneNumberId: workspace.whatsappPhoneNumberId || '',
+    businessAccountId: workspace.whatsappBusinessAccountId || '',
+    webhookVerifyToken: workspace.whatsappWebhookVerifyToken || '',
+    whatsappWebhookRouteToken: workspace.whatsappWebhookRouteToken || null,
+    isAccessTokenSet: !!workspace.whatsappAccessToken,
+    isAppSecretSet: !!workspace.whatsappAppSecret,
+    activeIntegration: workspace.active_whatsapp_integration_type,
+    evolutionApiEndpoint: workspace.evolution_api_endpoint || '',
+    evolutionApiInstanceName: workspace.evolution_api_instance_name || '',
+    isEvolutionApiKeySet: !!workspace.evolution_api_key,
+  };
+}
+
+export default async function IntegrationsPage({ params }: WhatsappIntegrationPageProps) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    redirect('/login');
+  }
+
+  const settings = await getWorkspaceWhatsappSettings((await params).id);
+
+  if (!settings) {
+    notFound();
+  }
+
+  const appBaseUrl = process.env.NEXTAUTH_URL;
+  const webhookUrl = settings.whatsappWebhookRouteToken
+    ? `${appBaseUrl}/api/webhooks/ingress/whatsapp/${settings.whatsappWebhookRouteToken}`
+    : null;
 
   return (
     <div className="p-4 md:p-6 space-y-8">
-      <h1 className="text-2xl font-bold text-foreground">
-        Integrações
-      </h1>
-
-      <Alert variant="default" className="bg-blue-50 border-blue-300 text-blue-800 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300">
-        <Info className="h-4 w-4 !text-blue-800 dark:!text-blue-300" />
-        <AlertTitle className="text-blue-900 dark:text-blue-200">Gerencie suas Conexões</AlertTitle>
-        <AlertDescription>
-          Conecte ferramentas e serviços externos para automatizar tarefas e centralizar informações. Configure webhooks e APIs para integrar seus sistemas.
-        </AlertDescription>
-      </Alert>
-
-      {/* Placeholder para Webhook Geral - PRECISA DEFINIR O CONTEÚDO */}
-      <Card className="border-border bg-card shadow-md rounded-xl">
-        <CardHeader>
-          <CardTitle className="text-card-foreground text-lg font-semibold flex items-center">
-            <Rss className="h-5 w-5 mr-2" /> Configuração de Webhooks
-          </CardTitle>
-          <CardDescription>
-            Configure webhooks para receber notificações de eventos em sistemas externos ou para enviar dados do Lumi para outras plataformas.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground text-sm">
-            (Detalhes sobre configuração de webhooks de entrada/saída aparecerão aqui...)
-          </p>
-          {/* Exemplo: Poderia ter um botão para adicionar outgoing webhooks */}
-        </CardContent>
-      </Card>
-
-      {/* Abas para cada Integração */}
-      <Tabs defaultValue="whatsapp" className="w-full">
-        {/* Ajustar para apenas 1 coluna inicialmente */}
-        <TabsList className="grid w-full grid-cols-1 md:w-[200px]">
-          <TabsTrigger value="whatsapp">
-            <Zap className="h-4 w-4 mr-1.5" /> WhatsApp
-          </TabsTrigger>
-          {/* Remover TabTrigger do Google Calendar */}
-          {/* <TabsTrigger value="google-calendar"> ... </TabsTrigger> */}
+      <Tabs defaultValue="whatsapp">
+        <TabsList>
+          <TabsTrigger value="whatsapp">API WhatsApp Oficial</TabsTrigger>
+          <TabsTrigger value="apievolution">API Evolution (Não Oficial)</TabsTrigger>
         </TabsList>
-
-        {/* Conteúdo da Aba WhatsApp */}
-        <TabsContent value="whatsapp" className="mt-6">
-          <WhatsappIntegrationTabContent slug={slug} />
+        <TabsContent value="whatsapp">
+          <WhatsappIntegrationPage webhookUrl={webhookUrl} verifyToken={settings.webhookVerifyToken} settings={settings} />
         </TabsContent>
 
-
-
+        <TabsContent value="apievolution">
+          <EvolutionIntegrationPage />
+        </TabsContent>
       </Tabs>
-
-    
     </div>
   );
 }
-
-
