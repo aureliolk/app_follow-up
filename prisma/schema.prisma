@@ -305,6 +305,10 @@ model Workspace {
   evolution_api_endpoint      String? @map("evolution_api_endpoint")
   evolution_api_key           String? @map("evolution_api_key")
   evolution_api_instance_name String? @map("evolution_api_instance_name")
+  evolution_api_token         String? @unique @map("evolution_api_token")
+  evolution_webhook_route_token String? @unique @map("evolution_webhook_route_token")
+  
+  
 
   tags WorkspaceTag[]
 
