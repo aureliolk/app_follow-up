@@ -153,3 +153,51 @@ export async function saveEvolutionApiSettings(data: EvolutionSettingsData): Pro
     return { success: false, error: 'Erro interno do servidor ao salvar as configurações.' };
   }
 }
+
+// Schema para validação do update da flag de conversão do Google Calendar
+const GoogleCalendarConversionSchema = z.object({
+  workspaceId: z.string().uuid('ID do Workspace inválido.'),
+  enabled: z.boolean(),
+});
+
+// Server Action para atualizar a flag de conversão de evento do Google Calendar
+export async function updateGoogleCalendarConversionAction(
+  data: z.infer<typeof GoogleCalendarConversionSchema>
+): Promise<ActionResult> {
+  // TODO: Adicionar verificação de permissão do usuário para alterar configurações do workspace
+  // const session = await getSession();
+  // if (!session?.user?.id) {
+  //   return { success: false, error: 'Usuário não autenticado.' };
+  // }
+  // const hasPermission = await checkUserWorkspacePermission(session.user.id, data.workspaceId, ['admin', 'owner']); // Exemplo
+  // if (!hasPermission) {
+  //   return { success: false, error: 'Permissão negada.' };
+  // }
+
+  const validation = GoogleCalendarConversionSchema.safeParse(data);
+  if (!validation.success) {
+    return { success: false, error: validation.error.errors[0]?.message || 'Dados inválidos.' };
+  }
+
+  const { workspaceId, enabled } = validation.data;
+
+  try {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        google_calendar_event_conversion_enabled: enabled,
+      },
+    });
+
+    console.log(`[ACTION] Flag google_calendar_event_conversion_enabled atualizada para ${enabled} no Workspace ${workspaceId}`);
+    // Revalidar o path da página de integrações do Google (ajuste se necessário)
+    // Assumindo que a página de integrações Google está em /workspace/[id]/integrations
+    revalidatePath(`/workspace/${workspaceId}/integrations`); 
+
+    return { success: true };
+
+  } catch (error: any) {
+    console.error(`[ACTION ERROR] Falha ao atualizar flag de conversão do Google Calendar para ${workspaceId}:`, error);
+    return { success: false, error: 'Erro do servidor ao atualizar a configuração.' };
+  }
+}

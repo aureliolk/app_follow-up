@@ -63,6 +63,7 @@ type WorkspaceContextType = {
   switchWorkspace: (workspaceId: string) => void;
   refreshWorkspaces: () => Promise<void>; // Refresh manual
   clearError: () => void; // Limpar erro geral
+  updateCurrentWorkspaceField: (key: keyof Workspace, value: any) => void; // <-- Nova função
 
   // Operações de Workspace
   createWorkspace: (name: string) => Promise<Workspace>;
@@ -140,6 +141,18 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     return null;
   }, [workspace?.id, workspaces]); // Depende do workspace e da lista
 
+  // Função para atualizar um campo específico do workspace atual no estado local
+  const updateCurrentWorkspaceField = useCallback((key: keyof Workspace, value: any) => {
+    setWorkspace(prevWorkspace => {
+      if (!prevWorkspace) return null;
+      // Verifica se o valor realmente mudou para evitar re-renders desnecessários
+      if (prevWorkspace[key] === value) {
+        return prevWorkspace;
+      }
+      console.log(`[Context] Updating local workspace field: ${key} =`, value);
+      return { ...prevWorkspace, [key]: value };
+    });
+  }, []);
 
   // --- Lógica de Carregamento de Workspaces ---
 
@@ -426,6 +439,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     deleteWorkspace,
     refreshWorkspaces,
     clearError,
+    updateCurrentWorkspaceField,
     // Regras de Follow-up IA
     aiFollowUpRules,
     loadingAiFollowUpRules,

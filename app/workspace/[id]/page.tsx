@@ -7,9 +7,6 @@ import Link from 'next/link';
 // import { followUpService } from '../../follow-up/_services/followUpService';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-// <<< IMPORTAR O CONTEXTO DE FOLLOW-UP >>>
-import { useConversationContext } from '@/context/ConversationContext'; // <<< Importar hook correto
-import type { Campaign, ClientConversation } from '@/app/types'; // <<< Importar tipos se necessário
 
 // Importa os componentes específicos do Dashboard
 import DashboardStats from './dashboard/components/DashboardStats';

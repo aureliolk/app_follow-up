@@ -1,16 +1,13 @@
 // lib/ai/tools/googleCalendarTools.ts
 import { tool } from 'ai';
 import { z } from 'zod';
-import { format, parse, isValid, addDays, startOfDay, endOfDay } from 'date-fns'; // Adicionado startOfDay e endOfDay
+import { format, isValid, startOfDay, endOfDay } from 'date-fns'; // Adicionado startOfDay e endOfDay
 import { ptBR } from 'date-fns/locale';
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { v4 as uuidv4 } from 'uuid';
-import { setConversationAIStatus } from '@/lib/actions/conversationActions';
-import { markFollowUpConverted } from '@/lib/services/followUpService';
-import { FollowUpStatus } from '@prisma/client';
 import { followupConvert } from './followupConvert';
 
 // Descoberta do documento para APIs usadas
@@ -465,8 +462,28 @@ export const scheduleCalendarEventTool = tool({
         confirmationText += ` Os convites foram enviados para os participantes.`;
       }
 
-      // Pausar IA após agendamento e Converter Follow-up se existir
-      await followupConvert(workspaceId, conversationId);
+      // Buscar configuração do workspace para decidir sobre a conversão do follow-up
+      const workspaceSettings = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { google_calendar_event_conversion_enabled: true }
+      });
+
+      if (workspaceSettings?.google_calendar_event_conversion_enabled) {
+        console.log(`[scheduleCalendarEventTool] Conversão de Follow-up habilitada para Workspace ${workspaceId}. Chamando followupConvert.`);
+        // Pausar IA E Converter Follow-up
+        await followupConvert(workspaceId, conversationId);
+      } else {
+        console.log(`[scheduleCalendarEventTool] Conversão de Follow-up desabilitada para Workspace ${workspaceId}. Apenas pausando IA.`);
+        // Apenas Pausar IA (importar setConversationAIStatus se necessário)
+        const { setConversationAIStatus } = await import('@/lib/actions/conversationActions'); 
+        try {
+          await setConversationAIStatus(conversationId, false, workspaceId);
+          console.log(`[scheduleCalendarEventTool] IA pausada com sucesso para ${conversationId}.`);
+        } catch (statusError) {
+          console.error(`[scheduleCalendarEventTool] Erro ao tentar pausar IA para ${conversationId} após agendamento (conversão desativada):`, statusError);
+          // Não falhar o retorno do agendamento, apenas logar o erro da pausa.
+        }
+      }
 
       return {
         status: 'success',

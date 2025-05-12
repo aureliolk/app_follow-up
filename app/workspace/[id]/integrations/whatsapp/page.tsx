@@ -115,9 +115,7 @@ export default async function WhatsappIntegrationPage({ params }: WhatsappIntegr
                         <WhatsappSettingsForm currentSettings={settings} />
                     </CardContent>
                 </Card>
-                <div>
-                    <GoogleIntegrationsCard />
-                </div>
+                <GoogleIntegrationsCard />
             </div>
         </div>
     );

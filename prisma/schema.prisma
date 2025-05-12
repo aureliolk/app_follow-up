@@ -291,6 +291,7 @@ model Workspace {
   google_access_token_expires_at DateTime? @map("google_access_token_expires_at")
   google_calendar_scopes         String[]  @map("google_calendar_scopes")
   google_account_email           String?   @map("google_account_email")
+  google_calendar_event_conversion_enabled Boolean @default(false) @map("google_calendar_event_conversion_enabled")
 
   active_whatsapp_integration_type WhatsappIntegrationType @default(WHATSAPP_CLOUD_API) @map("active_whatsapp_integration_type")
 
