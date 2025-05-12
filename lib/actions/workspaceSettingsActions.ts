@@ -311,3 +311,86 @@ export async function createEvolutionInstanceAction(
     return { success: false, error: error.message || 'Erro do servidor ao criar instância Evolution.' };
   }
 }
+
+// --- Evolution API Status Fetch Action ---
+
+// Schema para buscar o status da instância
+const FetchEvolutionInstanceStatusSchema = z.object({
+  instanceName: z.string().min(1, 'Nome da instância (workspaceId) é obrigatório.'),
+});
+
+// Tipo de retorno esperado da action de status
+interface EvolutionInstanceStatusResult extends ActionResult {
+  connectionStatus?: string;
+  instanceExists?: boolean; // Para diferenciar "não encontrado" de "desconectado"
+  details?: {
+    ownerJid?: string;
+    profileName?: string;
+    profilePicUrl?: string;
+    // Adicionar outros campos se necessário
+  };
+}
+
+// Server Action para buscar o status de uma instância Evolution
+export async function fetchEvolutionInstanceStatusAction(
+  data: z.infer<typeof FetchEvolutionInstanceStatusSchema>
+): Promise<EvolutionInstanceStatusResult> {
+  // TODO: Adicionar verificação de permissão do usuário?
+
+  const validation = FetchEvolutionInstanceStatusSchema.safeParse(data);
+  if (!validation.success) {
+    return { success: false, error: validation.error.errors[0]?.message || 'Dados inválidos.' };
+  }
+
+  const { instanceName } = validation.data;
+
+  try {
+    const targetUrl = `${process.env.apiUrlEvolution}/instance/fetchInstances?instanceName=${instanceName}`;
+    console.log(`[ACTION fetchEvolutionInstanceStatus] Chamando GET ${targetUrl}`);
+
+    const response = await fetch(targetUrl, {
+      method: 'GET',
+      headers: {
+        'apikey': process.env.apiKeyEvolution as string, // Usar a chave global
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const responseBody = await response.json();
+
+    if (!response.ok) {
+      // A API Evolution pode retornar 404 se a instância não existe
+      if (response.status === 404) {
+        console.log(`[ACTION fetchEvolutionInstanceStatus] Instância ${instanceName} não encontrada (404).`);
+        return { success: true, instanceExists: false }; // Sucesso na chamada, mas instância não existe
+      }
+      console.error('[ACTION fetchEvolutionInstanceStatus] Erro da API Evolution:', responseBody);
+      throw new Error(responseBody.message || responseBody.error || `Erro ${response.status} ao buscar instância.`);
+    }
+
+    console.log(`[ACTION fetchEvolutionInstanceStatus] Resposta para ${instanceName}:`, responseBody);
+
+    // A API retorna um array, mesmo buscando por nome específico
+    if (!Array.isArray(responseBody) || responseBody.length === 0) {
+      console.log(`[ACTION fetchEvolutionInstanceStatus] Instância ${instanceName} não encontrada na resposta.`);
+      return { success: true, instanceExists: false };
+    }
+
+    const instanceDetails = responseBody[0]; // Pegar o primeiro (e único esperado) item
+
+    return {
+      success: true,
+      instanceExists: true,
+      connectionStatus: instanceDetails.connectionStatus, // 'open', 'close', etc.
+      details: {
+        ownerJid: instanceDetails.ownerJid,
+        profileName: instanceDetails.profileName,
+        profilePicUrl: instanceDetails.profilePicUrl,
+      },
+    };
+
+  } catch (error: any) {
+    console.error(`[ACTION ERROR] Falha ao buscar status da instância Evolution ${instanceName}:`, error);
+    return { success: false, error: error.message || 'Erro do servidor ao buscar status da instância.' };
+  }
+}
