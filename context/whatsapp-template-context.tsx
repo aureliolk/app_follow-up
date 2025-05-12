@@ -80,9 +80,20 @@ export const WhatsappTemplateProvider: React.FC<{ children: ReactNode }> = ({ ch
 
     // Efeito para buscar templates quando o workspace ativo muda
     useEffect(() => {
-        if (activeWorkspace?.id && activeWorkspace.id !== fetchedForWorkspaceId) {
-            // Buscar automaticamente quando o workspace ativo muda E ainda não buscamos para ele
+        // Verificar se temos um workspace ativo E se a integração oficial está configurada
+        const isOfficialIntegrationConfigured = activeWorkspace?.whatsappBusinessAccountId && activeWorkspace?.whatsappAccessToken; // Assumindo que whatsappAccessToken indica presença (não o valor real)
+        // Alternativa: Se o contexto do workspace tiver um booleano como 'isOfficialWhatsappConfigured', usar ele.
+
+        if (activeWorkspace?.id && isOfficialIntegrationConfigured && activeWorkspace.id !== fetchedForWorkspaceId) {
+            // Buscar automaticamente APENAS se o workspace ativo mudou, a integração oficial existe, E ainda não buscamos para ele
+            console.log(`[TemplateContext] Integração oficial detectada para ${activeWorkspace.id}. Buscando templates...`);
             fetchTemplatesForWorkspace(activeWorkspace.id);
+        } else if (activeWorkspace?.id && !isOfficialIntegrationConfigured) {
+            // Se a integração não está configurada, limpar e não buscar
+            console.log(`[TemplateContext] Integração oficial NÃO configurada para ${activeWorkspace.id}. Limpando templates.`);
+            setTemplates([]);
+            setFetchedForWorkspaceId(null); 
+            setTemplateError('Integração oficial do WhatsApp não configurada.'); // Opcional: Definir um erro informativo
         }
         // Limpar templates se o workspace for desativado
         else if (!activeWorkspace?.id) {
@@ -90,7 +101,7 @@ export const WhatsappTemplateProvider: React.FC<{ children: ReactNode }> = ({ ch
              setFetchedForWorkspaceId(null);
              console.log("[TemplateContext] Workspace desativado, limpando templates.");
         }
-    }, [activeWorkspace?.id, fetchTemplatesForWorkspace, fetchedForWorkspaceId]);
+    }, [activeWorkspace, fetchTemplatesForWorkspace, fetchedForWorkspaceId]); // Adicionar activeWorkspace completo como dependencia
 
     const value = {
         templates,

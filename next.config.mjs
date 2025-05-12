@@ -18,15 +18,15 @@ const nextConfig = {
 
     // Otimização de Imagens: Se você usa o componente <Image> do Next.js
     // com imagens de domínios externos.
-    // images: {
-    //   remotePatterns: [
-    //     {
-    //       protocol: 'https',
-    //       hostname: 'images.example.com', // Exemplo: domínio das suas imagens
-    //     },
-    //     // Adicione outros domínios permitidos aqui
-    //   ],
-    // },
+    images: {
+      remotePatterns: [
+        {
+          protocol: 'https',
+          hostname: 'pps.whatsapp.net', // Permitir imagens do WhatsApp
+        },
+        // Adicione outros domínios permitidos aqui
+      ],
+    },
 
     // Variáveis de Ambiente Públicas:
     // Se precisar expor alguma variável de ambiente para o navegador.
