@@ -35,8 +35,8 @@ export async function saveWhatsappCredentialsAction(
 
   // Verificar se a chave de criptografia está carregada (o import já faz isso, mas podemos checar de novo)
   if (!process.env.NEXTAUTH_SECRET || process.env.NEXTAUTH_SECRET.length !== 64) {
-       console.error("[ACTION ERROR] Chave de criptografia (NEXTAUTH_SECRET) ausente ou inválida no servidor.");
-       return { success: false, error: "Erro de configuração interna do servidor [EC01]." };
+    console.error("[ACTION ERROR] Chave de criptografia (NEXTAUTH_SECRET) ausente ou inválida no servidor.");
+    return { success: false, error: "Erro de configuração interna do servidor [EC01]." };
   }
 
 
@@ -68,7 +68,7 @@ export async function saveWhatsappCredentialsAction(
       console.log(`[ACTION] Mantendo Access Token existente para Workspace ${workspaceId}.`);
     }
 
-   
+
     // Atualizar o workspace com os dados construídos
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -101,7 +101,7 @@ type EvolutionSettingsData = z.infer<typeof evolutionSettingsSchema>;
 
 // Server Action para salvar configurações da Evolution API
 export async function saveEvolutionApiSettings(data: EvolutionSettingsData): Promise<{ success: boolean; error?: string }> {
-  const session = await getSession(); 
+  const session = await getSession();
   if (!session?.user?.id) {
     return { success: false, error: 'Usuário não autenticado.' };
   }
@@ -192,7 +192,7 @@ export async function updateGoogleCalendarConversionAction(
     console.log(`[ACTION] Flag google_calendar_event_conversion_enabled atualizada para ${enabled} no Workspace ${workspaceId}`);
     // Revalidar o path da página de integrações do Google (ajuste se necessário)
     // Assumindo que a página de integrações Google está em /workspace/[id]/integrations
-    revalidatePath(`/workspace/${workspaceId}/integrations`); 
+    revalidatePath(`/workspace/${workspaceId}/integrations`);
 
     return { success: true };
 
@@ -219,7 +219,6 @@ interface EvolutionInstanceResult extends ActionResult {
     qrCodeBase64?: string;
     qrCodeCount?: number;
   };
-  webhookSetupWarning?: string; // <<< Adicionar o campo opcional aqui
 }
 
 // Server Action para criar/conectar instância na Evolution API (simplificada)
@@ -250,11 +249,22 @@ export async function createEvolutionInstanceAction(
 
     const payload = {
       instanceName: workspaceId, // Usa o workspaceId como nome da instância
-      token: evolution_webhook_token, 
+      token: evolution_webhook_token,
       qrcode: true,
       integration: "WHATSAPP-BAILEYS",
-      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "GROUP_UPDATE", "PRESENCE_UPDATE"],
-      groups_ignore: true
+      groups_ignore: true,
+      webhook: {
+        url: webhookUrl,
+        enabled: true,
+        webhook_by_events: true,
+        webhook_base64: false,
+        events: [
+          "MESSAGES_UPSERT",
+          "MESSAGES_UPDATE",
+          "MESSAGES_DELETE",
+          "SEND_MESSAGE"
+        ]
+      }
     };
 
     console.log(`[ACTION createEvolutionInstance] Chamando ${targetUrl} com payload:`, JSON.stringify(payload, null, 2)); // Log do payload completo
@@ -284,76 +294,32 @@ export async function createEvolutionInstanceAction(
 
     // <<< Salvar o evolutionWebhookToken no banco de dados >>>
     try {
-        await prisma.workspace.update({
-          where: {id: workspaceId},
-          data: {
-            evolution_webhook_route_token: evolution_webhook_route_token,
-            evolution_api_instance_name: instanceData.instanceName,
-            evolution_api_token: evolution_webhook_token, // <<< Salvar o nome da instância retornado >>>
-             // evolution_api_instance_id: instanceData.instanceId, // Se existir e for útil
-          }
-        });
-        console.log(`[ACTION createEvolutionInstance] Evolution webhook token salvo para workspace ${workspaceId}`);
-    } catch(dbError) {
-        console.error(`[ACTION createEvolutionInstance] Erro ao salvar webhook token no DB para workspace ${workspaceId}:`, dbError);
-        // Não falhar a action inteira, mas logar o erro de DB.
-        // Talvez retornar um aviso parcial?
-    }
-
-    // <<< REINTRODUZIR A CONFIGURAÇÃO DO WEBHOOK VIA /webhook/set >>>
-    let webhookSetupWarning: string | undefined = undefined;
-    try {
-      const webhookSetUrl = `${process.env.apiUrlEvolution}/webhook/set/${instanceData.instanceName}`;
-      console.log(`[ACTION createEvolutionInstance] Configurando webhook em: ${webhookSetUrl}`);
-      const webhookPayload = {
-        enabled: true, // Certificar-se de que está habilitado
-        url: webhookUrl, // Sua URL pública (ngrok ou produção)
-        webhook_by_events: false, // Tentar com false primeiro
-        events: [ // Eventos que você quer receber
-          "MESSAGES_UPSERT", 
-          "CONNECTION_UPDATE", 
-          "QRCODE_UPDATED",
-          // Adicione outros eventos conforme necessário
-        ]
-      };
-      
-      console.log(`[ACTION createEvolutionInstance] Payload para /webhook/set:`, JSON.stringify(webhookPayload, null, 2));
-
-      const webhookResponse = await fetch(webhookSetUrl, {
-        method: 'POST',
-        headers: {
-          'apikey': evolution_webhook_token, // O token da INSTÂNCIA, não o global
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(webhookPayload),
+      await prisma.workspace.update({
+        where: { id: workspaceId },
+        data: {
+          evolution_webhook_route_token: evolution_webhook_route_token,
+          evolution_api_instance_name: instanceData.instanceName,
+          evolution_api_token: evolution_webhook_token, // <<< Salvar o nome da instância retornado >>>
+          // evolution_api_instance_id: instanceData.instanceId, // Se existir e for útil
+        }
       });
-
-      if (!webhookResponse.ok) {
-        const webhookErrorBody = await webhookResponse.json().catch(() => ({ message: 'Falha ao ler corpo do erro do webhook/set' }));
-        console.error(`[ACTION createEvolutionInstance] Erro ao configurar webhook para ${instanceData.instanceName}. Corpo do erro:`, JSON.stringify(webhookErrorBody, null, 2));
-        const errorMessage = Array.isArray(webhookErrorBody.message) ? webhookErrorBody.message.join(', ') : (webhookErrorBody.message || webhookErrorBody.error || `Erro ${webhookResponse.status} ao configurar webhook.`);
-        webhookSetupWarning = `Falha ao configurar webhook: ${errorMessage}`;
-      } else {
-        const webhookSuccessBody = await webhookResponse.json().catch(() => null);
-        console.log(`[ACTION createEvolutionInstance] Webhook configurado com sucesso para ${instanceData.instanceName}. Resposta:`, webhookSuccessBody);
-      }
-
-    } catch (error: any) {
-      console.error(`[ACTION createEvolutionInstance] Exceção ao configurar webhook para ${instanceData.instanceName}:`, error);
-      webhookSetupWarning = `Exceção ao configurar webhook: ${error.message}`;
+      console.log(`[ACTION createEvolutionInstance] Evolution webhook token salvo para workspace ${workspaceId}`);
+    } catch (dbError) {
+      console.error(`[ACTION createEvolutionInstance] Erro ao salvar webhook token no DB para workspace ${workspaceId}:`, dbError);
+      // Não falhar a action inteira, mas logar o erro de DB.
+      // Talvez retornar um aviso parcial?
     }
 
     return {
       success: true,
       instanceData: {
-        instanceName: instanceData.instanceName, 
+        instanceName: instanceData.instanceName,
         status: instanceData.status,
         token: responseBody.hash, // Este é o API Key da instância (antigo 'token' ou 'hash')
         pairingCode: qrCodeData?.pairingCode,
         qrCodeBase64: qrCodeData?.base64,
         qrCodeCount: qrCodeData?.count,
       },
-      webhookSetupWarning // <<< Retornar o aviso, se houver >>>
     };
 
   } catch (error: any) {
@@ -432,16 +398,16 @@ export async function fetchEvolutionInstanceStatusAction(
     // <<< Buscar o token hash armazenado no nosso DB >>>
     let storedTokenHash: string | undefined = undefined;
     try {
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: instanceName }, // instanceName é o workspaceId
-            select: { evolution_api_token: true }
-        });
-        if (workspace?.evolution_api_token) {
-            storedTokenHash = workspace.evolution_api_token;
-        }
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: instanceName }, // instanceName é o workspaceId
+        select: { evolution_api_token: true }
+      });
+      if (workspace?.evolution_api_token) {
+        storedTokenHash = workspace.evolution_api_token;
+      }
     } catch (dbError) {
-        console.error(`[ACTION fetchEvolutionInstanceStatus] Erro ao buscar token hash do DB para ${instanceName}:`, dbError);
-        // Não falhar a action inteira, mas logar.
+      console.error(`[ACTION fetchEvolutionInstanceStatus] Erro ao buscar token hash do DB para ${instanceName}:`, dbError);
+      // Não falhar a action inteira, mas logar.
     }
 
     return {
@@ -501,35 +467,35 @@ export async function deleteEvolutionInstanceAction(
       console.error(`[ACTION deleteEvolutionInstanceAction] Erro da API Evolution ao deletar ${instanceName}:`, responseBody);
       throw new Error(responseBody.message || responseBody.error || `Erro ${response.status} ao deletar instância.`);
     }
-    
+
     // Se a resposta for 204, response.json() falhará, então verificamos o status diretamente
     if (response.status === 204) {
-         console.log(`[ACTION deleteEvolutionInstanceAction] Instância ${instanceName} deletada com sucesso (204 No Content).`);
+      console.log(`[ACTION deleteEvolutionInstanceAction] Instância ${instanceName} deletada com sucesso (204 No Content).`);
     } else {
-        const responseBody = await response.json().catch(() => null); // Tenta ler o corpo, mas não falha se vazio
-        console.log(`[ACTION deleteEvolutionInstanceAction] Resposta da API Evolution ao deletar ${instanceName}:`, responseBody);
+      const responseBody = await response.json().catch(() => null); // Tenta ler o corpo, mas não falha se vazio
+      console.log(`[ACTION deleteEvolutionInstanceAction] Resposta da API Evolution ao deletar ${instanceName}:`, responseBody);
     }
 
 
     // Revalidar o path da página de integrações para refletir as mudanças
     // Assumindo que instanceName é o workspaceId, como nas outras actions
-    const workspace = await prisma.workspace.findUnique({ 
-        where: { id: instanceName }, // instanceName deve ser o workspaceId
-        select: { evolution_api_endpoint: true } // Apenas para verificar se o workspace existe, ou poderia usar o slug
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: instanceName }, // instanceName deve ser o workspaceId
+      select: { evolution_api_endpoint: true } // Apenas para verificar se o workspace existe, ou poderia usar o slug
     });
-    
+
     if (workspace) {
-        // Opcional: Limpar campos relacionados à Evolution API no nosso banco de dados
-        // await prisma.workspace.update({
-        //   where: { id: instanceName },
-        //   data: {
-        //     evolution_api_instance_id: null, // Se você estiver armazenando isso
-        //     evolution_api_instance_name: null, 
-        //     // Manter endpoint e apikey? Ou limpar também?
-        //   }
-        // });
-        revalidatePath(`/workspace/${instanceName}/integrations/evolution`); // ou o path correto
-        console.log(`[ACTION deleteEvolutionInstanceAction] Path revalidado para workspace ${instanceName}`);
+      // Opcional: Limpar campos relacionados à Evolution API no nosso banco de dados
+      // await prisma.workspace.update({
+      //   where: { id: instanceName },
+      //   data: {
+      //     evolution_api_instance_id: null, // Se você estiver armazenando isso
+      //     evolution_api_instance_name: null, 
+      //     // Manter endpoint e apikey? Ou limpar também?
+      //   }
+      // });
+      revalidatePath(`/workspace/${instanceName}/integrations/evolution`); // ou o path correto
+      console.log(`[ACTION deleteEvolutionInstanceAction] Path revalidado para workspace ${instanceName}`);
     }
 
 
