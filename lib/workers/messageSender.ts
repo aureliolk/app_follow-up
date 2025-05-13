@@ -43,7 +43,7 @@ const messageSenderWorker = new Worker<MessageJobData>(
           where: { id: campaignContactId },
           include: {
               campaign: {
-                  select: { message: true, isTemplate: true, templateName: true, templateLanguage: true, workspaceId: true }
+                  select: { message: true, isTemplate: true, templateName: true, templateLanguage: true, workspaceId: true, channelIdentifier: true }
               }
           }
       });
