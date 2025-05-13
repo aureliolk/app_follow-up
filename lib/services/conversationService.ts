@@ -299,7 +299,7 @@ export async function sendOperatorMessage(
     // 3. Tentar enviar pelo canal apropriado
     let sendResult: any;
 
-    if (channel === 'WHATSAPP') {
+    if (channel === 'WHATSAPP_CLOUDAPI') {
       console.log(`[Svc SendOperatorMsg] Attempting send via WhatsApp Cloud API for conv ${conversationId}`);
       if (!workspace.whatsappPhoneNumberId || !workspace.whatsappAccessToken || !clientPhoneNumber) {
         console.error(`[Svc SendOperatorMsg] WhatsApp Cloud API config incomplete for workspace ${workspace.id}. Details - PhoneID: ${!!workspace.whatsappPhoneNumberId}, Token: ${!!workspace.whatsappAccessToken}, ClientPhone: ${!!clientPhoneNumber}`);
