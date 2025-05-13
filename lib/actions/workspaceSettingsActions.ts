@@ -252,7 +252,7 @@ export async function createEvolutionInstanceAction(
       token: evolution_webhook_token,
       qrcode: true,
       integration: "WHATSAPP-BAILEYS",
-      groups_ignore: true,
+      groupsIgnore: true,
       webhook: {
         url: webhookUrl,
         enabled: true,

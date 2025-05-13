@@ -75,14 +75,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Workspace não encontrado para este token. Rejeitando.`);
         return new NextResponse('Workspace not found or invalid token', { status: 404 });
     }
-    console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Workspace ${workspace.id} encontrado.`);
-
-    // 2. (Opcional) Validação de Segurança Adicional
-    // A Evolution API pode enviar um 'apikey' no corpo do payload (conforme visto no log).
-    // Poderíamos validar se este apikey corresponde ao 'evolution_api_token' salvo para o workspace.
-    // No entanto, como o token da rota já é único, essa validação adicional pode ser opcional
-    // dependendo do nível de segurança desejado. Por agora, vamos pular para manter simples.
-
+  
     // 3. Processar Payload
     try {
         const payload: EvolutionWebhookPayload = await request.json();
