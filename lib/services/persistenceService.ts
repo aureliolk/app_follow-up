@@ -10,6 +10,7 @@ export interface SaveMessageData {
   timestamp: Date;
   metadata?: Record<string, any>;
   channel_message_id?: string;
+  providerMessageId?: string;
 }
 
 /**
