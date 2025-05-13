@@ -293,8 +293,6 @@ model Workspace {
   google_account_email           String?   @map("google_account_email")
   google_calendar_event_conversion_enabled Boolean @default(false) @map("google_calendar_event_conversion_enabled")
 
-  active_whatsapp_integration_type WhatsappIntegrationType @default(WHATSAPP_CLOUD_API) @map("active_whatsapp_integration_type")
-
   whatsappPhoneNumberId      String? @map("whatsapp_phone_number_id")
   whatsappBusinessAccountId  String? @map("whatsapp_business_account_id")
   whatsappAccessToken        String? @map("whatsapp_access_token")
@@ -307,8 +305,6 @@ model Workspace {
   evolution_api_instance_name String? @map("evolution_api_instance_name")
   evolution_api_token         String? @unique @map("evolution_api_token")
   evolution_webhook_route_token String? @unique @map("evolution_webhook_route_token")
-  
-  
 
   tags WorkspaceTag[]
 
@@ -554,14 +550,6 @@ enum InvitationStatus {
   EXPIRED
   REVOKED
 
-  @@schema("workspace_schema")
-}
-
-enum WhatsappIntegrationType {
-  WHATSAPP_CLOUD_API
-  EVOLUTION_API
-
-  @@map("whatsapp_integration_type")
   @@schema("workspace_schema")
 }
 

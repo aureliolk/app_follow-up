@@ -27,7 +27,6 @@ async function getWorkspaceWhatsappSettings(id: string) {
       whatsappAppSecret: true,
       whatsappWebhookVerifyToken: true,
       whatsappWebhookRouteToken: true,
-      active_whatsapp_integration_type: true,
       evolution_api_endpoint: true,
       evolution_api_key: true,
       evolution_api_instance_name: true
@@ -47,7 +46,6 @@ async function getWorkspaceWhatsappSettings(id: string) {
     whatsappWebhookRouteToken: workspace.whatsappWebhookRouteToken || null,
     isAccessTokenSet: !!workspace.whatsappAccessToken,
     isAppSecretSet: !!workspace.whatsappAppSecret,
-    activeIntegration: workspace.active_whatsapp_integration_type,
     evolutionApiEndpoint: workspace.evolution_api_endpoint || '',
     evolutionApiInstanceName: workspace.evolution_api_instance_name || '',
     isEvolutionApiKeySet: !!workspace.evolution_api_key,

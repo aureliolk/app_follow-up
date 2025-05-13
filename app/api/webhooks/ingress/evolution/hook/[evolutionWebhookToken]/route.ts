@@ -34,10 +34,17 @@ interface EvolutionMessageData {
         remoteJid: string;
         fromMe: boolean;
         id: string;
+        participant?: string;
     };
     pushName?: string;
     message?: { // O conteúdo da mensagem varia
         conversation?: string; // Para mensagens de texto
+        imageMessage?: {
+            caption?: string;
+            url?: string;
+            directPath?: string;
+            mimetype?: string;
+        };
         // Adicionar outros tipos se necessário: imageMessage, audioMessage, etc.
     };
     messageTimestamp: string | number; // Vem como string ou número
@@ -87,7 +94,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             const workspaceId = workspace.id; // ID do nosso workspace
 
             // Extrair dados da mensagem
-            const senderJid = messageData.key.remoteJid; // Este é o JID do contato
+            let senderJidWithSuffix: string | undefined;
+            if (messageData.key.remoteJid?.endsWith('@g.us')) {
+                // Mensagem de Grupo: o remetente é o 'participant'
+                senderJidWithSuffix = messageData.key.participant;
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem de grupo detectada. Usando participant: ${senderJidWithSuffix}`);
+            } else {
+                // Mensagem Direta: o remetente é o 'remoteJid'
+                senderJidWithSuffix = messageData.key.remoteJid;
+                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem direta detectada. Usando remoteJid: ${senderJidWithSuffix}`);
+            }
+
+            if (!senderJidWithSuffix) {
+                console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Não foi possível determinar o JID do remetente. Pulando mensagem ${messageData.key.id}.`);
+                return new NextResponse('EVENT_RECEIVED_MISSING_SENDER_JID', { status: 200 });
+            }
+            
             const senderName = messageData.pushName || null; // Nome do contato
             const messageIdFromEvolution = messageData.key.id; // ID da mensagem na Evolution
             
@@ -103,6 +125,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 messageContent = messageData.message.conversation;
                 messageType = 'text'; // Na Evolution, texto simples é 'conversation'
                 requiresProcessing = true;
+            } else if (messageData.message?.imageMessage) {
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Recebida imageMessage.`);
+                messageContent = messageData.message.imageMessage.caption || "[Imagem Recebida]"; // Usar caption ou placeholder
+                messageType = 'image';
+                // Tentar obter mediaId e mimeType (ajustar conforme a estrutura real do payload da Evolution para mídia)
+                // Supondo que 'url' possa ser um identificador ou 'directPath' seja mais apropriado, e 'mimetype' está presente
+                mediaId = messageData.message.imageMessage.url || messageData.message.imageMessage.directPath || null;
+                mimeType = messageData.message.imageMessage.mimetype || null;
+                requiresProcessing = true; // Imagens precisam ser processadas
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Image Details: Content='${messageContent}', MediaID='${mediaId}', MimeType='${mimeType}'`);
             } else {
                 // Outros tipos de mensagem não tratados por enquanto
                 console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Tipo de mensagem não suportado ou conteúdo ausente no payload da Evolution:`, messageData.message);
@@ -115,9 +147,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 ? parseInt(messageData.messageTimestamp, 10) * 1000
                 : messageData.messageTimestamp * 1000;
 
-            // Padronizar número do remetente (extrair apenas os dígitos do JID)
-            // Ex: "557391121575@s.whatsapp.net" -> "557391121575"
-            const senderPhoneNumberRaw = senderJid.split('@')[0];
+            // Padronizar número do remetente (extrair apenas os dígitos do JID CORRETO)
+            const senderPhoneNumberRaw = senderJidWithSuffix.split('@')[0]; // <<< Usa o JID correto
             const senderPhoneNumber = standardizeBrazilianPhoneNumber(senderPhoneNumberRaw);
 
             if (!senderPhoneNumber) {
@@ -130,10 +161,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             const { conversation, client, clientWasCreated, conversationWasCreated } = await getOrCreateConversation(
                 workspaceId,
                 senderPhoneNumber,
-                senderName
+                senderName,
+                "WHATSAPP_EVOLUTION"
             );
             console.log(
-                `[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Client ${client.id} ${clientWasCreated ? 'CRIADO' : 'existente'}. Conversation ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'existente'}.`
+                `[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Client ${client.id} ${clientWasCreated ? 'CRIADO' : 'existente'}. Conversation ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'existente'}. Channel: ${conversation.channel}`
             );
 
             // Criar Deal se novo cliente (lógica copiada do webhook WhatsApp)

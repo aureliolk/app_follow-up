@@ -27,6 +27,8 @@ import { sendWhatsAppMessage } from '../services/channelService';
 import { getActiveToolsForWorkspace } from '../ai/toolLoader'; 
 // <<< Importar Tipos de Ferramentas da Vercel AI SDK >>>
 import { ToolCall, ToolResult, Tool, ToolContent } from 'ai'; 
+// <<< Corrigir Import da função de envio Evolution >>>
+import { sendEvolutionMessage } from '../services/channelService';
 
 const QUEUE_NAME = 'message-processing';
 const BUFFER_TIME_MS = 3000; // 3 segundos de buffer (ajuste se necessário)
@@ -115,6 +117,11 @@ async function processJob(job: Job<JobData>) {
                             ai_name: true,
                             whatsappAccessToken: true,
                             whatsappPhoneNumberId: true,
+                            // <<< Adicionar campos da Evolution API >>>
+                            evolution_api_endpoint: true,
+                            evolution_api_key: true,
+                            evolution_api_instance_name: true,
+                            evolution_api_token: true 
                         }
                     }
                 }

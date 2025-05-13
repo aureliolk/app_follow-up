@@ -47,4 +47,26 @@ export function standardizeBrazilianPhoneNumber(phoneNumber: string | null | und
   }
 
   return cleanedNumber;
+}
+
+/**
+ * Padroniza um número de telefone brasileiro para E.164 (55...) e opcionalmente
+ * adiciona o sufixo "@s.whatsapp.net" necessário para algumas APIs (como Evolution).
+ *
+ * @param phoneNumber O número de telefone a ser padronizado.
+ * @param addSuffix Se true, adiciona "@s.whatsapp.net" ao final.
+ * @returns O número padronizado e formatado, ou null se inválido.
+ */
+export function standardizeAndFormatE164(phoneNumber: string | null | undefined, addSuffix: boolean = false): string | null {
+  const standardizedNumber = standardizeBrazilianPhoneNumber(phoneNumber);
+
+  if (!standardizedNumber) {
+    return null; // Falha na padronização inicial
+  }
+
+  if (addSuffix) {
+    return `${standardizedNumber}@s.whatsapp.net`;
+  }
+
+  return standardizedNumber;
 } 

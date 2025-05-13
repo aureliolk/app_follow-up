@@ -115,11 +115,27 @@ export async function loadFollowUpContext(
 export async function getOrCreateConversation(
   workspaceId: string,
   phoneNumber: string,
-  clientName?: string | null
+  clientName?: string | null,
+  channelIdentifier?: string | null
 ): Promise<{ client: Client; conversation: Conversation; conversationWasCreated: boolean; clientWasCreated: boolean }> {
+  
+  // Determinar o canal a ser usado. Se nenhum identificador for passado, pode-se usar um padrão ou lançar erro.
+  // Por agora, vamos assumir que um canal válido sempre será passado ou que o comportamento legado (WHATSAPP genérico) é aceitável se channelIdentifier for nulo.
+  // Idealmente, os chamadores (webhooks) SEMPRE passarão o channelIdentifier correto.
+  const targetChannel = channelIdentifier || 'UNKNOWN_CHANNEL'; // Usar um placeholder ou tratar erro se não fornecido
+  if (targetChannel === 'UNKNOWN_CHANNEL') {
+    console.warn(`[getOrCreateConversation] Chamada sem channelIdentifier específico para workspace ${workspaceId}, phoneNumber ${phoneNumber}. Isso pode levar a problemas de roteamento.`);
+    // Poderia lançar um erro aqui se for mandatório: throw new Error('Channel identifier is required');
+  }
+
   // 1) Cliente
   let client = await prisma.client.findFirst({
-    where: { workspace_id: workspaceId, phone_number: phoneNumber }
+    where: { 
+      workspace_id: workspaceId, 
+      phone_number: phoneNumber, 
+      // Opcional: considerar o canal na busca do cliente se um mesmo número puder existir em canais diferentes
+      // channel: targetChannel 
+    }
   });
   let clientWasCreated = false;
   if (!client) {
@@ -128,16 +144,26 @@ export async function getOrCreateConversation(
         workspace_id: workspaceId,
         phone_number: phoneNumber,
         name: clientName ?? null,
+        channel: targetChannel, // <<< Salvar o canal específico no Cliente também
         metadata: {}
       }
     });
     clientWasCreated = true;
-  } else if (!client.name && clientName) {
-    // Cliente existe, mas sem nome -> Atualiza com o nome recebido
-    client = await prisma.client.update({
-      where: { id: client.id },
-      data: { name: clientName }
-    });
+  } else {
+    // Cliente existe. Atualizar nome se necessário e canal se estiver diferente ou nulo.
+    const dataToUpdate: Prisma.ClientUpdateInput = {};
+    if (!client.name && clientName) {
+      dataToUpdate.name = clientName;
+    }
+    if (client.channel !== targetChannel) { // Atualiza o canal do cliente se mudou ou era genérico
+        dataToUpdate.channel = targetChannel;
+    }
+    if (Object.keys(dataToUpdate).length > 0) {
+        client = await prisma.client.update({
+            where: { id: client.id },
+            data: dataToUpdate
+        });
+    }
   }
 
   // 2) Conversa
@@ -148,7 +174,7 @@ export async function getOrCreateConversation(
       data: {
         workspace_id: workspaceId,
         client_id: client.id,
-        channel: 'WHATSAPP',
+        channel: targetChannel, // <<< Usar o targetChannel aqui
         status: ConversationStatus.ACTIVE,
         is_ai_active: true,
         last_message_at: new Date()
@@ -157,21 +183,23 @@ export async function getOrCreateConversation(
     conversationWasCreated = true;
   } catch (e: any) {
     // Se já existir pela chave única workspace_id+client_id+channel, atualiza
-    if (e.code === 'P2002') {
+    if (e.code === 'P2002' && e.meta?.target?.includes('workspace_id') && e.meta?.target?.includes('client_id') && e.meta?.target?.includes('channel')) {
       conversation = await prisma.conversation.update({
         where: {
           workspace_id_client_id_channel: {
             workspace_id: workspaceId,
             client_id: client.id,
-            channel: 'WHATSAPP'
+            channel: targetChannel // <<< Usar o targetChannel aqui também
           }
         },
         data: {
           last_message_at: new Date(),
-          status: ConversationStatus.ACTIVE
+          status: ConversationStatus.ACTIVE // Reativar se estava fechada, por exemplo
         }
       });
     } else {
+      // Se o erro P2002 for em outra constraint única, ou outro erro, relançar
+      console.error("[getOrCreateConversation] Erro ao criar/atualizar conversa:", e);
       throw e;
     }
   }

@@ -185,10 +185,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     const { conversation, client, clientWasCreated, conversationWasCreated } = await getOrCreateConversation(
                                         workspace.id,
                                         senderPhoneNumber,
-                                        senderName // <<< Passar o nome extraído
+                                        senderName, // <<< Passar o nome extraído
+                                        "WHATSAPP_CLOUDAPI" // <<< Passar o identificador específico
                                     );
                                     console.log(
-                                        `[WHATSAPP WEBHOOK - POST ${routeToken}] Client ${client.id} ${clientWasCreated ? 'CRIADO' : 'existente'}. Conversation ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'existente'}.`
+                                        `[WHATSAPP WEBHOOK - POST ${routeToken}] Client ${client.id} ${clientWasCreated ? 'CRIADO' : 'existente'}. Conversation ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'existente'}. Channel: ${conversation.channel}` // Log do canal
                                     );
 
                                     // <<< INÍCIO: Lógica para criar Deal se novo cliente >>>
