@@ -45,15 +45,11 @@ export async function sendWhatsappTemplateAction(
       select: {
         whatsappPhoneNumberId: true,
         whatsappAccessToken: true, // Assumindo que este campo contém o token criptografado
-        active_whatsapp_integration_type: true,
       }
     });
 
     if (!workspace) {
       throw new Error('Workspace não encontrado.');
-    }
-    if (workspace.active_whatsapp_integration_type !== 'WHATSAPP_CLOUD_API') {
-      throw new Error('A integração ativa para este workspace não é a WhatsApp Cloud API.');
     }
     if (!workspace.whatsappPhoneNumberId) {
       throw new Error('ID do número de telefone do WhatsApp não configurado no workspace.');
