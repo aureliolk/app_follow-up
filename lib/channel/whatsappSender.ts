@@ -135,7 +135,7 @@ export async function sendWhatsappMessage(
     to: toPhoneNumber,
     type: 'text',
     text: {
-      preview_url: false, // Pode ajustar se quiser preview de links
+      preview_url: true, // Pode ajustar se quiser preview de links
       body: `*${displayName}*\n ${messageText}`,
     },
   };

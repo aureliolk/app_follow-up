@@ -48,13 +48,15 @@ export async function sendEvolutionMessage({
   apiKey,
   instanceName,
   toPhoneNumber,
-  messageContent
+  messageContent,
+  senderName
 }: {
   endpoint: string;
   apiKey: string;
   instanceName: string;
   toPhoneNumber: string;
   messageContent: string;
+  senderName: string;
 }): Promise<EvolutionSendResult> {
   console.log(`[sendEvolutionMessage] Preparando para enviar para ${toPhoneNumber} via Instância ${instanceName}`);
   
@@ -71,9 +73,7 @@ export async function sendEvolutionMessage({
       delay: 1200,
       presence: "composing",
     },
-    textMessage: {
-      text: messageContent,
-    },
+    text: `*${senderName}*\n ${messageContent}`
   };
 
   try {
