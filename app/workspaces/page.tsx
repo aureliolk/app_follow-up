@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWorkspace } from '../../context/workspace-context';
 import { useSession } from 'next-auth/react';
@@ -28,14 +28,35 @@ export default function WorkspacesList() {
 
   const isSuperAdmin = session?.user?.isSuperAdmin;
 
+  // Filtrar workspaces para exibição
+  const displayedWorkspaces = useMemo(() => {
+    if (isLoading) return [];
+
+    if (isSuperAdmin) {
+      // Para Super Admin, aplicar a condição especial para o workspace específico
+      return workspaces.filter(ws => {
+        if (ws.id === '33c6cb57-24f7-4586-9122-f91aac8a098c') {
+          return session?.user?.email === 'aurelio@lumibot.com.br';
+        }
+        return true; // Inclui todos os outros workspaces para Super Admin
+      });
+    }
+    // Para não super admins, mostrar apenas os workspaces que eles possuem
+    return workspaces.filter(ws => ws.owner?.id === session?.user?.id);
+  }, [workspaces, isLoading, isSuperAdmin, session?.user?.id, session?.user?.email]);
+
   // Redirecionamento
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/login');
-    } else if (status === 'authenticated' && !isLoading && workspaces.length === 1 && !isSuperAdmin) {
-      router.push(`/workspace/${workspaces[0].id}`);
+    } else if (status === 'authenticated' && !isLoading && !isSuperAdmin) {
+      // Usar displayedWorkspaces para a lógica de redirecionamento
+      // (Esta parte já estava correta após sua reversão e a lógica anterior de displayedWorkspaces)
+      if (displayedWorkspaces.length === 1) {
+        router.push(`/workspace/${displayedWorkspaces[0].id}`);
+      }
     }
-  }, [status, router, isLoading, workspaces, isSuperAdmin]);
+  }, [status, router, isLoading, displayedWorkspaces, isSuperAdmin]);
 
   // Debug logs para ajudar a identificar problemas
   console.log("Debug workspaces:", {
@@ -161,17 +182,19 @@ export default function WorkspacesList() {
           {isSuperAdmin ? 'Todos os Workspaces' : 'Selecione um Workspace'}
         </h2>
 
-        {!workspaces || workspaces.length === 0 ? (
+        {!displayedWorkspaces || displayedWorkspaces.length === 0 ? (
           <Card className="border-border bg-card text-center py-8">
             <CardContent>
               <p className="text-muted-foreground italic">
-                Nenhum workspace encontrado. Crie um acima para começar.
+                {isSuperAdmin 
+                  ? "Nenhum workspace corresponde aos critérios de visualização ou nenhum foi criado."
+                  : "Você não possui workspaces ou nenhum workspace corresponde aos critérios de visualização."}
               </p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-4">
-            {workspaces.map((workspace) => (
+            {displayedWorkspaces.map((workspace) => (
               <Card key={workspace.id} className="border-border bg-card hover:bg-accent/50 transition-colors">
                 <CardContent className="p-4">
                   {editingWorkspace?.id === workspace.id ? (

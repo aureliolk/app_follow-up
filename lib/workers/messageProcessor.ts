@@ -562,7 +562,7 @@ async function processJob(job: Job<JobData>) {
       // <<< LOG ANTES DO BLOCO WHATSAPP >>>
       console.log(`[MsgProcessor ${jobId}] STEP 9: Checking channel for WhatsApp send. Channel: ${channel}`);
       // Enviar resposta via WhatsApp (se aplicável)
-      if (channel === 'WHATSAPP') {
+      if (channel === 'WHATSAPP' || channel === 'WHATSAPP_CLOUDAPI') {
             console.log(`[MsgProcessor ${jobId}] STEP 9: ENTERING WhatsApp Cloud API send block for channel ${channel}.`);
             const { whatsappPhoneNumberId } = workspace; 
             const encryptedAccessToken = workspace.whatsappAccessToken; 
