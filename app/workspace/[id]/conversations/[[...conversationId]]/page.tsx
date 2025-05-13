@@ -43,7 +43,7 @@ export default function ConversationsPage() {
       console.log(`[ConversationsPage] useEffect (initial): Fetching via context for wsId ${wsId} with filter ${currentFilter}`);
       fetchConversations(currentFilter, wsId);
     }
-  }, [workspace?.id, workspaceLoading, fetchConversations]);
+  }, [workspace?.id, workspaceLoading]);
 
   useEffect(() => {
     if (conversations.length > 0 && !loadingConversations) {
