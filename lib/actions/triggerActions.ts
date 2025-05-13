@@ -24,6 +24,7 @@ const CreateTriggerActionSchema = z.object({
   isTemplate: z.boolean(),
   templateName: z.string().optional(),
   templateLanguage: z.string().optional(),
+  channelIdentifier: z.string().min(1, { message: "Identificador do canal é obrigatório." }),
 });
 
 // Tipo de entrada baseado no Schema (sem workspaceId)
@@ -75,6 +76,7 @@ export async function createTriggerAction(
         templateLanguage: data.templateLanguage,
         templateCategory: null,
         status: "PENDING",
+        channelIdentifier: data.channelIdentifier,
       }
     });
 

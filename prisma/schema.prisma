@@ -572,6 +572,7 @@ model Campaign {
   templateName     String? @map("template_name")
   templateLanguage String? @map("template_language")
   templateCategory String? @map("template_category")
+  channelIdentifier String?
 
   contacts CampaignContact[]
 

@@ -30,7 +30,14 @@ export default async function NewCampaignPage({ params }: any) {
       id: workspaceId,
     },
     select: {
-      id: true, // Selecionar apenas o ID
+      id: true,
+      // Campos para verificar a configuração da WhatsApp Cloud API
+      whatsappPhoneNumberId: true,
+      whatsappAccessToken: true,
+      // Campos para verificar a configuração da Evolution API (ou outra não oficial)
+      evolution_api_token: true,
+      evolution_api_instance_name: true,
+      // Adicione outros campos relevantes se houver mais tipos de integração
     },
   });
 
@@ -39,6 +46,19 @@ export default async function NewCampaignPage({ params }: any) {
     notFound();
   }
   // <<< FIM BUSCAR WORKSPACE >>>
+
+  // Determinar canais ativos
+  const activeChannels: string[] = [];
+  const hasCloudApi = !!(workspace.whatsappPhoneNumberId && workspace.whatsappAccessToken);
+  const hasEvolutionApi = !!( workspace.evolution_api_token && workspace.evolution_api_instance_name );
+
+  if (hasCloudApi) {
+    activeChannels.push('WHATSAPP_CLOUDAPI');
+  }
+  if (hasEvolutionApi) {
+    activeChannels.push('WHATSAPP_EVOLUTION');
+  }
+  console.log('[NewCampaignPage] Active Channels:', activeChannels);
 
   // <<< Buscar as campanhas existentes para este workspace >>>
   const campaigns = await prisma.campaign.findMany({
@@ -62,8 +82,8 @@ export default async function NewCampaignPage({ params }: any) {
            </CardDescription>
          </CardHeader>
          <CardContent>
-           {/* Passando o ID (UUID) real do workspace encontrado pelo slug */}
-           <TriggerForm workspaceId={workspace.id} />
+           {/* Passando o ID (UUID) real do workspace encontrado pelo slug e os canais ativos */}
+           <TriggerForm workspaceId={workspace.id} activeChannels={activeChannels} />
          </CardContent>
        </Card>
 
