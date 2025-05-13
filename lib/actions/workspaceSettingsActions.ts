@@ -8,7 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { encrypt, decrypt } from '@/lib/encryption'; // Ajuste o path se necessário
 import crypto from 'crypto'; // Importar crypto
 import { getSession } from 'next-auth/react'; // Usar getSession (ou seu equivalente)
-import { WhatsappIntegrationType } from '@prisma/client'; // Importar o Enum
+// import { WhatsappIntegrationType } from '@prisma/client'; // REMOVIDO
 
 // Schema e ActionResult permanecem iguais...
 const WhatsappCredentialsSchema = z.object({
@@ -93,7 +93,7 @@ const evolutionSettingsSchema = z.object({
   endpoint: z.string().url({ message: "Endpoint da API deve ser uma URL válida." }).optional().or(z.literal('')),
   apiKey: z.string().optional(), // Opcional, só atualiza se fornecido
   instanceName: z.string().optional(),
-  activeIntegration: z.nativeEnum(WhatsappIntegrationType)
+  activeIntegration: z.enum(['NONE', 'WHATSAPP_CLOUD_API', 'EVOLUTION_API']) // ALTERADO
 });
 
 // Tipagem para os dados da action
@@ -118,7 +118,7 @@ export async function saveEvolutionApiSettings(data: EvolutionSettingsData): Pro
 
   try {
     const dataToUpdate: any = {
-      active_whatsapp_integration_type: activeIntegration,
+      // active_whatsapp_integration_type: activeIntegration, // REMOVIDO - Campo não existe no schema
       evolution_api_endpoint: endpoint || null,
       evolution_api_instance_name: instanceName || null,
     };
