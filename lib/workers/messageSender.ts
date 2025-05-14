@@ -4,7 +4,8 @@ import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
 import { MESSAGE_SENDER_QUEUE } from '@/lib/queues/messageQueue';
 import { prisma } from '@/lib/db';
-import { sendWhatsappTemplateMessage, SendResult, WhatsAppApiErrorData } from '@/lib/channel/whatsappSender';
+import { sendWhatsappTemplateMessage, SendResult as SendTemplateResult } from '@/lib/channel/whatsappSender';
+import { sendWhatsAppMessage, sendEvolutionMessage } from "@/lib/services/channelService";
 import { decrypt } from '@/lib/encryption';
 import { publishConversationUpdate } from '@/lib/services/notifierService';
 import { Prisma } from '@prisma/client';
@@ -53,12 +54,6 @@ const messageSenderWorker = new Worker<MessageJobData>(
           throw new Error(`CampaignContact ${campaignContactId} or its Campaign not found.`);
       }
 
-      // Check if it's a template message (add more checks if other types are supported later)
-      if (!campaignContact.campaign.isTemplate || !campaignContact.campaign.templateName || !campaignContact.campaign.templateLanguage) {
-        console.error(`[MessageSender] Campanha ${campaignId} não é um template válido ou falta nome/linguagem.`);
-        throw new Error(`Campaign ${campaignId} is not a valid template or missing name/language.`);
-      }
-
       // Se o contato não estiver SCHEDULED, algo está errado (já foi processado, falhou no processor, etc.)
       if (campaignContact.status !== 'SCHEDULED') {
         console.warn(`[MessageSender] Contato ${campaignContactId} não está SCHEDULED (status: ${campaignContact.status}). Pulando envio.`);
@@ -70,32 +65,23 @@ const messageSenderWorker = new Worker<MessageJobData>(
       // 2. Fetch Workspace Credentials
       const workspace = await prisma.workspace.findUnique({
         where: { id: campaignContact.campaign.workspaceId }, // Get workspaceId from campaign
-        select: { whatsappPhoneNumberId: true, whatsappAccessToken: true }
+        select: {
+          whatsappPhoneNumberId: true,
+          whatsappAccessToken: true,
+          evolution_api_instance_name: true,
+          evolution_api_token: true,
+        }
       });
 
-      if (!workspace || !workspace.whatsappPhoneNumberId || !workspace.whatsappAccessToken) {
-          console.error(`[MessageSender] Workspace ${campaignContact.campaign.workspaceId} ou credenciais WhatsApp não encontradas/configuradas.`);
-          // Update contact status to FAILED before throwing
+      if (!workspace) {
+          console.error(`[MessageSender] Workspace ${campaignContact.campaign.workspaceId} não encontrado. Não é possível obter credenciais.`);
+          // Marcar contato como FAILED antes de lançar o erro fatal para o job
           await prisma.campaignContact.update({
               where: { id: campaignContactId },
-              data: { status: 'FAILED', error: 'Workspace or WhatsApp credentials not found/configured.' }
+              data: { status: 'FAILED', error: `Workspace ${campaignContact.campaign.workspaceId} not found.` }
           });
-          throw new Error(`Workspace ${campaignContact.campaign.workspaceId} or WhatsApp credentials not found/configured.`);
+          throw new Error(`Workspace ${campaignContact.campaign.workspaceId} not found. Cannot fetch credentials.`);
       }
-
-      // 3. Decrypt Token
-      let accessToken: string;
-      try {
-        accessToken = decrypt(workspace.whatsappAccessToken);
-      } catch (decryptionError) {
-          console.error(`[MessageSender] Falha ao decriptar token do workspace ${workspaceId}:`, decryptionError);
-           await prisma.campaignContact.update({
-              where: { id: campaignContactId },
-              data: { status: 'FAILED', error: 'Failed to decrypt access token.' }
-          });
-          throw new Error(`Failed to decrypt access token for workspace ${workspaceId}.`);
-      }
-
 
       // 4. Prepare Variables (ensure it's a Record<string, string>)
       const variables = typeof campaignContact.variables === 'object' && campaignContact.variables !== null && !Array.isArray(campaignContact.variables)
@@ -103,64 +89,125 @@ const messageSenderWorker = new Worker<MessageJobData>(
                         : {};
 
 
-      // 5. Chamar o serviço do WhatsApp e atualizar Message + Notificar UI
-      let sendResult: SendResult | null = null;
-      let finalMessageStatus: 'SENT' | 'FAILED' = 'FAILED'; // Assume falha inicialmente
+      // 5. Chamar o serviço do canal e atualizar Message + Notificar UI
+      let sendResult: (SendTemplateResult | { success: boolean; messageId?: string; error?: any }) | null = null;
+      let finalMessageStatus: 'SENT' | 'FAILED' = 'FAILED';
       let errorMessageForDb: string | null = 'Unknown error during sending process';
-      let wamid: string | null = null;
+      let providerMessageId: string | null = null;
+
+      const { campaign } = campaignContact;
+      const channel = campaign.channelIdentifier;
 
       try {
-          console.log(`[MessageSender ${job.id}] Enviando template ${campaignContact.campaign.templateName} para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate})`);
-          sendResult = await sendWhatsappTemplateMessage({
-              phoneNumberId: workspace.whatsappPhoneNumberId,
-              toPhoneNumber: campaignContact.contactInfo, // Assume contactInfo is the phone number
-              accessToken: accessToken,
-              templateName: campaignContact.campaign.templateName,
-              templateLanguage: campaignContact.campaign.templateLanguage,
-              variables: variables,
-          });
-
-          // Processa resultado DENTRO do try
-          if (sendResult.success) {
-              finalMessageStatus = 'SENT';
-              wamid = sendResult.wamid;
-              errorMessageForDb = null;
-              console.log(`[MessageSender ${job.id}] Envio bem-sucedido para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate}, WAMID: ${wamid})`);
-          } else {
-              // Monta mensagem de erro detalhada
-              if (sendResult.error && typeof sendResult.error === 'object' && 'message' in sendResult.error) {
-                  errorMessageForDb = `API Error: ${sendResult.error.message}`;
-                  if ('type' in sendResult.error) errorMessageForDb += ` (Type: ${sendResult.error.type})`;
-                  if ('code' in sendResult.error) errorMessageForDb += ` (Code: ${sendResult.error.code})`;
-                  if ('error_subcode' in sendResult.error) errorMessageForDb += ` (Subcode: ${sendResult.error.error_subcode})`;
-                  if ('fbtrace_id' in sendResult.error) errorMessageForDb += ` (Trace: ${sendResult.error.fbtrace_id})`;
-              } else if (sendResult.error) {
-                  errorMessageForDb = String(sendResult.error);
-              } else {
-                  errorMessageForDb = "Erro desconhecido retornado pela API";
-              }
-              console.error(`[MessageSender ${job.id}] Falha ao enviar para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate}). Erro: ${errorMessageForDb}`);
-              // finalMessageStatus já é 'FAILED'
+        if (channel === 'WHATSAPP_CLOUDAPI') {
+          if (!workspace.whatsappPhoneNumberId || !workspace.whatsappAccessToken) {
+            errorMessageForDb = `Workspace ${campaign.workspaceId} or WhatsApp Cloud API credentials not found/configured.`;
+            console.error(`[MessageSender] ${errorMessageForDb}`);
+            throw new Error(errorMessageForDb);
           }
+          const accessToken = decrypt(workspace.whatsappAccessToken);
+
+          if (campaign.isTemplate) {
+            if (!campaign.templateName || !campaign.templateLanguage) {
+              errorMessageForDb = `Campaign ${campaignId} is a Cloud API template but missing name/language.`;
+              console.error(`[MessageSender] ${errorMessageForDb}`);
+              throw new Error(errorMessageForDb);
+            }
+            console.log(`[MessageSender ${job.id}] Enviando template ${campaign.templateName} (CloudAPI) para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate})`);
+            sendResult = await sendWhatsappTemplateMessage({
+                phoneNumberId: workspace.whatsappPhoneNumberId,
+                toPhoneNumber: campaignContact.contactInfo,
+                accessToken: accessToken,
+                templateName: campaign.templateName,
+                templateLanguage: campaign.templateLanguage,
+                variables: variables,
+            });
+            if (sendResult.success && 'wamid' in sendResult && sendResult.wamid) {
+              providerMessageId = sendResult.wamid;
+            }
+          } else {
+            console.log(`[MessageSender ${job.id}] Enviando mensagem de texto (CloudAPI) para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate})`);
+            const textSendResult = await sendWhatsAppMessage(
+              workspace.whatsappPhoneNumberId,
+              campaignContact.contactInfo,
+              workspace.whatsappAccessToken,
+              campaign.message,
+              "Campanha"
+            );
+            sendResult = textSendResult;
+            if (sendResult.success && 'wamid' in sendResult && sendResult.wamid) {
+                providerMessageId = sendResult.wamid;
+            }
+          }
+        } else if (channel === 'WHATSAPP_EVOLUTION') {
+          if (!workspace.evolution_api_instance_name || !workspace.evolution_api_token) {
+            errorMessageForDb = `Workspace ${campaign.workspaceId} or Evolution API credentials not found/configured.`;
+            console.error(`[MessageSender] ${errorMessageForDb}`);
+            throw new Error(errorMessageForDb);
+          }
+          
+          if (campaign.isTemplate) {
+            console.log(`[MessageSender ${job.id}] Enviando template ${campaign.templateName} (Evolution) para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate})`);
+            errorMessageForDb = "Envio de template via Evolution API ainda não implementado.";
+            console.error(`[MessageSender ${job.id}] ${errorMessageForDb}`);
+            finalMessageStatus = 'FAILED';
+          } else {
+            console.log(`[MessageSender ${job.id}] Enviando mensagem de texto (Evolution) para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate})`);
+            const evoTextSendResult = await sendEvolutionMessage({
+              endpoint: process.env.apiUrlEvolution!,
+              apiKey: workspace.evolution_api_token,
+              instanceName: workspace.evolution_api_instance_name,
+              toPhoneNumber: campaignContact.contactInfo,
+              messageContent: campaign.message,
+              senderName: "Campanha"
+            });
+            sendResult = evoTextSendResult;
+            if (sendResult.success && 'messageId' in sendResult && sendResult.messageId) {
+                providerMessageId = sendResult.messageId;
+            }
+          }
+        } else {
+          errorMessageForDb = `Canal de envio desconhecido ou não suportado: ${channel}`;
+          console.error(`[MessageSender ${job.id}] ${errorMessageForDb}`);
+          throw new Error(errorMessageForDb);
+        }
+
+        // Processa resultado do envio
+        if (errorMessageForDb !== "Envio de template via Evolution API ainda não implementado.") {
+            if (sendResult && sendResult.success) {
+                finalMessageStatus = 'SENT';
+                errorMessageForDb = null;
+                console.log(`[MessageSender ${job.id}] Envio bem-sucedido para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate}, ProviderMsgID: ${providerMessageId})`);
+            } else {
+                finalMessageStatus = 'FAILED';
+                if (sendResult && sendResult.error && typeof sendResult.error === 'object' && 'message' in sendResult.error) {
+                    errorMessageForDb = `API Error: ${(sendResult.error as any).message}`;
+                } else if (sendResult && sendResult.error) {
+                    errorMessageForDb = String(sendResult.error);
+                } else if (!sendResult && !errorMessageForDb) { 
+                    errorMessageForDb = "Resultado de envio não recebido da API.";
+                }
+                if (!errorMessageForDb) errorMessageForDb = "Erro desconhecido durante o envio.";
+                console.error(`[MessageSender ${job.id}] Falha ao enviar para ${campaignContact.contactInfo} (Msg: ${messageIdToUpdate}). Erro: ${errorMessageForDb}`);
+            }
+        }
 
       } catch (sendError: any) {
-          // Captura erros na própria chamada ou processamento do resultado
-          console.error(`[MessageSender ${job.id}] Erro EXCEPCIONAL durante sendWhatsappTemplateMessage ou processamento do resultado para Msg ${messageIdToUpdate}:`, sendError);
-          errorMessageForDb = `Exception during send: ${sendError?.message || String(sendError)}`;
+          console.error(`[MessageSender ${job.id}] Erro DURANTE o processo de envio para Msg ${messageIdToUpdate}:`, sendError);
           finalMessageStatus = 'FAILED';
+          errorMessageForDb = `Exception during send process: ${sendError?.message || String(sendError)}`;
       }
 
       // 6. <<< ATUALIZAR A MENSAGEM no banco de dados >>>
       try {
-          // Buscar metadados existentes para não sobrescrever
           const existingMessage = await prisma.message.findUnique({ where: { id: messageIdToUpdate }, select: { metadata: true } });
           const currentMetadata = (typeof existingMessage?.metadata === 'object' && existingMessage.metadata !== null) ? existingMessage.metadata : {};
 
           const dataToUpdate: Prisma.MessageUpdateInput = {
               status: finalMessageStatus,
-              ...(wamid && { channel_message_id: wamid }), // Adiciona wamid se SUCESSO
+              ...(providerMessageId && { channel_message_id: providerMessageId }),
               ...(finalMessageStatus === 'FAILED' && {
-                  metadata: { // Adiciona/atualiza erro no metadata se FALHA
+                  metadata: { 
                       ...currentMetadata,
                       sendError: errorMessageForDb
                   }
@@ -182,7 +229,7 @@ const messageSenderWorker = new Worker<MessageJobData>(
                       messageId: messageIdToUpdate,
                       conversation_id: conversationId,
                       newStatus: finalMessageStatus,
-                      providerMessageId: wamid, // Envia o WAMID se disponível
+                      providerMessageId: providerMessageId,
                       timestamp: new Date().toISOString(),
                       ...(finalMessageStatus === 'FAILED' && { errorMessage: errorMessageForDb })
                   }
@@ -192,18 +239,15 @@ const messageSenderWorker = new Worker<MessageJobData>(
 
       } catch (dbOrRedisError: any) {
           console.error(`[MessageSender ${job.id}] Erro ao atualizar DB ou publicar status Redis para Mensagem ${messageIdToUpdate}:`, dbOrRedisError);
-          // Logar o erro, mas não necessariamente falhar o job aqui,
-          // pois o contato da campanha será atualizado a seguir.
-          // Considerar uma fila de retentativa para essas atualizações secundárias?
       }
 
       // 8. <<< ATUALIZAR STATUS DO CAMPAIGN CONTACT (lógica existente) >>>
       await prisma.campaignContact.update({
           where: { id: campaignContactId },
           data: {
-              status: finalMessageStatus, // Usa o mesmo status final (SENT ou FAILED)
+              status: finalMessageStatus,
               sentAt: finalMessageStatus === 'SENT' ? new Date() : null,
-              error: errorMessageForDb, // Salva a mensagem de erro detalhada
+              error: errorMessageForDb,
           }
       });
       console.log(`[MessageSender ${job.id}] Status do CampaignContact ${campaignContactId} atualizado para ${finalMessageStatus}.`);
@@ -212,7 +256,7 @@ const messageSenderWorker = new Worker<MessageJobData>(
       try {
         await redisConnection.publish(
           `campaign-progress:${campaignId}`,
-          JSON.stringify({ contactId: campaignContactId, status: finalMessageStatus })
+          JSON.stringify({ contactId: campaignContactId, status: finalMessageStatus, error: errorMessageForDb })
         );
       } catch (pubErr: any) {
         console.error(`[MessageSender] Erro ao publicar progresso do contato ${campaignContactId}:`, pubErr);
@@ -239,7 +283,7 @@ const messageSenderWorker = new Worker<MessageJobData>(
           await redisConnection.publish(
             `campaign-progress:${campaignId}`,
             JSON.stringify({
-              type: 'campaignCompleted', // Adiciona um tipo para diferenciar do progresso
+              type: 'campaignCompleted',
               campaignId: campaignId,
               status: 'COMPLETED'
             })
