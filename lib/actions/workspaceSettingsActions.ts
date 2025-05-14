@@ -256,8 +256,8 @@ export async function createEvolutionInstanceAction(
       webhook: {
         url: webhookUrl,
         enabled: true,
-        webhook_by_events: true,
-        webhook_base64: false,
+        byEvents: false,
+        base64: true,
         events: [
           "MESSAGES_UPSERT",
           "MESSAGES_UPDATE",

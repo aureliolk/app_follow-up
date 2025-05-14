@@ -44,10 +44,42 @@ interface EvolutionMessageData {
             url?: string;
             directPath?: string;
             mimetype?: string;
+            fileLength?: string; // Adicionado com base nos logs
         };
-        // Adicionar outros tipos se necessário: imageMessage, audioMessage, etc.
+        audioMessage?: {
+            url?: string;
+            directPath?: string;
+            mimetype?: string;
+            seconds?: number;
+            ptt?: boolean;
+            fileLength?: string; // Adicionado com base nos logs
+        };
+        videoMessage?: {
+            caption?: string;
+            url?: string;
+            directPath?: string;
+            mimetype?: string;
+            seconds?: number;
+            fileLength?: string; // Adicionado com base nos logs
+        };
+        documentMessage?: {
+            caption?: string;
+            fileName?: string;
+            url?: string;
+            directPath?: string;
+            mimetype?: string;
+            fileLength?: string;
+        };
+        stickerMessage?: {
+            url?: string;
+            directPath?: string;
+            mimetype?: string;
+            fileLength?: string;
+        };
+        // Adicionar outros tipos se necessário
     };
     messageTimestamp: string | number; // Vem como string ou número
+    messageType?: string; // Adicionado com base nos logs, ex: "imageMessage", "audioMessage"
     // Adicionar outros campos de 'data' se necessário
 }
 
@@ -93,9 +125,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 senderJidWithSuffix = messageData.key.participant;
                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem de grupo detectada. Usando participant: ${senderJidWithSuffix}`);
             } else {
-                // Mensagem Direta: o remetente é o 'remoteJid'
-                senderJidWithSuffix = messageData.key.remoteJid;
-                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem direta detectada. Usando remoteJid: ${senderJidWithSuffix}`);
+                // Mensagem Direta: o remetente é o 'remoteJid' dentro de 'data.key'
+                senderJidWithSuffix = messageData.key.remoteJid; // CORRIGIDO: Usar o JID do cliente de data.key.remoteJid
+                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem direta detectada. Usando messageData.key.remoteJid: ${senderJidWithSuffix}`);
             }
 
             if (!senderJidWithSuffix) {
@@ -106,32 +138,82 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             const senderName = messageData.pushName || null; // Nome do contato
             const messageIdFromEvolution = messageData.key.id; // ID da mensagem na Evolution
             
-            let messageContent: string | null = null;
-            let messageType: string = 'unknown'; // Tipo da mensagem (text, image, etc.)
-            let mediaId: string | null = null;
-            let mimeType: string | null = null;
+            let messageContentOutput: string | null = null;
+            let messageTypeOutput: string = 'unknown'; // Tipo da mensagem (text, image, etc.)
+            let mediaUrlOutput: string | null = null;
+            let mediaTypeOutput: string | null = null;
+            let mediaDurationOutput: number | undefined = undefined;
+            let isPttOutput: boolean | undefined = undefined;
             let requiresProcessing = false;
+            let mediaData_base64: string | null = null; // <<< Adicionar variável para o base64
 
-            // Simplificando: por agora, vamos tratar apenas 'conversation' (texto)
-            // TODO: Expandir para outros tipos de mensagem (image, audio, video, document) como no webhook do WhatsApp
-            if (messageData.message?.conversation) {
-                messageContent = messageData.message.conversation;
-                messageType = 'text'; // Na Evolution, texto simples é 'conversation'
+            const typeOfMessage = payload.data.messageType; // Usar o messageType do payload.data
+            // <<< Tentar extrair o base64 do nível messageData.message, se existir >>>
+            if (messageData.message && typeof (messageData.message as any).base64 === 'string') {
+                mediaData_base64 = (messageData.message as any).base64;
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Campo base64 encontrado em messageData.message.`);
+            }
+
+            if (typeOfMessage === 'conversation' || typeOfMessage === 'extendedTextMessage') { // Evolution usa 'conversation' para texto simples
+                messageContentOutput = messageData.message?.conversation || (messageData.message as any)?.extendedTextMessage?.text || "";
+                messageTypeOutput = 'text';
                 requiresProcessing = true;
-            } else if (messageData.message?.imageMessage) {
+            } else if (typeOfMessage === 'imageMessage' && messageData.message?.imageMessage) {
+                const imgMsg = messageData.message.imageMessage;
                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Recebida imageMessage.`);
-                messageContent = messageData.message.imageMessage.caption || "[Imagem Recebida]"; // Usar caption ou placeholder
-                messageType = 'image';
-                // Tentar obter mediaId e mimeType (ajustar conforme a estrutura real do payload da Evolution para mídia)
-                // Supondo que 'url' possa ser um identificador ou 'directPath' seja mais apropriado, e 'mimetype' está presente
-                mediaId = messageData.message.imageMessage.url || messageData.message.imageMessage.directPath || null;
-                mimeType = messageData.message.imageMessage.mimetype || null;
-                requiresProcessing = true; // Imagens precisam ser processadas
-                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Image Details: Content='${messageContent}', MediaID='${mediaId}', MimeType='${mimeType}'`);
+                messageContentOutput = imgMsg.caption || "[Imagem Recebida]";
+                messageTypeOutput = 'image';
+                mediaUrlOutput = imgMsg.url || imgMsg.directPath || null;
+                mediaTypeOutput = imgMsg.mimetype || null;
+                // Não há campo base64 na interface imageMessage, remover a tentativa de extração daqui
+                requiresProcessing = true;
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Image Details: Content='${messageContentOutput}', MediaID='${mediaUrlOutput}', MimeType='${mediaTypeOutput}', HasBase64='${!!mediaData_base64}'`);
+            } else if (typeOfMessage === 'audioMessage' && messageData.message?.audioMessage) {
+                const audioMsg = messageData.message.audioMessage;
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Recebida audioMessage.`);
+                messageContentOutput = "[Áudio Recebido]";
+                messageTypeOutput = 'audio';
+                mediaUrlOutput = audioMsg.url || audioMsg.directPath || null;
+                mediaTypeOutput = audioMsg.mimetype || null;
+                // Não há campo base64 na interface audioMessage, remover a tentativa de extração daqui
+                mediaDurationOutput = audioMsg.seconds;
+                isPttOutput = audioMsg.ptt;
+                requiresProcessing = true; // Áudios podem precisar de processamento (ex: transcrição)
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Audio Details: MediaID='${mediaUrlOutput}', MimeType='${mediaTypeOutput}', DurationS='${mediaDurationOutput}', PTT='${isPttOutput}', HasBase64='${!!mediaData_base64}'`);
+            } else if (typeOfMessage === 'videoMessage' && messageData.message?.videoMessage) {
+                const videoMsg = messageData.message.videoMessage;
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Recebida videoMessage.`);
+                messageContentOutput = videoMsg.caption || "[Vídeo Recebido]";
+                messageTypeOutput = 'video';
+                mediaUrlOutput = videoMsg.url || videoMsg.directPath || null;
+                mediaTypeOutput = videoMsg.mimetype || null;
+                // Não há campo base64 na interface videoMessage, remover a tentativa de extração daqui
+                mediaDurationOutput = videoMsg.seconds;
+                requiresProcessing = true; 
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Video Details: Content='${messageContentOutput}', MediaID='${mediaUrlOutput}', MimeType='${mediaTypeOutput}', DurationS='${mediaDurationOutput}', HasBase64='${!!mediaData_base64}'`);
+            } else if (typeOfMessage === 'documentMessage' && messageData.message?.documentMessage) {
+                const docMsg = messageData.message.documentMessage;
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Recebida documentMessage.`);
+                messageContentOutput = docMsg.caption || docMsg.fileName || "[Documento Recebido]";
+                messageTypeOutput = 'document';
+                mediaUrlOutput = docMsg.url || docMsg.directPath || null;
+                mediaTypeOutput = docMsg.mimetype || null;
+                // Não há campo base64 na interface documentMessage, remover a tentativa de extração daqui
+                requiresProcessing = true; 
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Document Details: Content='${messageContentOutput}', MediaID='${mediaUrlOutput}', MimeType='${mediaTypeOutput}', HasBase64='${!!mediaData_base64}'`);
+            } else if (typeOfMessage === 'stickerMessage' && messageData.message?.stickerMessage) {
+                const stickerMsg = messageData.message.stickerMessage;
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Recebida stickerMessage.`);
+                messageContentOutput = "[Sticker Recebido]";
+                messageTypeOutput = 'sticker';
+                mediaUrlOutput = stickerMsg.url || stickerMsg.directPath || null;
+                mediaTypeOutput = stickerMsg.mimetype || null;
+                // Não há campo base64 na interface stickerMessage, remover a tentativa de extração daqui
+                requiresProcessing = false; // Stickers geralmente não precisam de processamento complexo
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Sticker Details: MediaID='${mediaUrlOutput}', MimeType='${mediaTypeOutput}', HasBase64='${!!mediaData_base64}'`);
             } else {
-                // Outros tipos de mensagem não tratados por enquanto
-                console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Tipo de mensagem não suportado ou conteúdo ausente no payload da Evolution:`, messageData.message);
-                // Responder OK para não bloquear a API, mas não processar
+                // Outros tipos de mensagem não tratados ou payload inesperado
+                console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Tipo de mensagem '${typeOfMessage}' não suportado ou conteúdo ausente no payload da Evolution:`, messageData.message);
                 return new NextResponse('EVENT_RECEIVED_UNSUPPORTED_MESSAGE_TYPE', { status: 200 });
             }
             
@@ -189,17 +271,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             const savedMessage = await saveMessageRecord({
                 conversation_id: conversation.id,
                 sender_type: 'CLIENT',
-                content: messageContent!,
+                content: messageContentOutput!,
                 timestamp: new Date(receivedTimestamp),
-                metadata: { // Adaptar metadados para Evolution
-                    messageIdFromProvider: messageIdFromEvolution, // Usar um nome genérico
+                metadata: { 
+                    messageIdFromProvider: messageIdFromEvolution, 
                     provider: 'evolution',
-                    ...(mediaId && { mediaId }), // Se implementarmos mídia
-                    ...(mimeType && { mimeType }), // Se implementarmos mídia
-                    messageType: messageType, // 'text', 'image', etc.
+                    ...(mediaUrlOutput && { mediaUrl: mediaUrlOutput }), 
+                    ...(mediaTypeOutput && { mediaType: mediaTypeOutput }),
+                    ...(mediaData_base64 && { mediaData_base64: mediaData_base64 }), // <<< ADICIONADO O CAMPO mediaData_base64
+                    ...(mediaDurationOutput !== undefined && { mediaDuration: mediaDurationOutput }),
+                    ...(isPttOutput !== undefined && { isPtt: isPttOutput }),
+                    messageType: messageTypeOutput, 
                 },
-                channel_message_id: messageIdFromEvolution, // ID da mensagem no canal (Evolution)
-                providerMessageId: messageIdFromEvolution // Também pode ser usado para o ID da Evolution
+                channel_message_id: messageIdFromEvolution, 
+                providerMessageId: messageIdFromEvolution 
             });
             console.log(
                 `[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem ${savedMessage.id} salva para Conv ${conversation.id}.`

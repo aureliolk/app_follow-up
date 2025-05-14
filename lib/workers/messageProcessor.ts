@@ -24,10 +24,6 @@ import pusher from '@/lib/pusher';
 // <<< Importar Channel Service >>>
 import { sendWhatsAppMessage } from '../services/channelService';
 // <<< Importar Carregador de Ferramentas >>>
-import { getActiveToolsForWorkspace } from '../ai/toolLoader'; 
-// <<< Importar Tipos de Ferramentas da Vercel AI SDK >>>
-import { ToolCall, ToolResult, Tool, ToolContent } from 'ai'; 
-// <<< Corrigir Import da função de envio Evolution >>>
 import { sendEvolutionMessage } from '../services/channelService';
 
 const QUEUE_NAME = 'message-processing';
@@ -170,138 +166,281 @@ async function processJob(job: Job<JobData>) {
     let updatedMessageData: MessageWithAnalysis | null = null; // To store the updated message if media is processed
     let aiAnalysisResult: string | null = null; // Stores AI description/transcription
     let finalContentForDb: string | null = currentMessage.content; // Placeholder for DB, starts as original
+    let mediaS3Url: string | null = null; // Definido fora para ser acessível depois
+    let s3Key: string | null = null;     // Definido fora para ser acessível depois
 
-    const metadata = currentMessage.metadata;
-    const hasMedia = hasValidMetadata(metadata);
-    const { whatsappAccessToken } = workspace;
+    if (channel === 'WHATSAPP_CLOUDAPI') {
+        const { whatsappAccessToken } = workspace;
+        const metadataFromMessage = currentMessage.metadata; // Usar uma variável local para clareza
+        const hasWppMedia = hasValidMetadata(metadataFromMessage); 
 
-    if (hasMedia && whatsappAccessToken) {
-        console.log(`[MsgProcessor ${jobId}] Mídia detectada (ID: ${metadata.mediaId}, Tipo: ${metadata.mimeType}). Iniciando processamento...`);
-        let mediaS3Url: string | null = null;
-        let s3Key: string | null = null;
-
-        try {
-            // --- Parte A: Obter URL e Baixar Mídia ---
-            const decryptedAccessTokenForMedia = decrypt(whatsappAccessToken);
-            if (!decryptedAccessTokenForMedia) throw new Error("Falha ao descriptografar token de acesso para mídia.");
-
-            const mediaUrlString = await getWhatsappMediaUrl(metadata.mediaId, decryptedAccessTokenForMedia);
-            if (!mediaUrlString) {
-                throw new Error(`Falha ao obter URL de mídia para ID ${metadata.mediaId}.`);
-            }
-            console.log(`[MsgProcessor ${jobId}] Baixando mídia de: ${mediaUrlString}`);
-            const downloadResponse = await axios.get(mediaUrlString, {
-                responseType: 'arraybuffer',
-                headers: { Authorization: `Bearer ${decryptedAccessTokenForMedia}` },
-            });
-            const mediaBuffer = Buffer.from(downloadResponse.data);
-            if (!mediaBuffer || mediaBuffer.length === 0) throw new Error("Falha no download da mídia (buffer vazio ou inválido).");
-
-            // --- Parte B: Upload S3 ---
-            s3Key = `whatsapp-media/${workspace.id}/${conversationId}/${newMessageId}${lookup(metadata.mimeType || '') ? '.' + lookup(metadata.mimeType || '') : ''}`;
-            console.log(`[MsgProcessor ${jobId}] Fazendo upload para S3: Bucket=${s3BucketName}, Key=${s3Key}, ContentType=${metadata.mimeType}`);
-            await s3Client.send(new PutObjectCommand({
-                Bucket: s3BucketName,
-                Key: s3Key,
-                Body: mediaBuffer,
-                ContentType: metadata.mimeType,
-            }));
-            const storageEndpoint = process.env.STORAGE_ENDPOINT?.replace(/\/$/, '');
-            mediaS3Url = `${storageEndpoint}/${s3BucketName}/${s3Key}`;
-            console.log(`[MsgProcessor ${jobId}] Upload S3 concluído. URL: ${mediaS3Url}`);
-
-            // --- Parte C: Processamento IA ---
-            const mediaType = metadata.mimeType.split('/')[0];
-            finalContentForDb = `[${mediaType === 'image' ? 'Imagem' : mediaType === 'audio' ? 'Áudio' : mediaType === 'video' ? 'Vídeo' : 'Mídia'} Recebida]`; // Set placeholder
-
+        if (hasWppMedia && whatsappAccessToken && metadataFromMessage.mediaId && metadataFromMessage.mimeType) { 
+            console.log(`[MsgProcessor ${jobId}] Mídia WhatsApp detectada (ID: ${metadataFromMessage.mediaId}, Tipo: ${metadataFromMessage.mimeType}). Iniciando processamento...`);
+            
             try {
-                console.log(`[MsgProcessor ${jobId}] Tentando processar mídia com IA (${metadata.mimeType})...`);
-                if (mediaType === 'image') {
-                    aiAnalysisResult = await describeImage(mediaBuffer);
-                    console.log(`[MsgProcessor ${jobId}] Imagem descrita pela IA.`);
-                } else if (mediaType === 'audio' && metadata.mimeType) {
-                    aiAnalysisResult = await transcribeAudio(mediaBuffer, metadata.mimeType, undefined, 'pt');
-                    console.log(`[MsgProcessor ${jobId}] Áudio transcrito pela IA.`);
-                } else {
-                     console.warn(`[MsgProcessor ${jobId}] Tipo de mídia ${mediaType} não suportado para processamento IA.`);
-                     aiAnalysisResult = `[Tipo de mídia ${mediaType} não processado pela IA]`;
+                // --- Parte A: Obter URL e Baixar Mídia (WhatsApp) ---
+                const decryptedAccessTokenForMedia = decrypt(whatsappAccessToken);
+                if (!decryptedAccessTokenForMedia) throw new Error("Falha ao descriptografar token de acesso para mídia WhatsApp.");
+
+                const mediaUrlString = await getWhatsappMediaUrl(metadataFromMessage.mediaId, decryptedAccessTokenForMedia);
+                if (!mediaUrlString) {
+                    throw new Error(`Falha ao obter URL de mídia WhatsApp para ID ${metadataFromMessage.mediaId}.`);
                 }
-            } catch (aiError: any) {
-                console.error(`[MsgProcessor ${jobId}] Erro ao processar mídia com IA:`, aiError.message);
-                aiAnalysisResult = `[Erro no processamento IA: ${aiError.message}]`;
-                finalContentForDb = `[${mediaType} Recebido(a) (Erro IA)]`; // Update placeholder on AI error
-            }
+                console.log(`[MsgProcessor ${jobId}] Baixando mídia WhatsApp de: ${mediaUrlString}`);
+                const downloadResponse = await axios.get(mediaUrlString, {
+                    responseType: 'arraybuffer',
+                    headers: { Authorization: `Bearer ${decryptedAccessTokenForMedia}` },
+                });
+                const mediaBuffer = Buffer.from(downloadResponse.data);
+                if (!mediaBuffer || mediaBuffer.length === 0) throw new Error("Falha no download da mídia WhatsApp (buffer vazio ou inválido).");
 
-            // --- Parte D: Atualizar Mensagem no Banco --- 
-            console.log(`[MsgProcessor ${jobId}] Atualizando mensagem ${newMessageId} no DB com content: "${finalContentForDb}", mediaUrl: ${mediaS3Url}, ai_media_analysis: "${aiAnalysisResult?.substring(0, 50)}..."`);
-            const filename = (metadata as any)?.whatsappMessage?.document?.filename ||
-                             (metadata as any)?.whatsappMessage?.video?.filename ||
-                             (metadata as any)?.whatsappMessage?.image?.filename ||
-                             null;
+                // --- Parte B: Upload S3 (WhatsApp) ---
+                s3Key = `whatsapp-media/${workspace.id}/${conversationId}/${newMessageId}${lookup(metadataFromMessage.mimeType) ? '.' + lookup(metadataFromMessage.mimeType) : ''}`;
+                console.log(`[MsgProcessor ${jobId}] Fazendo upload (WhatsApp) para S3: Bucket=${s3BucketName}, Key=${s3Key}, ContentType=${metadataFromMessage.mimeType}`);
+                await s3Client.send(new PutObjectCommand({
+                    Bucket: s3BucketName,
+                    Key: s3Key,
+                    Body: mediaBuffer,
+                    ContentType: metadataFromMessage.mimeType,
+                }));
+                const storageEndpoint = process.env.STORAGE_ENDPOINT?.replace(/\/$/, '');
+                mediaS3Url = `${storageEndpoint}/${s3BucketName}/${s3Key}`;
+                console.log(`[MsgProcessor ${jobId}] Upload S3 (WhatsApp) concluído. URL: ${mediaS3Url}`);
 
-            updatedMessageData = await prisma.message.update({
-                where: { id: newMessageId },
-                data: {
-                    content: finalContentForDb,             // Store placeholder
-                    ai_media_analysis: aiAnalysisResult,    // Store AI result
-                    media_url: mediaS3Url,
-                    media_mime_type: metadata.mimeType,
-                    media_filename: filename,               // Store filename if available
-                    status: 'RECEIVED',
-                    metadata: {                             // Update metadata with internal processing info
-                        ...(metadata || {}),                 // Preserve original webhook metadata
-                        internalProcessing: {                // Add sub-object for our data
-                           mediaS3Url: mediaS3Url,
-                           s3Key: s3Key,
-                           uploadedToS3: true,
-                           s3ContentType: metadata.mimeType,
-                           processedByAI: !!aiAnalysisResult && !aiAnalysisResult?.includes('[Erro'),
-                           aiProcessingError: !!aiAnalysisResult && aiAnalysisResult?.includes('[Erro')
-                        }
+                // --- Parte C: Processamento IA (WhatsApp) ---
+                const mediaType = metadataFromMessage.mimeType.split('/')[0];
+                finalContentForDb = `[${mediaType === 'image' ? 'Imagem' : mediaType === 'audio' ? 'Áudio' : mediaType === 'video' ? 'Vídeo' : 'Mídia'} Recebida]`;
+
+                try {
+                    console.log(`[MsgProcessor ${jobId}] Tentando processar mídia WhatsApp com IA (${metadataFromMessage.mimeType})...`);
+                    if (mediaType === 'image') {
+                        aiAnalysisResult = await describeImage(mediaBuffer);
+                        console.log(`[MsgProcessor ${jobId}] Imagem WhatsApp descrita pela IA.`);
+                    } else if (mediaType === 'audio' && metadataFromMessage.mimeType) {
+                        aiAnalysisResult = await transcribeAudio(mediaBuffer, metadataFromMessage.mimeType, undefined, 'pt');
+                        console.log(`[MsgProcessor ${jobId}] Áudio WhatsApp transcrito pela IA.`);
+                    } else {
+                        console.warn(`[MsgProcessor ${jobId}] Tipo de mídia WhatsApp ${mediaType} não suportado para processamento IA.`);
+                        aiAnalysisResult = `[Tipo de mídia ${mediaType} não processado pela IA]`;
                     }
-                },
-                select: { // Select all fields needed for Redis payload and history
-                    id: true, conversation_id: true, sender_type: true, content: true, ai_media_analysis: true,
-                    timestamp: true, channel_message_id: true, metadata: true, media_url: true,
-                    media_mime_type: true, media_filename: true, status: true
+                } catch (aiError: any) {
+                    console.error(`[MsgProcessor ${jobId}] Erro ao processar mídia WhatsApp com IA:`, aiError.message);
+                    aiAnalysisResult = `[Erro no processamento IA: ${aiError.message}]`;
+                    finalContentForDb = `[${mediaType} Recebido(a) (Erro IA)]`;
                 }
-            });
-            console.log(`[MsgProcessor ${jobId}] Mensagem ${newMessageId} atualizada no DB após processamento de mídia.`);
 
-        } catch (mediaError: any) {
-            console.error(`[MsgProcessor ${jobId}] Erro CRÍTICO no processamento de mídia para msg ${newMessageId}:`, mediaError);
-             try {
-                // Attempt to update message with error status
-                const mediaTypeOnError = metadata?.mimeType?.split('/')[0] || 'Mídia';
-                finalContentForDb = `[${mediaTypeOnError} Recebida (Falha Processamento)]`;
-                aiAnalysisResult = `[Erro crítico no pipeline de mídia: ${mediaError.message}]`;
-                updatedMessageData = await prisma.message.update({ // Try to update even on error
+                // --- Parte D: Atualizar Mensagem no Banco (WhatsApp) ---
+                console.log(`[MsgProcessor ${jobId}] Atualizando mensagem WhatsApp ${newMessageId} no DB com content: "${finalContentForDb}", mediaUrl: ${mediaS3Url}, ai_media_analysis: "${aiAnalysisResult?.substring(0, 50)}..."`);
+                const filename = (metadataFromMessage as any)?.whatsappMessage?.document?.filename ||
+                                 (metadataFromMessage as any)?.whatsappMessage?.video?.filename ||
+                                 (metadataFromMessage as any)?.whatsappMessage?.image?.filename ||
+                                 null;
+
+                updatedMessageData = await prisma.message.update({
                     where: { id: newMessageId },
                     data: {
                         content: finalContentForDb,
                         ai_media_analysis: aiAnalysisResult,
-                        status: 'FAILED_PROCESSING',
-                        media_url: mediaS3Url, // May be null if failed before upload
+                        media_url: mediaS3Url,
+                        media_mime_type: metadataFromMessage.mimeType,
+                        media_filename: filename,
+                        status: 'RECEIVED',
                         metadata: {
-                            ...(metadata || {}),
-                            internalProcessingError: mediaError.message,
-                            processedByAI: false,
-                            aiProcessingError: true
+                            ...(metadataFromMessage || {}),
+                            internalProcessing: {
+                               mediaS3Url: mediaS3Url,
+                               s3Key: s3Key,
+                               uploadedToS3: true,
+                               s3ContentType: metadataFromMessage.mimeType,
+                               processedByAI: !!aiAnalysisResult && !aiAnalysisResult?.includes('[Erro'),
+                               aiProcessingError: !!aiAnalysisResult && aiAnalysisResult?.includes('[Erro')
+                            }
                         }
                     },
-                     select: { // Select all fields
+                    select: { 
                         id: true, conversation_id: true, sender_type: true, content: true, ai_media_analysis: true,
                         timestamp: true, channel_message_id: true, metadata: true, media_url: true,
                         media_mime_type: true, media_filename: true, status: true
                     }
                 });
-             } catch (updateError: any) {
-                console.error(`[MsgProcessor ${jobId}] Falha GRAVE ao atualizar status de erro para msg ${newMessageId}:`, updateError);
-             }
+                console.log(`[MsgProcessor ${jobId}] Mensagem WhatsApp ${newMessageId} atualizada no DB após processamento de mídia.`);
+
+            } catch (mediaError: any) {
+                console.error(`[MsgProcessor ${jobId}] Erro CRÍTICO no processamento de mídia WhatsApp para msg ${newMessageId}:`, mediaError);
+                try {
+                    const mediaTypeOnError = (metadataFromMessage as any)?.mimeType?.split('/')[0] || 'Mídia'; // Cast aqui também por segurança
+                    finalContentForDb = `[${mediaTypeOnError} Recebida (Falha Processamento)]`;
+                    aiAnalysisResult = `[Erro crítico no pipeline de mídia WhatsApp: ${mediaError.message}]`;
+                    updatedMessageData = await prisma.message.update({
+                        where: { id: newMessageId },
+                        data: {
+                            content: finalContentForDb,
+                            ai_media_analysis: aiAnalysisResult,
+                            status: 'FAILED_PROCESSING',
+                            media_url: mediaS3Url, 
+                            metadata: {
+                                ...(metadataFromMessage || {}),
+                                internalProcessingError: mediaError.message,
+                                processedByAI: false,
+                                aiProcessingError: true
+                            }
+                        },
+                        select: {
+                            id: true, conversation_id: true, sender_type: true, content: true, ai_media_analysis: true,
+                            timestamp: true, channel_message_id: true, metadata: true, media_url: true,
+                            media_mime_type: true, media_filename: true, status: true
+                        }
+                    });
+                } catch (updateError: any) {
+                    console.error(`[MsgProcessor ${jobId}] Falha GRAVE ao atualizar status de erro para msg WhatsApp ${newMessageId}:`, updateError);
+                }
+            }
+        } else {
+            console.log(`[MsgProcessor ${jobId}] Mensagem WhatsApp ${newMessageId} não contém mídia válida (mediaId/mimeType) ou token de acesso ausente. Pulando processamento de mídia.`);
         }
 
+    } else if (channel === 'WHATSAPP_EVOLUTION') {
+        const evolutionMediaUrl = (currentMessage.metadata as any)?.mediaUrl as string | undefined;
+        const evolutionMimeType = (currentMessage.metadata as any)?.mediaType as string | undefined; // No webhook, salvamos como 'mediaType'
+        const evolutionMediaBase64 = (currentMessage.metadata as any)?.mediaData_base64 as string | undefined;
+
+        let mediaBuffer: Buffer | null = null;
+
+        if (evolutionMediaBase64 && evolutionMimeType) {
+            console.log(`[MsgProcessor ${jobId}] Mídia Evolution detectada (via base64 nos metadados). Tipo: ${evolutionMimeType}. Decodificando...`);
+            try {
+                mediaBuffer = Buffer.from(evolutionMediaBase64, 'base64');
+                if (!mediaBuffer || mediaBuffer.length === 0) {
+                    console.warn(`[MsgProcessor ${jobId}] Falha ao decodificar mediaData_base64 ou buffer resultante vazio. Tentando fallback para URL.`);
+                    mediaBuffer = null; // Resetar para tentar o download via URL
+                } else {
+                    console.log(`[MsgProcessor ${jobId}] Mídia Evolution decodificada de base64 com sucesso (${mediaBuffer.length} bytes).`);
+                }
+            } catch (base64Error: any) {
+                console.error(`[MsgProcessor ${jobId}] Erro ao decodificar mediaData_base64: ${base64Error.message}. Tentando fallback para URL.`);
+                mediaBuffer = null; // Resetar para tentar o download via URL
+            }
+        }
+        
+
+        if (mediaBuffer && evolutionMimeType) { // Prosseguir somente se tivermos um buffer e mimetype
+            console.log(`[MsgProcessor ${jobId}] Processando mídia Evolution (Buffer: ${mediaBuffer.length} bytes, Tipo: ${evolutionMimeType}).`);
+            // A lógica original de try/catch para Upload S3, Processamento IA e Atualização no Banco
+            // permanece, mas agora ela opera sobre o 'mediaBuffer' obtido acima.
+
+            try {
+                // --- Parte B: Upload S3 (Evolution) ---
+                // Usar o ID da mensagem original da Evolution se disponível, senão o ID da nossa mensagem
+                const originalMessageId = (currentMessage.metadata as any)?.messageIdFromProvider || newMessageId;
+                s3Key = `evolution-media/${workspace.id}/${conversationId}/${originalMessageId}${lookup(evolutionMimeType) ? '.' + lookup(evolutionMimeType) : ''}`;
+                console.log(`[MsgProcessor ${jobId}] Fazendo upload (Evolution) para S3: Bucket=${s3BucketName}, Key=${s3Key}, ContentType=${evolutionMimeType}`);
+                await s3Client.send(new PutObjectCommand({
+                    Bucket: s3BucketName,
+                    Key: s3Key,
+                    Body: mediaBuffer,
+                    ContentType: evolutionMimeType,
+                }));
+                const storageEndpoint = process.env.STORAGE_ENDPOINT?.replace(/\/$/, '');
+                mediaS3Url = `${storageEndpoint}/${s3BucketName}/${s3Key}`;
+                console.log(`[MsgProcessor ${jobId}] Upload S3 (Evolution) concluído. URL: ${mediaS3Url}`);
+
+                // --- Parte C: Processamento IA (Evolution) ---
+                const mediaType = evolutionMimeType.split('/')[0];
+                finalContentForDb = `[${mediaType === 'image' ? 'Imagem' : mediaType === 'audio' ? 'Áudio' : mediaType === 'video' ? 'Vídeo' : 'Mídia'} Recebida]`;
+
+                try {
+                    console.log(`[MsgProcessor ${jobId}] Tentando processar mídia Evolution com IA (${evolutionMimeType})...`);
+                    if (mediaType === 'image') {
+                        aiAnalysisResult = await describeImage(mediaBuffer);
+                        console.log(`[MsgProcessor ${jobId}] Imagem Evolution descrita pela IA.`);
+                    } else if (mediaType === 'audio' && evolutionMimeType) {
+                        // Se a Evolution API já fornecer 'seconds' nos metadados, poderíamos usá-lo.
+                        // Por enquanto, o transcribeAudio não o usa diretamente, mas o filetype é importante.
+                        aiAnalysisResult = await transcribeAudio(mediaBuffer, evolutionMimeType, undefined, 'pt');
+                        console.log(`[MsgProcessor ${jobId}] Áudio Evolution transcrito pela IA.`);
+                    } else {
+                        console.warn(`[MsgProcessor ${jobId}] Tipo de mídia Evolution ${mediaType} não suportado para processamento IA.`);
+                        aiAnalysisResult = `[Tipo de mídia ${mediaType} não processado pela IA]`;
+                    }
+                } catch (aiError: any) {
+                    console.error(`[MsgProcessor ${jobId}] Erro ao processar mídia Evolution com IA:`, aiError.message);
+                    aiAnalysisResult = `[Erro no processamento IA: ${aiError.message}]`;
+                    finalContentForDb = `[${mediaType} Recebido(a) (Erro IA)]`;
+                }
+                
+                // --- Parte D: Atualizar Mensagem no Banco (Evolution) ---
+                console.log(`[MsgProcessor ${jobId}] Atualizando mensagem Evolution ${newMessageId} no DB com content: "${finalContentForDb}", mediaUrl: ${mediaS3Url}, ai_media_analysis: "${aiAnalysisResult?.substring(0, 50)}..."`);
+                // Para Evolution, o nome do arquivo pode não estar facilmente acessível nos metadados padronizados.
+                // Se o webhook salvar 'fileName' ou 'caption' no metadata, poderíamos buscá-lo aqui.
+                const evolutionFilename = (currentMessage.metadata as any)?.fileName || (currentMessage.metadata as any)?.caption || null;
+
+
+                updatedMessageData = await prisma.message.update({
+                    where: { id: newMessageId },
+                    data: {
+                        content: finalContentForDb,
+                        ai_media_analysis: aiAnalysisResult,
+                        media_url: mediaS3Url,
+                        media_mime_type: evolutionMimeType,
+                        media_filename: evolutionFilename, // Usar o que estiver disponível
+                        status: 'RECEIVED',
+                        metadata: {
+                            ...(typeof currentMessage.metadata === 'object' && currentMessage.metadata !== null ? currentMessage.metadata : {}), // Preservar metadados originais
+                            internalProcessing: { // Adicionar informações do nosso processamento
+                               mediaS3Url: mediaS3Url,
+                               s3Key: s3Key,
+                               uploadedToS3: true,
+                               s3ContentType: evolutionMimeType,
+                               downloadedFromEvolutionUrl: evolutionMediaUrl, // Guardar a URL original da Evolution
+                               processedByAI: !!aiAnalysisResult && !aiAnalysisResult?.includes('[Erro'),
+                               aiProcessingError: !!aiAnalysisResult && aiAnalysisResult?.includes('[Erro')
+                            }
+                        }
+                    },
+                    select: { 
+                        id: true, conversation_id: true, sender_type: true, content: true, ai_media_analysis: true,
+                        timestamp: true, channel_message_id: true, metadata: true, media_url: true,
+                        media_mime_type: true, media_filename: true, status: true
+                    }
+                });
+                console.log(`[MsgProcessor ${jobId}] Mensagem Evolution ${newMessageId} atualizada no DB após processamento de mídia.`);
+
+            } catch (mediaError: any) {
+                console.error(`[MsgProcessor ${jobId}] Erro CRÍTICO no processamento de mídia Evolution para msg ${newMessageId}:`, mediaError);
+                try {
+                    const mediaTypeOnError = evolutionMimeType?.split('/')[0] || 'Mídia';
+                    finalContentForDb = `[${mediaTypeOnError} Recebida (Falha Processamento)]`;
+                    aiAnalysisResult = `[Erro crítico no pipeline de mídia Evolution: ${mediaError.message}]`;
+                    updatedMessageData = await prisma.message.update({
+                        where: { id: newMessageId },
+                        data: {
+                            content: finalContentForDb,
+                            ai_media_analysis: aiAnalysisResult,
+                            status: 'FAILED_PROCESSING',
+                            media_url: mediaS3Url, // Pode ser null se falhou antes do upload S3
+                            metadata: {
+                                ...(typeof currentMessage.metadata === 'object' && currentMessage.metadata !== null ? currentMessage.metadata : {}), // Usar currentMessage.metadata aqui para preservar tudo
+                                internalProcessingError: mediaError.message,
+                                originalEvolutionMediaUrl: evolutionMediaUrl, // Guardar a URL original mesmo em erro
+                                processedByAI: false,
+                                aiProcessingError: true
+                            }
+                        },
+                        select: {
+                            id: true, conversation_id: true, sender_type: true, content: true, ai_media_analysis: true,
+                            timestamp: true, channel_message_id: true, metadata: true, media_url: true,
+                            media_mime_type: true, media_filename: true, status: true
+                        }
+                    });
+                } catch (updateError: any) {
+                    console.error(`[MsgProcessor ${jobId}] Falha GRAVE ao atualizar status de erro para msg Evolution ${newMessageId}:`, updateError);
+                }
+            }
+        } else {
+            console.log(`[MsgProcessor ${jobId}] Mensagem Evolution ${newMessageId} não contém mediaUrl ou mediaType válidos nos metadados. Pulando processamento de mídia.`);
+        }
     } else {
-         console.log(`[MsgProcessor ${jobId}] Mensagem ${newMessageId} não contém mídia válida ou token ausente. Pulando processamento de mídia.`);
+         console.log(`[MsgProcessor ${jobId}] Canal ${channel} não é WhatsApp Cloud ou Evolution, ou mensagem ${newMessageId} não requer processamento de mídia. Pulando.`);
     }
 
     // --- Check if AI Processing Should Be Skipped (AFTER potential media update) ---

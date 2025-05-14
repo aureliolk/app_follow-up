@@ -2,6 +2,10 @@
 import { z } from 'zod';
 import axios from 'axios';
 import FormData from 'form-data';
+import ffmpeg from 'fluent-ffmpeg';
+import os from 'os';
+import fs from 'fs/promises';
+import path from 'path';
 
 // Schema de validação para o buffer (opcional)
 const AudioBufferSchema = z.instanceof(Buffer).refine(
@@ -47,18 +51,71 @@ export async function transcribeAudio(
         throw new Error("Configuração da API OpenAI ausente.");
     }
 
+    let finalAudioBuffer = audioBuffer;
+    let finalMimeType = mimeType;
+    const originalFilename = `audio.${mimeType.split('/')[1]?.split(';')[0]?.replace(/[^a-zA-Z0-9.]/g, '_') || 'bin'}`;
+    let tempInputPath: string | null = null;
+    let tempOutputPath: string | null = null;
+
+    // --- ETAPA DE TRANSCODIFICAÇÃO CONDICIONAL ---
+    if (mimeType.includes('audio/ogg')) { // Condição para transcodificar, ex: 'audio/ogg' ou 'audio/ogg; codecs=opus'
+        console.log(`[transcribeAudio Direct] MimeType ${mimeType} detectado para transcodificação. Tentando converter para MP3...`);
+        try {
+            const timestamp = Date.now();
+            const randomSuffix = Math.random().toString(36).substring(2, 8);
+            tempInputPath = path.join(os.tmpdir(), `input_${timestamp}_${randomSuffix}_${originalFilename}`);
+            await fs.writeFile(tempInputPath, audioBuffer);
+
+            tempOutputPath = path.join(os.tmpdir(), `output_${timestamp}_${randomSuffix}.mp3`);
+
+            await new Promise<void>((resolve, reject) => {
+                ffmpeg(tempInputPath)
+                    .toFormat('mp3')
+                    .audioCodec('libmp3lame') // Codec MP3 padrão
+                    // .audioBitrate('128k') // Opcional: definir bitrate
+                    .on('error', (err) => {
+                        console.error('[transcribeAudio Direct] Erro no FFmpeg durante transcodificação:', err.message);
+                        reject(new Error(`Falha na transcodificação FFmpeg: ${err.message}`));
+                    })
+                    .on('end', () => {
+                        console.log('[transcribeAudio Direct] Transcodificação FFmpeg para MP3 concluída.');
+                        resolve();
+                    })
+                    .save(tempOutputPath as string);
+            });
+
+            finalAudioBuffer = await fs.readFile(tempOutputPath);
+            finalMimeType = 'audio/mp3';
+            console.log(`[transcribeAudio Direct] Áudio transcodificado para MP3. Novo tamanho: ${finalAudioBuffer.length} bytes.`);
+
+        } catch (transcodingError: any) {
+            console.error(`[transcribeAudio Direct] Falha ao transcodificar áudio ${mimeType}. Tentando enviar original. Erro: ${transcodingError.message}`);
+            // Se a transcodificação falhar, finalAudioBuffer e finalMimeType permanecem os originais.
+        } finally {
+            // Limpar arquivos temporários
+            if (tempInputPath) {
+                await fs.unlink(tempInputPath).catch(err => console.error(`[transcribeAudio Direct] Falha ao limpar arquivo temporário de entrada: ${tempInputPath}`, err));
+            }
+            if (tempOutputPath) {
+                await fs.unlink(tempOutputPath).catch(err => console.error(`[transcribeAudio Direct] Falha ao limpar arquivo temporário de saída: ${tempOutputPath}`, err));
+            }
+        }
+    }
+    // --- FIM DA ETAPA DE TRANSCODIFICAÇÃO ---
+
     try {
         const formData = new FormData();
         // A API precisa de um nome de arquivo, mesmo que o conteúdo venha do buffer
-        const filename = `audio.${mimeType.split('/')[1]?.split(';')[0] || 'bin'}`;
-        formData.append('file', audioBuffer, filename);
+        // Usar o finalMimeType para o nome do arquivo enviado à OpenAI
+        const filenameForOpenAI = `audio.${finalMimeType.split('/')[1]?.split(';')[0]?.replace(/[^a-zA-Z0-9.]/g, '_') || 'bin'}`;
+        formData.append('file', finalAudioBuffer, filenameForOpenAI);
         formData.append('model', modelId);
         if (languageCode) {
             formData.append('language', languageCode);
         }
         // formData.append('response_format', 'json'); // Padrão já é json com 'text'
 
-        console.log(`[transcribeAudio Direct] Enviando requisição para API OpenAI com arquivo: ${filename}, modelo: ${modelId}, idioma: ${languageCode || 'N/A'}`);
+        console.log(`[transcribeAudio Direct] Enviando requisição para API OpenAI com arquivo: ${filenameForOpenAI}, modelo: ${modelId}, idioma: ${languageCode || 'N/A'}`);
 
         const response = await axios.post(
             'https://api.openai.com/v1/audio/transcriptions',
