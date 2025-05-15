@@ -12,6 +12,7 @@ import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
+import pusher from '@/lib/pusher';
 
 // --- Helper para converter Stream para Buffer ---
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -165,20 +166,10 @@ const processor = async (job: Job<MediaJobData>) => {
         await fs.writeFile(tempInputPath, fileBuffer);
         console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Arquivo temporário de entrada criado: ${tempInputPath}`);
 
-        // Construir e executar comando ffmpeg
-        // -i: input file
-        // -vn: no video output
-        // -acodec libopus: use opus codec
-        // -b:a 64k: audio bitrate 64kbps (ajuste se necessário)
-        // -vbr on: variable bitrate enabled
-        // -compression_level 10: highest compression (0-10)
-        // -application voip: optimize for voice audio
-        // -y: overwrite output file if exists
         const ffmpegCommand = `ffmpeg -i "${tempInputPath}" -vn -acodec libopus -b:a 64k -vbr on -compression_level 10 -application voip -y "${tempOutputPath}"`;
         console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Executando ffmpeg: ${ffmpegCommand}`);
 
         execSync(ffmpegCommand, { stdio: 'inherit' }); // Mostra output do ffmpeg nos logs do worker
-
         console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Conversão ffmpeg concluída: ${tempOutputPath}`);
 
         // Ler o arquivo convertido de volta para o buffer
@@ -233,10 +224,7 @@ const processor = async (job: Job<MediaJobData>) => {
      // 7. Determinar o tipo de mensagem do WhatsApp (usando mime type final)
     const messageType = getWhatsAppMessageTypeFromMime(finalMimeType); // <<< Usar mime type final
     if (!messageType) {
-        // Log warning, mas tenta enviar como documento se possível? Ou falha?
-        // Por segurança, vamos falhar se o tipo não for mapeado.
         console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Tipo MIME final não mapeado para tipo de mensagem WhatsApp: ${finalMimeType}`);
-        throw new Error(`Tipo de mídia final não suportado para envio WhatsApp: ${finalMimeType}`);
     }
 
     // 8. Enviar mensagem usando Media ID
@@ -264,18 +252,27 @@ const processor = async (job: Job<MediaJobData>) => {
           },
         },
       });
-      // Publicar falha no Redis/SSE
-      const conversationChannelFail = `chat-updates:${failedUpdate.conversation_id}`;
-      await redisConnection.publish(conversationChannelFail, JSON.stringify({
-        type: 'message_status_updated',
-        payload: {
-          messageId: failedUpdate.id,
-          conversation_id: failedUpdate.conversation_id,
-          newStatus: 'FAILED',
-          errorMessage: sendErrorMsg,
-           // Include other fields for consistency, even on failure? Maybe not needed.
+      // Publicar falha com Pusher
+      try {
+        if (workspaceId) {
+            const channelName = `private-workspace-${workspaceId}`;
+            const eventPayload = {
+                type: 'message_status_updated',
+                payload: {
+                    messageId: failedUpdate.id,
+                    conversation_id: failedUpdate.conversation_id,
+                    newStatus: 'FAILED',
+                    errorMessage: sendErrorMsg,
+                }
+            };
+            await pusher.trigger(channelName, 'message_status_updated', eventPayload);
+            console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Pusher event 'message_status_updated' (FAILED) triggered on ${channelName} for msg ${failedUpdate.id}`);
+        } else {
+            console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Não foi possível publicar evento Pusher (FAILED) por falta de workspaceId.`);
         }
-      }));
+      } catch (pusherError) {
+        console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Failed to trigger Pusher event for msg ${failedUpdate.id}:`, pusherError);
+      }
       throw new Error(`Falha ao enviar mensagem WhatsApp: ${sendErrorMsg}`);
     }
 
@@ -311,22 +308,31 @@ const processor = async (job: Job<MediaJobData>) => {
     });
     console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Mensagem ${messageId} atualizada para SENT no DB (content: ${updatedMessage.content}).`);
 
-    // 10. Publicar atualização de status no Redis/SSE (INCLUIR media_url e content)
-    const conversationChannel = `chat-updates:${updatedMessage.conversation_id}`;
-    await redisConnection.publish(conversationChannel, JSON.stringify({
-      type: 'message_status_updated',
-      payload: {
-        messageId: updatedMessage.id,
-        conversation_id: updatedMessage.conversation_id,
-        newStatus: 'SENT',
-        providerMessageId: updatedMessage.providerMessageId,
-        media_url: updatedMessage.media_url,
-        content: updatedMessage.content,
-        media_mime_type: updatedMessage.media_mime_type,
-        media_filename: updatedMessage.media_filename,
-      }
-    }));
-    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Evento message_status_updated (SENT) publicado para ${conversationChannel}`);
+    // 10. Publicar atualização de status com Pusher
+    try {
+        if (workspaceId) {
+            const channelName = `private-workspace-${workspaceId}`;
+            const eventPayload = {
+                type: 'message_status_updated',
+                payload: {
+                    messageId: updatedMessage.id,
+                    conversation_id: updatedMessage.conversation_id,
+                    newStatus: 'SENT',
+                    providerMessageId: updatedMessage.providerMessageId,
+                    media_url: updatedMessage.media_url,
+                    content: updatedMessage.content,
+                    media_mime_type: updatedMessage.media_mime_type,
+                    media_filename: updatedMessage.media_filename,
+                }
+            };
+            await pusher.trigger(channelName, 'message_status_updated', eventPayload);
+            console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Pusher event 'message_status_updated' (SENT) triggered on ${channelName} for msg ${updatedMessage.id}`);
+        } else {
+            console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Não foi possível publicar evento Pusher (SENT) por falta de workspaceId.`);
+        }
+    } catch (pusherError) {
+        console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Failed to trigger Pusher event (SENT) for msg ${updatedMessage.id}:`, pusherError);
+    }
 
     console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Job ${job.id} para messageId ${messageId} concluído com sucesso.`);
 
@@ -351,10 +357,10 @@ const processor = async (job: Job<MediaJobData>) => {
                   },
                 },
             });
-            // Publicar falha no Redis/SSE
-            if (workspaceId && clientPhoneNumber && messageDetails?.conversation?.id) {
-                 const conversationChannelFail = `chat-updates:${messageDetails.conversation.id}`;
-                 await redisConnection.publish(conversationChannelFail, JSON.stringify({
+            // Publicar falha com Pusher
+            if (workspaceId && messageDetails?.conversation?.id) {
+                 const channelName = `private-workspace-${workspaceId}`;
+                 const eventPayload = {
                     type: 'message_status_updated',
                     payload: {
                       messageId: messageId,
@@ -362,10 +368,16 @@ const processor = async (job: Job<MediaJobData>) => {
                       newStatus: 'FAILED',
                       errorMessage: errorMsgForDb,
                     }
-                }));
-                console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} atualizado para FAILED (catch geral) e evento publicado.`);
+                };
+                try {
+                    await pusher.trigger(channelName, 'message_status_updated', eventPayload);
+                    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Pusher event 'message_status_updated' (FAILED - catch geral) triggered on ${channelName} for msg ${messageId}`);
+                } catch (pusherError) {
+                    console.error(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Failed to trigger Pusher event (catch geral) for msg ${messageId}:`, pusherError);
+                }
+                console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} atualizado para FAILED (catch geral) e evento Pusher tentado.`);
             } else {
-                 console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Não foi possível publicar evento FAILED (catch geral) por falta de dados.`);
+                 console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Não foi possível publicar evento Pusher (FAILED - catch geral) por falta de dados (workspaceId ou conversation.id).`);
             }
          } else {
              console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} já era FAILED ou mensagem não encontrada.`);

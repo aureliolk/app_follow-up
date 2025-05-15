@@ -10,7 +10,7 @@ import { ConversationStatus, MessageSenderType } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import type { Role } from '@/lib/permissions';
 import { whatsappOutgoingMediaQueue, WHATSAPP_OUTGOING_MEDIA_QUEUE } from '@/lib/queues/whatsappOutgoingMediaQueue';
-import { redisConnection } from '@/lib/redis';
+import pusher from '@/lib/pusher';
 
 // Define allowed MIME types and max size (e.g., 16MB for WhatsApp images/videos)
 const MAX_FILE_SIZE_MB = 16;
@@ -205,32 +205,19 @@ export async function POST(req: NextRequest) {
         // Por enquanto, loga o erro mas retorna sucesso do upload/save.
       }
 
-      // <<< PUBLICAR MENSAGEM NO REDIS/SSE (APÓS ENFILEIRAR) >>>
+      // --- Disparar evento Pusher para notificar a UI ---
       try {
-        // Canal da Conversa
-        const conversationChannel = `chat-updates:${conversationId}`;
-        const redisPayload = {
-            type: 'new_message',
-            payload: newMessage // Envia o objeto completo da mensagem criada
-        };
-        await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
-        console.log(`Attachments API: Published new_message to CONVERSATION channel ${conversationChannel}.`);
+        const channelName = `private-workspace-${workspaceId}`;
+        const eventPayload = JSON.stringify({ type: 'new_message', payload: newMessage });
+        await pusher.trigger(channelName, 'new_message', eventPayload);
+        console.log(`[Attachments API] Pusher event 'new_message' triggered on channel ${channelName} for msg ${newMessage.id}`);
+    } catch (pusherError) {
+        console.error(`[Attachments API] Failed to trigger Pusher event for msg ${newMessage.id}:`, pusherError);
+        // Não falhar o processamento do webhook por causa do Pusher, apenas logar.
+    }
+    // --- Fim do disparo Pusher ---
 
-        // Canal do Workspace (opcional)
-        const workspaceChannel = `workspace-updates:${workspaceId}`;
-        const workspacePayload = {
-            type: 'new_message', 
-            conversationId: conversationId,
-            lastMessageTimestamp: newMessage.timestamp.toISOString(),
-            // incluir outros dados se necessário
-        };
-        await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
-        console.log(`Attachments API: Published notification to WORKSPACE channel ${workspaceChannel}.`);
-
-      } catch (publishError) {
-          console.error(`Attachments API: Error publishing message ${newMessage.id} to Redis:`, publishError);
-          // Não falhar a requisição por erro no Redis, apenas logar.
-      }
+  
 
       // Return the created message object (or a subset of it)
       return NextResponse.json({ success: true, data: newMessage }, { status: 201 });
