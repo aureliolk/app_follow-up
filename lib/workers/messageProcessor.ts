@@ -17,8 +17,7 @@ import { describeImage } from '@/lib/ai/describeImage';
 import { transcribeAudio } from '@/lib/ai/transcribeAudio';
 import { Readable } from 'stream';
 import { generateChatCompletion } from '../ai/chatService';
-// <<< Importar Notifier Service >>>
-import { publishConversationUpdate, publishWorkspaceUpdate } from '../services/notifierService';
+
 // Import Pusher server to notify real-time clients
 import pusher from '@/lib/pusher';
 // <<< Importar Channel Service >>>
@@ -443,42 +442,6 @@ async function processJob(job: Job<JobData>) {
          console.log(`[MsgProcessor ${jobId}] Canal ${channel} não é WhatsApp Cloud ou Evolution, ou mensagem ${newMessageId} não requer processamento de mídia. Pulando.`);
     }
 
-    // --- Check if AI Processing Should Be Skipped (AFTER potential media update) ---
-     if (!shouldProcessBatch) {
-        if (updatedMessageData) { // If media was processed, publish update before skipping batch
-           console.log(`[MsgProcessor ${jobId}] Publicando atualização de mídia MÍNIMA (skipped batch) no canal correto...`);
-           
-           // <<< Payload MÍNIMO FUNCIONAL >>>
-           const minimalPayload = {
-                id: updatedMessageData.id,
-                // Incluir campos necessários para UI renderizar o placeholder e status
-                content: updatedMessageData.content,
-                sender_type: updatedMessageData.sender_type,
-                timestamp: updatedMessageData.timestamp.toISOString(),
-                media_url: updatedMessageData.media_url,
-                media_mime_type: updatedMessageData.media_mime_type,
-                media_filename: updatedMessageData.media_filename,
-                status: updatedMessageData.status,
-           };
-           console.log("[MsgProcessor ${jobId}] Payload Mínimo (skipped batch):", minimalPayload);
-
-            try {
-                // <<< USAR notifierService >>>
-                await publishConversationUpdate(
-                    `chat-updates:${conversationId}`,
-                    {
-                        type: 'message_content_updated',
-                        payload: minimalPayload // <<< USAR PAYLOAD MÍNIMO
-                    }
-                );
-                console.log(`[MsgProcessor ${jobId}] Atualização de mídia MÍNIMA (skipped batch) publicada.`);
-             } catch (publishError) {
-                 console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR atualização mínima de mídia (skipped batch):`, publishError);
-             }
-        }
-        console.log(`[MsgProcessor ${jobId}] Pulando processamento de IA (não é o job mais recente ou sem msgs novas).`);
-        return { status: 'skipped', reason: 'Lote AI não processado por este job', handledBatch: false };
-     }
 
     // --- 5. Preparar Histórico para IA de Resposta ---
     console.log(`[MsgProcessor ${jobId}] Buscando histórico (${HISTORY_LIMIT} mensagens) para a conversa ${conversationId}...`);
@@ -500,7 +463,6 @@ async function processJob(job: Job<JobData>) {
     console.log(`[MsgProcessor ${jobId}] Histórico carregado com ${orderedHistory.length} mensagens.`);
 
     // --- 6. Formatar Mensagens para Vercel AI SDK (Multimodal) ---
-
     const aiMessagesPromises = orderedHistory.map(async (msg): Promise<CoreMessage> => {
 
         if (msg.sender_type === MessageSenderType.CLIENT) {
@@ -556,9 +518,7 @@ async function processJob(job: Job<JobData>) {
                  };
             }
         } else {
-             // --- Mensagens do ASSISTENTE (IA ou Operador marcado como AI?) ---
-             // Por enquanto, apenas retorna o conteúdo textual.
-             // Se assistentes pudessem enviar imagens, precisaríamos de lógica multimodal aqui também.
+
              return {
                  role: 'assistant',
                  content: msg.content || ''
@@ -578,8 +538,6 @@ async function processJob(job: Job<JobData>) {
     let finalAiResponseText: string | null = null; // Alterado nome para clareza
 
     try {
-    //   const activeTools = await getActiveToolsForWorkspace(workspace.id);
-  
       let aiResult = await generateChatCompletion({
         messages: aiMessages, // Histórico formatado
         systemPrompt: systemPrompt,
@@ -590,9 +548,7 @@ async function processJob(job: Job<JobData>) {
         clientName: client?.name || ''
       });
 
-
       console.log(`[MsgProcessor ${jobId}] Resposta final da IA:`, aiResult);
-      
       finalAiResponseText = aiResult.response as string;
       
     } catch (aiError) {
@@ -618,9 +574,8 @@ async function processJob(job: Job<JobData>) {
       });
       console.log(`[MsgProcessor ${jobId}] Resposta final da IA salva (ID: ${newAiMessage.id}).`);
 
-      // Publicar nova mensagem IA no canal Redis da CONVERSA
+      // Publicar notificação no canal Pusher do WORKSPACE
       try {
-        const conversationChannel = `chat-updates:${conversationId}`;
         // Preparar payload completo para a UI
         const newAiMessagePayload = {
             type: "new_message",
@@ -639,10 +594,7 @@ async function processJob(job: Job<JobData>) {
             }
         };
         try {
-            // <<< USAR notifierService >>>
-            await publishConversationUpdate(conversationChannel, newAiMessagePayload);
-            console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada no canal Redis da CONVERSA.`);
-            // Também notifica via Pusher para clientes em tempo real
+           
             try {
                 const pusherPayload = JSON.stringify(newAiMessagePayload);
                 const workspaceChannel = `private-workspace-${workspaceId}`;
@@ -657,36 +609,6 @@ async function processJob(job: Job<JobData>) {
       } catch (publishError: any) {
         console.error(`[MsgProcessor ${jobId}] Falha GERAL ao tentar publicar mensagem da IA no Redis (Canal Conversa):`, publishError);
       }
-
-      // Publicar notificação no canal Redis do WORKSPACE
-       try {
-          const workspaceChannel = `workspace-updates:${workspaceId}`;
-          const workspacePayload = {
-              type: 'new_message',
-              conversationId: conversationId,
-              clientId: clientId,
-              messageId: newAiMessage.id,
-              lastMessageTimestamp: newAiMessage.timestamp.toISOString(),
-              channel: channel,
-              status: conversationData.status,
-              is_ai_active: conversationData.is_ai_active,
-              last_message_at: newAiMessage.timestamp.toISOString(),
-              clientName: client?.name,
-              clientPhone: clientPhoneNumber,
-              lastMessageContent: newAiMessage.content,
-              lastMessageSenderType: newAiMessage.sender_type,
-              metadata: conversationData.metadata, // Workspace notification uses conversation metadata
-          };
-          try {
-              // <<< USAR notifierService >>>
-              await publishWorkspaceUpdate(workspaceChannel, workspacePayload);
-              console.log(`[MsgProcessor ${jobId}] Notificação de msg IA publicada no canal Redis do WORKSPACE.`);
-          } catch (wsNotifyPublishError) {
-              console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR notificação de msg IA no Redis (Canal Workspace):`, wsNotifyPublishError);
-          }
-       } catch (publishError: any) {
-          console.error(`[MsgProcessor ${jobId}] Falha GERAL ao tentar publicar notificação de msg IA no Redis (Canal Workspace):`, publishError);
-       }
 
       // <<< LOG ANTES DE ATUALIZAR CONVERSA >>>
       console.log(`[MsgProcessor ${jobId}] STEP 9: Before prisma.conversation.update`);
@@ -850,58 +772,16 @@ async function processJob(job: Job<JobData>) {
             console.log(`[MsgProcessor ${jobId}] STEP 9: Exiting Evolution API send block.`);
       } else {
           console.warn(`[MsgProcessor ${jobId}] STEP 9: Channel ${channel} is not a recognized WhatsApp channel. Skipping send.`);
-          // <<< LOG AO SAIR DO BLOCO ELSE >>>
-          console.log(`[MsgProcessor ${jobId}] STEP 9: Exiting WhatsApp check block (skipped send).`);
       }
 
     } else {
       console.log(`[MsgProcessor ${jobId}] IA não retornou conteúdo. Nenhuma mensagem salva ou enviada.`);
-    }
-    // <<< LOG ANTES DO PASSO 10 >>>
-    console.log(`[MsgProcessor ${jobId}] Reached position JUST BEFORE STEP 10.`);
-
-    // --- 10. Publicar Mensagem ORIGINAL ATUALIZADA no Redis ---
-    // (This happens regardless of whether AI responded, IF media was processed)
-    if (updatedMessageData) { // Mídia foi processada (ou tentada) NESTE job
-         console.log(`[MsgProcessor ${jobId}] Publicando atualização de mídia MÍNIMA (Passo 10). ID: ${updatedMessageData.id}`);
-         
-         // <<< Payload MÍNIMO FUNCIONAL >>>
-         const minimalPayloadFinal = {
-              id: updatedMessageData.id,
-              // Incluir campos necessários para UI renderizar o placeholder e status
-              content: updatedMessageData.content,
-              sender_type: updatedMessageData.sender_type,
-              timestamp: updatedMessageData.timestamp.toISOString(),
-              media_url: updatedMessageData.media_url,
-              media_mime_type: updatedMessageData.media_mime_type,
-              media_filename: updatedMessageData.media_filename,
-              status: updatedMessageData.status,
-         };
-         console.log("[MsgProcessor ${jobId}] Payload Mínimo (Passo 10):", minimalPayloadFinal);
-
-        try {
-             // <<< USAR notifierService >>>
-             await publishConversationUpdate(
-                 `chat-updates:${conversationId}`,
-                 {
-                     type: 'message_content_updated',
-                     payload: minimalPayloadFinal // <<< USAR PAYLOAD MÍNIMO
-                 }
-             );
-             console.log(`[MsgProcessor ${jobId}] Publicação final da atualização de mídia MÍNIMA concluída.`);
-        } catch (mediaUpdatePublishError) {
-            console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR atualização mínima de mídia (Passo 10):`, mediaUpdatePublishError);
-        }
-    } else {
-         console.log(`[MsgProcessor ${jobId}] Nenhuma atualização de mídia neste job. Pulando publicação final no Redis.`);
     }
 
     console.log(`--- [MsgProcessor ${jobId}] FIM ---`);
     return { status: 'success', handledBatch: shouldProcessBatch }; // Indicate if batch was handled
 
   } catch (error: any) {
-    // <<< LOG IMEDIATO DO ERRO >>>
-    console.error(`[MsgProcessor ${jobId}] CAUGHT ERROR IN MAIN CATCH BLOCK:`, error);
     
     console.error(`[MsgProcessor ${jobId}] Erro CRÍTICO no processamento para Conv ${conversationId}:`, error);
      if (error instanceof Error) {
