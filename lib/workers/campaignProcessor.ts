@@ -6,12 +6,11 @@ import { CAMPAIGN_SENDER_QUEUE } from '@/lib/queues/campaignQueue';
 import { prisma } from '@/lib/db';
 import { messageQueue, MESSAGE_SENDER_QUEUE } from '@/lib/queues/messageQueue';
 import { calculateNextValidSendTime } from '@/lib/timeUtils'; // scheduling simplified
-import { getOrCreateConversation } from '@/lib/services/conversationService';
-import { FollowUpStatus, MessageSenderType, Prisma } from '@prisma/client';
-import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
+import { MessageSenderType, Prisma } from '@prisma/client';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
 import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
+import { getOrCreateConversation } from '../services/createConversation';
 
 // <<< INÍCIO: Função Auxiliar para Substituir Variáveis >>>
 /**
