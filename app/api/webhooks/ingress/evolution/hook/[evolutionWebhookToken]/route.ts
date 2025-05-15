@@ -5,6 +5,8 @@ import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import { saveMessageRecord } from '@/lib/services/persistenceService';
 import pusher from '@/lib/pusher';
 import { getOrCreateConversation, initiateFollowUpSequence, handleDealCreationForNewClient } from '@/lib/services/createConversation';
+import { Prisma } from '@prisma/client';
+import { SelectedMessageInfo } from '@/lib/types/message';
 
 // Interface para os parâmetros da rota
 interface RouteParams {
@@ -67,14 +69,28 @@ interface EvolutionMessageData {
     // Adicionar outros campos de 'data' se necessário
 }
 
-interface EvolutionWebhookPayload {
-    event: string;
-    instance: string; // Workspace ID
-    data: EvolutionMessageData;
-    sender: string; // JID completo do remetente (ex: 55XXYYYYY@s.whatsapp.net)
-    // Adicionar outros campos do payload se necessário
-}
 
+
+// --- Função auxiliar para mapear status da Evolution para status do DB ---
+// TODO: Ajustar os status da Evolution e do DB conforme necessário
+function evolutionStatusToDbStatus(evolutionStatus: string): string {
+    const lowerStatus = evolutionStatus.toLowerCase();
+    switch (lowerStatus) {
+        case 'sent': // Ou 'ack_sent' ou similar da Evolution
+            return 'SENT';
+        case 'delivery_ack': // Ou 'ack_delivered'
+            return 'DELIVERED';
+        case 'read': // Ou 'ack_read'
+            return 'READ';
+        case 'played': // Evolution tem status 'played' para mídia
+            return 'READ'; // Mapear 'played' para 'READ' por simplicidade
+        case 'error': // Ou 'ack_error'
+            return 'FAILED';
+        default:
+            console.warn(`[evolutionStatusToDbStatus] Unknown Evolution status: ${evolutionStatus}. Returning as raw.`);
+            return evolutionStatus.toUpperCase(); // Retornar em maiúsculas como fallback
+    }
+}
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
     const { evolutionWebhookToken } = await params;
@@ -92,7 +108,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // 3. Processar Payload
     try {
-        const payload: EvolutionWebhookPayload = await request.json();
+        const payload: any = await request.json();
         console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Payload Recebido:`, JSON.stringify(payload, null, 2));
 
         // Verificar se é um evento de mensagem nova e se não é de nós mesmos (fromMe: false)
@@ -274,8 +290,146 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 }
             }
 
+        } else if (payload.event === 'messages.update' && payload.data?.status && payload.data?.keyId && payload.data?.fromMe === true) {
+            // <<< INÍCIO: Lógica de Tratamento de Status da Evolution API >>>
+            console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Processing status update.`);
+            const statusData = payload.data;
+
+            const providerMessageIdToUpdate = statusData.keyId; // Usar keyId como WAMID
+            const evolutionNewStatus = statusData.status;
+            const recipientJidRaw = statusData.remoteJid; // Este é o JID do destinatário da mensagem original
+
+            if (!providerMessageIdToUpdate) {
+                console.warn(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] keyId (providerMessageId) não encontrado no payload de status. Pulando.`);
+                return new NextResponse('EVENT_RECEIVED_STATUS_UPDATE_MISSING_KEY_ID', { status: 200 });
+            }
+
+            const recipientPhoneNumber = standardizeBrazilianPhoneNumber(recipientJidRaw.split('@')[0]);
+            if (!recipientPhoneNumber) {
+                console.warn(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Recipient JID ${recipientJidRaw} inválido ou não padronizável. Pulando status para ${providerMessageIdToUpdate}.`);
+                return new NextResponse('EVENT_RECEIVED_STATUS_UPDATE_INVALID_RECIPIENT', { status: 200 });
+            }
+            
+            console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Processing Status: ProviderMsgID=${providerMessageIdToUpdate}, EvoStatus=${evolutionNewStatus}, Recipient=${recipientPhoneNumber}`);
+
+            let targetMessage: SelectedMessageInfo | null = null;
+
+            // 1. Tentar encontrar a mensagem pelo providerMessageId (keyId)
+            targetMessage = await prisma.message.findFirst({
+                where: { providerMessageId: providerMessageIdToUpdate }, // Assumindo que keyId é o WAMID
+                select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, channel_message_id: true, metadata: true }
+            });
+
+            // 2. Fallback: Se status for 'SENT' e não encontrou pelo WAMID, buscar PENDING para o destinatário
+            if (!targetMessage && evolutionNewStatus.toLowerCase() === 'sent') {
+                const conversationForRecipient = await prisma.conversation.findFirst({
+                    where: {
+                        workspace_id: workspace.id,
+                        client: { phone_number: recipientPhoneNumber },
+                        channel: 'WHATSAPP_EVOLUTION' // Importante para filtrar a conversa correta
+                    },
+                    select: { id: true }
+                });
+                if (conversationForRecipient) {
+                    targetMessage = await prisma.message.findFirst({
+                        where: {
+                            conversation_id: conversationForRecipient.id,
+                            sender_type: 'AGENT', // Ou 'AI' se for o caso
+                            status: 'PENDING',
+                        },
+                        orderBy: { timestamp: 'desc' },
+                        select: { id: true, conversation_id: true, status: true, sender_type: true, providerMessageId: true, channel_message_id: true, metadata: true }
+                    });
+                    if (targetMessage) {
+                        console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Fallback: Found PENDING message ${targetMessage.id} for recipient ${recipientPhoneNumber} to update to SENT.`);
+                    }
+                }
+            }
+
+            if (!targetMessage) {
+                console.warn(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Could not find target message for ProviderMsgID ${providerMessageIdToUpdate}. Skipping status update.`);
+                return new NextResponse('EVENT_RECEIVED_STATUS_UPDATE_MESSAGE_NOT_FOUND', { status: 200 });
+            }
+
+            const dbNewStatus = evolutionStatusToDbStatus(evolutionNewStatus);
+            const currentStatusOrder = ['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED'];
+            const existingStatusIndex = currentStatusOrder.indexOf(targetMessage.status);
+            const newStatusIndex = currentStatusOrder.indexOf(dbNewStatus);
+
+            if (newStatusIndex > existingStatusIndex || (dbNewStatus === 'FAILED' && targetMessage.status !== 'FAILED')) {
+                console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] DB_UPDATE: Progressing status for Msg ${targetMessage.id} from ${targetMessage.status} to ${dbNewStatus}.`);
+
+                const dataToUpdate: Prisma.MessageUpdateInput = { status: dbNewStatus };
+
+                // Se o status for SENT e a mensagem no DB não tiver providerMessageId, ou se for diferente do keyId
+                if (dbNewStatus === 'SENT' && (!targetMessage.providerMessageId || targetMessage.providerMessageId !== providerMessageIdToUpdate)) {
+                    dataToUpdate.providerMessageId = providerMessageIdToUpdate;
+                    // channel_message_id também era usado para WAMID/keyId
+                    if (targetMessage.channel_message_id !== providerMessageIdToUpdate) {
+                        dataToUpdate.channel_message_id = providerMessageIdToUpdate;
+                    }
+                    console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] DB_UPDATE: Msg ${targetMessage.id}: Updating ProviderMsgID/ChannelMsgID to ${providerMessageIdToUpdate}`);
+                }
+                // Para outros status progressivos, se o providerMessageId estiver faltando ou for diferente (raro, mas garante consistência)
+                else if ((dbNewStatus === 'DELIVERED' || dbNewStatus === 'READ') && (!targetMessage.providerMessageId || targetMessage.providerMessageId !== providerMessageIdToUpdate)) {
+                    dataToUpdate.providerMessageId = providerMessageIdToUpdate;
+                    if (targetMessage.channel_message_id !== providerMessageIdToUpdate) {
+                        dataToUpdate.channel_message_id = providerMessageIdToUpdate;
+                    }
+                    console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] DB_UPDATE: Msg ${targetMessage.id}: Correcting ProviderMsgID/ChannelMsgID to ${providerMessageIdToUpdate} for status ${dbNewStatus}.`);
+                }
+                
+                // TODO: Tratar erros da Evolution API.
+                // A API Evolution pode não fornecer detalhes de erro da mesma forma que a Meta.
+                // Por enquanto, se for FAILED, apenas atualizamos o status.
+                // Será preciso investigar como a Evolution API retorna detalhes de erro em 'messages.update'
+                if (dbNewStatus === 'FAILED') {
+                    const currentMetadata = (typeof targetMessage.metadata === 'object' && targetMessage.metadata !== null) ? targetMessage.metadata : {};
+                    dataToUpdate.metadata = {
+                        ...currentMetadata,
+                        evolutionErrorCode: statusData.errorCode || 'UNKNOWN', // Supondo que 'errorCode' possa vir no payload
+                        evolutionErrorMessage: statusData.errorMessage || 'Message failed to send via Evolution.', // Supondo
+                    };
+                    console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] DB_UPDATE: Msg ${targetMessage.id}: Adding FAILED (Evolution) error details to metadata.`);
+                }
+
+                try {
+                    await prisma.message.update({
+                        where: { id: targetMessage.id },
+                        data: dataToUpdate
+                    });
+                    console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] DB_UPDATE: Msg ${targetMessage.id}: DB Update successful. Status=${dbNewStatus}.` + (dataToUpdate.providerMessageId ? ` ProviderMsgID=${dataToUpdate.providerMessageId}` : ''));
+                } catch (dbError) {
+                    console.error(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] DB_UPDATE: Error updating message ${targetMessage.id} in DB:`, dbError);
+                }
+
+                const payloadToPublish = {
+                    messageId: targetMessage.id,
+                    conversation_id: targetMessage.conversation_id,
+                    newStatus: dbNewStatus,
+                    providerMessageId: providerMessageIdToUpdate,
+                    errorMessage: dbNewStatus === 'FAILED' ? (statusData.errorMessage || 'Failed via Evolution') : undefined
+                };
+                console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Preparing 'message_status_updated' (${dbNewStatus}) for Msg ID ${targetMessage.id}`);
+
+                const channelName = `private-workspace-${workspace.id}`;
+                const eventPayloadPusher = { type: 'message_status_update', payload: payloadToPublish };
+
+                try {
+                    await pusher.trigger(channelName, 'message_status_update', eventPayloadPusher);
+                    console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Pusher event 'message_status_update' triggered on ${channelName} for Msg ID ${targetMessage.id}`);
+                } catch (pusherError: any) {
+                    console.error(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Failed to trigger Pusher event for Msg ID ${targetMessage.id}:`, pusherError?.message || pusherError);
+                }
+            } else {
+                console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Received EvoStatus '${evolutionNewStatus}' (maps to ${dbNewStatus}) for Msg ID ${targetMessage.id}, but current DB status is '${targetMessage.status}'. No progression needed or already FAILED.`);
+            }
+             // <<< FIM: Lógica de Tratamento de Status da Evolution API >>>
+
         } else {
-            // Evento não é 'messages.upsert' ou é uma mensagem de 'fromMe: true'
+            // Evento não é 'messages.upsert' (nova mensagem recebida) nem 'messages.update' (status de mensagem enviada)
+            // ou é uma mensagem de nós mesmos (fromMe: true para messages.upsert) que não deve ser processada como nova.
+            // Ou é um 'messages.update' sem os campos necessários para status.
             console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Evento não processado ou mensagem de saída: ${payload.event}, fromMe: ${payload.data?.key?.fromMe}`);
         }
 
