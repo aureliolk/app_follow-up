@@ -41,8 +41,8 @@ export default function WorkspacesList() {
         return true; // Inclui todos os outros workspaces para Super Admin
       });
     }
-    // Para não super admins, mostrar apenas os workspaces que eles possuem
-    return workspaces.filter(ws => ws.owner?.id === session?.user?.id);
+    // Para não super admins, mostrar os workspaces aos quais eles têm acesso (fornecidos por useWorkspace)
+    return workspaces;
   }, [workspaces, isLoading, isSuperAdmin, session?.user?.id, session?.user?.email]);
 
   // Redirecionamento
