@@ -6,8 +6,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 import { Prisma } from '@prisma/client';
-import { getOrCreateConversation } from '@/lib/services/conversationService';
-import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
+import { getOrCreateConversation, handleDealCreationForNewClient, initiateFollowUpSequence } from '@/lib/services/createConversation';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
 
 
@@ -184,31 +183,15 @@ export async function POST(req: NextRequest) {
     });
 
     // Criar conversa associada ao cliente
-    await getOrCreateConversation(workspaceId, phoneNumber, name);
-
-    // <<< INÍCIO: Lógica para criar Deal se novo cliente >>>
-  try {
-    console.log(`[Svc getOrCreateConversation] Tentando criar Deal para novo cliente ${newClient.id}...`);
-    const stages = await getPipelineStages(workspaceId);
-    if (stages && stages.length > 0) {
-      const firstStage = stages[0];
-      const dealName = `Novo Lead - ${newClient.name || newClient.phone_number}`;
-
-      await createDeal(workspaceId, {
-        name: dealName,
-        stageId: firstStage.id,
-        clientId: newClient.id,
-        value: null, // Ou 0, ou um valor padrão se aplicável
-        // assigned_to_id: null, // Opcional
-        // ai_controlled: true // Opcional, se o default do schema não for suficiente
-      });
-    } else {
-      console.log(`[Svc getOrCreateConversation] Nenhum estágio de pipeline encontrado para workspace ${workspaceId}. Deal não criado para novo cliente ${newClient.id}.`);
+    console.log(`API POST Clients: Tentando criar conversa para novo cliente ${newClient.id}...`);
+    const { client, conversation } =  await getOrCreateConversation(workspaceId, phoneNumber, name, channel);
+    if(client && conversation) {
+      console.log(`API POST Clients: Criando Deal para novo cliente ${newClient.id}...`);
+      await handleDealCreationForNewClient(client, workspaceId);
+      console.log(`API POST Clients: Iniciando sequência de follow-up para nova conversa ${conversation.id}...`);
+      await initiateFollowUpSequence(client, conversation, workspaceId);
     }
-  } catch (dealError) {
-    console.error(`[Svc getOrCreateConversation] Erro ao criar Deal para novo cliente ${newClient.id}:`, dealError);
-  }
-  // <<< FIM: Lógica para criar Deal se novo cliente >>>
+
 
     console.log(`API POST Clients: Cliente ${newClient.id} criado com sucesso.`);
     return NextResponse.json({ success: true, data: newClient }, { status: 201 });

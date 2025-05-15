@@ -1,14 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { addMessageProcessingJob } from '@/lib/queues/queueService';
-import { Prisma, FollowUpStatus } from '@prisma/client';
-import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
-import { getOrCreateConversation } from '@/lib/services/conversationService';
 import { saveMessageRecord } from '@/lib/services/persistenceService';
-import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
 import pusher from '@/lib/pusher';
-import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
+import { getOrCreateConversation, initiateFollowUpSequence, handleDealCreationForNewClient } from '@/lib/services/createConversation';
 
 // Interface para os parâmetros da rota
 interface RouteParams {
@@ -16,18 +12,6 @@ interface RouteParams {
         evolutionWebhookToken: string;
     }
 }
-
-// Interface para o payload esperado da Evolution API (simplificada)
-// Com base no log:
-// "event": "messages.upsert",
-// "instance": "33c6cb57-24f7-4586-9122-f91aac8a098c", (este é o workspaceId)
-// "data": {
-//   "key": { "remoteJid": "557391121575@s.whatsapp.net", "fromMe": false, "id": "MESSAGE_ID_FROM_EVOLUTION"},
-//   "pushName": "Sender Name",
-//   "message": { "conversation": "Oiii" }, (pode ter outros tipos como imageMessage, etc)
-//   "messageTimestamp": 1747093353 (Unix timestamp em segundos)
-// },
-// "sender": "557399302760@s.whatsapp.net" (JID completo do remetente)
 
 interface EvolutionMessageData {
     key: {
@@ -96,8 +80,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { evolutionWebhookToken } = await params;
     console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Recebida requisição POST.`);
 
-    // 1. Buscar Workspace pelo Token do Webhook da Evolution
-    // O campo no DB é 'evolution_webhook_route_token'
     const workspace = await prisma.workspace.findUnique({
         where: { evolution_webhook_route_token: evolutionWebhookToken },
         select: { id: true, evolution_api_token: true /* Este é o token da *instância* Evolution, pode ser útil para API calls futuras */ }
@@ -107,7 +89,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Workspace não encontrado para este token. Rejeitando.`);
         return new NextResponse('Workspace not found or invalid token', { status: 404 });
     }
-  
+
     // 3. Processar Payload
     try {
         const payload: EvolutionWebhookPayload = await request.json();
@@ -127,17 +109,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             } else {
                 // Mensagem Direta: o remetente é o 'remoteJid' dentro de 'data.key'
                 senderJidWithSuffix = messageData.key.remoteJid; // CORRIGIDO: Usar o JID do cliente de data.key.remoteJid
-                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem direta detectada. Usando messageData.key.remoteJid: ${senderJidWithSuffix}`);
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem direta detectada. Usando messageData.key.remoteJid: ${senderJidWithSuffix}`);
             }
 
             if (!senderJidWithSuffix) {
                 console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Não foi possível determinar o JID do remetente. Pulando mensagem ${messageData.key.id}.`);
                 return new NextResponse('EVENT_RECEIVED_MISSING_SENDER_JID', { status: 200 });
             }
-            
+
             const senderName = messageData.pushName || null; // Nome do contato
             const messageIdFromEvolution = messageData.key.id; // ID da mensagem na Evolution
-            
+
             let messageContentOutput: string | null = null;
             let messageTypeOutput: string = 'unknown'; // Tipo da mensagem (text, image, etc.)
             let mediaUrlOutput: string | null = null;
@@ -189,7 +171,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 mediaTypeOutput = videoMsg.mimetype || null;
                 // Não há campo base64 na interface videoMessage, remover a tentativa de extração daqui
                 mediaDurationOutput = videoMsg.seconds;
-                requiresProcessing = true; 
+                requiresProcessing = true;
                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Video Details: Content='${messageContentOutput}', MediaID='${mediaUrlOutput}', MimeType='${mediaTypeOutput}', DurationS='${mediaDurationOutput}', HasBase64='${!!mediaData_base64}'`);
             } else if (typeOfMessage === 'documentMessage' && messageData.message?.documentMessage) {
                 const docMsg = messageData.message.documentMessage;
@@ -199,7 +181,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 mediaUrlOutput = docMsg.url || docMsg.directPath || null;
                 mediaTypeOutput = docMsg.mimetype || null;
                 // Não há campo base64 na interface documentMessage, remover a tentativa de extração daqui
-                requiresProcessing = true; 
+                requiresProcessing = true;
                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Document Details: Content='${messageContentOutput}', MediaID='${mediaUrlOutput}', MimeType='${mediaTypeOutput}', HasBase64='${!!mediaData_base64}'`);
             } else if (typeOfMessage === 'stickerMessage' && messageData.message?.stickerMessage) {
                 const stickerMsg = messageData.message.stickerMessage;
@@ -216,7 +198,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Tipo de mensagem '${typeOfMessage}' não suportado ou conteúdo ausente no payload da Evolution:`, messageData.message);
                 return new NextResponse('EVENT_RECEIVED_UNSUPPORTED_MESSAGE_TYPE', { status: 200 });
             }
-            
+
             // Timestamp da mensagem (converter para milissegundos se estiver em segundos)
             const receivedTimestamp = typeof messageData.messageTimestamp === 'string'
                 ? parseInt(messageData.messageTimestamp, 10) * 1000
@@ -230,41 +212,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Número do remetente inválido ou não padronizável: ${senderPhoneNumberRaw}. Pulando mensagem ${messageIdFromEvolution}.`);
                 return new NextResponse('EVENT_RECEIVED_INVALID_SENDER', { status: 200 });
             }
-            console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Remetente padronizado de ${senderPhoneNumberRaw} para ${senderPhoneNumber}`);
 
-            // Obter ou criar conversa e client
-            const { conversation, client, clientWasCreated, conversationWasCreated } = await getOrCreateConversation(
-                workspaceId,
-                senderPhoneNumber,
-                senderName,
-                "WHATSAPP_EVOLUTION"
-            );
-            console.log(
-                `[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Client ${client.id} ${clientWasCreated ? 'CRIADO' : 'existente'}. Conversation ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'existente'}. Channel: ${conversation.channel}`
-            );
 
-            // Criar Deal se novo cliente (lógica copiada do webhook WhatsApp)
-            if (clientWasCreated) {
-                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Novo cliente ${client.id} criado. Tentando criar Deal no Kanban...`);
-                try {
-                    const stages = await getPipelineStages(workspaceId);
-                    if (stages && stages.length > 0) {
-                        const firstStage = stages[0];
-                        const dealName = `Novo Lead - ${client.name || client.phone_number}`;
-                        
-                        await createDeal(workspaceId, {
-                            name: dealName,
-                            stageId: firstStage.id,
-                            clientId: client.id,
-                            value: null,
-                        });
-                        console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Deal "${dealName}" criado com sucesso para cliente ${client.id} no estágio "${firstStage.name}".`);
-                    } else {
-                        console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Nenhum estágio de pipeline encontrado para workspace ${workspaceId}. Deal não criado para novo cliente ${client.id}.`);
-                    }
-                } catch (dealError) {
-                    console.error(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Erro ao criar Deal para novo cliente ${client.id}:`, dealError);
-                }
+            const { client, conversation, clientWasCreated, conversationWasCreated } = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
+
+            console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] client: ${client}, conversation: ${conversation}, clientWasCreated: ${clientWasCreated}, conversationWasCreated: ${conversationWasCreated}`);
+            if (conversationWasCreated) {
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Criando Deal para novo cliente ${client.id}...`);
+                await handleDealCreationForNewClient(client, workspace.id);
+                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Iniciando sequência de follow-up para nova conversa ${conversation.id}...`);
+                await initiateFollowUpSequence(client, conversation, workspace.id);
             }
 
             // Salvar registro da mensagem
@@ -273,33 +230,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 sender_type: 'CLIENT',
                 content: messageContentOutput!,
                 timestamp: new Date(receivedTimestamp),
-                metadata: { 
-                    messageIdFromProvider: messageIdFromEvolution, 
+                metadata: {
+                    messageIdFromProvider: messageIdFromEvolution,
                     provider: 'evolution',
-                    ...(mediaUrlOutput && { mediaUrl: mediaUrlOutput }), 
+                    ...(mediaUrlOutput && { mediaUrl: mediaUrlOutput }),
                     ...(mediaTypeOutput && { mediaType: mediaTypeOutput }),
                     ...(mediaData_base64 && { mediaData_base64: mediaData_base64 }), // <<< ADICIONADO O CAMPO mediaData_base64
                     ...(mediaDurationOutput !== undefined && { mediaDuration: mediaDurationOutput }),
                     ...(isPttOutput !== undefined && { isPtt: isPttOutput }),
-                    messageType: messageTypeOutput, 
+                    messageType: messageTypeOutput,
                 },
-                channel_message_id: messageIdFromEvolution, 
-                providerMessageId: messageIdFromEvolution 
+                channel_message_id: messageIdFromEvolution,
+                providerMessageId: messageIdFromEvolution
             });
             console.log(
                 `[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Mensagem ${savedMessage.id} salva para Conv ${conversation.id}.`
             );
 
-            // Notificar front-end
-            await publishConversationUpdate(
-                `chat-updates:${conversation.id}`,
-                { type: 'new_message', payload: { ...savedMessage, workspace_id: workspaceId } }
-            );
-            await publishWorkspaceUpdate(
-                `workspace-updates:${workspaceId}`,
-                { type: 'new_message', payload: savedMessage }
-            );
-            
             // Disparar evento Pusher
             try {
                 const channelName = `private-workspace-${workspaceId}`;
@@ -327,69 +274,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 }
             }
 
-            // Lógica de Disparo do Follow-up
-            const existingActiveFollowUp = await prisma.followUp.findFirst({
-                where: {
-                    client_id: client.id,
-                    workspace_id: workspaceId,
-                    status: FollowUpStatus.ACTIVE
-                },
-                select: { id: true }
-            });
-
-            if (!existingActiveFollowUp) {
-                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Nenhum follow-up ativo encontrado para cliente ${client.id}. Iniciando nova sequência...`);
-                try {
-                    const followUpRules = await prisma.workspaceAiFollowUpRule.findMany({
-                        where: { workspace_id: workspaceId },
-                        orderBy: { delay_milliseconds: 'asc' },
-                    });
-                    console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Encontradas ${followUpRules.length} regras de follow-up para Workspace ${workspaceId}.`);
-
-                    if (followUpRules.length > 0) {
-                        const firstRule = followUpRules[0];
-                        const firstDelayMs = Number(firstRule.delay_milliseconds);
-
-                        if (isNaN(firstDelayMs) || firstDelayMs < 0) {
-                            console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Delay da primeira regra (${firstRule.id}) é inválido (${firstDelayMs}ms). Follow-up não será iniciado.`);
-                        } else {
-                            const newFollowUp = await prisma.followUp.create({
-                                data: {
-                                    workspace_id: workspaceId,
-                                    client_id: client.id,
-                                    conversationId: conversation.id,
-                                    status: FollowUpStatus.ACTIVE,
-                                    started_at: new Date(),
-                                    current_sequence_step_order: 0,
-                                    next_sequence_message_at: new Date(Date.now() + firstDelayMs),
-                                },
-                            });
-                            console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Registro FollowUp ${newFollowUp.id} criado.`);
-
-                            const jobData = {
-                                followUpId: newFollowUp.id,
-                                stepRuleId: firstRule.id,
-                                workspaceId: workspaceId,
-                            };
-                            const jobOptions = {
-                                delay: firstDelayMs,
-                                jobId: `seq_${newFollowUp.id}_step_${firstRule.id}`,
-                                removeOnComplete: true,
-                                removeOnFail: 5000,
-                            };
-                            await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
-                            console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Primeiro job de sequência agendado para FollowUp ${newFollowUp.id} (Regra: ${firstRule.id}, Delay: ${firstDelayMs}ms).`);
-                        }
-                    } else {
-                        console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Nenhuma regra de follow-up encontrada. Nenhum follow-up iniciado.`);
-                    }
-                } catch (followUpError) {
-                    console.error(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Erro ao iniciar sequência de follow-up para Conv ${conversation.id}:`, followUpError);
-                }
-            } else {
-                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Follow-up ativo ${existingActiveFollowUp.id} já existe para cliente ${client.id}. Nenhuma nova sequência iniciada.`);
-            }
-
         } else {
             // Evento não é 'messages.upsert' ou é uma mensagem de 'fromMe: true'
             console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Evento não processado ou mensagem de saída: ${payload.event}, fromMe: ${payload.data?.key?.fromMe}`);
@@ -400,7 +284,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         // Responder OK mesmo em erro de processamento para não bloquear a API Evolution
     }
 
-    // 4. Responder 200 OK para a Evolution API
     return new NextResponse('EVENT_RECEIVED', { status: 200 });
 }
 

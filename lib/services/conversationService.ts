@@ -1,12 +1,10 @@
 import { prisma } from '@/lib/db';
 import { FollowUpStatus, MessageSenderType, ConversationStatus } from '@prisma/client';
-import { decrypt } from '@/lib/encryption';
 import { sendWhatsAppMessage, sendEvolutionMessage } from "@/lib/services/channelService";
 import { Prisma } from '@prisma/client';
 
 // Context shapes for services
 import type { Conversation, Client, Workspace, AbandonedCartRule, FollowUp as FollowUpModel, WorkspaceAiFollowUpRule, FollowUp } from '@prisma/client';
-import { createDeal, getPipelineStages } from '../actions/pipelineActions';
 
 /**
  * Contexto completo para processamento de carrinho abandonado.
@@ -106,106 +104,6 @@ export async function loadFollowUpContext(
     // Repassar o erro com contexto detalhado para que o worker possa tratá-lo corretamente
     throw error;
   }
-}
-
-/**
- * Obtém ou cria o cliente e conversa para um número no canal WhatsApp.
- * Retorna o cliente, a conversa e flag se foi criada agora.
- */
-export async function getOrCreateConversation(
-  workspaceId: string,
-  phoneNumber: string,
-  clientName?: string | null,
-  channelIdentifier?: string | null
-): Promise<{ client: Client; conversation: Conversation; conversationWasCreated: boolean; clientWasCreated: boolean }> {
-  
-  // Determinar o canal a ser usado. Se nenhum identificador for passado, pode-se usar um padrão ou lançar erro.
-  // Por agora, vamos assumir que um canal válido sempre será passado ou que o comportamento legado (WHATSAPP genérico) é aceitável se channelIdentifier for nulo.
-  // Idealmente, os chamadores (webhooks) SEMPRE passarão o channelIdentifier correto.
-  const targetChannel = channelIdentifier || 'UNKNOWN_CHANNEL'; // Usar um placeholder ou tratar erro se não fornecido
-  if (targetChannel === 'UNKNOWN_CHANNEL') {
-    console.warn(`[getOrCreateConversation] Chamada sem channelIdentifier específico para workspace ${workspaceId}, phoneNumber ${phoneNumber}. Isso pode levar a problemas de roteamento.`);
-    // Poderia lançar um erro aqui se for mandatório: throw new Error('Channel identifier is required');
-  }
-
-  // 1) Cliente
-  let client = await prisma.client.findFirst({
-    where: { 
-      workspace_id: workspaceId, 
-      phone_number: phoneNumber, 
-      // Opcional: considerar o canal na busca do cliente se um mesmo número puder existir em canais diferentes
-      // channel: targetChannel 
-    }
-  });
-  let clientWasCreated = false;
-  if (!client) {
-    client = await prisma.client.create({
-      data: {
-        workspace_id: workspaceId,
-        phone_number: phoneNumber,
-        name: clientName ?? null,
-        channel: targetChannel, // <<< Salvar o canal específico no Cliente também
-        metadata: {}
-      }
-    });
-    clientWasCreated = true;
-  } else {
-    // Cliente existe. Atualizar nome se necessário e canal se estiver diferente ou nulo.
-    const dataToUpdate: Prisma.ClientUpdateInput = {};
-    if (!client.name && clientName) {
-      dataToUpdate.name = clientName;
-    }
-    if (client.channel !== targetChannel) { // Atualiza o canal do cliente se mudou ou era genérico
-        dataToUpdate.channel = targetChannel;
-    }
-    if (Object.keys(dataToUpdate).length > 0) {
-        client = await prisma.client.update({
-            where: { id: client.id },
-            data: dataToUpdate
-        });
-    }
-  }
-
-  // 2) Conversa
-  let conversation: Conversation;
-  let conversationWasCreated = false;
-  try {
-    conversation = await prisma.conversation.create({
-      data: {
-        workspace_id: workspaceId,
-        client_id: client.id,
-        channel: targetChannel, // <<< Usar o targetChannel aqui
-        status: ConversationStatus.ACTIVE,
-        is_ai_active: true,
-        last_message_at: new Date()
-      }
-    });
-    conversationWasCreated = true;
-  } catch (e: any) {
-    // Se já existir pela chave única workspace_id+client_id+channel, atualiza
-    if (e.code === 'P2002' && e.meta?.target?.includes('workspace_id') && e.meta?.target?.includes('client_id') && e.meta?.target?.includes('channel')) {
-      conversation = await prisma.conversation.update({
-        where: {
-          workspace_id_client_id_channel: {
-            workspace_id: workspaceId,
-            client_id: client.id,
-            channel: targetChannel // <<< Usar o targetChannel aqui também
-          }
-        },
-        data: {
-          last_message_at: new Date(),
-          status: ConversationStatus.ACTIVE // Reativar se estava fechada, por exemplo
-        }
-      });
-    } else {
-      // Se o erro P2002 for em outra constraint única, ou outro erro, relançar
-      console.error("[getOrCreateConversation] Erro ao criar/atualizar conversa:", e);
-      throw e;
-    }
-  }
-
-
-  return { client, conversation, conversationWasCreated, clientWasCreated };
 }
 
 // Tipo para a mensagem pendente retornada

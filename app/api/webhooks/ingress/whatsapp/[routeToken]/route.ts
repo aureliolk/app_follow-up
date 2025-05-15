@@ -7,11 +7,15 @@ import { addMessageProcessingJob } from '@/lib/queues/queueService'; // Importar
 import { Prisma, FollowUpStatus } from '@prisma/client'; // Importar tipos necessários E FollowUpStatus
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< IMPORTAR a fila de sequência
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
-import { getOrCreateConversation } from '@/lib/services/conversationService';
 import { saveMessageRecord } from '@/lib/services/persistenceService';
-import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
 import pusher from '@/lib/pusher'; // <-- Adicionar importação do Pusher
-import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
+import { createDeal } from '@/lib/actions/pipelineActions';
+import { getPipelineStages } from '@/lib/actions/pipelineActions';
+import { 
+  getOrCreateConversation, 
+  handleDealCreationForNewClient, 
+  initiateFollowUpSequence 
+} from '@/lib/services/createConversation';
 
 
 // Define a type for the selected message fields
@@ -120,10 +124,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Recebida requisição POST (evento).`);
 
     const rawBody = await request.clone().text();
-    const signatureHeader = request.headers.get('X-Hub-Signature-256');
 
-    // 1. BUSCAR O WORKSPACE (AINDA NECESSÁRIO PARA ASSOCIAR MENSAGENS)
-    //    Mas NÃO usaremos mais workspace.whatsappAppSecret para validação aqui.
     const workspace = await getWorkspaceByRouteToken(routeToken);
     if (!workspace) {
         // Se não encontrar o workspace, ainda não podemos processar a mensagem.
@@ -131,7 +132,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         // Usar 404 Not Found ou 400 Bad Request pode ser apropriado aqui
         return new NextResponse('Workspace not found for route token', { status: 404 });
     }
-    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Workspace ${workspace.id} encontrado. Prosseguindo com validação de assinatura global.`);
 
     // 2. OBTER APP SECRET DA VARIÁVEL DE AMBIENTE
     const appSecret = process.env.WHATSAPP_APP_SECRET;
@@ -140,14 +140,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         // Retornar 500 pois é um erro de configuração do servidor
         return new NextResponse('Internal Server Error: App Secret configuration missing.', { status: 500 });
     }
-
-    // 3. VALIDAR ASSINATURA (USANDO APP SECRET DO AMBIENTE)
-    if (!signatureHeader) {
-        console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura ausente (X-Hub-Signature-256). Rejeitando.`);
-        return new NextResponse('Missing signature header', { status: 400 });
-    }
-
-    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Assinatura validada com sucesso (usando segredo global).`);
 
     // --- INÍCIO: Processamento do Payload (APÓS validação) ---
     try {
@@ -160,12 +152,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 if (entry.changes?.length > 0) {
                     for (const change of entry.changes) {
                         if (change.field === 'messages' && change.value?.messages?.length > 0) {
-                            const metadata = change.value.metadata; // <<< DEFINIR METADATA AQUI (fora do loop de msg)
-                            const contacts = change.value.contacts; // <<< DEFINIR CONTACTS AQUI (fora do loop de msg)
+                            const metadata = change.value.metadata; 
+                            const contacts = change.value.contacts; 
                             for (const message of change.value.messages) {
-                                // Processar mensagens de texto, imagem ou áudio recebidas
+                                
                                 if (message.from) {
-                                    // <<< Extrair nome do contato (se disponível) >>>
                                     const senderName = contacts?.[0]?.profile?.name;
 
                                     const receivedTimestamp = parseInt(message.timestamp, 10) * 1000; // Timestamp da mensagem (em segundos, converter para ms)
@@ -177,54 +168,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     const senderPhoneNumber = standardizeBrazilianPhoneNumber(senderPhoneNumberRaw);
                                     if (!senderPhoneNumber) {
                                         console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Número do remetente inválido ou não padronizável: ${senderPhoneNumberRaw}. Pulando mensagem ${messageIdFromWhatsapp}.`);
-                                        continue; // Pular esta mensagem se o número for inválido
                                     }
-                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Remetente padronizado de ${senderPhoneNumberRaw} para ${senderPhoneNumber}`);
-                                    
-                                    // Obter ou criar conversa e client usando serviço modularizado
-                                    const { conversation, client, clientWasCreated, conversationWasCreated } = await getOrCreateConversation(
-                                        workspace.id,
-                                        senderPhoneNumber,
-                                        senderName, // <<< Passar o nome extraído
-                                        "WHATSAPP_CLOUDAPI" // <<< Passar o identificador específico
-                                    );
-                                    console.log(
-                                        `[WHATSAPP WEBHOOK - POST ${routeToken}] Client ${client.id} ${clientWasCreated ? 'CRIADO' : 'existente'}. Conversation ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'existente'}. Channel: ${conversation.channel}` // Log do canal
-                                    );
 
-                                    // <<< INÍCIO: Lógica para criar Deal se novo cliente >>>
-                                    if (clientWasCreated) {
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Novo cliente ${client.id} criado. Tentando criar Deal no Kanban...`);
-                                        try {
-                                            const stages = await getPipelineStages(workspace.id);
-                                            if (stages && stages.length > 0) {
-                                                const firstStage = stages[0];
-                                                const dealName = `Novo Lead - ${client.name || client.phone_number}`;
-                                                
-                                                await createDeal(workspace.id, {
-                                                    name: dealName,
-                                                    stageId: firstStage.id,
-                                                    clientId: client.id,
-                                                    value: null, // Ou 0, ou um valor padrão se aplicável
-                                                    // assigned_to_id: null, // Opcional
-                                                    // ai_controlled: true // Opcional, se o default do schema não for suficiente
-                                                });
-                                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Deal "${dealName}" criado com sucesso para cliente ${client.id} no estágio "${firstStage.name}".`);
-                                            } else {
-                                                console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nenhum estágio de pipeline encontrado para workspace ${workspace.id}. Deal não criado para novo cliente ${client.id}.`);
-                                            }
-                                        } catch (dealError) {
-                                            console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro ao criar Deal para novo cliente ${client.id}:`, dealError);
-                                            // Não falhar o webhook por isso, apenas logar.
-                                        }
+                                    const { client, conversation, clientWasCreated, conversationWasCreated } =  await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_CLOUDAPI');
+
+                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] client: ${client}, conversation: ${conversation}, clientWasCreated: ${clientWasCreated}, conversationWasCreated: ${conversationWasCreated}`);
+                                    if (conversationWasCreated) {
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Criando Deal para novo cliente ${client.id}...`);
+                                        await handleDealCreationForNewClient(client, workspace.id);
+                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Iniciando sequência de follow-up para nova conversa ${conversation.id}...`);
+                                        await initiateFollowUpSequence(client, conversation, workspace.id);
                                     }
-                                    // <<< FIM: Lógica para criar Deal se novo cliente >>>
+
 
                                     let messageContent: string | null = null;
                                     const messageType = message.type;
                                     let mediaId: string | null = null;
-                                    let mimeType: string | null = null; // <<< Guardar mime_type
-                                    let requiresProcessing = false; // <<< Flag para saber se deve enfileirar job
+                                    let mimeType: string | null = null; 
+                                    let requiresProcessing = false; 
 
                                     if (messageType === 'text') {
                                         messageContent = message.text?.body;
@@ -294,26 +255,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         `[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${savedMessage.id} salva para Conv ${conversation.id}.`
                                     );
 
-                                    // Notificar front-end via serviço modularizado
-                                    await publishConversationUpdate(
-                                        `chat-updates:${conversation.id}`,
-                                        { 
-                                            type: 'new_message', 
-                                            payload: {
-                                                ...savedMessage, // Mantém os dados originais da mensagem salva
-                                                workspace_id: workspace.id // <<< ADICIONA O WORKSPACE ID AQUI
-                                            } 
-                                        } 
-                                    );
-
-                                    // Notificar workspace subscribers via serviço modularizado
-                                    await publishWorkspaceUpdate(
-                                        `workspace-updates:${workspace.id}`,
-                                        {
-                                            type: 'new_message',
-                                            payload: savedMessage 
-                                        }
-                                    );
 
                                     // --- Disparar evento Pusher para notificar a UI ---
                                     try {
@@ -328,7 +269,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     // --- Fim do disparo Pusher ---
 
                                     // --- Enqueue Job para Processamento da Mensagem (IA, etc.) ---
-                                    // É importante que este job NÃO dependa do início do follow-up
                                     if (requiresProcessing) {
                                         try {
                                             const jobData = {
@@ -347,83 +287,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     } else {
                                         console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${savedMessage.id} (Tipo: ${messageType}) não requer processamento pela IA/Worker. Job não enfileirado.`);
                                     }
-
-                                    // **************************************************
-                                    // <<< INÍCIO: Lógica de Disparo do Follow-up >>>
-                                    // Dispara na PRIMEIRA resposta do cliente, se não houver follow-up ativo.
-                                    // **************************************************
-                                    // Verificar se já existe um follow-up ATIVO para este cliente
-                                    const existingActiveFollowUp = await prisma.followUp.findFirst({
-                                        where: {
-                                            client_id: client.id,
-                                            workspace_id: workspace.id,
-                                            status: FollowUpStatus.ACTIVE // <<< Verifica se está ATIVO
-                                        },
-                                        select: { id: true } // Só precisamos saber se existe
-                                    });
-
-                                    // Só inicia um NOVO follow-up se NÃO houver um ativo
-                                    if (!existingActiveFollowUp) {
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nenhum follow-up ativo encontrado para cliente ${client.id}. Iniciando nova sequência...`);
-                                        try {
-                                            // 1. Buscar Regras de Follow-up para o Workspace
-                                            const followUpRules = await prisma.workspaceAiFollowUpRule.findMany({
-                                                where: { workspace_id: workspace.id },
-                                                orderBy: { delay_milliseconds: 'asc' }, // <<< ALTERADO para ordenar pelo delay >>>
-                                            });
-                                            console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Encontradas ${followUpRules.length} regras de follow-up para Workspace ${workspace.id} (ordenadas por delay).`); // Log ajustado
-
-                                            if (followUpRules.length > 0) {
-                                                // 2. Pegar a primeira regra
-                                                const firstRule = followUpRules[0];
-                                                const firstDelayMs = Number(firstRule.delay_milliseconds); // Converter BigInt para Number para o delay do job
-
-                                                if (isNaN(firstDelayMs) || firstDelayMs < 0) {
-                                                    console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Delay da primeira regra (${firstRule.id}) é inválido (${firstDelayMs}ms). Follow-up não será iniciado.`);
-                                                } else {
-                                                    // 3. Criar Registro FollowUp
-                                                    const newFollowUp = await prisma.followUp.create({
-                                                        data: {
-                                                            workspace_id: workspace.id,
-                                                            client_id: client.id,
-                                                            conversationId: conversation.id, // Associar diretamente à conversa
-                                                            status: FollowUpStatus.ACTIVE, // Usar Enum
-                                                            started_at: new Date(),
-                                                            current_sequence_step_order: 0, // Começa em 0
-                                                            next_sequence_message_at: new Date(Date.now() + firstDelayMs),
-                                                        },
-                                                    });
-                                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Registro FollowUp ${newFollowUp.id} criado e associado à conversa ${conversation.id}.`);
-
-                                                    // 4. Agendar Job para o Primeiro Passo
-                                                    const jobData = {
-                                                        followUpId: newFollowUp.id,
-                                                        stepRuleId: firstRule.id, // ID da regra a ser processada
-                                                        workspaceId: workspace.id,
-                                                    };
-                                                    const jobOptions = {
-                                                        delay: firstDelayMs,
-                                                        jobId: `seq_${newFollowUp.id}_step_${firstRule.id}`, // ID único
-                                                        removeOnComplete: true,
-                                                        removeOnFail: 5000,
-                                                    };
-                                                    await sequenceStepQueue.add('processSequenceStep', jobData, jobOptions);
-                                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Primeiro job de sequência agendado para FollowUp ${newFollowUp.id} (Regra: ${firstRule.id}, Delay: ${firstDelayMs}ms).`);
-                                                }
-                                            } else {
-                                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Nenhuma regra de follow-up encontrada para Workspace ${workspace.id}. Nenhum follow-up iniciado.`);
-                                            }
-                                        } catch (followUpError) {
-                                            console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro ao iniciar sequência de follow-up para Conv ${conversation.id}:`, followUpError);
-                                            // Não falhar a resposta para a Meta, apenas logar
-                                        }
-                                    } else {
-                                        // Já existe um follow-up ativo, não fazer nada
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Follow-up ativo ${existingActiveFollowUp.id} já existe para cliente ${client.id}. Nenhuma nova sequência iniciada.`);
-                                    }
-                                    // ************************************************
-                                    // <<< FIM: Lógica de Disparo do Follow-up >>>
-                                    // ************************************************
 
                                 } // Fim if message.from
                             } // Fim loop messages
@@ -480,11 +343,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                                 console.log(`[WH_STATUS_LOG] SENT Status: PENDING message from AGENT not found for Conv ${targetConversationId}.`);
                                             }
                                         } else {
-                                             console.log(`[WH_STATUS_LOG] SENT Status: No conversation found for recipient ${recipientPhoneNumber}.`);
+                                            console.log(`[WH_STATUS_LOG] SENT Status: No conversation found for recipient ${recipientPhoneNumber}.`);
                                         }
                                     }
                                 }
-                                
+
                                 if (!targetMessage || !targetConversationId) {
                                     console.warn(`[WH_STATUS_LOG] Could not find target message or conversation for WAMID ${status.id}. Skipping.`);
                                     continue;
@@ -492,13 +355,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                                 const currentStatusOrder = ['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED'];
                                 const dbNewStatus = whatsappStatusToDbStatus(status.status); // Uso da função corrigida
-                                
+
                                 const existingStatusIndex = currentStatusOrder.indexOf(targetMessage.status);
                                 const newStatusIndex = currentStatusOrder.indexOf(dbNewStatus);
 
                                 if (newStatusIndex > existingStatusIndex || (dbNewStatus === 'FAILED' && targetMessage.status !== 'FAILED')) {
                                     console.log(`[WH_STATUS_LOG DB_UPDATE] Progressing status for Msg ${targetMessage.id} from ${targetMessage.status} to ${dbNewStatus}.`);
-                                    
+
                                     let dataToUpdate: Prisma.MessageUpdateInput = { status: dbNewStatus };
                                     console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: Checking WAMID. NewStatus=${dbNewStatus}, Existing ProviderID=${targetMessage.providerMessageId}, Status WAMID=${status.id}`);
 
@@ -532,17 +395,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         };
                                         console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: Adding FAILED error details to metadata.`);
                                     }
-                                    
+
                                     try {
                                         await prisma.message.update({
                                             where: { id: targetMessage.id },
                                             data: dataToUpdate
                                         });
-                                        console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: DB Update successful. Status=${dbNewStatus}.` + (dataToUpdate.providerMessageId ? ` WAMID=${dataToUpdate.providerMessageId}`: ''));
+                                        console.log(`[WH_STATUS_LOG DB_UPDATE] Msg ${targetMessage.id}: DB Update successful. Status=${dbNewStatus}.` + (dataToUpdate.providerMessageId ? ` WAMID=${dataToUpdate.providerMessageId}` : ''));
                                     } catch (dbError) {
                                         console.error(`[WH_STATUS_LOG DB_UPDATE] Error updating message ${targetMessage.id} in DB:`, dbError);
                                     }
-    
+
                                     const payloadToPublish = {
                                         messageId: targetMessage.id,
                                         conversation_id: targetConversationId,
@@ -551,7 +414,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         errorMessage: dbNewStatus === 'FAILED' ? (status.errors?.[0]?.title || 'Failed') : undefined
                                     };
                                     console.log(`[WH_STATUS_LOG] Preparing 'message_status_updated' (${dbNewStatus}) for Msg ID ${targetMessage.id}`);
-        
+
                                     const channelName = `private-workspace-${workspace.id}`;
                                     const eventPayloadPusher = { type: 'message_status_update', payload: payloadToPublish };
 

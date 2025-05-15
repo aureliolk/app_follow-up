@@ -18,6 +18,8 @@ import { Loader2, X, Plus } from 'lucide-react';
 import { useClient } from '@/context/client-context';
 import type { Client, ClientFormData } from '@/app/types';
 import { toast } from 'react-hot-toast';
+import { useWorkspace } from '@/context/workspace-context';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
 interface ClientFormModalProps {
   isOpen: boolean;
@@ -39,10 +41,15 @@ export default function ClientFormModal({
   initialData,
 }: ClientFormModalProps) {
   const { createClient, updateClient } = useClient();
+  const { workspace } = useWorkspace();
   const [formData, setFormData] = useState<ClientFormData>(defaultFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [newTag, setNewTag] = useState<string>('');
+
+  const hasApiTokenWhatsapp = workspace.whatsappAccessToken;
+  const hasApiTokenEvolution = workspace.evolution_api_token;
+
 
   useEffect(() => {
     if (isOpen) {
@@ -70,7 +77,6 @@ export default function ClientFormModal({
   const handleAddTag = () => {
     if (!newTag.trim()) return;
     
-    // Verificar se a tag já existe
     if (formData.tags?.includes(newTag.trim())) {
       toast.error('Esta tag já existe');
       return;
@@ -99,7 +105,6 @@ export default function ClientFormModal({
 
   const handleSubmitInternal = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Validar campos obrigatórios (Nome ou Telefone, por exemplo)
     if (!formData.name && !formData.phone_number) {
       setFormError("É necessário fornecer pelo menos o Nome ou o Telefone.");
       return;
@@ -108,7 +113,6 @@ export default function ClientFormModal({
     setFormError(null);
 
     try {
-      // Preparar dados para incluir tags no metadata
       const clientDataWithMetadata = {
         ...formData,
         metadata: {
@@ -117,12 +121,10 @@ export default function ClientFormModal({
       };
 
       if (initialData?.id) {
-        // --- Edição ---
         console.log(`Modal: Atualizando cliente ${initialData.id}`, clientDataWithMetadata);
         await updateClient(initialData.id, clientDataWithMetadata);
         toast.success('Cliente atualizado com sucesso!');
       } else {
-        // --- Criação ---
         console.log("Modal: Criando novo cliente", clientDataWithMetadata);
         await createClient(clientDataWithMetadata);
         toast.success('Cliente criado com sucesso!');
@@ -159,54 +161,61 @@ export default function ClientFormModal({
         )}
 
         <form onSubmit={handleSubmitInternal} className="space-y-4 py-4">
-          {/* Campo Nome */}
+          {/* Campo Nome (Obrigatório) */}
           <div className="space-y-1.5">
-            <Label htmlFor="name" className="text-foreground">Nome</Label>
+            <Label htmlFor="name" className="text-foreground">Nome (Obrigatório)</Label>
             <Input
               id="name" name="name"
-              value={formData.name ?? ''} onChange={handleChange}
+              value={formData.name ?? ''}
+              onChange={handleChange}
               className="bg-input border-input"
               disabled={isSubmitting}
-              placeholder="Nome do Cliente"
+              placeholder="Nome completo do cliente"
+              required
             />
           </div>
 
-          {/* Campo Telefone */}
+          {/* Campo Telefone (Opcional, mas recomendado) */}
           <div className="space-y-1.5">
-            <Label htmlFor="phone_number" className="text-foreground">Telefone</Label>
+            <Label htmlFor="phone_number" className="text-foreground">Telefone (Opcional)</Label>
             <Input
-              id="phone_number" name="phone_number" type="tel"
-              value={formData.phone_number ?? ''} onChange={handleChange}
+              id="phone_number" name="phone_number"
+              value={formData.phone_number ?? ''}
+              onChange={handleChange}
               className="bg-input border-input"
               disabled={isSubmitting}
               placeholder="(XX) XXXXX-XXXX"
             />
           </div>
 
-          {/* Campo Canal (Opcional) */}
-          <div className="space-y-1.5">
-            <Label htmlFor="channel" className="text-foreground">Canal (Opcional)</Label>
-            <Input
-              id="channel" name="channel"
-              value={formData.channel ?? ''} onChange={handleChange}
-              className="bg-input border-input"
-              disabled={isSubmitting}
-              placeholder="Ex: WHATSAPP, CHATWOOT"
-            />
-             <p className="text-xs text-muted-foreground">Identifica a origem do contato (ajuda a evitar duplicados).</p>
-          </div>
-
-           {/* Campo ID Externo (Opcional) */}
-          <div className="space-y-1.5">
-            <Label htmlFor="external_id" className="text-foreground">ID Externo (Opcional)</Label>
-            <Input
-              id="external_id" name="external_id"
-              value={formData.external_id ?? ''} onChange={handleChange}
-              className="bg-input border-input"
-              disabled={isSubmitting}
-               placeholder="ID do contato no sistema de origem"
-            />
-          </div>
+          {/* Campo Canal (Opcional) - MODIFICADO PARA SELECT CONDICIONAL */}
+          {(hasApiTokenWhatsapp || hasApiTokenEvolution) && (
+            <div className="space-y-1.5">
+              <Label htmlFor="channel" className="text-foreground">Canal WhatsApp (Opcional)</Label>
+              <Select 
+                name="channel"
+                value={formData.channel ?? ''} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, channel: value === 'NO_CHANNEL_SELECTED' ? null : value }))}
+                disabled={isSubmitting}
+              >
+                <SelectTrigger className="bg-input border-input">
+                  <SelectValue placeholder="Selecione um canal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NO_CHANNEL_SELECTED">Nenhum (ou outro canal)</SelectItem>
+                  {hasApiTokenWhatsapp && (
+                    <SelectItem value="WHATSAPP_CLOUDAPI">API Oficial WhatsApp</SelectItem>
+                  )}
+                  {hasApiTokenEvolution && (
+                    <SelectItem value="WHATSAPP_EVOLUTION">API Não Oficial (Evolution)</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Selecione o canal WhatsApp se este cliente for contatado por uma das APIs configuradas.
+              </p>
+            </div>
+          )}
 
           {/* Campo Tags */}
           <div className="space-y-1.5">
