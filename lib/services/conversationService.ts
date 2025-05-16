@@ -131,14 +131,16 @@ interface SendOperatorMessageResult {
 
 /**
  * Envia uma mensagem manual de um operador para uma conversa.
- * Cria a mensagem no banco como PENDING e depois tenta enviar pelo canal apropriado.
+ * Cria a mensagem no banco como PENDING (ou SENT se privada) e depois tenta enviar
+ * pelo canal apropriado (apenas se não for privada).
  * Atualiza para FAILED se o envio falhar.
  */
 export async function sendOperatorMessage(
   conversationId: string,
   operatorId: string,
   operatorName: string | null | undefined,
-  content: string
+  content: string,
+  isPrivateNote: boolean = false
 ): Promise<SendOperatorMessageResult> {
   const senderDisplayName = operatorName || 'Operador';
   // O prefixo com nome do operador será adicionado pela função de envio específica do canal,
@@ -179,99 +181,129 @@ export async function sendOperatorMessage(
     const workspace = conversation.workspace;
     const channel = conversation.channel; // Obter o canal da conversa
 
-    // 2. Criar mensagem PENDING
+    // 2. Criar mensagem PENDING (ou SENT se for nota privada)
     pendingMessage = await prisma.message.create({
       data: {
         conversation_id: conversationId,
         sender_type: MessageSenderType.AGENT,
-        content: content, // Salvar conteúdo original sem prefixo do operador por enquanto
+        content: content,
         timestamp: new Date(),
-        status: 'PENDING',
-        metadata: { operatorId, operatorName: senderDisplayName }
+        status: isPrivateNote ? 'SENT' : 'PENDING',
+        privates_notes: isPrivateNote,
+        metadata: { operatorId, operatorName: senderDisplayName },
       },
-      select: pendingMessageSelect
+      select: {
+        id: true,
+        conversation_id: true,
+        sender_type: true,
+        content: true,
+        timestamp: true,
+        status: true,
+        metadata: true,
+        providerMessageId: true,
+        errorMessage: true,
+        privates_notes: true,
+        conversation: {
+          select: { workspace_id: true }
+        }
+      }
     });
     
-    console.log(`[Svc SendOperatorMsg] Saved PENDING message ${pendingMessage.id} for conv ${conversationId} on channel ${channel}`);
+    console.log(`[Svc SendOperatorMsg] Saved ${isPrivateNote ? 'PRIVATE note' : 'PENDING message'} ${pendingMessage.id} for conv ${conversationId} on channel ${channel}`);
 
-    // 3. Tentar enviar pelo canal apropriado
+    // 3. Tentar enviar pelo canal apropriado (APENAS SE NÃO FOR NOTA PRIVADA)
     let sendResult: any;
 
-    if (channel === 'WHATSAPP_CLOUDAPI') {
-      console.log(`[Svc SendOperatorMsg] Attempting send via WhatsApp Cloud API for conv ${conversationId}`);
-      if (!workspace.whatsappPhoneNumberId || !workspace.whatsappAccessToken || !clientPhoneNumber) {
-        console.error(`[Svc SendOperatorMsg] WhatsApp Cloud API config incomplete for workspace ${workspace.id}. Details - PhoneID: ${!!workspace.whatsappPhoneNumberId}, Token: ${!!workspace.whatsappAccessToken}, ClientPhone: ${!!clientPhoneNumber}`);
-        throw new Error('Configuração do WhatsApp Cloud API incompleta.');
-      }
-      sendResult = await sendWhatsAppMessage(
-        workspace.whatsappPhoneNumberId,
-        clientPhoneNumber,
-        workspace.whatsappAccessToken, // Já é o encriptado, a função descriptografa
-        content, // Conteúdo original, sendWhatsAppMessage adiciona o senderDisplayName
-        senderDisplayName // Passar o nome do operador explicitamente
-      );
+    if (!isPrivateNote) {
 
-      if (sendResult.success && sendResult.wamid) {
-        console.log(`[Svc SendOperatorMsg] WhatsApp Cloud API send successful (Wamid: ${sendResult.wamid}) for msg ${pendingMessage.id}`);
-        await prisma.message.update({
-          where: { id: pendingMessage.id },
-          data: {
-            status: 'SENT',
-            channel_message_id: sendResult.wamid,
-            providerMessageId: sendResult.wamid
-          }
+      if (channel === 'WHATSAPP_CLOUDAPI') {
+        console.log(`[Svc SendOperatorMsg] Attempting send via WhatsApp Cloud API for conv ${conversationId}`);
+        if (!workspace.whatsappPhoneNumberId || !workspace.whatsappAccessToken || !clientPhoneNumber) {
+          console.error(`[Svc SendOperatorMsg] WhatsApp Cloud API config incomplete for workspace ${workspace.id}. Details - PhoneID: ${!!workspace.whatsappPhoneNumberId}, Token: ${!!workspace.whatsappAccessToken}, ClientPhone: ${!!clientPhoneNumber}`);
+          throw new Error('Configuração do WhatsApp Cloud API incompleta.');
+        }
+        sendResult = await sendWhatsAppMessage(
+          workspace.whatsappPhoneNumberId,
+          clientPhoneNumber,
+          workspace.whatsappAccessToken, // Já é o encriptado, a função descriptografa
+          content, // Conteúdo original, sendWhatsAppMessage adiciona o senderDisplayName
+          senderDisplayName // Passar o nome do operador explicitamente
+        );
+
+        if (sendResult.success && sendResult.wamid) {
+          console.log(`[Svc SendOperatorMsg] WhatsApp Cloud API send successful (Wamid: ${sendResult.wamid}) for msg ${pendingMessage.id}`);
+          await prisma.message.update({
+            where: { id: pendingMessage.id },
+            data: {
+              status: 'SENT',
+              channel_message_id: sendResult.wamid,
+              providerMessageId: sendResult.wamid
+            }
+          });
+        } else {
+          console.error(`[Svc SendOperatorMsg] WhatsApp Cloud API send FAILED for msg ${pendingMessage.id}. Error:`, sendResult.error);
+          throw new Error(typeof sendResult.error === 'string' ? sendResult.error : (sendResult.error as any)?.message || 'Falha no envio via WhatsApp Cloud API');
+        }
+
+      } else if (channel === 'WHATSAPP_EVOLUTION') {
+        console.log(`[Svc SendOperatorMsg] Attempting send via Evolution API for conv ${conversationId}`);
+        const apiKeyToUse = workspace.evolution_api_token;
+        if ( !apiKeyToUse || !workspace.evolution_api_instance_name || !clientPhoneNumber) {
+          console.error(`[Svc SendOperatorMsg] Evolution API config incomplete for workspace ${workspace.id}. Endpoint: ${process.env.apiUrlEvolution}, Key: ${!!apiKeyToUse}, Instance: ${!!workspace.evolution_api_instance_name}, ClientPhone: ${!!clientPhoneNumber}`);
+          throw new Error('Configuração da Evolution API incompleta.');
+        }
+        // A função sendEvolutionMessage já lida com o prefixo do senderName.
+        sendResult = await sendEvolutionMessage({
+          endpoint: process.env.apiUrlEvolution,
+          apiKey: apiKeyToUse,
+          instanceName: workspace.evolution_api_instance_name,
+          toPhoneNumber: clientPhoneNumber,
+          messageContent: content, // Passar o conteúdo original
+          senderName: senderDisplayName // Passar o nome do operador para a função de envio
         });
-      } else {
-        console.error(`[Svc SendOperatorMsg] WhatsApp Cloud API send FAILED for msg ${pendingMessage.id}. Error:`, sendResult.error);
-        throw new Error(typeof sendResult.error === 'string' ? sendResult.error : (sendResult.error as any)?.message || 'Falha no envio via WhatsApp Cloud API');
-      }
 
-    } else if (channel === 'WHATSAPP_EVOLUTION') {
-      console.log(`[Svc SendOperatorMsg] Attempting send via Evolution API for conv ${conversationId}`);
-      const apiKeyToUse = workspace.evolution_api_token;
-      if ( !apiKeyToUse || !workspace.evolution_api_instance_name || !clientPhoneNumber) {
-        console.error(`[Svc SendOperatorMsg] Evolution API config incomplete for workspace ${workspace.id}. Endpoint: ${process.env.apiUrlEvolution}, Key: ${!!apiKeyToUse}, Instance: ${!!workspace.evolution_api_instance_name}, ClientPhone: ${!!clientPhoneNumber}`);
-        throw new Error('Configuração da Evolution API incompleta.');
-      }
-      // A função sendEvolutionMessage já lida com o prefixo do senderName.
-      sendResult = await sendEvolutionMessage({
-        endpoint: process.env.apiUrlEvolution,
-        apiKey: apiKeyToUse,
-        instanceName: workspace.evolution_api_instance_name,
-        toPhoneNumber: clientPhoneNumber,
-        messageContent: content, // Passar o conteúdo original
-        senderName: senderDisplayName // Passar o nome do operador para a função de envio
-      });
-
-      if (sendResult.success && sendResult.messageId) {
-        console.log(`[Svc SendOperatorMsg] Evolution API send successful (MsgID: ${sendResult.messageId}) for msg ${pendingMessage.id}`);
-        await prisma.message.update({
-          where: { id: pendingMessage.id },
-          data: {
-            status: 'SENT',
-            channel_message_id: sendResult.messageId,
-            providerMessageId: sendResult.messageId
-          }
-        });
+        if (sendResult.success && sendResult.messageId) {
+          console.log(`[Svc SendOperatorMsg] Evolution API send successful (MsgID: ${sendResult.messageId}) for msg ${pendingMessage.id}`);
+          await prisma.message.update({
+            where: { id: pendingMessage.id },
+            data: {
+              status: 'SENT',
+              channel_message_id: sendResult.messageId,
+              providerMessageId: sendResult.messageId
+            }
+          });
+        } else {
+          console.error(`[Svc SendOperatorMsg] Evolution API send FAILED for msg ${pendingMessage.id}. Error:`, sendResult.error);
+          throw new Error(sendResult.error || 'Falha no envio via Evolution API');
+        }
       } else {
-        console.error(`[Svc SendOperatorMsg] Evolution API send FAILED for msg ${pendingMessage.id}. Error:`, sendResult.error);
-        throw new Error(sendResult.error || 'Falha no envio via Evolution API');
+        console.error(`[Svc SendOperatorMsg] Unsupported channel "${channel}" for sending operator message in conv ${conversationId}.`);
+        throw new Error(`Canal "${channel}" não suportado para envio de mensagens manuais.`);
       }
-    } else {
-      console.error(`[Svc SendOperatorMsg] Unsupported channel "${channel}" for sending operator message in conv ${conversationId}.`);
-      throw new Error(`Canal "${channel}" não suportado para envio de mensagens manuais.`);
     }
 
-    // 4. Atualizar last_message_at da conversa (apenas em sucesso)
-    // A mensagem PENDING já atualizou, mas o status SENT confirma
-    await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { last_message_at: pendingMessage.timestamp }
-    });
-    console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after SUCCESSFUL send of msg ${pendingMessage.id}.`);
-    
+    // 4. Atualizar last_message_at da conversa (apenas em sucesso de envio OU se for nota privada)
+    // A mensagem PENDING/SENT já atualizou, mas confirmamos
+    if (!isPrivateNote && sendResult?.success) {
+        await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { last_message_at: pendingMessage.timestamp }
+        });
+        console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after SUCCESSFUL send of msg ${pendingMessage.id}.`);
+    } else if (isPrivateNote) {
+         await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { last_message_at: pendingMessage.timestamp }
+        });
+        console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after saving PRIVATE note ${pendingMessage.id}.`);
+    }
+
     // Recarregar a mensagem com o status atualizado para retorno
-    pendingMessage = await prisma.message.findUnique({ where: { id: pendingMessage.id }, select: pendingMessageSelect });
+    // No caso de nota privada, já está SENT, mas recarregar garante consistência
+    // We don't need to reload the message here, the created pendingMessage already has the necessary info.
+    // The status update (PENDING -> SENT/FAILED) happens AFTER this function returns the pending message initially.
+    // If it was a private note, the initial status was already SENT.
+    // pendingMessage = await prisma.message.findUnique({ where: { id: pendingMessage.id }, select: pendingMessageSelect });
 
     return { success: true, message: pendingMessage! };
 
@@ -279,23 +311,31 @@ export async function sendOperatorMessage(
     console.error(`[Svc SendOperatorMsg] Error sending message for conv ${conversationId}:`, error);
     if (pendingMessage) {
       try {
-        await prisma.message.update({
-          where: { id: pendingMessage.id },
-          data: { status: 'FAILED', errorMessage: error.message }
-        });
-        console.log(`[Svc SendOperatorMsg] Updated message ${pendingMessage.id} to FAILED.`);
+        // Marcar como FAILED apenas se não for nota privada e falhou no envio
+        if (!isPrivateNote) {
+             await prisma.message.update({
+               where: { id: pendingMessage.id },
+               data: { status: 'FAILED', errorMessage: error.message }
+            });
+             console.log(`[Svc SendOperatorMsg] Updated message ${pendingMessage.id} to FAILED.`);
+        }
         
-        // Atualiza last_message_at da conversa mesmo em falha, pois a mensagem foi criada
-        await prisma.conversation.update({
-            where: { id: conversationId },
-            data: { last_message_at: pendingMessage.timestamp } 
-        });
-        console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after FAILED message ${pendingMessage.id}.`);
+        // Atualiza last_message_at da conversa mesmo em falha (se a mensagem foi criada)
+        // A atualização do last_message_at deve ocorrer se a mensagem foi criada no DB, independentemente do sucesso do envio externo
+        if (pendingMessage) { // Check if pendingMessage was successfully created
+           await prisma.conversation.update({
+               where: { id: pendingMessage.conversation_id },
+               data: { last_message_at: pendingMessage.timestamp }
+           });
+            console.log(`[Svc SendOperatorMsg] Updated conversation ${pendingMessage.conversation_id} last_message_at after processing message ${pendingMessage.id} (status: ${pendingMessage.status}).`);
+        }
 
       } catch (dbError) {
         console.error(`[Svc SendOperatorMsg] CRITICAL: Failed to update message ${pendingMessage.id} to FAILED status:`, dbError);
       }
     }
+    // Retornar erro apenas se não for nota privada que falhou no envio externo.
+    // Se for nota privada, o erro seria na criação no DB, então o retorno é o mesmo.
     return { success: false, error: error.message, statusCode: error.message.includes('incompleta') || error.message.includes('não suportado') ? 400 : 500 };
   }
 }

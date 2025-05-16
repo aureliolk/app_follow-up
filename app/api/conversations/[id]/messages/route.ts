@@ -94,6 +94,7 @@ export async function GET(
                 providerMessageId: true,
                 sentAt: true,
                 errorMessage: true,
+                privates_notes: true,
             },
         });
 
@@ -113,9 +114,10 @@ export async function GET(
   });
 }
 
-
+// Modificar schema para incluir isPrivateNote (opcional, boolean)
 const sendMessageSchema = z.object({
   content: z.string().min(1, "O conteúdo da mensagem não pode ser vazio."),
+  isPrivateNote: z.boolean().optional().default(false), // Adicionar novo campo
 });
 
 export async function POST(
@@ -137,6 +139,8 @@ export async function POST(
 
     // 2. Validar Corpo da Requisição
     let content: string;
+    // Extrair isPrivateNote do body validado
+    let isPrivateNote: boolean;
     try {
         const body = await req.json();
         const validation = sendMessageSchema.safeParse(body);
@@ -144,6 +148,7 @@ export async function POST(
           return NextResponse.json({ success: false, error: 'Dados inválidos', details: validation.error.errors }, { status: 400 });
         }
         content = validation.data.content;
+        isPrivateNote = validation.data.isPrivateNote ?? false; // Extrair e garantir default false
     } catch (parseError) {
          console.error(`API POST Messages (${conversationId}): Error parsing request body:`, parseError);
          return NextResponse.json({ success: false, error: 'Corpo da requisição inválido.' }, { status: 400 });
@@ -167,12 +172,13 @@ export async function POST(
     }
 
     // --- 4. Chamar o Serviço para Enviar a Mensagem ---
-    console.log(`API POST Messages (${conversationId}): Calling sendOperatorMessage service for user ${userId}.`);
+    console.log(`API POST Messages (${conversationId}): Calling sendOperatorMessage service for user ${userId}.` + (isPrivateNote ? ' (Private Note)' : '')); // Logar se é nota privada
     const result = await sendOperatorMessage(
         conversationId,
         userId,
         userName,
-        content
+        content,
+        isPrivateNote // Passar o novo parâmetro
     );
 
     // 5. Lidar com a Resposta do Serviço

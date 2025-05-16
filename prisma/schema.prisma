@@ -500,6 +500,7 @@ model Message {
   timestamp          DateTime          @default(now())
   channel_message_id String?
   metadata           Json?
+  privates_notes     Boolean           @default(false)
 
   media_url       String? @default("")
   media_mime_type String? @default("")

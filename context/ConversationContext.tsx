@@ -85,7 +85,7 @@ interface ConversationContextType {
     selectConversationForClient: (clientId: string, workspaceId: string) => Promise<ClientConversation | null>;
 
     // Ações do Usuário (Placeholders - para serem implementadas com Server Actions)
-    sendManualMessage: (conversationId: string, content: string, workspaceId?: string) => Promise<void>; 
+    sendManualMessage: (conversationId: string, content: string, workspaceId?: string, isPrivateNote?: boolean) => Promise<void>; 
     sendTemplateMessage: (conversationId: string, templateData: SendTemplateDataType) => Promise<void>; 
     sendMediaMessage: (conversationId: string, file: File) => Promise<void>; 
     toggleAIStatus: (conversationId: string, currentStatus: boolean) => Promise<void>;
@@ -452,7 +452,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, [selectedConversation?.id]);
 
     // --- Ações do Usuário (precisam estar declaradas antes do useEffect do Pusher) --- //
-    const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string) => {
+    const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string, isPrivateNote: boolean = false) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) {
             toast.error("Não foi possível determinar o workspace ativo.");
@@ -496,7 +496,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             // console.log(`[ConversationContext] Sending manual message to conv ${conversationId}. Content: ${content}`); // DEBUG
             const response = await axios.post<{ success: boolean, message?: Message, error?: string }>(
                 `/api/conversations/${conversationId}/messages`,
-                { content } // Corpo da requisição
+                { content, isPrivateNote }
             );
 
             if (!response.data.success || !response.data.message) {

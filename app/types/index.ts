@@ -150,6 +150,7 @@ export interface Message {
   client_id?: string;
   workspace_id?: string;
   llm_summary?: string | null;
+  privates_notes?: boolean; // Adicionar campo para notas privadas
 }
 
 // <<< INÍCIO DA NOVA INTERFACE >>>

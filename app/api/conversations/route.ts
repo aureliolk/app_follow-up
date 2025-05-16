@@ -26,7 +26,6 @@ const mapUiStatusToPrisma = (uiStatus: string): PrismaFollowUpStatus[] => {
 }
 
 export async function GET(req: NextRequest) {
-  console.log("API GET /api/conversations: Request received.");
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) { /* ... */ }
@@ -37,16 +36,12 @@ export async function GET(req: NextRequest) {
     const filterStatus = url.searchParams.get('status') || 'ATIVAS'; // Padrão para ATIVAS se não especificado
 
     if (!workspaceId) { /* ... */ }
-    console.log(`API GET Conversations: Fetching for workspaceId: ${workspaceId}, FilterStatus: ${filterStatus}`);
 
     const hasAccess = await checkPermission(workspaceId, userId, 'VIEWER');
     if (!hasAccess) { /* ... */ }
 
     // Mapeia o status do filtro da UI para os status do Prisma Enum
     const prismaStatusesToFilter = mapUiStatusToPrisma(filterStatus);
-    console.log(`API GET Conversations: Filtering by Prisma FollowUp Statuses: ${prismaStatusesToFilter.join(', ')}`);
-
-    console.log(`API GET Conversations: Filtering based on Conversation status: ACTIVE`);
 
     // --- QUERY: Incluir client.metadata --- 
     const conversations = await prisma.conversation.findMany({
@@ -109,11 +104,6 @@ export async function GET(req: NextRequest) {
       } : null,
       activeFollowUp: convo.client?.follow_ups?.[0] || null, 
     }));
-
-    console.log(`API GET Conversations: Found ${formattedData.length} conversations with status ACTIVE.`);
-
-    // <<< ADICIONAR LOG DETALHADO AQUI >>>
-    console.log("API GET Conversations: Final formatted data being sent:", JSON.stringify(formattedData, null, 2));
 
     return NextResponse.json({ success: true, data: formattedData });
 

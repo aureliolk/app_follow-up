@@ -9,12 +9,18 @@ import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 
+// Importar componentes de abas do shadcn/ui
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import type { Message } from '@/app/types';
 import { cn } from '@/lib/utils';
 import WhatsappTemplateDialog from '@/components/whatsapp/WhatsappTemplateDialog';
 import { useConversationContext } from '@/context/ConversationContext';
 
 // --- Tipos e Interfaces ---
+
+// Adicionar tipo para o tipo de mensagem
+type MessageType = 'reply' | 'private-note';
 
 interface ConversationInputAreaProps {
   conversationId: string;
@@ -61,6 +67,8 @@ export default function ConversationInputArea({
 
   // --- Estados e Refs Locais ---
   const [internalNewMessage, setInternalNewMessage] = useState('');
+  // Adicionar estado para o tipo de mensagem
+  const [messageType, setMessageType] = useState<MessageType>('reply');
   const [isRecording, setIsRecording] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<'idle' | 'prompting' | 'granted' | 'denied'>('idle');
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -212,22 +220,24 @@ export default function ConversationInputArea({
   // Handler seguro para evitar duplo envio
   const safeHandleSendMessage = useCallback(async () => {
     const trimmedMessage = internalNewMessage.trim();
-    if (!trimmedMessage || isSendingMessage || sendingRef.current || !conversationId) {
+    // Incluir verificacao para tipo de mensagem antes de enviar audio
+    if (!trimmedMessage || isSendingMessage || sendingRef.current || !conversationId || isRecording) {
       return;
     }
-    
+
     sendingRef.current = true;
     setInternalNewMessage('');
 
     try {
-      await sendManualMessage(conversationId, trimmedMessage, workspaceId);
+      // Passar o tipo de mensagem para a função do contexto
+      await sendManualMessage(conversationId, trimmedMessage, workspaceId, messageType === 'private-note');
     } catch (error) {
       console.error('[InputArea Send] Erro sending manual message (context should handle toast):', error);
     } finally {
       sendingRef.current = false;
       setTimeout(() => textareaRef.current?.focus(), 0);
     }
-  }, [internalNewMessage, isSendingMessage, conversationId, workspaceId, sendManualMessage, textareaRef]);
+  }, [internalNewMessage, isSendingMessage, conversationId, workspaceId, sendManualMessage, textareaRef, messageType, isRecording]); // Adicionar messageType e isRecording nas dependências
 
   // --- JSX ---
   return (
@@ -248,96 +258,124 @@ export default function ConversationInputArea({
         </div>
       )}
 
-      {/* Container Principal - Empilha Linhas */}
-      <div className={cn(
-        "flex flex-col gap-2",
-        isRecording && "hidden"
-      )}>
-        {/* Linha Superior: Botões de Ação */}
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isSendingMessage || isUploading}
-            aria-label="Anexar arquivo"
-            title="Anexar arquivo"
-          >
-            <Paperclip className="h-5 w-5 text-muted-foreground" />
-          </Button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-          />
+      {/* Tabs para Responder / Nota Privada */}
+      <Tabs defaultValue="reply" value={messageType} onValueChange={(value) => setMessageType(value as MessageType)} className="w-full mb-4">
+        <TabsList className="grid w-full grid-cols-2 h-auto">
+          <TabsTrigger value="reply" className="px-4 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
+            Responder
+          </TabsTrigger>
+          <TabsTrigger value="private-note" className="px-4 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm">
+            Nota Privada
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="reply">
+          {/* Conteúdo da aba Responder */}
+          <div className="flex w-full items-end space-x-2">
+            <div className="flex-grow min-w-0">
+              <Textarea
+                placeholder="Digite sua mensagem..."
+                className="min-h-[40px] resize-none"
+                value={internalNewMessage}
+                onChange={(e) => setInternalNewMessage(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    safeHandleSendMessage();
+                  }
+                }}
+                ref={textareaRef}
+              />
+            </div>
+            <div className="flex space-x-1">
+              {/* Botão Anexar Arquivo */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isSendingMessage || isUploading}
+                aria-label="Anexar arquivo"
+                title="Anexar arquivo"
+              >
+                <Paperclip className="h-5 w-5 text-muted-foreground" />
+              </Button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+              />
 
-          <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-            <PopoverTrigger asChild>
-               <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={isSendingMessage || isUploading}
-                  aria-label="Abrir seletor de emojis"
-                  title="Abrir seletor de emojis"
-                >
-                  <Smile className="h-5 w-5 text-muted-foreground" />
-                </Button>
-             </PopoverTrigger>
-             <PopoverContent className="w-full p-0 border-0" side="top" align="start">
-                <EmojiPicker
-                  onEmojiClick={handleEmojiClick}
-                  theme={Theme.AUTO}
-                  lazyLoadEmojis={true}
-                  searchPlaceholder="Buscar emoji..."
-                />
-             </PopoverContent>
-          </Popover>
+              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                <PopoverTrigger asChild>
+                   <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={isSendingMessage || isUploading}
+                      aria-label="Abrir seletor de emojis"
+                      title="Abrir seletor de emojis"
+                    >
+                      <Smile className="h-5 w-5 text-muted-foreground" />
+                    </Button>
+                 </PopoverTrigger>
+                 <PopoverContent className="w-full p-0 border-0" side="top" align="start">
+                    <EmojiPicker
+                      onEmojiClick={handleEmojiClick}
+                      theme={Theme.AUTO}
+                      lazyLoadEmojis={true}
+                      searchPlaceholder="Buscar emoji..."
+                    />
+                 </PopoverContent>
+               </Popover>
 
-          <WhatsappTemplateDialog
-               onSendTemplate={handleSendTemplate}
-               disabled={isSendingMessage || isUploading || isRecording || loadingTemplates}
-               isSendingTemplate={isSendingMessage}
-          />
-        </div>
+               <WhatsappTemplateDialog
+                    onSendTemplate={handleSendTemplate}
+                    disabled={isSendingMessage || isUploading || isRecording || loadingTemplates}
+                    isSendingTemplate={isSendingMessage}
+               />
 
-        {/* Linha Inferior: Textarea e Botão Enviar/Mic */}
-        <div className="flex items-end gap-1 sm:gap-2">
-          <Textarea
-            ref={textareaRef}
-            value={internalNewMessage}
-            onChange={(e) => setInternalNewMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                safeHandleSendMessage();
-              }
-            }}
-            placeholder="Digite sua mensagem..."
-            className="min-h-[40px] max-h-[150px] resize text-sm flex-grow"
-            rows={1}
-            disabled={isUploading}
-            style={{ overflowY: textareaRef.current && textareaRef.current.scrollHeight > 150 ? 'scroll' : 'hidden' }}
-          />
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="private-note">
+          {/* Conteúdo da aba Nota Privada */}
+          <div className="flex items-end gap-1 sm:gap-2">
+            <Textarea
+              ref={textareaRef}
+              value={internalNewMessage}
+              onChange={(e) => setInternalNewMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  safeHandleSendMessage();
+                }
+              }}
+              placeholder={'Digite sua nota privada...'}
+              className="min-h-[40px] max-h-[150px] resize text-sm flex-grow bg-yellow-500/10 border-yellow-500/30 dark:bg-yellow-500/5 dark:border-yellow-500/20"
+              rows={1}
+              disabled={isUploading || isRecording}
+              style={{ overflowY: textareaRef.current && textareaRef.current.scrollHeight > 150 ? 'scroll' : 'hidden' }}
+            />
 
-          <Button
-            size="icon"
-            onClick={internalNewMessage ? safeHandleSendMessage : handleMicClick}
-            disabled={isSendingMessage || isUploading || (!internalNewMessage && permissionStatus === 'prompting')}
-            aria-label={internalNewMessage ? 'Enviar mensagem' : 'Gravar áudio'}
-            title={internalNewMessage ? 'Enviar mensagem' : 'Gravar áudio'}
-            className="flex-shrink-0"
-          >
-            {isSendingMessage || isUploading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : internalNewMessage ? (
-              <Send className="h-5 w-5" />
-            ) : (
-              <Mic className="h-5 w-5" />
-            )}
-          </Button>
-        </div>
-      </div>
+            <Button
+              size="icon"
+              onClick={safeHandleSendMessage}
+              disabled={isSendingMessage || isUploading || isRecording || !internalNewMessage}
+              aria-label={'Enviar nota privada'}
+              title={'Enviar nota privada'}
+              className="flex-shrink-0 bg-yellow-600 hover:bg-yellow-700 dark:bg-yellow-500 dark:hover:bg-yellow-600"
+            >
+              {isSendingMessage || isUploading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5 text-white" />
+              )}
+            </Button>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Sidebar de Informações do Cliente */}
+      {/* ... existing code ... */}
     </div>
   );
 }
