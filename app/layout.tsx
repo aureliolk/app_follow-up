@@ -1,20 +1,19 @@
 // app/layout.tsx
 import type { Metadata } from "next";
-// Assumindo que você está usando as fontes Geist (copie/ajuste se usar outras)
 import { Geist, Geist_Mono } from "next/font/google";
-// Importar Toaster se for usar react-hot-toast
-// import { Toaster } from 'react-hot-toast';
+
 import "./globals.css"; // Importar o CSS global (agora configurado para v3)
 import SessionProvider from "../components/session-provider"; // Importar o Provider
 import Header from "../components/header";
 import Footer from "../components/footer";
-// Importar Header/Footer depois, se já copiados
-// import Header from "@/components/header";
-// import Footer from "@/components/footer";
+
 import { WorkspaceProvider } from '../context/workspace-context';
 import { ClientProvider } from '../context/client-context';
 import { ConversationProvider } from '../context/ConversationContext';
 import { FollowUpProvider } from "@/context/follow-up-context";
+
+import { Toaster } from "@/components/ui/toaster"; // Certifique-se de que o caminho está correto
+
 
 // Configuração das fontes (copie do seu projeto antigo ou ajuste)
 const geistSans = Geist({
@@ -62,7 +61,7 @@ export default function RootLayout({
             </ClientProvider>
           </WorkspaceProvider>
         </SessionProvider>
-
+        <Toaster />
       </body>
     </html>
   );
