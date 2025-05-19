@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
+import { toast } from 'react-hot-toast';
 import {
   Table,
   TableBody,
@@ -125,11 +126,25 @@ export default function ClientList({
     setSelectAll(!selectAll);
   };
 
-  const handleDeleteSelected = () => {
-    // Pode ser implementado para chamar onDelete para cada cliente selecionado
-    if (window.confirm(`Deseja realmente excluir ${selectedClients.length} cliente(s)?`)) {
-      // Exemplo: selectedClients.forEach(id => onDelete(id));
-      alert("Função a ser implementada: Deletar múltiplos clientes");
+  const handleDeleteSelected = async () => {
+    if (selectedClients.length === 0) return;
+
+    if (!window.confirm(`Deseja realmente excluir ${selectedClients.length} cliente(s)?`)) {
+      return;
+    }
+
+    let toastId: string | undefined;
+    try {
+      toastId = toast.loading('Excluindo clientes selecionados...');
+      for (const id of selectedClients) {
+        await onDelete(id);
+      }
+      toast.success('Clientes excluídos com sucesso!', { id: toastId });
+    } catch (error: any) {
+      console.error('Erro ao excluir clientes:', error);
+      const message = error?.message || 'Erro ao excluir clientes.';
+      toast.error(message, { id: toastId });
+    } finally {
       setSelectedClients([]);
       setSelectAll(false);
     }
