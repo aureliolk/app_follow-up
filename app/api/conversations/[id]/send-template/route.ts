@@ -8,7 +8,7 @@ import { decrypt } from '@/lib/encryption';
 import axios from 'axios';
 import { z } from 'zod';
 import { Prisma, MessageSenderType } from '@prisma/client';
-import { redisConnection } from '@/lib/redis';
+import pusher from '@/lib/pusher';
 
 // Esquema de validação para o corpo da requisição
 const sendTemplateSchema = z.object({
@@ -221,18 +221,18 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
                             type: 'new_message',
                             payload: savedMessage // Envia o objeto salvo
                         };
-                        await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
+                        await pusher.trigger(conversationChannel, 'new_message', redisPayload);
                         console.log(`[API POST /send-template] Published new_message to CONVERSATION channel ${conversationChannel}.`);
 
                         // Canal do Workspace (opcional, ajustar payload se necessário)
                         const workspaceChannel = `workspace-updates:${workspaceId}`;
                         const workspacePayload = {
-                            type: 'new_message', 
+                            type: 'new_message',
                             conversationId: conversationId,
                             lastMessageTimestamp: savedMessage.timestamp.toISOString(),
                             // Incluir outros dados relevantes para a lista de workspaces...
                         };
-                        await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
+                        await pusher.trigger(workspaceChannel, 'new_message', workspacePayload);
                         console.log(`[API POST /send-template] Published notification to WORKSPACE channel ${workspaceChannel}.`);
 
                     } catch (publishError) {

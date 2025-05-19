@@ -8,6 +8,7 @@ import { sendWhatsappTemplateMessage, SendResult as SendTemplateResult } from '@
 import { sendWhatsAppMessage, sendEvolutionMessage } from "@/lib/services/channelService";
 import { decrypt } from '@/lib/encryption';
 import { publishConversationUpdate } from '@/lib/services/notifierService';
+import pusher from '@/lib/pusher';
 import { Prisma } from '@prisma/client';
 // TODO: Importar serviços de canal (ex: import { sendWhatsAppMessage } from '@/lib/channel/whatsappService')
 
@@ -252,11 +253,12 @@ const messageSenderWorker = new Worker<MessageJobData>(
       });
       console.log(`[MessageSender ${job.id}] Status do CampaignContact ${campaignContactId} atualizado para ${finalMessageStatus}.`);
       
-      // Publish progress update via Redis (lógica existente)
+      // Publish progress update via Pusher
       try {
-        await redisConnection.publish(
+        await pusher.trigger(
           `campaign-progress:${campaignId}`,
-          JSON.stringify({ contactId: campaignContactId, status: finalMessageStatus, error: errorMessageForDb })
+          'progress_update',
+          { contactId: campaignContactId, status: finalMessageStatus, error: errorMessageForDb }
         );
       } catch (pubErr: any) {
         console.error(`[MessageSender] Erro ao publicar progresso do contato ${campaignContactId}:`, pubErr);
@@ -280,13 +282,14 @@ const messageSenderWorker = new Worker<MessageJobData>(
           });
 
           // Publica notificação de campanha completa no mesmo canal de progresso
-          await redisConnection.publish(
+          await pusher.trigger(
             `campaign-progress:${campaignId}`,
-            JSON.stringify({
+            'campaign_completed',
+            {
               type: 'campaignCompleted',
               campaignId: campaignId,
               status: 'COMPLETED'
-            })
+            }
           );
           console.log(`[MessageSender] Notificação de conclusão publicada para campanha ${campaignId}.`);
 
@@ -386,3 +389,4 @@ messageSenderWorker.on('error', err => {
 });
 
 export { messageSenderWorker }; 
+
