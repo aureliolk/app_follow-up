@@ -273,16 +273,18 @@ const campaignProcessorWorker = new Worker(
               };
 
               try {
+                  // Atualiza o status do contato antes de colocar o job na fila
+                  await prisma.campaignContact.update({
+                      where: { id: contact.id },
+                      data: { status: 'SCHEDULED' }
+                  });
+
                   await messageQueue.add(MESSAGE_SENDER_QUEUE, messageJobData, {
                       delay: delay,
                       jobId: `msg-${contact.id}` // Ou usar messageIdToUpdate? `msg-${createdMessageId}`
                   });
                   scheduledCount++;
                   console.log(`[CampaignProcessor] Job para contato ${contact.id} (Msg ${createdMessageId}) agendado com delay ${delay}ms para ${nextValidTime.toISOString()}`);
-
-                  // Atualizar o status do CampaignContact para SCHEDULED?
-                  // Faz sentido, pois o job foi para a fila
-                  await prisma.campaignContact.update({ where: { id: contact.id }, data: { status: 'SCHEDULED' } });
 
               } catch (queueError) {
                  console.error(`[CampaignProcessor] Falha ao adicionar job à ${MESSAGE_SENDER_QUEUE} para contato ${contact.id} (Msg ${createdMessageId}):`, queueError);
