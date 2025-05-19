@@ -140,23 +140,25 @@ function dispatch(action: Action) {
   })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type Toast = Omit<ToasterToast, "id"> & { id?: string }
 
-function toast({ ...props }: Toast) {
-  const id = genId()
+function toast({ id, ...props }: Toast) {
+  const toastId = id ?? genId()
 
   const update = (props: ToasterToast) =>
     dispatch({
       type: "UPDATE_TOAST",
-      toast: { ...props, id },
+      toast: { ...props, id: toastId },
     })
-  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId })
+
+  const isUpdate = memoryState.toasts.some((t) => t.id === toastId)
 
   dispatch({
-    type: "ADD_TOAST",
+    type: isUpdate ? "UPDATE_TOAST" : "ADD_TOAST",
     toast: {
       ...props,
-      id,
+      id: toastId,
       open: true,
       onOpenChange: (open) => {
         if (!open) dismiss()
@@ -165,10 +167,34 @@ function toast({ ...props }: Toast) {
   })
 
   return {
-    id: id,
+    id: toastId,
     dismiss,
     update,
   }
+}
+
+toast.dismiss = (toastId?: string) =>
+  dispatch({ type: "DISMISS_TOAST", toastId })
+
+toast.success = (
+  message: string,
+  props: Omit<Toast, "description" | "variant"> = {}
+) => {
+  toast({ ...props, description: message })
+}
+
+toast.error = (
+  message: string,
+  props: Omit<Toast, "description" | "variant"> = {}
+) => {
+  toast({ ...props, description: message, variant: "destructive" })
+}
+
+toast.loading = (
+  message: string,
+  props: Omit<Toast, "description" | "variant"> = {}
+) => {
+  return toast({ ...props, description: message }).id
 }
 
 function useToast() {
