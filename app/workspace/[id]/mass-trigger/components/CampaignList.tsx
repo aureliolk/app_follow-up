@@ -68,65 +68,6 @@ export default function CampaignList({ initialCampaigns, workspaceId }: Campaign
         setCampaigns(initialCampaigns);
     }, [initialCampaigns]);
 
-    // <<< INÍCIO: Lógica SSE >>>
-    useEffect(() => {
-        console.log(`[SSE CampaignList] useEffect triggered. workspaceId: ${workspaceId}`); // << Log inicial
-
-        // << Verifica se workspaceId é válido antes de conectar >>
-        if (!workspaceId || typeof workspaceId !== 'string') {
-            console.log("[SSE CampaignList] Invalid or missing workspaceId. Skipping EventSource setup.");
-            return; // Não tenta conectar sem ID válido
-        }
-
-        console.log(`[SSE CampaignList] Setting up EventSource for workspace: ${workspaceId}`);
-        const eventSource = new EventSource(`/api/sse?workspaceId=${workspaceId}`);
-
-        eventSource.onopen = () => {
-            console.log("[SSE CampaignList] Connection opened.");
-        };
-
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log("[SSE CampaignList] Message received:", data);
-
-                // Verifica se é uma mensagem de conclusão de campanha
-                if (data.type === 'campaignCompleted' && data.campaignId && data.status === 'COMPLETED') {
-                    console.log(`[SSE CampaignList] Campaign ${data.campaignId} completed event received.`);
-                    // Atualiza o estado local da lista de campanhas
-                    setCampaigns((prevCampaigns) =>
-                        prevCampaigns.map((campaign) =>
-                            campaign.id === data.campaignId
-                                ? { ...campaign, status: 'COMPLETED' }
-                                : campaign
-                        )
-                    );
-                }
-                // TODO: Adicionar lógica para atualizar progresso individual se necessário (usando `data.contactId` e `data.status`)
-
-            } catch (error) {
-                console.error("[SSE CampaignList] Error parsing SSE message:", error);
-            }
-        };
-
-        eventSource.onerror = (error) => {
-            // << Log de erro mais detalhado >>
-            console.error("[SSE CampaignList] EventSource error occurred:", error);
-            // Tentar logar o estado da conexão
-            console.log(`[SSE CampaignList] EventSource readyState on error: ${eventSource.readyState}`);
-            // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
-            eventSource.close(); // Fecha explicitamente em caso de erro
-        };
-
-        // Limpeza ao desmontar o componente
-        return () => {
-            console.log(`[SSE CampaignList] Cleanup: Closing EventSource connection. Current readyState: ${eventSource?.readyState}`);
-            eventSource?.close();
-        };
-
-    }, [workspaceId]); // Dependência: workspaceId
-    // <<< FIM: Lógica SSE >>>
-
     const handleDelete = async (campaignId: string) => {
         // Impedir múltiplos cliques
         if (deletingId) return;
