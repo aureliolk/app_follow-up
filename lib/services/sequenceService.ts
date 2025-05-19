@@ -8,7 +8,7 @@ import { loadAbandonedCartContext, loadFollowUpContext } from './conversationSer
 import { generateCartMessage, generateFollowUpMessage } from './aiService';
 import { sendWhatsAppMessage } from './channelService';
 import { saveMessageRecord } from './persistenceService';
-import { publishConversationUpdate, publishWorkspaceUpdate } from './notifierService';
+import pusher from '@/lib/pusher';
 import { scheduleSequenceJob } from './schedulerService';
 
 /**
@@ -52,15 +52,9 @@ export async function processAbandonedCart(
     metadata: { ruleId },
     channel_message_id: result.wamid
   });
-  // Notifica UI
-  await publishConversationUpdate(
-    `chat-updates:${conversationId}`,
-    { type: 'new_message', payload: saved }
-  );
-  await publishWorkspaceUpdate(
-    `workspace-updates:${workspaceId}`,
-    { type: 'new_message', conversationId, lastMessageTimestamp: saved.timestamp.toISOString() }
-  );
+  // Notifica UI apenas via Pusher
+  const pusherChannel = `private-workspace-${workspaceId}`;
+  await pusher.trigger(pusherChannel, 'new_message', JSON.stringify({ type: 'new_message', payload: saved }));
   // Agenda próximo passo se houver
   const rules = context.workspace.abandonedCartRules;
   const idx = rules.findIndex(r => r.id === ruleId);
@@ -111,14 +105,8 @@ export async function processFollowUp(
     channel_message_id: result.wamid
   });
   // Notifica UI
-  await publishConversationUpdate(
-    `chat-updates:${conversationId}`,
-    { type: 'new_message', payload: saved }
-  );
-  await publishWorkspaceUpdate(
-    `workspace-updates:${workspaceId}`,
-    { type: 'new_message', conversationId, lastMessageTimestamp: saved.timestamp.toISOString() }
-  );
+  const pusherChannel = `private-workspace-${workspaceId}`;
+  await pusher.trigger(pusherChannel, 'new_message', JSON.stringify({ type: 'new_message', payload: saved }));
   // Agenda próximo passo se houver
   const rules = context.workspace.ai_follow_up_rules;
   const idx = rules.findIndex(r => r.id === ruleId);

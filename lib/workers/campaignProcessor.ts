@@ -8,7 +8,7 @@ import { messageQueue, MESSAGE_SENDER_QUEUE } from '@/lib/queues/messageQueue';
 import { calculateNextValidSendTime } from '@/lib/timeUtils'; // scheduling simplified
 import { MessageSenderType, Prisma } from '@prisma/client';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
-import { publishConversationUpdate, publishWorkspaceUpdate } from '@/lib/services/notifierService';
+import pusher from '@/lib/pusher';
 import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
 import { getOrCreateConversation } from '../services/createConversation';
 
@@ -226,23 +226,10 @@ const campaignProcessorWorker = new Worker(
                 createdMessageId = savedMessage.id;
                 console.log(`[CampaignProcessor ${job.id}] Mensagem inicial ${savedMessage.id} salva (PENDING) para Conv ${conversationId}`); // <<< Log ajustado >>>
 
-                // Notificar front-end sobre a nova mensagem (agora PENDING)
-                await publishConversationUpdate(
-                   `chat-updates:${conversationId}`,
-                   { type: 'new_message', payload: savedMessage } // Envia a mensagem completa salva
-                );
-                console.log(`[CampaignProcessor ${job.id}] Notificação 'new_message' enviada para ${`chat-updates:${conversationId}`}`);
-
-                 // Notificar front-end sobre a atualização na lista de conversas
-                 await publishWorkspaceUpdate(
-                     `workspace-updates:${updatedCampaign.workspaceId}`,
-                     {
-                         type: 'new_message', // Ou um tipo mais específico como 'conversation_updated'
-                         conversationId: conversationId,
-                         lastMessageTimestamp: savedMessage.timestamp.toISOString()
-                     }
-                 );
-                 console.log(`[CampaignProcessor ${job.id}] Notificação 'workspace-updates' enviada para ${`workspace-updates:${updatedCampaign.workspaceId}`}`);
+                // Notificar front-end via Pusher
+                const pusherChannel = `private-workspace-${updatedCampaign.workspaceId}`;
+                await pusher.trigger(pusherChannel, 'new_message', JSON.stringify({ type: 'new_message', payload: savedMessage }));
+                console.log(`[CampaignProcessor ${job.id}] Evento 'new_message' enviado via Pusher para ${pusherChannel}`);
 
              } catch (saveMsgError) {
                  console.error(`[CampaignProcessor ${job.id}] Erro ao salvar mensagem inicial PENDING ou notificar UI para Contato ${contact.id}:`, saveMsgError);

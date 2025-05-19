@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from '@/lib/db';
-import { redisConnection } from '@/lib/redis';
+import pusher from '@/lib/pusher';
 
 /**
  * Define o estado da IA para uma conversa específica e publica um evento no Redis.
@@ -38,19 +38,15 @@ export async function setConversationAIStatus(conversationId: string, newStatus:
               is_ai_active: newStatus,
           },
       };
-      const chatChannel = `chat-updates:${conversationId}`;
-      const workspaceChannel = `workspace-updates:${updatedConversation.workspace_id}`;
+      const pusherChannel = `private-workspace-${updatedConversation.workspace_id}`;
 
       try {
-           await Promise.all([
-             redisConnection.publish(chatChannel, JSON.stringify(eventPayload)),
-             redisConnection.publish(workspaceChannel, JSON.stringify(eventPayload)),
-           ]);
-           console.log(`[Action] Evento 'ai_status_updated' (status: ${newStatus}) publicado nos canais ${chatChannel} e ${workspaceChannel}`);
-           return true; // Sucesso na operação completa (DB + Redis)
-      } catch (redisError) {
-           console.error(`[Action|setConversationAIStatus] Falha ao publicar evento 'ai_status_updated' para Conv ${conversationId} (status: ${newStatus}):`, redisError);
-           return true;
+        await pusher.trigger(pusherChannel, 'ai_status_updated', eventPayload);
+        console.log(`[Action] Evento 'ai_status_updated' (status: ${newStatus}) enviado via Pusher para ${pusherChannel}`);
+        return true;
+      } catch (pusherError) {
+        console.error(`[Action|setConversationAIStatus] Falha ao publicar evento 'ai_status_updated' para Conv ${conversationId} (status: ${newStatus}):`, pusherError);
+        return true;
       }
 
     } else {
