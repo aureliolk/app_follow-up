@@ -121,11 +121,9 @@ export default function ClientFormModal({
       };
 
       if (initialData?.id) {
-        console.log(`Modal: Atualizando cliente ${initialData.id}`, clientDataWithMetadata);
         await updateClient(initialData.id, clientDataWithMetadata);
         toast.success('Cliente atualizado com sucesso!');
       } else {
-        console.log("Modal: Criando novo cliente", clientDataWithMetadata);
         await createClient(clientDataWithMetadata);
         toast.success('Cliente criado com sucesso!');
       }

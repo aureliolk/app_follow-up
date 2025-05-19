@@ -51,10 +51,8 @@ export default function WorkspaceClientsPage() {
         clearClientsError();
     }
     try {
-      console.log(`ClientsPage: Chamando fetchClients para workspace: ${workspace.id}, page: ${page}, search: ${search}, append: ${append}`);
       // A função fetchClients no contexto precisará ser atualizada para lidar com 'append'
       await fetchClients(workspace.id, search, page, CLIENTS_PER_PAGE, append);
-      console.log("ClientsPage: fetchClients concluído.");
     } catch (err) {
       console.error('ClientsPage: Erro ao chamar fetchClients:', err);
       // O erro já deve estar em clientsError ou ser tratado no contexto
@@ -65,7 +63,6 @@ export default function WorkspaceClientsPage() {
   useEffect(() => {
     if (workspace && !workspaceLoading) {
       // Carrega a primeira página quando o termo de busca muda ou o workspace é carregado
-      console.log(`useEffect (search/workspace): Carregando clientes. Search: "${searchTerm}", Page: 1`);
       loadClients(1, searchTerm, false);
     }
   }, [workspace, workspaceLoading, searchTerm, loadClients]); // Não incluir currentPage aqui para evitar loops com o loadMore
@@ -74,7 +71,6 @@ export default function WorkspaceClientsPage() {
   // Função para carregar mais clientes (infinite scroll)
   const loadMoreClients = () => {
     if (!loadingClients && !isLoadingMoreClients && hasMoreClients && workspace) {
-      console.log("ClientsPage: Carregando mais clientes...");
       const nextPage = currentPage + 1;
       setCurrentPage(nextPage); // Atualiza a página atual
       loadClients(nextPage, searchTerm, true); // Chama loadClients para buscar e anexar
@@ -98,16 +94,17 @@ export default function WorkspaceClientsPage() {
   };
 
   // --- Handler de Exclusão (usa contexto) ---
-  const handleDeleteClient = async (clientId: string) => {
+  const handleDeleteClient = async (clientId: string, skipConfirm?: boolean) => {
      if (!workspace) return;
-     if (!confirm('Tem certeza que deseja excluir este cliente? Todas as conversas e mensagens associadas também serão removidas. Esta ação não pode ser desfeita.')) {
-       return;
+     if (!skipConfirm) {
+       if (!confirm('Tem certeza que deseja excluir este cliente? Todas as conversas e mensagens associadas também serão removidas. Esta ação não pode ser desfeita.')) {
+         return;
+       }
      }
      setIsDeleting(clientId);
      setPageError(null); // Limpa erro da página
      clearClientsError(); // Limpa erro do contexto
      try {
-       console.log(`ClientsPage: Chamando deleteClient do contexto para ID: ${clientId}`);
        await deleteClient(clientId, workspace.id); // <<< Chama a função do contexto
        toast.success('Cliente excluído com sucesso.');
        // Recarregar os clientes da página atual após a exclusão, respeitando o searchterm
