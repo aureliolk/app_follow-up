@@ -37,6 +37,9 @@ const messageSenderWorker = new Worker<MessageJobData>(
         throw new Error("Job data is missing required fields (campaignContactId, campaignId, workspaceId, messageIdToUpdate, conversationId)");
     }
 
+    // Declare providerMessageId here so it's accessible in the catch block
+    let providerMessageId: string | null = null;
+
     try {
       // --- Lógica Principal de Envio ---
       // 1. Buscar detalhes completos do CampaignContact e da Campaign (mensagem/template)
@@ -93,7 +96,6 @@ const messageSenderWorker = new Worker<MessageJobData>(
       let sendResult: (SendTemplateResult | { success: boolean; messageId?: string; error?: any }) | null = null;
       let finalMessageStatus: 'SENT' | 'FAILED' = 'FAILED';
       let errorMessageForDb: string | null = 'Unknown error during sending process';
-      let providerMessageId: string | null = null;
 
       const { campaign } = campaignContact;
       const channel = campaign.channelIdentifier;
