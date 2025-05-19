@@ -23,7 +23,10 @@ export default function ConversationsPage() {
     conversationsError,
     selectedConversation,
     selectConversation,
-    fetchConversations
+    fetchConversations,
+    loadMoreConversations,
+    hasMoreConversations,
+    isLoadingMoreConversations
   } = useConversationContext();
 
   const params = useParams();
@@ -148,7 +151,10 @@ export default function ConversationsPage() {
             conversations={filteredConversations}
             onSelectConversation={handleSelectConversation}
             selectedConversationId={selectedConversation?.id || urlConversationId}
-            basePath={baseConversationsPath} 
+            basePath={baseConversationsPath}
+            loadMoreConversations={loadMoreConversations}
+            hasMoreConversations={hasMoreConversations}
+            isLoadingMoreConversations={isLoadingMoreConversations}
           />
         </div>
 

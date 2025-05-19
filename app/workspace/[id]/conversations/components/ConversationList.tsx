@@ -10,12 +10,16 @@ import { useConversationContext } from '@/context/ConversationContext';
 import { User } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRouter, usePathname } from 'next/navigation';
+import { useRef, useCallback } from 'react';
 
 interface ConversationListProps {
   conversations: ClientConversation[];
   selectedConversationId: string | null;
   onSelectConversation: (conversation: ClientConversation) => void;
   basePath: string;
+  loadMoreConversations: () => void;
+  hasMoreConversations: boolean;
+  isLoadingMoreConversations: boolean;
 }
 
 export default function ConversationList({
@@ -23,8 +27,23 @@ export default function ConversationList({
   selectedConversationId,
   onSelectConversation,
   basePath,
+  loadMoreConversations,
+  hasMoreConversations,
+  isLoadingMoreConversations,
 }: ConversationListProps) {
   const { unreadConversationIds } = useConversationContext(); // Get unread IDs
+  const observer = useRef<IntersectionObserver | null>(null);
+
+  const lastConvoRef = useCallback((node: HTMLButtonElement | null) => {
+    if (isLoadingMoreConversations) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMoreConversations) {
+        loadMoreConversations();
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [isLoadingMoreConversations, hasMoreConversations, loadMoreConversations]);
   const router = useRouter();
 
   useEffect(() => {
@@ -46,7 +65,7 @@ export default function ConversationList({
 
   return (
     <div className="overflow-y-auto h-full">
-      {conversations.map((convo) => {
+      {conversations.map((convo, index) => {
         console.log('[ConversationList] Mapping convo ID:', convo?.id, 'Convo:', convo);
         if (!convo || !convo.id) {
           console.error('[ConversationList] Found conversation with missing ID:', convo);
@@ -66,6 +85,7 @@ export default function ConversationList({
         return (
           <button
             key={convo.id}
+            ref={index === conversations.length - 1 ? lastConvoRef : undefined}
             onClick={() => {
               onSelectConversation(convo);
               const newPath = `${basePath}/${convo.id}`;

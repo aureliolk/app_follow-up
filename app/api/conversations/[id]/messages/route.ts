@@ -76,10 +76,16 @@ export async function GET(
 
         // 4. Fetch Messages (If access granted)
         console.log(`API GET Messages: Access granted. Fetching messages for conversation ${conversationId}.`);
-        const messages = await prisma.message.findMany({
+
+        const url = new URL(req.url);
+        const cursor = url.searchParams.get('cursor');
+        const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+        const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+
+        const queryParams: Prisma.MessageFindManyArgs = {
             where: { conversation_id: conversationId },
-            orderBy: { timestamp: 'asc' }, // Ordenar da mais antiga para a mais recente
-            select: { // Selecionar campos necessários para a UI
+            orderBy: { timestamp: 'asc' },
+            select: {
                 id: true,
                 conversation_id: true,
                 sender_type: true,
@@ -96,7 +102,18 @@ export async function GET(
                 errorMessage: true,
                 privates_notes: true,
             },
-        });
+            take: limit,
+        };
+
+        if (cursor) {
+            queryParams.cursor = { id: cursor };
+            queryParams.skip = 1;
+        } else if (offset > 0) {
+            queryParams.skip = offset;
+        }
+
+        const messages = await prisma.message.findMany(queryParams);
+        const hasMore = messages.length === limit;
 
         // Add the required message_type before casting
         const messagesWithType = messages.map(msg => ({
@@ -105,7 +122,7 @@ export async function GET(
         }));
 
         console.log(`API GET Messages: Found ${messagesWithType.length} messages for conversation ${conversationId}.`);
-        return NextResponse.json({ success: true, data: messagesWithType as Message[] }); // Cast should be safer now
+        return NextResponse.json({ success: true, data: messagesWithType as Message[], hasMore });
 
     } catch (error) {
         console.error(`API GET Messages (${conversationId}): Error processing request:`, error);
