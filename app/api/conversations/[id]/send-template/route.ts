@@ -191,7 +191,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
                                 sentByUserId: userId // Guarda quem enviou
                             } as Prisma.JsonObject,
                         },
-                        select: { // Selecionar dados necessários para Redis
+                        select: { // Selecionar dados necessários para Pusher
                             id: true, conversation_id: true, sender_type: true,
                             content: true, timestamp: true, status: true, 
                             providerMessageId: true, metadata: true
@@ -212,11 +212,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
                     // O template foi enviado, o problema foi salvar o registro.
                 }
 
-                // 9. IMPLEMENTADO: Publicar mensagem no Redis para UI
+                // 9. IMPLEMENTADO: Enviar mensagem via Pusher para UI
                 if (savedMessage) { // Só publica se conseguiu salvar
                     try {
-                        // Canal da Conversa
-                        const conversationChannel = `chat-updates:${conversationId}`;
+                        // Canal do Workspace no Pusher
                         const pusherChannel = `private-workspace-${workspaceId}`;
                         const eventPayload = JSON.stringify({ type: 'new_message', payload: savedMessage });
                         await pusher.trigger(pusherChannel, 'new_message', eventPayload);
