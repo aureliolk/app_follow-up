@@ -6,7 +6,7 @@ import { FollowUpStatus } from '@prisma/client';
  */
 import { loadAbandonedCartContext, loadFollowUpContext } from './conversationService';
 import { generateCartMessage, generateFollowUpMessage } from './aiService';
-import { sendWhatsAppMessage } from './channelService';
+import { sendWhatsAppMessage, sendEvolutionMessage } from './channelService';
 import { saveMessageRecord } from './persistenceService';
 import pusher from '@/lib/pusher';
 import { scheduleSequenceJob } from './schedulerService';
@@ -83,18 +83,45 @@ export async function processFollowUp(
     
   // Gera mensagem com IA
   const text = await generateFollowUpMessage(context, ruleId);
-  // Envia via WhatsApp
-  const result = await sendWhatsAppMessage(
-    context.workspace.whatsappPhoneNumberId,
-    context.client.phone_number,
-    context.workspace.whatsappAccessToken,
-    text,
-    context.workspace.ai_name
-  );
-  if (!result.success) {
-    throw new Error(`Erro no envio WhatsApp (FollowUp): ${result.error}`);
+
+  const channel = context.conversation.channel;
+  let sendResult: { success: boolean; wamid?: string; messageId?: string; error?: any };
+
+  if (channel === 'WHATSAPP_CLOUDAPI') {
+    if (!context.workspace.whatsappPhoneNumberId || !context.workspace.whatsappAccessToken) {
+      throw new Error('Credenciais do WhatsApp Cloud API ausentes.');
+    }
+    sendResult = await sendWhatsAppMessage(
+      context.workspace.whatsappPhoneNumberId,
+      context.client.phone_number,
+      context.workspace.whatsappAccessToken,
+      text,
+      context.workspace.ai_name
+    );
+  } else if (channel === 'WHATSAPP_EVOLUTION') {
+    const { evolution_api_endpoint, evolution_api_token, evolution_api_instance_name } = context.workspace;
+    if (!evolution_api_endpoint || !evolution_api_token || !evolution_api_instance_name) {
+      throw new Error('Credenciais da Evolution API ausentes.');
+    }
+    sendResult = await sendEvolutionMessage({
+      endpoint: evolution_api_endpoint,
+      apiKey: evolution_api_token,
+      instanceName: evolution_api_instance_name,
+      toPhoneNumber: context.client.phone_number,
+      messageContent: text,
+      senderName: context.workspace.ai_name || ''
+    });
+  } else {
+    console.error(`[SequenceService] Canal não suportado: ${channel}`);
+    throw new Error(`Canal ${channel} não é suportado para follow-up.`);
   }
-  // Persiste mensagem
+
+  if (!sendResult.success) {
+    throw new Error(`Erro no envio da mensagem: ${sendResult.error}`);
+  }
+
+  const messageId = sendResult.wamid || sendResult.messageId || undefined;
+
   const conversationId = context.conversation.id;
   const saved = await saveMessageRecord({
     conversation_id: conversationId,
@@ -102,7 +129,7 @@ export async function processFollowUp(
     content: text,
     timestamp: new Date(),
     metadata: { ruleId, followUpId },
-    channel_message_id: result.wamid
+    channel_message_id: messageId
   });
   // Notifica UI
   const pusherChannel = `private-workspace-${workspaceId}`;
