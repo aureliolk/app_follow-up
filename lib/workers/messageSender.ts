@@ -205,9 +205,12 @@ const messageSenderWorker = new Worker<MessageJobData>(
 
           const dataToUpdate: Prisma.MessageUpdateInput = {
               status: finalMessageStatus,
-              ...(providerMessageId && { channel_message_id: providerMessageId }),
+              ...(providerMessageId && {
+                  channel_message_id: providerMessageId,
+                  providerMessageId: providerMessageId,
+              }),
               ...(finalMessageStatus === 'FAILED' && {
-                  metadata: { 
+                  metadata: {
                       ...currentMetadata,
                       sendError: errorMessageForDb
                   }
@@ -317,7 +320,11 @@ const messageSenderWorker = new Worker<MessageJobData>(
                 where: { id: messageIdToUpdate },
                 data: {
                     status: 'FAILED',
-                    metadata: { 
+                    ...(providerMessageId && {
+                        channel_message_id: providerMessageId,
+                        providerMessageId: providerMessageId,
+                    }),
+                    metadata: {
                         ...currentMetadata,
                         jobError: `General Error: ${error instanceof Error ? error.message : String(error)}`
                     }
