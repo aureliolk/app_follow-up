@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from '@/lib/db';
-import { redisConnection } from '@/lib/redis';
+import pusher from '@/lib/pusher';
 
 /**
  * Define o estado da IA para uma conversa específica e publica um evento no Redis.
@@ -43,8 +43,8 @@ export async function setConversationAIStatus(conversationId: string, newStatus:
 
       try {
            await Promise.all([
-             redisConnection.publish(chatChannel, JSON.stringify(eventPayload)),
-             redisConnection.publish(workspaceChannel, JSON.stringify(eventPayload)),
+             pusher.trigger(chatChannel, 'ai_status_updated', eventPayload),
+             pusher.trigger(workspaceChannel, 'ai_status_updated', eventPayload),
            ]);
            console.log(`[Action] Evento 'ai_status_updated' (status: ${newStatus}) publicado nos canais ${chatChannel} e ${workspaceChannel}`);
            return true; // Sucesso na operação completa (DB + Redis)
