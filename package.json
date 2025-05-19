@@ -14,7 +14,8 @@
     "start:campaign": "tsx lib/workers/campaignWorker.ts",
     "start:media": "tsx lib/workers/whatsappMediaSenderWorker.ts",
     "start:campaign-processor": "tsx scripts/start-campaign-processor.ts",
-    "start:message-sender": "tsx scripts/start-message-sender.ts"
+    "start:message-sender": "tsx scripts/start-message-sender.ts",
+    "test": "node --test tests/sequenceService.test.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.2.5",
