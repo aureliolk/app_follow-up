@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db';
 import { sendWhatsappTemplateMessage, SendResult as SendTemplateResult } from '@/lib/channel/whatsappSender';
 import { sendWhatsAppMessage, sendEvolutionMessage } from "@/lib/services/channelService";
 import { decrypt } from '@/lib/encryption';
-import { publishConversationUpdate } from '@/lib/services/notifierService';
+import pusher from '@/lib/pusher';
 import { Prisma } from '@prisma/client';
 // TODO: Importar serviços de canal (ex: import { sendWhatsAppMessage } from '@/lib/channel/whatsappService')
 
@@ -220,22 +220,23 @@ const messageSenderWorker = new Worker<MessageJobData>(
           });
           console.log(`[MessageSender ${job.id}] Mensagem ${messageIdToUpdate} atualizada no DB para status ${finalMessageStatus}.`);
 
-          // 7. <<< PUBLICAR ATUALIZAÇÃO DE STATUS NO REDIS (para UI) >>>
-          await publishConversationUpdate(
-              `chat-updates:${conversationId}`,
-              {
-                  type: 'message_status_updated',
-                  payload: {
-                      messageId: messageIdToUpdate,
-                      conversation_id: conversationId,
-                      newStatus: finalMessageStatus,
-                      providerMessageId: providerMessageId,
-                      timestamp: new Date().toISOString(),
-                      ...(finalMessageStatus === 'FAILED' && { errorMessage: errorMessageForDb })
-                  }
+          // 7. Notificar atualização de status via Pusher
+          const pusherChannel = `private-workspace-${workspaceId}`;
+          await pusher.trigger(
+            pusherChannel,
+            'message_status_update',
+            {
+              payload: {
+                messageId: messageIdToUpdate,
+                conversation_id: conversationId,
+                newStatus: finalMessageStatus,
+                providerMessageId: providerMessageId,
+                timestamp: new Date().toISOString(),
+                ...(finalMessageStatus === 'FAILED' && { errorMessage: errorMessageForDb })
               }
+            }
           );
-          console.log(`[MessageSender ${job.id}] Notificação 'message_status_updated' enviada para chat-updates:${conversationId}`);
+          console.log(`[MessageSender ${job.id}] Evento 'message_status_update' enviado para ${pusherChannel}`);
 
       } catch (dbOrRedisError: any) {
           console.error(`[MessageSender ${job.id}] Erro ao atualizar DB ou publicar status Redis para Mensagem ${messageIdToUpdate}:`, dbOrRedisError);
@@ -252,12 +253,15 @@ const messageSenderWorker = new Worker<MessageJobData>(
       });
       console.log(`[MessageSender ${job.id}] Status do CampaignContact ${campaignContactId} atualizado para ${finalMessageStatus}.`);
       
-      // Publish progress update via Redis (lógica existente)
+      // Publicar progresso via Pusher
       try {
-        await redisConnection.publish(
-          `campaign-progress:${campaignId}`,
-          JSON.stringify({ contactId: campaignContactId, status: finalMessageStatus, error: errorMessageForDb })
-        );
+        const progressChannel = `private-workspace-${workspaceId}`;
+        await pusher.trigger(progressChannel, 'campaign_progress', {
+          contactId: campaignContactId,
+          status: finalMessageStatus,
+          error: errorMessageForDb,
+          campaignId
+        });
       } catch (pubErr: any) {
         console.error(`[MessageSender] Erro ao publicar progresso do contato ${campaignContactId}:`, pubErr);
       }
@@ -279,15 +283,13 @@ const messageSenderWorker = new Worker<MessageJobData>(
             data: { status: 'COMPLETED' },
           });
 
-          // Publica notificação de campanha completa no mesmo canal de progresso
-          await redisConnection.publish(
-            `campaign-progress:${campaignId}`,
-            JSON.stringify({
-              type: 'campaignCompleted',
-              campaignId: campaignId,
-              status: 'COMPLETED'
-            })
-          );
+          // Notifica conclusão da campanha via Pusher
+          const progressChannel = `private-workspace-${workspaceId}`;
+          await pusher.trigger(progressChannel, 'campaign_progress', {
+            type: 'campaignCompleted',
+            campaignId: campaignId,
+            status: 'COMPLETED'
+          });
           console.log(`[MessageSender] Notificação de conclusão publicada para campanha ${campaignId}.`);
 
         } catch (campaignUpdateError) {
@@ -322,21 +324,22 @@ const messageSenderWorker = new Worker<MessageJobData>(
                 }
             });
             // Tenta notificar a UI sobre a falha
-             if (conversationId) {
-                 await publishConversationUpdate(
-                     `chat-updates:${conversationId}`,
-                     {
-                         type: 'message_status_updated',
-                         payload: {
-                             messageId: messageIdToUpdate,
-                             conversation_id: conversationId,
-                             newStatus: 'FAILED',
-                             errorMessage: `General Error: ${error instanceof Error ? error.message : String(error)}`,
-                             timestamp: new Date().toISOString(),
-                         }
-                     }
-                 );
-             }
+            if (conversationId) {
+                const pusherChannel = `private-workspace-${workspaceId}`;
+                await pusher.trigger(
+                    pusherChannel,
+                    'message_status_update',
+                    {
+                        payload: {
+                            messageId: messageIdToUpdate,
+                            conversation_id: conversationId,
+                            newStatus: 'FAILED',
+                            errorMessage: `General Error: ${error instanceof Error ? error.message : String(error)}`,
+                            timestamp: new Date().toISOString(),
+                        }
+                    }
+                );
+            }
         } catch (failMsgError) {
             console.error(`[MessageSender ${job.id}] Falha ANINHADA ao tentar marcar mensagem ${messageIdToUpdate} como FAILED após erro geral:`, failMsgError);
         }

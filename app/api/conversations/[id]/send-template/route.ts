@@ -8,7 +8,7 @@ import { decrypt } from '@/lib/encryption';
 import axios from 'axios';
 import { z } from 'zod';
 import { Prisma, MessageSenderType } from '@prisma/client';
-import { redisConnection } from '@/lib/redis';
+import pusher from '@/lib/pusher';
 
 // Esquema de validação para o corpo da requisição
 const sendTemplateSchema = z.object({
@@ -217,26 +217,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
                     try {
                         // Canal da Conversa
                         const conversationChannel = `chat-updates:${conversationId}`;
-                        const redisPayload = {
-                            type: 'new_message',
-                            payload: savedMessage // Envia o objeto salvo
-                        };
-                        await redisConnection.publish(conversationChannel, JSON.stringify(redisPayload));
-                        console.log(`[API POST /send-template] Published new_message to CONVERSATION channel ${conversationChannel}.`);
-
-                        // Canal do Workspace (opcional, ajustar payload se necessário)
-                        const workspaceChannel = `workspace-updates:${workspaceId}`;
-                        const workspacePayload = {
-                            type: 'new_message', 
-                            conversationId: conversationId,
-                            lastMessageTimestamp: savedMessage.timestamp.toISOString(),
-                            // Incluir outros dados relevantes para a lista de workspaces...
-                        };
-                        await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
-                        console.log(`[API POST /send-template] Published notification to WORKSPACE channel ${workspaceChannel}.`);
+                        const pusherChannel = `private-workspace-${workspaceId}`;
+                        const eventPayload = JSON.stringify({ type: 'new_message', payload: savedMessage });
+                        await pusher.trigger(pusherChannel, 'new_message', eventPayload);
+                        console.log(`[API POST /send-template] Evento 'new_message' enviado via Pusher para ${pusherChannel}.`);
 
                     } catch (publishError) {
-                         console.error(`[API POST /send-template] Error publishing template message ${savedMessage.id} to Redis:`, publishError);
+                         console.error(`[API POST /send-template] Error triggering Pusher for message ${savedMessage.id}:`, publishError);
                     }
                 }
 

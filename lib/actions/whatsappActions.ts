@@ -5,7 +5,6 @@ import { prisma } from '@/lib/db';
 // import type { WhatsappTemplate } from '@/lib/types/whatsapp';
 import { sendWhatsappTemplateMessage } from '@/lib/channel/whatsappSender';
 import { decrypt } from '@/lib/encryption'; // Assumindo que as credenciais estão criptografadas
-import { publishConversationUpdate } from '@/lib/services/notifierService';
 import pusher from '@/lib/pusher';
 import type { Message } from '@/app/types';
 
@@ -132,13 +131,6 @@ export async function sendWhatsappTemplateAction(
        console.log(`[Server Action] Mensagem (Template ${args.templateName} - Renderizada) registrada no DB com ID ${createdMessage.id} e status ${messageStatus}. WAMID: ${wamid}`);
 
        if (createdMessage) {
-         const redisChannel = `chat-updates:${args.conversationId}`;
-        const payload = {
-          type: 'new_message',
-          payload: createdMessage
-        };
-        await publishConversationUpdate(redisChannel, payload);
-        console.log(`[Server Action] Published 'new_message' to Redis channel ${redisChannel}`);
         // Notificar via Pusher para atualização imediata na UI
         try {
           const pusherPayload = JSON.stringify({ type: 'new_message', payload: createdMessage });
@@ -158,9 +150,6 @@ export async function sendWhatsappTemplateAction(
               providerMessageId: wamid,
             }
           };
-          // Redis/SSE
-          await publishConversationUpdate(redisChannel, statusPayload);
-          console.log(`[Server Action] Published 'message_status_update' to Redis channel ${redisChannel}`);
           // Pusher
           const statusPusherChannel = `private-workspace-${args.workspaceId}`;
           await pusher.trigger(statusPusherChannel, 'message_status_update', statusPayload);

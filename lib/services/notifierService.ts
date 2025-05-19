@@ -1,4 +1,4 @@
-import { redisConnection } from '@/lib/redis';
+import pusher from '@/lib/pusher';
 
 /**
  * Publica atualização de nova mensagem no canal da conversa.
@@ -7,8 +7,7 @@ export async function publishConversationUpdate(
   channel: string,
   payload: any
 ): Promise<void> {
-  // Publica o payload no canal especificado
-  await redisConnection.publish(channel, JSON.stringify(payload));
+  await pusher.trigger(channel, payload.type, JSON.stringify(payload));
 }
 
 /**
@@ -18,6 +17,5 @@ export async function publishWorkspaceUpdate(
   channel: string,
   payload: any
 ): Promise<void> {
-  // Publica o payload no canal especificado
-  await redisConnection.publish(channel, JSON.stringify(payload));
+  await pusher.trigger(channel, payload.type, JSON.stringify(payload));
 }
