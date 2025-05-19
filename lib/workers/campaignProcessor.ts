@@ -140,13 +140,15 @@ const campaignProcessorWorker = new Worker(
                   continue; // Pula para o próximo contato no loop
               }
 
-              console.log(`[CampaignProcessor ${job.id}] Padronizado ${clientPhoneNumberRaw} -> ${standardizedPhoneNumber}. Buscando/Criando conversa para Contato ${contact.id}...`);
+            const channel = updatedCampaign.channelIdentifier || 'UNKNOWN_CHANNEL';
+            console.log(`[CampaignProcessor ${job.id}] Padronizado ${clientPhoneNumberRaw} -> ${standardizedPhoneNumber}. Buscando/Criando conversa no canal ${channel} para Contato ${contact.id}...`);
 
-              const { conversation, client, conversationWasCreated, clientWasCreated } = await getOrCreateConversation(
-                  updatedCampaign.workspaceId, // Usar o workspaceId da campanha atualizada
-                  standardizedPhoneNumber,
-                  contact.contactName || undefined // Passa o nome se existir
-              );
+            const { conversation, client, conversationWasCreated, clientWasCreated } = await getOrCreateConversation(
+                updatedCampaign.workspaceId, // Usar o workspaceId da campanha atualizada
+                standardizedPhoneNumber,
+                contact.contactName || undefined, // Passa o nome se existir
+                updatedCampaign.channelIdentifier || undefined // Canal de origem
+            );
               conversationId = conversation.id; // <<< Armazena ID da conversa >>>
               clientId = client.id; // <<< Armazena ID do cliente >>>
               console.log(`[CampaignProcessor ${job.id}] Conversa ${conversation.id} ${conversationWasCreated ? 'CRIADA' : 'recuperada'} para Cliente ${client.id} (Contato Campanha: ${contact.id}) (${clientWasCreated ? 'NOVO CLIENTE' : 'CLIENTE EXISTENTE'})`);
