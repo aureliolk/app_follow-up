@@ -39,7 +39,7 @@ import type { Client } from '@/app/types';
 
 interface ClientListProps {
   onEdit: (client: Client) => void;
-  onDelete: (clientId: string) => void;
+  onDelete: (clientId: string, skipConfirm?: boolean) => Promise<void>;
   deletingId: string | null;
   loadMoreClients: () => void;
   hasMoreClients: boolean;
@@ -137,7 +137,7 @@ export default function ClientList({
     try {
       toastId = toast.loading('Excluindo clientes selecionados...');
       for (const id of selectedClients) {
-        await onDelete(id);
+        await onDelete(id, true);
       }
       toast.success('Clientes excluídos com sucesso!', { id: toastId });
     } catch (error: any) {
@@ -188,7 +188,6 @@ export default function ClientList({
     setSelectAll(false);
   }, [clients]);
 
-  console.log("ClientList Render: InitialLoading:", initialLoading, "IsLoadingMore:", isLoadingMoreClients, "Error:", clientsError, "Count:", clients?.length ?? 0, "HasMore:", hasMoreClients);
 
   if (clientsError && clients.length === 0) {
     return (

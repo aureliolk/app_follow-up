@@ -62,7 +62,6 @@ const getFollowUpStatusDisplay = (status: string | undefined | null): {
 };
 
 export default function ConversationDetail() {
-  console.log('[ConvDetail LIFECYCLE] Rendering/Mounting (Simplified)...');
 
   // --- Context ---
   const {
@@ -125,12 +124,10 @@ export default function ConversationDetail() {
 
   // --- Client Sidebar Handlers ---
   const handleSaveClient = async (clientId: string, updatedData: { name?: string | null; phone_number?: string | null; metadata?: any }) => {
-    console.log(`[ConvDetail] Tentando salvar cliente ${clientId} com dados:`, updatedData);
     try {
         const updatedClientResponse = await updateClient(clientId, updatedData); 
 
         if (conversation) { 
-          console.log("[ConvDetail] Re-selecionando a conversa no contexto com dados do cliente atualizados...");
           const newConversationData: ClientConversation = {
             ...conversation, 
             client: updatedClientResponse 
@@ -138,7 +135,6 @@ export default function ConversationDetail() {
           selectConversation(newConversationData);
         }
 
-        console.log(`[ConvDetail] Cliente ${clientId} salvo (via contexto) e estado da conversa atualizado.`);
     } catch (error: any) {
         console.error(`[ConvDetail] Erro ao salvar cliente ${clientId}:`, error);
         toast.error(`Erro ao salvar cliente: ${error.message || 'Erro desconhecido'}`);
@@ -147,13 +143,11 @@ export default function ConversationDetail() {
   };
 
   const handleDeleteClient = async (clientId: string) => {
-    console.log(`[ConvDetail] Tentando deletar cliente ${clientId}`);
     try {
         if (!conversation?.workspace_id) {
             throw new Error("Workspace ID não encontrado para deletar cliente.");
         }
         await deleteClient(clientId, conversation.workspace_id);
-        console.log(`[ConvDetail] Cliente ${clientId} deletado (via contexto).`);
         selectConversation(null);
     } catch (error: any) {
         console.error(`[ConvDetail] Erro ao deletar cliente ${clientId}:`, error);
@@ -187,7 +181,6 @@ export default function ConversationDetail() {
   // Determinar estado da IA para o botão
   const isAIActive = conversation.is_ai_active;
   const followUpDisplay = getFollowUpStatusDisplay(conversation.activeFollowUp?.status);
-  console.log('[ConvDetail] conversation.activeFollowUp:', conversation.activeFollowUp);
 
   return (
     <div className="flex flex-col h-full bg-card border-l border-border relative">
@@ -266,7 +259,6 @@ export default function ConversationDetail() {
         {isLoadingMessages && messages.length === 0 && <LoadingSpinner message="Carregando..." />}
         {messageError && messages.length === 0 && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
         {messages.map((message) => {
-          console.log(`Message ID: ${message.id}, Private Note: ${message.privates_notes}`);
           return (
             <div
               key={message.id}
