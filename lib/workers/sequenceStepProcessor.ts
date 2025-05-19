@@ -1,6 +1,7 @@
 // apps/workers/src/workers/sequenceStepProcessor.ts
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
+import { pusherServer } from '@/lib/pusher';
 import { prisma } from '@/lib/db';
 import { sendWhatsappMessage } from '@/lib/channel/whatsappSender';
 import { decrypt } from '@/lib/encryption';
@@ -256,10 +257,10 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
                 }
               }
             };
-            await redisConnection.publish(conversationChannel, JSON.stringify(conversationPayload));
-            console.log(`[SequenceWorker ${jobId}] Mensagem ${savedMessage.id} publicada no canal Redis da CONVERSA: ${conversationChannel}`);
+            await pusherServer.trigger(conversationChannel, 'new_message', conversationPayload.payload);
+            console.log(`[SequenceWorker ${jobId}] Mensagem ${savedMessage.id} publicada via Pusher no canal ${conversationChannel}`);
           } catch (publishConvError) {
-            console.error(`[SequenceWorker ${jobId}] Falha ao publicar mensagem ${savedMessage.id} no Redis (Canal Conversa):`, publishConvError);
+            console.error(`[SequenceWorker ${jobId}] Falha ao publicar mensagem ${savedMessage.id} via Pusher no canal ${conversationChannel}:`, publishConvError);
           }
 
           try {
@@ -281,10 +282,10 @@ async function processSequenceStepJob(job: Job<SequenceJobData>) {
                 metadata: activeConversation.metadata
               }
             };
-            await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
-            console.log(`[SequenceWorker ${jobId}] Notificação ENRIQUECIDA (follow-up) publicada no canal Redis do WORKSPACE: ${workspaceChannel}`);
+            await pusherServer.trigger(workspaceChannel, 'new_message', workspacePayload.payload);
+            console.log(`[SequenceWorker ${jobId}] Notificação ENRIQUECIDA publicada via Pusher no canal ${workspaceChannel}`);
           } catch (publishWsError) {
-            console.error(`[SequenceWorker ${jobId}] Falha ao publicar notificação de follow-up no Redis (Canal Workspace):`, publishWsError);
+            console.error(`[SequenceWorker ${jobId}] Falha ao publicar notificação de follow-up via Pusher no canal ${workspaceChannel}:`, publishWsError);
           }
 
         } catch (saveError) {

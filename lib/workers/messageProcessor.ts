@@ -2,6 +2,7 @@
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
 import { prisma } from '@/lib/db';
+import { pusherServer } from '@/lib/pusher';
 // Importar a função de envio do WhatsApp (deve existir em lib/channel/whatsappSender.ts)
 import { sendWhatsappMessage } from '@/lib/channel/whatsappSender';
 import { MessageSenderType, ConversationStatus, Prisma } from '@prisma/client'; // Adicionar Prisma
@@ -308,16 +309,10 @@ async function processJob(job: Job<JobData>) {
            console.log("[MsgProcessor ${jobId}] Payload Mínimo (skipped batch):", minimalPayload);
 
             try {
-                await redisConnection.publish(
-                    `chat-updates:${conversationId}`,
-                    JSON.stringify({
-                        type: 'message_content_updated',
-                        payload: minimalPayload // <<< USAR PAYLOAD MÍNIMO
-                    })
-                );
-                console.log(`[MsgProcessor ${jobId}] Atualização de mídia MÍNIMA (skipped batch) publicada.`);
+                await pusherServer.trigger(`chat-updates:${conversationId}`, 'message_content_updated', minimalPayload);
+                console.log(`[MsgProcessor ${jobId}] Atualização de mídia MÍNIMA (skipped batch) enviada via Pusher.`);
              } catch (publishError) {
-                 console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR atualização mínima de mídia (skipped batch):`, publishError);
+                 console.error(`[MsgProcessor ${jobId}] ERRO AO ENVIAR atualização mínima de mídia (skipped batch) via Pusher:`, publishError);
              }
         }
         console.log(`[MsgProcessor ${jobId}] Pulando processamento de IA (não é o job mais recente ou sem msgs novas).`);
@@ -506,10 +501,10 @@ async function processJob(job: Job<JobData>) {
             }
         };
         try {
-            await redisConnection.publish(conversationChannel, JSON.stringify(newAiMessagePayload));
-            console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada no canal Redis da CONVERSA.`);
+            await pusherServer.trigger(conversationChannel, 'new_message', newAiMessagePayload.payload);
+            console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} enviada via Pusher no canal da conversa.`);
         } catch (aiMsgPublishError) {
-            console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR mensagem da IA no Redis (Canal Conversa):`, aiMsgPublishError);
+            console.error(`[MsgProcessor ${jobId}] ERRO AO ENVIAR mensagem da IA via Pusher:`, aiMsgPublishError);
         }
       } catch (publishError: any) {
         console.error(`[MsgProcessor ${jobId}] Falha GERAL ao tentar publicar mensagem da IA no Redis (Canal Conversa):`, publishError);
@@ -535,10 +530,10 @@ async function processJob(job: Job<JobData>) {
               metadata: conversationData.metadata, // Workspace notification uses conversation metadata
           };
           try {
-              await redisConnection.publish(workspaceChannel, JSON.stringify(workspacePayload));
-              console.log(`[MsgProcessor ${jobId}] Notificação de msg IA publicada no canal Redis do WORKSPACE.`);
+              await pusherServer.trigger(workspaceChannel, 'new_message', workspacePayload);
+              console.log(`[MsgProcessor ${jobId}] Notificação de msg IA enviada via Pusher para o workspace.`);
           } catch (wsNotifyPublishError) {
-              console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR notificação de msg IA no Redis (Canal Workspace):`, wsNotifyPublishError);
+              console.error(`[MsgProcessor ${jobId}] ERRO AO ENVIAR notificação de msg IA via Pusher:`, wsNotifyPublishError);
           }
        } catch (publishError: any) {
           console.error(`[MsgProcessor ${jobId}] Falha GERAL ao tentar publicar notificação de msg IA no Redis (Canal Workspace):`, publishError);
@@ -644,17 +639,10 @@ async function processJob(job: Job<JobData>) {
          console.log("[MsgProcessor ${jobId}] Payload Mínimo (Passo 10):", minimalPayloadFinal);
 
         try {
-             // REMOVIDOS logs STEP 10 detalhados
-            await redisConnection.publish(
-                `chat-updates:${conversationId}`, // Canal correto
-                JSON.stringify({ 
-                    type: 'message_content_updated',
-                    payload: minimalPayloadFinal // <<< USAR PAYLOAD MÍNIMO
-                })
-            );
-            console.log(`[MsgProcessor ${jobId}] Publicação final da atualização de mídia MÍNIMA concluída.`);
+            await pusherServer.trigger(`chat-updates:${conversationId}`, 'message_content_updated', minimalPayloadFinal);
+            console.log(`[MsgProcessor ${jobId}] Publicação final da atualização de mídia MÍNIMA via Pusher concluída.`);
         } catch (mediaUpdatePublishError) {
-            console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR atualização mínima de mídia (Passo 10):`, mediaUpdatePublishError);
+            console.error(`[MsgProcessor ${jobId}] ERRO AO ENVIAR atualização mínima de mídia (Passo 10) via Pusher:`, mediaUpdatePublishError);
         }
     } else {
          console.log(`[MsgProcessor ${jobId}] Nenhuma atualização de mídia neste job. Pulando publicação final no Redis.`);

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { redisConnection } from '@/lib/redis';
+import { pusherServer } from '@/lib/pusher';
 
 /**
  * Desativa a IA para uma conversa específica e publica um evento no Redis.
@@ -34,11 +35,11 @@ export async function deactivateConversationAI(conversationId: string): Promise<
       const channel = `chat-updates:${conversationId}`; // Canal específico da conversa
 
       try {
-           await redisConnection.publish(channel, JSON.stringify(eventPayload));
-           console.log(`[Action] Evento 'ai_status_updated' publicado no canal ${channel}`);
-           return true; // Sucesso na operação completa (DB + Redis)
+           await pusherServer.trigger(channel, 'ai_status_updated', eventPayload.payload);
+           console.log(`[Action] Evento 'ai_status_updated' enviado via Pusher para o canal ${channel}`);
+           return true; // Sucesso no DB e notificação
       } catch (redisError) {
-           console.error(`[Action|deactivateConversationAI] Falha ao publicar evento 'ai_status_updated' para Conv ${conversationId} após update no DB:`, redisError);
+           console.error(`[Action|deactivateConversationAI] Falha ao enviar evento 'ai_status_updated' via Pusher para Conv ${conversationId}:`, redisError);
            // A IA foi desativada no DB, mas o evento falhou.
            // Considerar o que fazer aqui. Por enquanto, logamos e retornamos true (DB funcionou).
            // Poderia retornar um status diferente ou lançar um erro específico de Redis.

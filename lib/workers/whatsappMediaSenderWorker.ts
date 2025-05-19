@@ -1,5 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/redis';
+import { pusherServer } from '@/lib/pusher';
 import { prisma } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 import { uploadWhatsappMedia, sendWhatsappMediaMessage } from '@/lib/channel/whatsappSender';
@@ -264,18 +265,13 @@ const processor = async (job: Job<MediaJobData>) => {
           },
         },
       });
-      // Publicar falha no Redis/SSE
       const conversationChannelFail = `chat-updates:${failedUpdate.conversation_id}`;
-      await redisConnection.publish(conversationChannelFail, JSON.stringify({
-        type: 'message_status_updated',
-        payload: {
-          messageId: failedUpdate.id,
-          conversation_id: failedUpdate.conversation_id,
-          newStatus: 'FAILED',
-          errorMessage: sendErrorMsg,
-           // Include other fields for consistency, even on failure? Maybe not needed.
-        }
-      }));
+      await pusherServer.trigger(conversationChannelFail, 'message_status_updated', {
+        messageId: failedUpdate.id,
+        conversation_id: failedUpdate.conversation_id,
+        newStatus: 'FAILED',
+        errorMessage: sendErrorMsg,
+      });
       throw new Error(`Falha ao enviar mensagem WhatsApp: ${sendErrorMsg}`);
     }
 
@@ -313,20 +309,17 @@ const processor = async (job: Job<MediaJobData>) => {
 
     // 10. Publicar atualização de status no Redis/SSE (INCLUIR media_url e content)
     const conversationChannel = `chat-updates:${updatedMessage.conversation_id}`;
-    await redisConnection.publish(conversationChannel, JSON.stringify({
-      type: 'message_status_updated',
-      payload: {
-        messageId: updatedMessage.id,
-        conversation_id: updatedMessage.conversation_id,
-        newStatus: 'SENT',
-        providerMessageId: updatedMessage.providerMessageId,
-        media_url: updatedMessage.media_url,
-        content: updatedMessage.content,
-        media_mime_type: updatedMessage.media_mime_type,
-        media_filename: updatedMessage.media_filename,
-      }
-    }));
-    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Evento message_status_updated (SENT) publicado para ${conversationChannel}`);
+    await pusherServer.trigger(conversationChannel, 'message_status_updated', {
+      messageId: updatedMessage.id,
+      conversation_id: updatedMessage.conversation_id,
+      newStatus: 'SENT',
+      providerMessageId: updatedMessage.providerMessageId,
+      media_url: updatedMessage.media_url,
+      content: updatedMessage.content,
+      media_mime_type: updatedMessage.media_mime_type,
+      media_filename: updatedMessage.media_filename,
+    });
+    console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Evento message_status_updated (SENT) enviado via Pusher para ${conversationChannel}`);
 
     console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Job ${job.id} para messageId ${messageId} concluído com sucesso.`);
 
@@ -354,16 +347,13 @@ const processor = async (job: Job<MediaJobData>) => {
             // Publicar falha no Redis/SSE
             if (workspaceId && clientPhoneNumber && messageDetails?.conversation?.id) {
                  const conversationChannelFail = `chat-updates:${messageDetails.conversation.id}`;
-                 await redisConnection.publish(conversationChannelFail, JSON.stringify({
-                    type: 'message_status_updated',
-                    payload: {
-                      messageId: messageId,
-                      conversation_id: messageDetails.conversation.id,
-                      newStatus: 'FAILED',
-                      errorMessage: errorMsgForDb,
-                    }
-                }));
-                console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} atualizado para FAILED (catch geral) e evento publicado.`);
+                 await pusherServer.trigger(conversationChannelFail, 'message_status_updated', {
+                    messageId: messageId,
+                    conversation_id: messageDetails.conversation.id,
+                    newStatus: 'FAILED',
+                    errorMessage: errorMsgForDb,
+                });
+                console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Status da mensagem ${messageId} atualizado para FAILED (catch geral) e evento enviado via Pusher.`);
             } else {
                  console.warn(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Não foi possível publicar evento FAILED (catch geral) por falta de dados.`);
             }

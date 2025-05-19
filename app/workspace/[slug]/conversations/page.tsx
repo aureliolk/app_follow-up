@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import Pusher from 'pusher-js';
 import { useWorkspace } from '@/context/workspace-context';
 import { useConversationContext } from '@/context/ConversationContext';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -23,7 +24,7 @@ export default function ConversationsPage() {
     fetchConversations,
     updateOrAddConversationInList
   } = useConversationContext();
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const pusherRef = useRef<Pusher | null>(null);
 
   useEffect(() => {
     const wsId = workspace?.id;
@@ -34,62 +35,40 @@ export default function ConversationsPage() {
     }
   }, [workspace?.id, workspaceLoading, fetchConversations]);
 
+
   useEffect(() => {
     const wsId = workspace?.id;
 
     if (wsId && !workspaceLoading) {
-      console.log(`[ConversationsPage] SSE Effect Setup: Conectando para Workspace ${wsId}`);
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      if (pusherRef.current) {
+        pusherRef.current.unsubscribe(`workspace-updates:${wsId}`);
+        pusherRef.current.disconnect();
       }
 
-      const eventSource = new EventSource(`/api/workspaces/${wsId}/subscribe`);
-      eventSourceRef.current = eventSource;
+      const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+      });
+      pusherRef.current = pusher;
+      const channel = pusher.subscribe(`workspace-updates:${wsId}`);
 
-      eventSource.onmessage = (event) => {
-        try {
-          const eventData = JSON.parse(event.data);
-          console.log('[ConversationsPage] SSE Message Received:', eventData);
-
-          // Chamar fetchConversations quando uma nova mensagem (ou atualização) chegar para QUALQUER conversa
-          if (eventData.type === 'new_message' || eventData.type === 'conversation_updated') {
-            console.log(`[ConversationsPage] SSE Triggering fetchConversations due to event type: ${eventData.type}`);
-            // Usar o workspaceId atual para garantir que o fetch use o ID correto,
-            // especialmente se o workspace mudar rapidamente (improvável, mas seguro)
-            if (wsId) {
-              fetchConversations('ATIVAS', wsId); // Ou o filtro atual, se relevante
-            } else {
-              console.warn('[ConversationsPage] SSE: Tentando chamar fetchConversations sem wsId.');
-            }
-          }
-
-        } catch (error) { console.error("[ConversationsPage] SSE: Erro ao processar mensagem:", error); }
+      const handler = () => {
+        if (wsId) fetchConversations('ATIVAS', wsId);
       };
 
-      eventSource.onerror = (error) => {
-        console.error("[ConversationsPage] SSE Error:", error);
-        eventSource.close();
-        eventSourceRef.current = null;
-      };
-
-      eventSource.onopen = () => { console.log(`[ConversationsPage] SSE Connection OPENED para Workspace ${wsId}`); };
+      channel.bind('new_message', handler);
+      channel.bind('conversation_updated', handler);
 
       return () => {
-        console.log(`[ConversationsPage] SSE Effect Cleanup: Fechando conexão SSE para Workspace ${wsId}`);
-        if (eventSourceRef.current) {
-          eventSourceRef.current.close();
-          eventSourceRef.current = null;
-        }
+        channel.unbind('new_message', handler);
+        channel.unbind('conversation_updated', handler);
+        pusher.unsubscribe(`workspace-updates:${wsId}`);
+        pusher.disconnect();
       };
+    } else if (pusherRef.current) {
+      pusherRef.current.disconnect();
+      pusherRef.current = null;
     }
-    else if (eventSourceRef.current) {
-      console.log("[ConversationsPage] SSE Effect Cleanup: Workspace ID indisponível, fechando conexão SSE.");
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-
   }, [workspace?.id, workspaceLoading, fetchConversations]);
-
   const handleSelectConversation = useCallback((conversation: ClientConversation | null) => {
     selectConversation(conversation);
   }, [selectConversation]);
