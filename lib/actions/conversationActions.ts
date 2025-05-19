@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import pusher from '@/lib/pusher';
 
 /**
- * Define o estado da IA para uma conversa específica e publica um evento no Redis.
+ * Define o estado da IA para uma conversa específica e envia um evento via Pusher.
  * @param conversationId - O ID da conversa.
  * @param newStatus - O novo estado desejado para is_ai_active (true ou false).
  * @param workspaceId - O ID do workspace associada à conversa.
@@ -14,7 +14,7 @@ export async function setConversationAIStatus(conversationId: string, newStatus:
   console.log(`[Action] Tentando definir status da IA para ${newStatus} na conversa: ${conversationId} do workspace: ${workspaceId}`);
   if (!conversationId || !workspaceId) {
     console.error('[Action|setConversationAIStatus] ID da conversa ou ID do workspace não fornecido.');
-    return false; // Retorna false indicando falha antes de tentar DB/Redis
+    return false; // Retorna false indicando falha antes de tentar DB/Pusher
   }
 
   try {
@@ -30,7 +30,7 @@ export async function setConversationAIStatus(conversationId: string, newStatus:
     if (updatedConversation && updatedConversation.is_ai_active === newStatus) {
       console.log(`[Action] Status da IA definido para ${newStatus} com sucesso no DB para a conversa: ${conversationId}`);
 
-      // Publicar evento no Redis
+      // Enviar evento via Pusher
       const eventPayload = {
           type: 'ai_status_updated',
           payload: {
@@ -45,7 +45,7 @@ export async function setConversationAIStatus(conversationId: string, newStatus:
         console.log(`[Action] Evento 'ai_status_updated' (status: ${newStatus}) enviado via Pusher para ${pusherChannel}`);
         return true;
       } catch (pusherError) {
-        console.error(`[Action|setConversationAIStatus] Falha ao publicar evento 'ai_status_updated' para Conv ${conversationId} (status: ${newStatus}):`, pusherError);
+        console.error(`[Action|setConversationAIStatus] Falha ao enviar evento 'ai_status_updated' via Pusher para Conv ${conversationId} (status: ${newStatus}):`, pusherError);
         return true;
       }
 
