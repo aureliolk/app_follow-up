@@ -121,7 +121,7 @@ export default function ConversationsPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-grow overflow-hidden">
-        <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background flex-shrink-0">
+        <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border bg-card/50 dark:bg-background flex-shrink-0">
           <div className="p-2 border-b border-border">
             <div className="flex space-x-1">
               <Button
