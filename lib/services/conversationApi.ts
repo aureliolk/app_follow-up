@@ -6,9 +6,11 @@ export async function fetchConversationsApi(
   workspaceId: string,
   page: number,
   pageSize: number,
+  aiStatus?: string,
+  searchTerm?: string,
 ): Promise<{ data: ClientConversation[]; hasMore: boolean; counts?: { all: number; ai: number; human: number } }> {
   const response = await axios.get<{ success: boolean; data?: ClientConversation[]; error?: string; hasMore?: boolean; counts?: { all: number; ai: number; human: number } }>('/api/conversations', {
-    params: { workspaceId, status: filter, page, pageSize },
+    params: { workspaceId, status: filter, page, pageSize, aiStatus, searchTerm },
   });
   if (!response.data.success || !response.data.data) {
     throw new Error(response.data.error || 'Falha ao carregar conversas');

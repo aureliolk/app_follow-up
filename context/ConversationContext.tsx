@@ -77,7 +77,15 @@ interface ConversationContextType {
     loadingPusherConfig: boolean;
 
     // Funções de Busca/Seleção
-    fetchConversations: (filter: string, workspaceId: string, page: number, pageSize: number, append?: boolean) => Promise<void>;
+    fetchConversations: (
+        filter: string,
+        workspaceId: string,
+        page: number,
+        pageSize: number,
+        append?: boolean,
+        aiStatus?: string,
+        searchTerm?: string,
+    ) => Promise<void>;
     fetchConversationMessages: (conversationId: string, page: number, pageSize: number, append?: boolean) => Promise<Message[]>;
     loadMoreConversations: () => void;
     loadMoreMessages: () => void;
@@ -127,6 +135,8 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [currentConversationsPage, setCurrentConversationsPage] = useState(1);
     const [currentMessagesPage, setCurrentMessagesPage] = useState(1);
     const [currentFilter, setCurrentFilter] = useState('ATIVAS');
+    const [currentAiStatus, setCurrentAiStatus] = useState<string | undefined>();
+    const [currentSearchTerm, setCurrentSearchTerm] = useState<string | undefined>();
     const [conversationCounts, setConversationCounts] = useState<{ all: number; ai: number; human: number }>({ all: 0, ai: 0, human: 0 });
 
 
@@ -254,6 +264,8 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         page: number = 1,
         pageSize: number = 20,
         append: boolean = false,
+        aiStatus?: string,
+        searchTerm?: string,
      ) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) {
@@ -269,10 +281,19 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             setCurrentConversationsPage(page);
             setHasMoreConversations(true);
             setCurrentFilter(filter);
+            setCurrentAiStatus(aiStatus);
+            setCurrentSearchTerm(searchTerm);
         }
         setConversationsError(null);
         try {
-            const { data: fetchedData, hasMore, counts } = await fetchConversationsApi(filter, wsId, page, pageSize);
+            const { data: fetchedData, hasMore, counts } = await fetchConversationsApi(
+                filter,
+                wsId,
+                page,
+                pageSize,
+                aiStatus,
+                searchTerm,
+            );
             if (append) {
                 setConversations(prev => [...prev, ...fetchedData]);
             } else {
@@ -316,9 +337,17 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const loadMoreConversations = useCallback(() => {
         if (isLoadingMoreConversations || !hasMoreConversations) return;
         const nextPage = currentConversationsPage + 1;
-        fetchConversations(currentFilter, undefined, nextPage, 20, true);
+        fetchConversations(
+            currentFilter,
+            undefined,
+            nextPage,
+            20,
+            true,
+            currentAiStatus,
+            currentSearchTerm,
+        );
         setCurrentConversationsPage(nextPage);
-    }, [isLoadingMoreConversations, hasMoreConversations, currentConversationsPage, fetchConversations, currentFilter]);
+    }, [isLoadingMoreConversations, hasMoreConversations, currentConversationsPage, fetchConversations, currentFilter, currentAiStatus, currentSearchTerm]);
 
     const clearMessagesError = useCallback(() => {
         setSelectedConversationError(null);
