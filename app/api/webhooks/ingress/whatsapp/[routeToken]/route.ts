@@ -171,14 +171,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     }
 
                                     const { client, conversation, clientWasCreated, conversationWasCreated } =  await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_CLOUDAPI');
-
-                                    console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] client: ${client}, conversation: ${conversation}, clientWasCreated: ${clientWasCreated}, conversationWasCreated: ${conversationWasCreated}`);
-                                    if (conversationWasCreated) {
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Criando Deal para novo cliente ${client.id}...`);
-                                        await handleDealCreationForNewClient(client, workspace.id);
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Iniciando sequência de follow-up para nova conversa ${conversation.id}...`);
-                                        await initiateFollowUpSequence(client, conversation, workspace.id);
-                                    }
+                                    await handleDealCreationForNewClient(client, workspace.id);
+                                    await initiateFollowUpSequence(client, conversation, workspace.id);
 
 
                                     let messageContent: string | null = null;

@@ -230,15 +230,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             }
 
 
-            const { client, conversation, clientWasCreated, conversationWasCreated } = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
-
-            console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] client: ${client}, conversation: ${conversation}, clientWasCreated: ${clientWasCreated}, conversationWasCreated: ${conversationWasCreated}`);
-            if (conversationWasCreated) {
-                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Criando Deal para novo cliente ${client.id}...`);
-                await handleDealCreationForNewClient(client, workspace.id);
-                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Iniciando sequência de follow-up para nova conversa ${conversation.id}...`);
-                await initiateFollowUpSequence(client, conversation, workspace.id);
-            }
+            const { client, conversation} = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
+            await handleDealCreationForNewClient(client, workspace.id);
+            await initiateFollowUpSequence(client, conversation, workspace.id);
+           
 
             // Salvar registro da mensagem
             const savedMessage = await saveMessageRecord({

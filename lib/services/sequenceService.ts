@@ -87,6 +87,8 @@ export async function processFollowUp(
   const channel = context.conversation.channel;
   let sendResult: { success: boolean; wamid?: string; messageId?: string; error?: any };
 
+  console.log(`[SEQUENCESERVICE] CHANNEL ${channel}`)
+
   if (channel === 'WHATSAPP_CLOUDAPI') {
     if (!context.workspace.whatsappPhoneNumberId || !context.workspace.whatsappAccessToken) {
       throw new Error('Credenciais do WhatsApp Cloud API ausentes.');
@@ -99,12 +101,12 @@ export async function processFollowUp(
       context.workspace.ai_name
     );
   } else if (channel === 'WHATSAPP_EVOLUTION') {
-    const { evolution_api_endpoint, evolution_api_token, evolution_api_instance_name } = context.workspace;
-    if (!evolution_api_endpoint || !evolution_api_token || !evolution_api_instance_name) {
+    const {  evolution_api_token, evolution_api_instance_name } = context.workspace;
+    if ( !evolution_api_instance_name || !evolution_api_token) {
       throw new Error('Credenciais da Evolution API ausentes.');
     }
     sendResult = await sendEvolutionMessage({
-      endpoint: evolution_api_endpoint,
+      endpoint: process.env.apiUrlEvolution,
       apiKey: evolution_api_token,
       instanceName: evolution_api_instance_name,
       toPhoneNumber: context.client.phone_number,

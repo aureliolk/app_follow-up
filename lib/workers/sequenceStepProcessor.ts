@@ -16,6 +16,7 @@ const worker = new Worker(
     if (jobType === 'abandonedCart') {
       return processAbandonedCart(data);
     } else {
+      console.log(`[SEQUENCESTEPPROCESSOR] ${data}`)
       return processFollowUp(data);
     }
   },
