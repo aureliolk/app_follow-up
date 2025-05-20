@@ -84,7 +84,7 @@ interface ConversationContextType {
         pageSize: number,
         append?: boolean,
         aiStatus?: string,
-        searchTerm?: string,
+        search?: string,
     ) => Promise<void>;
     fetchConversationMessages: (conversationId: string, page: number, pageSize: number, append?: boolean) => Promise<Message[]>;
     loadMoreConversations: () => void;
@@ -265,7 +265,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         pageSize: number = 20,
         append: boolean = false,
         aiStatus?: string,
-        searchTerm?: string,
+        search?: string,
      ) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) {
@@ -282,7 +282,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             setHasMoreConversations(true);
             setCurrentFilter(filter);
             setCurrentAiStatus(aiStatus);
-            setCurrentSearchTerm(searchTerm);
+            setCurrentSearchTerm(search);
         }
         setConversationsError(null);
         try {
@@ -292,7 +292,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 page,
                 pageSize,
                 aiStatus,
-                searchTerm,
+                search,
             );
             if (append) {
                 setConversations(prev => [...prev, ...fetchedData]);
