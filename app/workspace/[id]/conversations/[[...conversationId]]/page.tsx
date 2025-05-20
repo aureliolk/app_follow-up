@@ -41,10 +41,16 @@ export default function ConversationsPage() {
   const [aiFilter, setAiFilter] = useState<AiFilterType>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
   };
+
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
 
   const urlConversationId = Array.isArray(params.conversationId) && params.conversationId.length > 0
     ? params.conversationId[0]
@@ -59,6 +65,14 @@ export default function ConversationsPage() {
       fetchConversations(currentFilter, wsId, 1, CONVERSATIONS_PER_PAGE);
     }
   }, [workspace?.id, workspaceLoading]);
+
+  useEffect(() => {
+    const wsId = workspace?.id;
+    if (wsId && !workspaceLoading) {
+      setCurrentPage(1);
+      fetchConversations('ATIVAS', wsId, 1, CONVERSATIONS_PER_PAGE);
+    }
+  }, [aiFilter, debouncedSearchTerm]);
 
   useEffect(() => {
     if (conversations.length > 0 && !loadingConversations) {
@@ -108,26 +122,6 @@ export default function ConversationsPage() {
   if (displayError) {
     return <ErrorMessage message={displayError} />
   }
-
-  const searchLower = searchTerm.toLowerCase();
-
-  const filteredConversations = conversations.filter(convo => {
-    if (aiFilter === 'human') {
-      return convo.is_ai_active === false;
-    }
-    if (aiFilter === 'ai') {
-      return convo.is_ai_active === true;
-    }
-    return true;
-  }).filter(convo => {
-    if (!searchLower) return true;
-    const name = convo.client?.name?.toLowerCase() || '';
-    const phone = convo.client?.phone_number?.toLowerCase() || '';
-    const tags = Array.isArray(convo.client?.metadata?.tags)
-      ? convo.client?.metadata?.tags.map((t: any) => String(t).toLowerCase()).join(' ')
-      : '';
-    return name.includes(searchLower) || phone.includes(searchLower) || tags.includes(searchLower);
-  });
 
   const baseConversationsPath = `/workspace/${workspace?.id}/conversations`;
 
@@ -186,7 +180,7 @@ export default function ConversationsPage() {
             </div>
           </div>
           <ConversationList
-            conversations={filteredConversations}
+            conversations={conversations}
             onSelectConversation={handleSelectConversation}
             selectedConversationId={selectedConversation?.id || urlConversationId}
             basePath={baseConversationsPath}
