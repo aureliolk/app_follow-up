@@ -85,6 +85,7 @@ interface ConversationContextType {
         append?: boolean,
         aiStatus?: string,
         search?: string,
+        autoSelect?: boolean,
     ) => Promise<void>;
     fetchConversationMessages: (conversationId: string, page: number, pageSize: number, append?: boolean) => Promise<Message[]>;
     loadMoreConversations: () => void;
@@ -266,6 +267,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         append: boolean = false,
         aiStatus?: string,
         search?: string,
+        autoSelect: boolean = true,
      ) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) {
@@ -303,21 +305,23 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             setHasMoreConversations(hasMore);
             // console.log(`[ConversationContext] Fetched ${fetchedData.length} conversations with filter ${filter}.`); // DEBUG
 
-            // Lógica de auto-seleção
-            const currentSelectedId = selectedConversation?.id;
-            const listHasSelected = fetchedData.some(c => c.id === currentSelectedId);
+            if (autoSelect) {
+                // Lógica de auto-seleção
+                const currentSelectedId = selectedConversation?.id;
+                const listHasSelected = fetchedData.some(c => c.id === currentSelectedId);
 
-            if (currentSelectedId && !listHasSelected) {
-                 // Se a selecionada não está mais na lista (ex: mudou de status), deseleciona ou seleciona a primeira
-                // console.log(`[ConversationContext] Selected conversation ${currentSelectedId} not in fetched list (${filter}). ${fetchedData.length > 0 ? 'Selecting first.' : 'Deselecting.'}`); // DEBUG
-                 selectConversation(fetchedData.length > 0 ? fetchedData[0] : null);
-            } else if (!currentSelectedId && fetchedData.length > 0) {
-                // Se nada estava selecionado e a lista não está vazia, seleciona a primeira
-                 // console.log(`[ConversationContext] No conversation selected. Selecting first: ${fetchedData[0].id}`); // DEBUG
-                 selectConversation(fetchedData[0]);
-            } else if (!currentSelectedId && fetchedData.length === 0) {
-                 // Se nada selecionado e lista vazia, garante deseleção
-                 selectConversation(null);
+                if (currentSelectedId && !listHasSelected) {
+                     // Se a selecionada não está mais na lista (ex: mudou de status), deseleciona ou seleciona a primeira
+                    // console.log(`[ConversationContext] Selected conversation ${currentSelectedId} not in fetched list (${filter}). ${fetchedData.length > 0 ? 'Selecting first.' : 'Deselecting.'}`); // DEBUG
+                     selectConversation(fetchedData.length > 0 ? fetchedData[0] : null);
+                } else if (!currentSelectedId && fetchedData.length > 0) {
+                    // Se nada estava selecionado e a lista não está vazia, seleciona a primeira
+                     // console.log(`[ConversationContext] No conversation selected. Selecting first: ${fetchedData[0].id}`); // DEBUG
+                     selectConversation(fetchedData[0]);
+                } else if (!currentSelectedId && fetchedData.length === 0) {
+                     // Se nada selecionado e lista vazia, garante deseleção
+                     selectConversation(null);
+                }
             }
             // Caso contrário (selecionada está na lista OU nada selecionado e lista vazia), mantém o estado atual.
 
