@@ -73,16 +73,16 @@ export async function GET(req: NextRequest) {
       client: { is: clientFilters },
     };
 
-    // --- Counts para filtros de IA/humano ---
+    // --- Counts aplicando os mesmos filtros da consulta principal ---
     const [totalCount, aiCount, humanCount] = await prisma.$transaction([
       prisma.conversation.count({
-        where: { workspace_id: workspaceId, status: ConversationStatus.ACTIVE },
+        where: whereClause,
       }),
       prisma.conversation.count({
-        where: { workspace_id: workspaceId, status: ConversationStatus.ACTIVE, is_ai_active: true },
+        where: { ...whereClause, is_ai_active: true },
       }),
       prisma.conversation.count({
-        where: { workspace_id: workspaceId, status: ConversationStatus.ACTIVE, is_ai_active: false },
+        where: { ...whereClause, is_ai_active: false },
       }),
     ]);
 
