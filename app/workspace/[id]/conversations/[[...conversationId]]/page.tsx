@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import useDebounce from '@/hooks/useDebounce';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useWorkspace } from '@/context/workspace-context';
 import { useConversationContext } from '@/context/ConversationContext';
@@ -41,16 +42,11 @@ export default function ConversationsPage() {
   const [aiFilter, setAiFilter] = useState<AiFilterType>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
   };
-
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
-    return () => clearTimeout(handler);
-  }, [searchTerm]);
 
   const urlConversationId = Array.isArray(params.conversationId) && params.conversationId.length > 0
     ? params.conversationId[0]
