@@ -34,6 +34,8 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId');
     const filterStatus = url.searchParams.get('status') || 'ATIVAS'; // Padrão para ATIVAS se não especificado
+    const page = parseInt(url.searchParams.get('page') || '1', 10);
+    const pageSize = parseInt(url.searchParams.get('pageSize') || '20', 10);
 
     if (!workspaceId) { /* ... */ }
 
@@ -47,8 +49,10 @@ export async function GET(req: NextRequest) {
     const conversations = await prisma.conversation.findMany({
       where: {
         workspace_id: workspaceId,
-        status: ConversationStatus.ACTIVE 
+        status: ConversationStatus.ACTIVE
       },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
       include: {
         client: {
           select: { 
@@ -105,7 +109,9 @@ export async function GET(req: NextRequest) {
       activeFollowUp: convo.client?.follow_ups?.[0] || null, 
     }));
 
-    return NextResponse.json({ success: true, data: formattedData });
+    const hasMore = conversations.length === pageSize;
+
+    return NextResponse.json({ success: true, data: formattedData, hasMore });
 
   } catch (error) {
     console.error('API GET Conversations: Internal error:', error);
