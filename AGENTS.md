@@ -1,66 +1,36 @@
-# Diretrizes de Desenvolvimento
+# AGENTES.md
 
-Estas orientações padronizam o trabalho no projeto **app\_follow-up**.
+Este arquivo fornece diretrizes para Agentes de IA que trabalham neste projeto Next.js. Ele complementa as instruções de desenvolvimento encontradas em `instruction.md`.
 
-## Instalação e Execução
+## 1. Visão Geral do Projeto e Stack
 
-### Instalar dependências
+Este projeto utiliza Next.js (App Router), TypeScript, Tailwind CSS, PostgreSQL (via Prisma), Shadcn/ui, Lucide Icons, React Context API, BullMQ, e Vercel AI SDK.
 
-```bash
-pnpm install
-```
+## 2. Estrutura de Diretórios Chave
 
-### Executar em modo desenvolvimento
+*   `app/`: Rotas e páginas (Server Components por padrão, com Client Components específicos em subdiretórios `components/`).
+*   `components/`: Componentes React reutilizáveis globalmente.
+    *   `components/ui/`: Componentes Shadcn/ui (não modificar).
+*   `lib/`: Lógica de backend, serviços, utilitários (Prisma Client, Redis, AI services, auth, queues, workers, types, utils).
+*   `context/`: Implementações do React Context para estado compartilhado.
 
-```bash
-pnpm dev
-```
+## 3. Padrões de Codificação e Uso da Stack
 
-### Executar os workers em paralelo
+*   **Linguagem:** Sempre usar TypeScript, aproveitando a tipagem forte.
+*   **Componentes:** Preferir Server Components (`app/route/page.tsx`, componentes em `app/route/` que não precisam de interatividade ou hooks) sobre Client Components (`'use client'`, componentes em `app/route/components/` ou `components/` que precisam de interatividade/hooks). Utilizar Shadcn/ui (`components/ui/`) e Lucide Icons.
+*   **Estilização:** Utilizar exclusivamente Tailwind CSS para estilização. Aplicar classes via `className` e usar o utilitário `cn` de `lib/utils.ts` para classes condicionais.
+*   **Estado:** Para estado compartilhado, utilizar os Providers definidos em `context/`. Para estado local em Client Components, usar `useState`.
+*   **Acesso a Dados:** Em Server Components, acessar o banco de dados diretamente via `lib/db.ts` (Prisma Client). Em Client Components, interagir via Server Actions ou funções expostas pelos Context Providers que chamam API Routes ou Server Actions.
+*   **Funções Utilitárias:** Funções reutilizáveis devem ser colocadas em `lib/utils.ts` ou subarquivos relevantes dentro de `lib/`.
+*   **Tipos:** Tipos reutilizáveis globalmente devem ser definidos em `lib/types/`.
 
-```bash
-pnpm run workers:dev
-```
+## 4. Testes
 
-### Rodar o linter
+*   (Adicionar instruções de teste específicas do projeto se aplicável, por exemplo, "Rodar testes unitários com Jest/React Testing Library").
 
-```bash
-pnpm lint
-```
+## 5. Instruções para Pull Requests
 
-## Convenções de Código
-
-* **Linguagem principal:** TypeScript. Evite criar novos arquivos `.js`.
-* Utilize imports relativos iniciando com `@/` conforme definido no `tsconfig.json`.
-* Todos os arquivos devem terminar com newline.
-* Siga o padrão do `.eslintrc.json` e corrija todos os avisos indicados pelo comando `pnpm lint`.
-* Prefira `async/await` em vez de `then/catch`.
-
-## Estrutura Recomendada
-
-* Código do backend em `lib/`.
-* Endpoints Next.js em `app/api/`.
-* Componentes React em `components/`.
-* Workers em `lib/workers/`.
-
-## Mensagens de Commit
-
-* Escreva mensagens curtas em português no imperativo. Exemplo:
-
-  ```
-  Adiciona tratamento de erro no envio WhatsApp
-  ```
-
-* Evite commits grandes não relacionados.
-
-## Variáveis de Ambiente
-
-Mantenha um arquivo `.env.example` (ou similar) listando chaves obrigatórias.
-
-## Boas Práticas
-
-* Sempre valide dados recebidos de requisições.
-* Propague erros de forma clara; não exiba detalhes sensíveis ao usuário final.
-* Para novas funções, adicione logs consistentes (`console.log` ou `console.error`).
-
-Siga estas orientações para manter um código organizado e fácil de manter. Após criar o arquivo localmente, faça commit e push normalmente.
+*   Certificar-se de que o código segue os padrões de estilo e estrutura do projeto.
+*   Incluir um resumo claro das mudanças no título e corpo do PR.
+*   Descrever o que foi testado e como testar as mudanças propostas.
+*   (Adicionar quaisquer outros requisitos de PR específicos do projeto, como verificações de lint/formatação).
