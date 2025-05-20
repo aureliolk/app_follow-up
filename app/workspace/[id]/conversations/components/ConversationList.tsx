@@ -5,17 +5,21 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { ClientConversation } from '@/app/types';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useConversationContext } from '@/context/ConversationContext';
 import { User } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useRouter, usePathname } from 'next/navigation';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 interface ConversationListProps {
   conversations: ClientConversation[];
   selectedConversationId: string | null;
   onSelectConversation: (conversation: ClientConversation) => void;
   basePath: string;
+  loadMoreConversations: () => void;
+  hasMoreConversations: boolean;
+  isLoadingMoreConversations: boolean;
 }
 
 export default function ConversationList({
@@ -23,9 +27,24 @@ export default function ConversationList({
   selectedConversationId,
   onSelectConversation,
   basePath,
+  loadMoreConversations,
+  hasMoreConversations,
+  isLoadingMoreConversations,
 }: ConversationListProps) {
   const { unreadConversationIds } = useConversationContext(); // Get unread IDs
   const router = useRouter();
+  const observer = useRef<IntersectionObserver | null>(null);
+
+  const lastElementRef = useCallback((node: HTMLButtonElement | null) => {
+    if (isLoadingMoreConversations) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMoreConversations) {
+        loadMoreConversations();
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [isLoadingMoreConversations, hasMoreConversations, loadMoreConversations]);
 
   useEffect(() => {
     console.log('[ConversationList] Unread IDs atualizado:', unreadConversationIds);
@@ -46,7 +65,7 @@ export default function ConversationList({
 
   return (
     <div className="overflow-y-auto h-full">
-      {conversations.map((convo) => {
+      {conversations.map((convo, index) => {
         console.log('[ConversationList] Mapping convo ID:', convo?.id, 'Convo:', convo);
         if (!convo || !convo.id) {
           console.error('[ConversationList] Found conversation with missing ID:', convo);
@@ -65,6 +84,7 @@ export default function ConversationList({
 
         return (
           <button
+            ref={conversations.length === index + 1 ? lastElementRef : null}
             key={convo.id}
             onClick={() => {
               onSelectConversation(convo);
@@ -131,6 +151,16 @@ export default function ConversationList({
           </button>
         );
       })}
+      {isLoadingMoreConversations && (
+        <div className="flex justify-center items-center py-4">
+          <LoadingSpinner message="Carregando mais conversas..." />
+        </div>
+      )}
+      {!isLoadingMoreConversations && !hasMoreConversations && conversations.length > 0 && (
+        <div className="text-center text-muted-foreground py-4 text-sm">
+          Fim da lista de conversas.
+        </div>
+      )}
     </div>
   );
 }

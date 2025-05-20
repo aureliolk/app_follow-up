@@ -7,6 +7,7 @@ import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 import { redisConnection } from '@/lib/redis';
 import type { Message } from "@/app/types";
+import { Prisma } from '@prisma/client';
 import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
 import { sendOperatorMessage } from '@/lib/services/conversationService';
 import pusher from '@/lib/pusher';
@@ -76,10 +77,17 @@ export async function GET(
 
         // 4. Fetch Messages (If access granted)
         console.log(`API GET Messages: Access granted. Fetching messages for conversation ${conversationId}.`);
-        const messages = await prisma.message.findMany({
+
+        const url = new URL(req.url);
+        const cursor = url.searchParams.get('cursor');
+        const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+        const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+        const take = limit + 1;
+
+        const findParams: Prisma.MessageFindManyArgs = {
             where: { conversation_id: conversationId },
-            orderBy: { timestamp: 'asc' }, // Ordenar da mais antiga para a mais recente
-            select: { // Selecionar campos necessários para a UI
+            orderBy: { timestamp: 'asc' },
+            select: {
                 id: true,
                 conversation_id: true,
                 sender_type: true,
@@ -96,7 +104,20 @@ export async function GET(
                 errorMessage: true,
                 privates_notes: true,
             },
-        });
+            take,
+        };
+
+        if (cursor) {
+            findParams.cursor = { id: cursor };
+            findParams.skip = 1;
+        } else if (offset > 0) {
+            findParams.skip = offset;
+        }
+
+        const fetchedMessages = await prisma.message.findMany(findParams);
+
+        const hasMore = fetchedMessages.length > limit;
+        const messages = hasMore ? fetchedMessages.slice(0, limit) : fetchedMessages;
 
         // Add the required message_type before casting
         const messagesWithType = messages.map(msg => ({
@@ -104,8 +125,8 @@ export async function GET(
             message_type: 'TEXT', // Assign default 'TEXT' since it's missing from DB
         }));
 
-        console.log(`API GET Messages: Found ${messagesWithType.length} messages for conversation ${conversationId}.`);
-        return NextResponse.json({ success: true, data: messagesWithType as Message[] }); // Cast should be safer now
+        console.log(`API GET Messages: Found ${messagesWithType.length} messages for conversation ${conversationId}. HasMore: ${hasMore}`);
+        return NextResponse.json({ success: true, data: messagesWithType as Message[], hasMore }); // Cast should be safer now
 
     } catch (error) {
         console.error(`API GET Messages (${conversationId}): Error processing request:`, error);
