@@ -70,6 +70,7 @@ interface ConversationContextType {
     messageCache: Record<string, Message[]>;
     unreadConversationIds: Set<string>;
     setUnreadConversationIds: Dispatch<SetStateAction<Set<string>>>;
+    conversationCounts: { all: number; ai: number; human: number };
     isSendingMessage: boolean;
     isTogglingAIStatus: boolean;
     isPusherConnected: boolean;
@@ -126,6 +127,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [currentConversationsPage, setCurrentConversationsPage] = useState(1);
     const [currentMessagesPage, setCurrentMessagesPage] = useState(1);
     const [currentFilter, setCurrentFilter] = useState('ATIVAS');
+    const [conversationCounts, setConversationCounts] = useState<{ all: number; ai: number; human: number }>({ all: 0, ai: 0, human: 0 });
 
 
     // --- Efeito para Carregar Estado Inicial de Não Lidos do Local Storage --- //
@@ -270,12 +272,13 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
         setConversationsError(null);
         try {
-            const { data: fetchedData, hasMore } = await fetchConversationsApi(filter, wsId, page, pageSize);
+            const { data: fetchedData, hasMore, counts } = await fetchConversationsApi(filter, wsId, page, pageSize);
             if (append) {
                 setConversations(prev => [...prev, ...fetchedData]);
             } else {
                 setConversations(fetchedData);
             }
+            if (counts) setConversationCounts(counts);
             setHasMoreConversations(hasMore);
             // console.log(`[ConversationContext] Fetched ${fetchedData.length} conversations with filter ${filter}.`); // DEBUG
 
@@ -977,6 +980,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         messageCache,
         unreadConversationIds,
         setUnreadConversationIds,
+        conversationCounts,
         isSendingMessage,
         isTogglingAIStatus,
         isPusherConnected,
@@ -999,7 +1003,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         conversations, loadingConversations, isLoadingMoreConversations, hasMoreConversations, conversationsError,
         selectedConversation,
         selectedConversationMessages, loadingSelectedConversationMessages, isLoadingMoreMessages, hasMoreMessages, selectedConversationError,
-        messageCache, unreadConversationIds, isSendingMessage, isTogglingAIStatus,
+        messageCache, unreadConversationIds, conversationCounts, isSendingMessage, isTogglingAIStatus,
         isPusherConnected, loadingPusherConfig,
         fetchConversations, fetchConversationMessages, loadMoreConversations, loadMoreMessages, selectConversation, clearMessagesError,
         handleRealtimeNewMessage, handleRealtimeStatusUpdate, handleRealtimeAIStatusUpdate,

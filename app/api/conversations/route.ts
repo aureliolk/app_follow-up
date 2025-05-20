@@ -48,6 +48,19 @@ export async function GET(req: NextRequest) {
     const take = pageSize + 1;
     const skip = (page - 1) * pageSize;
 
+    // --- Counts para filtros de IA/humano ---
+    const [totalCount, aiCount, humanCount] = await prisma.$transaction([
+      prisma.conversation.count({
+        where: { workspace_id: workspaceId, status: ConversationStatus.ACTIVE },
+      }),
+      prisma.conversation.count({
+        where: { workspace_id: workspaceId, status: ConversationStatus.ACTIVE, is_ai_active: true },
+      }),
+      prisma.conversation.count({
+        where: { workspace_id: workspaceId, status: ConversationStatus.ACTIVE, is_ai_active: false },
+      }),
+    ]);
+
     // --- QUERY: Incluir client.metadata ---
     const conversations = await prisma.conversation.findMany({
       where: {
@@ -112,10 +125,12 @@ export async function GET(req: NextRequest) {
         timestamp: convo.messages[0].timestamp.toISOString(), // Converter para string ISO
         sender_type: convo.messages[0].sender_type,
       } : null,
-      activeFollowUp: convo.client?.follow_ups?.[0] || null, 
+      activeFollowUp: convo.client?.follow_ups?.[0] || null,
     }));
 
-    return NextResponse.json({ success: true, data: formattedData, hasMore });
+    const counts = { all: totalCount, ai: aiCount, human: humanCount };
+
+    return NextResponse.json({ success: true, data: formattedData, hasMore, counts });
 
   } catch (error) {
     console.error('API GET Conversations: Internal error:', error);

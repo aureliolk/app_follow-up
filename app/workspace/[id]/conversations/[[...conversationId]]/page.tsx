@@ -11,6 +11,8 @@ import ConversationList from '../components/ConversationList';
 import ConversationDetail from '../components/ConversationDetail';
 import type { ClientConversation } from '@/app/types';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const CONVERSATIONS_PER_PAGE = 20;
@@ -28,7 +30,8 @@ export default function ConversationsPage() {
     selectedConversation,
     selectConversation,
     fetchConversations,
-    loadMoreConversations
+    loadMoreConversations,
+    conversationCounts
   } = useConversationContext();
 
   const params = useParams();
@@ -37,6 +40,11 @@ export default function ConversationsPage() {
 
   const [aiFilter, setAiFilter] = useState<AiFilterType>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+  };
 
   const urlConversationId = Array.isArray(params.conversationId) && params.conversationId.length > 0
     ? params.conversationId[0]
@@ -101,6 +109,8 @@ export default function ConversationsPage() {
     return <ErrorMessage message={displayError} />
   }
 
+  const searchLower = searchTerm.toLowerCase();
+
   const filteredConversations = conversations.filter(convo => {
     if (aiFilter === 'human') {
       return convo.is_ai_active === false;
@@ -108,15 +118,21 @@ export default function ConversationsPage() {
     if (aiFilter === 'ai') {
       return convo.is_ai_active === true;
     }
-    return true; 
+    return true;
+  }).filter(convo => {
+    if (!searchLower) return true;
+    const name = convo.client?.name?.toLowerCase() || '';
+    const phone = convo.client?.phone_number?.toLowerCase() || '';
+    const tags = Array.isArray(convo.client?.metadata?.tags)
+      ? convo.client?.metadata?.tags.map((t: any) => String(t).toLowerCase()).join(' ')
+      : '';
+    return name.includes(searchLower) || phone.includes(searchLower) || tags.includes(searchLower);
   });
 
   const baseConversationsPath = `/workspace/${workspace?.id}/conversations`;
 
-  // Calcular contagens para os filtros
-  const countAll = conversations.length;
-  const countHuman = conversations.filter(convo => convo.is_ai_active === false).length;
-  const countAi = conversations.filter(convo => convo.is_ai_active === true).length;
+  // Contagens para os filtros (vindas do contexto)
+  const { all: countAll, human: countHuman, ai: countAi } = conversationCounts;
 
   return (
     <div className="flex flex-col h-full">
@@ -157,6 +173,16 @@ export default function ConversationsPage() {
                   {countAi}
                 </span>
               </Button>
+            </div>
+            <div className="relative mt-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Buscar por nome, telefone ou tag"
+                className="pl-8"
+                value={searchTerm}
+                onChange={handleSearchChange}
+              />
             </div>
           </div>
           <ConversationList
