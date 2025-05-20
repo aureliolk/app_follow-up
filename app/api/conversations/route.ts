@@ -34,6 +34,8 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId');
     const filterStatus = url.searchParams.get('status') || 'ATIVAS'; // Padrão para ATIVAS se não especificado
+    const aiStatus = url.searchParams.get('aiStatus') || 'all';
+    const search = url.searchParams.get('search')?.trim() || '';
     const page = parseInt(url.searchParams.get('page') || '1', 10);
     const pageSize = parseInt(url.searchParams.get('pageSize') || '20', 10);
 
@@ -47,6 +49,29 @@ export async function GET(req: NextRequest) {
 
     const take = pageSize + 1;
     const skip = (page - 1) * pageSize;
+
+    let aiFilter: boolean | undefined;
+    if (aiStatus === 'human') aiFilter = false;
+    if (aiStatus === 'ai') aiFilter = true;
+
+    const clientFilters: Prisma.ClientWhereInput = {
+      follow_ups: { some: { status: { in: prismaStatusesToFilter } } },
+    };
+
+    if (search) {
+      clientFilters.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone_number: { contains: search, mode: 'insensitive' } },
+        { metadata: { path: ['tags'], array_contains: [search] } },
+      ];
+    }
+
+    const whereClause: Prisma.ConversationWhereInput = {
+      workspace_id: workspaceId,
+      status: ConversationStatus.ACTIVE,
+      ...(aiFilter !== undefined ? { is_ai_active: aiFilter } : {}),
+      client: { is: clientFilters },
+    };
 
     // --- Counts para filtros de IA/humano ---
     const [totalCount, aiCount, humanCount] = await prisma.$transaction([
@@ -63,13 +88,10 @@ export async function GET(req: NextRequest) {
 
     // --- QUERY: Incluir client.metadata ---
     const conversations = await prisma.conversation.findMany({
-      where: {
-        workspace_id: workspaceId,
-        status: ConversationStatus.ACTIVE
-      },
+      where: whereClause,
       include: {
         client: {
-          select: { 
+          select: {
             id: true, 
             name: true, 
             phone_number: true,
