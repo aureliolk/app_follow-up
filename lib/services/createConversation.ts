@@ -92,7 +92,7 @@ export async function getOrCreateConversation(
             data: {
                 last_message_at: new Date(),
                 status: ConversationStatus.ACTIVE, // Reativa se estava fechada
-                is_ai_active: true, // Garante que IA está ativa ao reabrir/continuar
+                // Mantém valor atual de is_ai_active, não o sobrescreve
             }
         });
         // conversationWasCreated permanece false, pois a conversa já existia
