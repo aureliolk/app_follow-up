@@ -68,12 +68,15 @@ export default function ConversationDetail() {
     selectedConversation: conversation,
     selectedConversationMessages: messages,
     loadingSelectedConversationMessages: isLoadingMessages,
+    isLoadingMoreMessages,
+    hasMoreMessages,
     selectedConversationError: messageError,
     isSendingMessage,
     clearMessagesError,
     selectConversation,
     sendMediaMessage,
     sendTemplateMessage,
+    loadMoreMessages,
     toggleAIStatus,
     isTogglingAIStatus,
   } = useConversationContext();
@@ -256,6 +259,13 @@ export default function ConversationDetail() {
 
       {/* Messages */}
       <ScrollArea ref={scrollAreaRef} className="flex-grow p-4 overflow-y-auto">
+        {hasMoreMessages && (
+          <div className="flex justify-center mb-2">
+            <Button variant="ghost" size="sm" onClick={loadMoreMessages} disabled={isLoadingMoreMessages}>
+              {isLoadingMoreMessages ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Carregar mais'}
+            </Button>
+          </div>
+        )}
         {isLoadingMessages && messages.length === 0 && <LoadingSpinner message="Carregando..." />}
         {messageError && messages.length === 0 && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
         {messages.map((message) => {

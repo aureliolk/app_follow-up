@@ -58,10 +58,14 @@ interface ConversationContextType {
     // Estados
     conversations: ClientConversation[];
     loadingConversations: boolean;
+    isLoadingMoreConversations: boolean;
+    hasMoreConversations: boolean;
     conversationsError: string | null;
     selectedConversation: ClientConversation | null;
     selectedConversationMessages: Message[];
     loadingSelectedConversationMessages: boolean;
+    isLoadingMoreMessages: boolean;
+    hasMoreMessages: boolean;
     selectedConversationError: string | null;
     messageCache: Record<string, Message[]>;
     unreadConversationIds: Set<string>;
@@ -72,8 +76,10 @@ interface ConversationContextType {
     loadingPusherConfig: boolean;
 
     // Funções de Busca/Seleção
-    fetchConversations: (filter?: string, workspaceId?: string) => Promise<void>;
-    fetchConversationMessages: (conversationId: string) => Promise<Message[]>;
+    fetchConversations: (filter: string, workspaceId: string, page: number, pageSize: number, append?: boolean) => Promise<void>;
+    fetchConversationMessages: (conversationId: string, page: number, pageSize: number, append?: boolean) => Promise<Message[]>;
+    loadMoreConversations: () => void;
+    loadMoreMessages: () => void;
     selectConversation: (conversation: ClientConversation | null) => void;
     clearMessagesError: () => void;
 
@@ -113,6 +119,13 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set());
     const [isSendingMessage, setIsSendingMessage] = useState(false);
     const [isTogglingAIStatus, setIsTogglingAIStatus] = useState(false);
+    const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
+    const [hasMoreConversations, setHasMoreConversations] = useState(true);
+    const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
+    const [hasMoreMessages, setHasMoreMessages] = useState(true);
+    const [currentConversationsPage, setCurrentConversationsPage] = useState(1);
+    const [currentMessagesPage, setCurrentMessagesPage] = useState(1);
+    const [currentFilter, setCurrentFilter] = useState('ATIVAS');
 
 
     // --- Efeito para Carregar Estado Inicial de Não Lidos do Local Storage --- //
@@ -159,29 +172,55 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
 
     // --- Funções de Busca/Seleção --- //
-    const fetchConversationMessages = useCallback(async (conversationId: string): Promise<Message[]> => {
-        if (messageCache[conversationId]) {
+    const fetchConversationMessages = useCallback(async (
+        conversationId: string,
+        page: number = 1,
+        pageSize: number = 20,
+        append: boolean = false,
+    ): Promise<Message[]> => {
+        if (!append && messageCache[conversationId]) {
             setSelectedConversationMessages(messageCache[conversationId]);
             setLoadingSelectedConversationMessages(false);
             return messageCache[conversationId];
         }
-        setLoadingSelectedConversationMessages(true);
+        if (append) {
+            setIsLoadingMoreMessages(true);
+        } else {
+            setLoadingSelectedConversationMessages(true);
+            setCurrentMessagesPage(page);
+            setHasMoreMessages(true);
+        }
         setSelectedConversationError(null);
         try {
-            const fetchedMessages = await fetchConversationMessagesApi(conversationId);
-            setMessageCache(prev => ({ ...prev, [conversationId]: fetchedMessages }));
-            setSelectedConversationMessages(fetchedMessages);
+            const { data: fetchedMessages, hasMore } = await fetchConversationMessagesApi(conversationId, (page - 1) * pageSize, pageSize);
+            if (append) {
+                setMessageCache(prev => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), ...fetchedMessages] }));
+                setSelectedConversationMessages(prev => [...prev, ...fetchedMessages]);
+            } else {
+                setMessageCache(prev => ({ ...prev, [conversationId]: fetchedMessages }));
+                setSelectedConversationMessages(fetchedMessages);
+            }
+            setHasMoreMessages(hasMore);
             return fetchedMessages;
         } catch (err: any) {
             const message = err.message || 'Erro ao buscar mensagens.';
             setSelectedConversationError(message);
-            setSelectedConversationMessages([]);
+            if (!append) setSelectedConversationMessages([]);
             toast.error(`Erro ao buscar mensagens: ${message}`);
+            setHasMoreMessages(false);
             return [];
         } finally {
             setLoadingSelectedConversationMessages(false);
+            setIsLoadingMoreMessages(false);
         }
     }, [messageCache, setMessageCache, setSelectedConversationMessages, setLoadingSelectedConversationMessages, setSelectedConversationError]);
+
+    const loadMoreMessages = useCallback(() => {
+        if (isLoadingMoreMessages || !hasMoreMessages || !selectedConversation) return;
+        const nextPage = currentMessagesPage + 1;
+        fetchConversationMessages(selectedConversation.id, nextPage, 20, true);
+        setCurrentMessagesPage(nextPage);
+    }, [isLoadingMoreMessages, hasMoreMessages, selectedConversation, currentMessagesPage, fetchConversationMessages]);
 
     const selectConversation = useCallback((conversation: ClientConversation | null) => {
         const newConversationId = conversation?.id ?? null;
@@ -195,7 +234,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         setLoadingSelectedConversationMessages(false);
 
         if (conversation) {
-            fetchConversationMessages(conversation.id);
+            fetchConversationMessages(conversation.id, 1, 20, false);
             setUnreadConversationIds(prev => {
                 if (prev.has(conversation.id)) {
                     const newSet = new Set(prev);
@@ -207,7 +246,13 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         } 
     }, [selectedConversation, setUnreadConversationIds, messageCache, fetchConversationMessages]);
 
-     const fetchConversations = useCallback(async (filter = 'ATIVAS', workspaceId?: string) => {
+     const fetchConversations = useCallback(async (
+        filter: string = 'ATIVAS',
+        workspaceId?: string,
+        page: number = 1,
+        pageSize: number = 20,
+        append: boolean = false,
+     ) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) {
             setConversationsError("Workspace ID não encontrado.");
@@ -215,11 +260,23 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             selectConversation(null);
             return;
         }
-        setLoadingConversations(true);
+        if (append) {
+            setIsLoadingMoreConversations(true);
+        } else {
+            setLoadingConversations(true);
+            setCurrentConversationsPage(page);
+            setHasMoreConversations(true);
+            setCurrentFilter(filter);
+        }
         setConversationsError(null);
         try {
-            const fetchedData = await fetchConversationsApi(filter, wsId);
-            setConversations(fetchedData);
+            const { data: fetchedData, hasMore } = await fetchConversationsApi(filter, wsId, page, pageSize);
+            if (append) {
+                setConversations(prev => [...prev, ...fetchedData]);
+            } else {
+                setConversations(fetchedData);
+            }
+            setHasMoreConversations(hasMore);
             // console.log(`[ConversationContext] Fetched ${fetchedData.length} conversations with filter ${filter}.`); // DEBUG
 
             // Lógica de auto-seleção
@@ -249,8 +306,16 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             toast.error(message);
         } finally {
             setLoadingConversations(false);
+            setIsLoadingMoreConversations(false);
         }
     }, [workspaceContext.workspace?.id, selectedConversation?.id, selectConversation]);
+
+    const loadMoreConversations = useCallback(() => {
+        if (isLoadingMoreConversations || !hasMoreConversations) return;
+        const nextPage = currentConversationsPage + 1;
+        fetchConversations(currentFilter, undefined, nextPage, 20, true);
+        setCurrentConversationsPage(nextPage);
+    }, [isLoadingMoreConversations, hasMoreConversations, currentConversationsPage, fetchConversations, currentFilter]);
 
     const clearMessagesError = useCallback(() => {
         setSelectedConversationError(null);
@@ -900,10 +965,14 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const contextValue = useMemo(() => ({
         conversations,
         loadingConversations,
+        isLoadingMoreConversations,
+        hasMoreConversations,
         conversationsError,
         selectedConversation,
         selectedConversationMessages,
         loadingSelectedConversationMessages,
+        isLoadingMoreMessages,
+        hasMoreMessages,
         selectedConversationError,
         messageCache,
         unreadConversationIds,
@@ -914,6 +983,8 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         loadingPusherConfig,
         fetchConversations,
         fetchConversationMessages,
+        loadMoreConversations,
+        loadMoreMessages,
         selectConversation,
         clearMessagesError,
         handleRealtimeNewMessage,
@@ -925,12 +996,13 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         sendMediaMessage,
         toggleAIStatus,
     }), [
-        conversations, loadingConversations, conversationsError, selectedConversation,
-        selectedConversationMessages, loadingSelectedConversationMessages, selectedConversationError,
+        conversations, loadingConversations, isLoadingMoreConversations, hasMoreConversations, conversationsError,
+        selectedConversation,
+        selectedConversationMessages, loadingSelectedConversationMessages, isLoadingMoreMessages, hasMoreMessages, selectedConversationError,
         messageCache, unreadConversationIds, isSendingMessage, isTogglingAIStatus,
         isPusherConnected, loadingPusherConfig,
-        fetchConversations, fetchConversationMessages, selectConversation, clearMessagesError,
-        handleRealtimeNewMessage, handleRealtimeStatusUpdate, handleRealtimeAIStatusUpdate, 
+        fetchConversations, fetchConversationMessages, loadMoreConversations, loadMoreMessages, selectConversation, clearMessagesError,
+        handleRealtimeNewMessage, handleRealtimeStatusUpdate, handleRealtimeAIStatusUpdate,
         selectConversationForClient,
         sendManualMessage,
         sendTemplateMessage, sendMediaMessage, toggleAIStatus,

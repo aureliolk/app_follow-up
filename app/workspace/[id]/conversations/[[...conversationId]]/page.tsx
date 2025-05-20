@@ -13,6 +13,8 @@ import type { ClientConversation } from '@/app/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+const CONVERSATIONS_PER_PAGE = 20;
+
 type AiFilterType = 'all' | 'human' | 'ai';
 
 export default function ConversationsPage() {
@@ -20,10 +22,13 @@ export default function ConversationsPage() {
   const {
     conversations,
     loadingConversations,
+    isLoadingMoreConversations,
+    hasMoreConversations,
     conversationsError,
     selectedConversation,
     selectConversation,
-    fetchConversations
+    fetchConversations,
+    loadMoreConversations
   } = useConversationContext();
 
   const params = useParams();
@@ -31,6 +36,7 @@ export default function ConversationsPage() {
   const pathname = usePathname();
 
   const [aiFilter, setAiFilter] = useState<AiFilterType>('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const urlConversationId = Array.isArray(params.conversationId) && params.conversationId.length > 0
     ? params.conversationId[0]
@@ -41,7 +47,8 @@ export default function ConversationsPage() {
     if (wsId && !workspaceLoading) {
       const currentFilter = 'ATIVAS';
       console.log(`[ConversationsPage] useEffect (initial): Fetching via context for wsId ${wsId} with filter ${currentFilter}`);
-      fetchConversations(currentFilter, wsId);
+      setCurrentPage(1);
+      fetchConversations(currentFilter, wsId, 1, CONVERSATIONS_PER_PAGE);
     }
   }, [workspace?.id, workspaceLoading]);
 
@@ -75,6 +82,14 @@ export default function ConversationsPage() {
         }
     }
   }, [selectConversation, router, pathname, workspace?.id]);
+
+  const loadMore = () => {
+    if (!loadingConversations && !isLoadingMoreConversations && hasMoreConversations && workspace) {
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      fetchConversations('ATIVAS', workspace.id, nextPage, CONVERSATIONS_PER_PAGE, true);
+    }
+  };
 
   const isLoading = loadingConversations || workspaceLoading;
   const displayError = conversationsError || workspaceError;
@@ -148,7 +163,10 @@ export default function ConversationsPage() {
             conversations={filteredConversations}
             onSelectConversation={handleSelectConversation}
             selectedConversationId={selectedConversation?.id || urlConversationId}
-            basePath={baseConversationsPath} 
+            basePath={baseConversationsPath}
+            loadMoreConversations={loadMore}
+            hasMoreConversations={hasMoreConversations}
+            isLoadingMoreConversations={isLoadingMoreConversations}
           />
         </div>
 
