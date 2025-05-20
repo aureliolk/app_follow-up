@@ -67,7 +67,8 @@ export default function ConversationsPage() {
         CONVERSATIONS_PER_PAGE,
         false,
         aiFilter,
-        debouncedSearchTerm
+        debouncedSearchTerm,
+        false
       );
     }
   }, [workspace?.id, workspaceLoading, aiFilter, debouncedSearchTerm]);
