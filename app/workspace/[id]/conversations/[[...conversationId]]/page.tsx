@@ -70,7 +70,15 @@ export default function ConversationsPage() {
     const wsId = workspace?.id;
     if (wsId && !workspaceLoading) {
       setCurrentPage(1);
-      fetchConversations('ATIVAS', wsId, 1, CONVERSATIONS_PER_PAGE);
+      fetchConversations(
+        'ATIVAS',
+        wsId,
+        1,
+        CONVERSATIONS_PER_PAGE,
+        false,
+        aiFilter,
+        debouncedSearchTerm
+      );
     }
   }, [aiFilter, debouncedSearchTerm]);
 
@@ -109,7 +117,15 @@ export default function ConversationsPage() {
     if (!loadingConversations && !isLoadingMoreConversations && hasMoreConversations && workspace) {
       const nextPage = currentPage + 1;
       setCurrentPage(nextPage);
-      fetchConversations('ATIVAS', workspace.id, nextPage, CONVERSATIONS_PER_PAGE, true);
+      fetchConversations(
+        'ATIVAS',
+        workspace.id,
+        nextPage,
+        CONVERSATIONS_PER_PAGE,
+        true,
+        aiFilter,
+        debouncedSearchTerm
+      );
     }
   };
 
