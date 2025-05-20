@@ -59,16 +59,6 @@ export default function ConversationsPage() {
   useEffect(() => {
     const wsId = workspace?.id;
     if (wsId && !workspaceLoading) {
-      const currentFilter = 'ATIVAS';
-      console.log(`[ConversationsPage] useEffect (initial): Fetching via context for wsId ${wsId} with filter ${currentFilter}`);
-      setCurrentPage(1);
-      fetchConversations(currentFilter, wsId, 1, CONVERSATIONS_PER_PAGE);
-    }
-  }, [workspace?.id, workspaceLoading]);
-
-  useEffect(() => {
-    const wsId = workspace?.id;
-    if (wsId && !workspaceLoading) {
       setCurrentPage(1);
       fetchConversations(
         'ATIVAS',
@@ -80,14 +70,13 @@ export default function ConversationsPage() {
         debouncedSearchTerm
       );
     }
-  }, [aiFilter, debouncedSearchTerm, workspace?.id, workspaceLoading]);
+  }, [workspace?.id, workspaceLoading, aiFilter, debouncedSearchTerm]);
 
   useEffect(() => {
     if (conversations.length > 0 && !loadingConversations) {
       if (urlConversationId) {
         const conversationFromUrl = conversations.find(c => c.id === urlConversationId);
         if (conversationFromUrl && selectedConversation?.id !== urlConversationId) {
-          console.log(`[ConversationsPage] Selecting conversation from URL: ${urlConversationId}`);
           selectConversation(conversationFromUrl);
         } else if (!conversationFromUrl) {
           console.warn(`[ConversationsPage] Conversation with ID ${urlConversationId} not found in list. Clearing selection.`);
