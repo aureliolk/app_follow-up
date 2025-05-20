@@ -60,7 +60,6 @@ export default function ConversationsPage() {
     const wsId = workspace?.id;
     if (wsId && !workspaceLoading) {
       const currentFilter = 'ATIVAS';
-      console.log(`[ConversationsPage] useEffect (initial): Fetching via context for wsId ${wsId} with filter ${currentFilter}`);
       setCurrentPage(1);
       fetchConversations(currentFilter, wsId, 1, CONVERSATIONS_PER_PAGE);
     }
@@ -87,10 +86,8 @@ export default function ConversationsPage() {
       if (urlConversationId) {
         const conversationFromUrl = conversations.find(c => c.id === urlConversationId);
         if (conversationFromUrl && selectedConversation?.id !== urlConversationId) {
-          console.log(`[ConversationsPage] Selecting conversation from URL: ${urlConversationId}`);
           selectConversation(conversationFromUrl);
         } else if (!conversationFromUrl) {
-          console.warn(`[ConversationsPage] Conversation with ID ${urlConversationId} not found in list. Clearing selection.`);
           selectConversation(null);
           const basePath = `/workspace/${workspace?.id}/conversations`;
           if (pathname !== basePath) router.push(basePath);
