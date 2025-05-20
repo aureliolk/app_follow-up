@@ -34,6 +34,9 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const workspaceId = url.searchParams.get('workspaceId');
     const filterStatus = url.searchParams.get('status') || 'ATIVAS'; // Padrão para ATIVAS se não especificado
+    const page = parseInt(url.searchParams.get('page') || '1', 10);
+    const pageSize = parseInt(url.searchParams.get('pageSize') || '20', 10);
+    const search = url.searchParams.get('search')?.trim() || '';
 
     if (!workspaceId) { /* ... */ }
 
@@ -43,12 +46,27 @@ export async function GET(req: NextRequest) {
     // Mapeia o status do filtro da UI para os status do Prisma Enum
     const prismaStatusesToFilter = mapUiStatusToPrisma(filterStatus);
 
-    // --- QUERY: Incluir client.metadata --- 
+    const take = pageSize + 1;
+    const skip = (page - 1) * pageSize;
+
+    const baseWhere: Prisma.ConversationWhereInput = {
+      workspace_id: workspaceId,
+      status: ConversationStatus.ACTIVE,
+    };
+
+    if (search) {
+      baseWhere.client = {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { phone_number: { contains: search } },
+          { metadata: { path: ['tags'], array_contains: [search] } }
+        ]
+      };
+    }
+
+    // --- QUERY: Incluir client.metadata ---
     const conversations = await prisma.conversation.findMany({
-      where: {
-        workspace_id: workspaceId,
-        status: ConversationStatus.ACTIVE 
-      },
+      where: baseWhere,
       include: {
         client: {
           select: { 
@@ -75,10 +93,15 @@ export async function GET(req: NextRequest) {
       orderBy: {
         last_message_at: { sort: 'desc', nulls: 'last' },
       },
+      take,
+      skip,
     });
 
     // Formatação da resposta: Incluir metadata no client
-    const formattedData = conversations.map(convo => ({
+    const hasMore = conversations.length > pageSize;
+    const convosSlice = hasMore ? conversations.slice(0, pageSize) : conversations;
+
+    const formattedData = convosSlice.map(convo => ({
       id: convo.id,
       workspace_id: convo.workspace_id,
       client_id: convo.client_id,
@@ -105,7 +128,11 @@ export async function GET(req: NextRequest) {
       activeFollowUp: convo.client?.follow_ups?.[0] || null, 
     }));
 
-    return NextResponse.json({ success: true, data: formattedData });
+    const totalCount = await prisma.conversation.count({ where: baseWhere });
+    const humanCount = await prisma.conversation.count({ where: { ...baseWhere, is_ai_active: false } });
+    const aiCount = await prisma.conversation.count({ where: { ...baseWhere, is_ai_active: true } });
+
+    return NextResponse.json({ success: true, data: formattedData, hasMore, counts: { all: totalCount, human: humanCount, ai: aiCount } });
 
   } catch (error) {
     console.error('API GET Conversations: Internal error:', error);

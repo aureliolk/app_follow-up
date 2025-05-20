@@ -11,7 +11,10 @@ import ConversationList from '../components/ConversationList';
 import ConversationDetail from '../components/ConversationDetail';
 import type { ClientConversation } from '@/app/types';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+
+const CONVERSATIONS_PER_PAGE = 20;
 
 type AiFilterType = 'all' | 'human' | 'ai';
 
@@ -20,10 +23,14 @@ export default function ConversationsPage() {
   const {
     conversations,
     loadingConversations,
+    isLoadingMoreConversations,
+    hasMoreConversations,
     conversationsError,
     selectedConversation,
     selectConversation,
-    fetchConversations
+    fetchConversations,
+    loadMoreConversations,
+    aiCounts
   } = useConversationContext();
 
   const params = useParams();
@@ -31,6 +38,8 @@ export default function ConversationsPage() {
   const pathname = usePathname();
 
   const [aiFilter, setAiFilter] = useState<AiFilterType>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchValue, setSearchValue] = useState('');
 
   const urlConversationId = Array.isArray(params.conversationId) && params.conversationId.length > 0
     ? params.conversationId[0]
@@ -41,9 +50,20 @@ export default function ConversationsPage() {
     if (wsId && !workspaceLoading) {
       const currentFilter = 'ATIVAS';
       console.log(`[ConversationsPage] useEffect (initial): Fetching via context for wsId ${wsId} with filter ${currentFilter}`);
-      fetchConversations(currentFilter, wsId);
+      setCurrentPage(1);
+      fetchConversations(currentFilter, wsId, 1, CONVERSATIONS_PER_PAGE, false, '');
     }
   }, [workspace?.id, workspaceLoading]);
+
+  useEffect(() => {
+    const wsId = workspace?.id;
+    if (!wsId || workspaceLoading) return;
+    const handler = setTimeout(() => {
+      setCurrentPage(1);
+      fetchConversations('ATIVAS', wsId, 1, CONVERSATIONS_PER_PAGE, false, searchValue);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [searchValue, workspace?.id, workspaceLoading]);
 
   useEffect(() => {
     if (conversations.length > 0 && !loadingConversations) {
@@ -76,6 +96,14 @@ export default function ConversationsPage() {
     }
   }, [selectConversation, router, pathname, workspace?.id]);
 
+  const loadMore = () => {
+    if (!loadingConversations && !isLoadingMoreConversations && hasMoreConversations && workspace) {
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      fetchConversations('ATIVAS', workspace.id, nextPage, CONVERSATIONS_PER_PAGE, true, searchValue);
+    }
+  };
+
   const isLoading = loadingConversations || workspaceLoading;
   const displayError = conversationsError || workspaceError;
 
@@ -98,16 +126,22 @@ export default function ConversationsPage() {
 
   const baseConversationsPath = `/workspace/${workspace?.id}/conversations`;
 
-  // Calcular contagens para os filtros
-  const countAll = conversations.length;
-  const countHuman = conversations.filter(convo => convo.is_ai_active === false).length;
-  const countAi = conversations.filter(convo => convo.is_ai_active === true).length;
+  // Contagens vindas da API
+  const countAll = aiCounts.all;
+  const countHuman = aiCounts.human;
+  const countAi = aiCounts.ai;
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-grow overflow-hidden">
         <div className="w-full md:w-1/3 lg:w-1/4 border-r border-border overflow-y-auto bg-card/50 dark:bg-background flex-shrink-0">
           <div className="p-2 border-b border-border">
+            <Input
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              placeholder="Buscar por nome, telefone ou tag"
+              className="mb-2 h-8"
+            />
             <div className="flex space-x-1">
               <Button
                 variant={aiFilter === 'all' ? 'secondary' : 'ghost'}
@@ -148,7 +182,10 @@ export default function ConversationsPage() {
             conversations={filteredConversations}
             onSelectConversation={handleSelectConversation}
             selectedConversationId={selectedConversation?.id || urlConversationId}
-            basePath={baseConversationsPath} 
+            basePath={baseConversationsPath}
+            loadMoreConversations={loadMore}
+            hasMoreConversations={hasMoreConversations}
+            isLoadingMoreConversations={isLoadingMoreConversations}
           />
         </div>
 
