@@ -80,7 +80,7 @@ export default function ConversationsPage() {
         debouncedSearchTerm
       );
     }
-  }, [aiFilter, debouncedSearchTerm]);
+  }, [aiFilter, debouncedSearchTerm, workspace?.id, workspaceLoading]);
 
   useEffect(() => {
     if (conversations.length > 0 && !loadingConversations) {
