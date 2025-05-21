@@ -77,7 +77,6 @@ export default function ShowConversationsClientList({
               <div key={conv.id} className="mb-2 last:mb-0">
                 <Button
                   variant="ghost"
-                  size='full'
                   className={cn(
                     "w-full flex items-center justify-between px-6 py-5 rounded-none",
                     "hover:bg-accent",
