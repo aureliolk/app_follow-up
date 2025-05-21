@@ -78,7 +78,7 @@ export default function ShowConversationsClientList({
                 <Button
                   variant="ghost"
                   className={cn(
-                    "w-full flex items-center justify-between px-6 py-5 rounded-none",
+                    "h-full flex items-center justify-between px-6 py-5 rounded-none",
                     "hover:bg-accent",
                   )}
                   onClick={() => handleConversationClick(conv.id)}

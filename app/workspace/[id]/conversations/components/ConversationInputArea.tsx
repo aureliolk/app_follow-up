@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
-import { Loader2, Mic, Paperclip, PauseCircle, Quote, Send, Smile, Maximize2 } from 'lucide-react';
+import { Loader2, Mic, Paperclip, PauseCircle, Quote, Send, Smile, Maximize2, Layout } from 'lucide-react';
 // Se você não tiver axios ou toast aqui diretamente, remova-os se forem gerenciados em outro lugar.
 // import axios from 'axios'; // Se não usado diretamente aqui
 import { toast } from 'react-hot-toast'; // Necessário para handleSendAudioFile e startRecording
@@ -332,7 +332,7 @@ export default function ConversationInputArea({
                 isSendingTemplate={isSendingMessage} // Renomeie para isSending se for genérico
                 triggerButton={ // Certifique-se que WhatsappTemplateDialog aceita esta prop
                     <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" disabled={commonDisabled || loadingTemplates} title="Usar template">
-                        <Quote className="h-5 w-5" />
+                        <Layout className="h-5 w-5" />
                     </Button>
                 }
                />
