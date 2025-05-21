@@ -49,10 +49,8 @@ export default function ShowConversationsClientList({
   };
 
   return (
-    <Card className="border">
-      <CardHeader>
-        <CardTitle className="text-lg">Conversas</CardTitle>
-      </CardHeader>
+    <Card className="border p-4">
+
       <CardContent className="p-4">
         {loading && (
           <div className="flex items-center justify-center p-6">
@@ -74,11 +72,12 @@ export default function ShowConversationsClientList({
         )}
 
         {!loading && !error && conversations.length > 0 && (
-          <div className="">
+          <div className="border">
             {conversations.map((conv, index) => (
               <div key={conv.id} className="mb-2 last:mb-0">
                 <Button
                   variant="ghost"
+                  size='full'
                   className={cn(
                     "w-full flex items-center justify-between px-6 py-5 rounded-none",
                     "hover:bg-accent",
@@ -92,11 +91,13 @@ export default function ShowConversationsClientList({
                          {/* Displaying channel or a placeholder */}
                          {conv.channel || (conv.last_message?.content ? '' : '-')} 
                       </p>
+
                       {conv.last_message?.content && (
-                         <p className="text-sm text-muted-foreground line-clamp-1 mb-2">
+                         <p className="text-sm text-muted-foreground text-wrap mb-2">
                             {conv.last_message.content} {/* Message snippet conditionally visible */}
                          </p>
                       )}
+
                       <div className={cn(
                          "text-xs flex flex-wrap gap-x-3", // Base styling for status/activity line
                          // Conditional styling for status color
