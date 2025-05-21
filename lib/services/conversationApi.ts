@@ -6,14 +6,14 @@ export async function fetchConversationsApi(
   workspaceId: string,
   page: number,
   pageSize: number,
-): Promise<{ data: ClientConversation[]; hasMore: boolean }> {
-  const response = await axios.get<{ success: boolean; data?: ClientConversation[]; error?: string; hasMore?: boolean }>('/api/conversations', {
+): Promise<{ data: ClientConversation[]; hasMore: boolean; totalCounts: { all: number; human: number; ai: number } }> {
+  const response = await axios.get<{ success: boolean; data?: ClientConversation[]; error?: string; hasMore?: boolean; totalCounts?: { all: number; human: number; ai: number } }>('/api/conversations', {
     params: { workspaceId, status: filter, page, pageSize },
   });
-  if (!response.data.success || !response.data.data) {
-    throw new Error(response.data.error || 'Falha ao carregar conversas');
+  if (!response.data.success || !response.data.data || !response.data.totalCounts) {
+    throw new Error(response.data.error || 'Falha ao carregar conversas ou contadores totais');
   }
-  return { data: response.data.data, hasMore: Boolean(response.data.hasMore) };
+  return { data: response.data.data, hasMore: Boolean(response.data.hasMore), totalCounts: response.data.totalCounts };
 }
 
 export async function fetchConversationMessagesApi(

@@ -74,6 +74,9 @@ interface ConversationContextType {
     isTogglingAIStatus: boolean;
     isPusherConnected: boolean;
     loadingPusherConfig: boolean;
+    totalCountAll: number;
+    totalCountHuman: number;
+    totalCountAi: number;
 
     // Funções de Busca/Seleção
     fetchConversations: (filter: string, workspaceId: string, page: number, pageSize: number, append?: boolean) => Promise<void>;
@@ -126,6 +129,9 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const [currentConversationsPage, setCurrentConversationsPage] = useState(1);
     const [currentMessagesPage, setCurrentMessagesPage] = useState(1);
     const [currentFilter, setCurrentFilter] = useState('ATIVAS');
+    const [totalCountAll, setTotalCountAll] = useState(0);
+    const [totalCountHuman, setTotalCountHuman] = useState(0);
+    const [totalCountAi, setTotalCountAi] = useState(0);
 
 
     // --- Efeito para Carregar Estado Inicial de Não Lidos do Local Storage ---
@@ -306,11 +312,14 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
         setConversationsError(null);
         try {
-            const { data: fetchedData, hasMore } = await fetchConversationsApi(filter, wsId, page, pageSize);
+            const { data: fetchedData, hasMore, totalCounts } = await fetchConversationsApi(filter, wsId, page, pageSize);
             if (append) {
                 setConversations(prev => [...prev, ...fetchedData]);
             } else {
                 setConversations(fetchedData);
+                setTotalCountAll(totalCounts.all);
+                setTotalCountHuman(totalCounts.human);
+                setTotalCountAi(totalCounts.ai);
             }
             setHasMoreConversations(hasMore);
 
@@ -938,6 +947,9 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         isTogglingAIStatus,
         isPusherConnected,
         loadingPusherConfig,
+        totalCountAll,
+        totalCountHuman,
+        totalCountAi,
         fetchConversations,
         fetchConversationMessages,
         loadMoreConversations,
@@ -961,6 +973,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         selectConversationForClient,
         sendManualMessage,
         sendTemplateMessage, sendMediaMessage, toggleAIStatus,
+        totalCountAll, totalCountHuman, totalCountAi,
     ]);
 
     return (

@@ -28,7 +28,10 @@ export default function ConversationsPage() {
     selectedConversation,
     selectConversation,
     fetchConversations,
-    loadMoreConversations
+    loadMoreConversations,
+    totalCountAll,
+    totalCountHuman,
+    totalCountAi,
   } = useConversationContext();
 
   const params = useParams();
@@ -115,11 +118,6 @@ export default function ConversationsPage() {
 
   const baseConversationsPath = `/workspace/${workspace?.id}/conversations`;
 
-  // Calcular contagens para os filtros
-  const countAll = conversations.length;
-  const countHuman = conversations.filter(convo => convo.is_ai_active === false).length;
-  const countAi = conversations.filter(convo => convo.is_ai_active === true).length;
-
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-grow overflow-hidden">
@@ -134,7 +132,7 @@ export default function ConversationsPage() {
               >
                 Todos
                 <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
-                  {countAll}
+                  {totalCountAll}
                 </span>
               </Button>
               <Button
@@ -145,7 +143,7 @@ export default function ConversationsPage() {
               >
                 Humanos
                 <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
-                  {countHuman}
+                  {totalCountHuman}
                 </span>
               </Button>
               <Button
@@ -156,7 +154,7 @@ export default function ConversationsPage() {
               >
                 IA
                 <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
-                  {countAi}
+                  {totalCountAi}
                 </span>
               </Button>
             </div>

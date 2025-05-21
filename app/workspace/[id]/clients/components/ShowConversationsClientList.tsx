@@ -72,13 +72,13 @@ export default function ShowConversationsClientList({
         )}
 
         {!loading && !error && conversations.length > 0 && (
-          <div className="border">
+          <div className="border rounded-md">
             {conversations.map((conv, index) => (
               <div key={conv.id} className="mb-2 last:mb-0">
                 <Button
                   variant="ghost"
                   className={cn(
-                    "h-full flex items-center justify-between px-6 py-5 rounded-none",
+                    "h-full w-full flex items-center justify-between px-6 py-5 rounded-none",
                     "hover:bg-accent",
                   )}
                   onClick={() => handleConversationClick(conv.id)}
@@ -93,7 +93,9 @@ export default function ShowConversationsClientList({
 
                       {conv.last_message?.content && (
                          <p className="text-sm text-muted-foreground text-wrap mb-2">
-                            {conv.last_message.content} {/* Message snippet conditionally visible */}
+                            {conv.last_message.content.length > 120
+                              ? conv.last_message.content.substring(0, 120) + ' ...'
+                              : conv.last_message.content}
                          </p>
                       )}
 
