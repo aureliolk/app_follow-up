@@ -326,7 +326,7 @@ export default function ConversationInputArea({
                  <Mic className="h-5 w-5" />
               </Button>
               
-              {/* <WhatsappTemplateDialog
+              <WhatsappTemplateDialog
                 onSendTemplate={handleSendTemplate}
                 disabled={commonDisabled || loadingTemplates || (isRecording && messageType === 'reply')}
                 isSendingTemplate={isSendingMessage} // Renomeie para isSending se for genérico
@@ -335,7 +335,7 @@ export default function ConversationInputArea({
                         <Quote className="h-5 w-5" />
                     </Button>
                 }
-               /> */}
+               />
             </>
           )}
           {messageType === 'reply' && isRecording && (

@@ -185,17 +185,20 @@ export default function WorkspaceClientsPage() {
              </div>
            ) : (
             <>
-             <ClientList
-               // clients={clients} // Não precisa passar, ClientList usa o hook useClient()
-               onEdit={handleOpenEditModal}
-               onDelete={handleDeleteClient}
-               deletingId={isDeleting}
-               // Passar a função loadMoreClients e hasMoreClients para o ClientList
-               // para que ele possa adicionar um observer ou botão de "Carregar Mais"
-               loadMoreClients={loadMoreClients}
-               hasMoreClients={hasMoreClients}
-               isLoadingMoreClients={isLoadingMoreClients}
-             />
+             {workspace && ( // Renderize ClientList only when workspace is loaded
+               <ClientList
+                 // clients={clients} // Não precisa passar, ClientList usa o hook useClient()
+                 workspaceId={workspace.id} // Now workspace.id is guaranteed to be defined
+                 onEdit={handleOpenEditModal}
+                 onDelete={handleDeleteClient}
+                 deletingId={isDeleting}
+                 // Passar a função loadMoreClients e hasMoreClients para o ClientList
+                 // para que ele possa adicionar um observer ou botão de "Carregar Mais"
+                 loadMoreClients={loadMoreClients}
+                 hasMoreClients={hasMoreClients}
+                 isLoadingMoreClients={isLoadingMoreClients}
+               />
+             )}
             </>
            )}
          </CardContent>

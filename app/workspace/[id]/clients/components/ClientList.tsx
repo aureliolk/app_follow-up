@@ -20,7 +20,8 @@ import {
   Smartphone, 
   Download, 
   Tag,
-  CheckSquare
+  CheckSquare,
+  MessageCircle
 } from 'lucide-react';
 import {
   Tooltip,
@@ -36,8 +37,12 @@ import ErrorMessage from '@/components/ui/ErrorMessage';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import type { Client } from '@/app/types';
+import { useRouter } from 'next/navigation';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import ShowConversationsClientList from './ShowConversationsClientList';
 
 interface ClientListProps {
+  workspaceId: string;
   onEdit: (client: Client) => void;
   onDelete: (clientId: string, skipConfirm?: boolean) => Promise<void>;
   deletingId: string | null;
@@ -86,6 +91,7 @@ const renderTags = (tags: string[] | null | undefined) => {
 };
 
 export default function ClientList({ 
+  workspaceId,
   onEdit, 
   onDelete, 
   deletingId, 
@@ -97,6 +103,9 @@ export default function ClientList({
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(false);
   const observer = useRef<IntersectionObserver | null>(null);
+  const router = useRouter();
+  const [showConversationsDialog, setShowConversationsDialog] = useState(false);
+  const [selectedClientForConversations, setSelectedClientForConversations] = useState<Client | null>(null);
   
   const lastClientElementRef = useCallback((node: HTMLTableRowElement | null) => {
     if (initialLoading || isLoadingMoreClients) return;
@@ -182,10 +191,19 @@ export default function ClientList({
     document.body.removeChild(link);
   };
 
+  const handleViewConversations = (client: Client) => {
+    setSelectedClientForConversations(client);
+    setShowConversationsDialog(true);
+  };
+
   useEffect(() => {
     // Reset selection when clients change
     setSelectedClients([]);
     setSelectAll(false);
+    if (clients.length === 0) {
+      setSelectedClientForConversations(null);
+      setShowConversationsDialog(false);
+    }
   }, [clients]);
 
 
@@ -253,9 +271,9 @@ export default function ClientList({
               </TableHead>
               <TableHead className="w-[200px] text-center">Nome</TableHead>
               <TableHead className="text-center">Telefone</TableHead>
-              <TableHead className="w-[100px] text-center">Canal</TableHead>
               <TableHead className="text-center">Tags</TableHead>
               <TableHead className="text-center">Criado em</TableHead>
+              <TableHead className="text-center w-[60px]">Conversas</TableHead>
               <TableHead className="text-right w-[100px]">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -264,25 +282,33 @@ export default function ClientList({
               if (clients.length === index + 1) {
                 return (
                   <TableRow ref={lastClientElementRef} key={client.id} className="hover:bg-muted/50">
-                    <TableCell className="text-center">
+                    <TableCell className="text-center align-middle">
                       <Checkbox 
                         checked={selectedClients.includes(client.id)}
                         onCheckedChange={() => handleSelectClient(client.id)}
                         aria-label={`Selecionar cliente ${client.name || ''}`}
                       />
                     </TableCell>
-                    <TableCell className="font-medium text-foreground text-center">{client.name || '-'}</TableCell>
+                    <TableCell className="font-medium text-foreground text-center align-middle">{client.name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm text-center">{client.phone_number || '-'}</TableCell>
-                    <TableCell className="text-center flex justify-center items-center">
-                      {getChannelIcon(client.channel)}
-                    </TableCell>
                     <TableCell className="text-center">
                       {renderTags(client.tags)}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm text-center">
                       {format(new Date(client.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleViewConversations(client)}
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        title="Ver Conversas"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                    <TableCell className="text-right align-middle">
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="ghost"
@@ -315,25 +341,33 @@ export default function ClientList({
               } else {
                 return (
                   <TableRow key={client.id} className="hover:bg-muted/50">
-                    <TableCell className="text-center">
+                    <TableCell className="text-center align-middle">
                       <Checkbox 
                         checked={selectedClients.includes(client.id)}
                         onCheckedChange={() => handleSelectClient(client.id)}
                         aria-label={`Selecionar cliente ${client.name || ''}`}
                       />
                     </TableCell>
-                    <TableCell className="font-medium text-foreground text-center">{client.name || '-'}</TableCell>
+                    <TableCell className="font-medium text-foreground text-center align-middle">{client.name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm text-center">{client.phone_number || '-'}</TableCell>
-                    <TableCell className="text-center flex justify-center items-center">
-                      {getChannelIcon(client.channel)}
-                    </TableCell>
                     <TableCell className="text-center">
                       {renderTags(client.tags)}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm text-center">
                       {format(new Date(client.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleViewConversations(client)}
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        title="Ver Conversas"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                    <TableCell className="text-right align-middle">
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="ghost"
@@ -378,6 +412,25 @@ export default function ClientList({
           Fim da lista de clientes.
         </div>
       )}
+
+      <Dialog open={showConversationsDialog} onOpenChange={setShowConversationsDialog}>
+        <DialogContent className="sm:max-w-[425px] md:max-w-[600px] lg:max-w-[700px] h-[80vh] flex flex-col p-4 md:p-6">
+          <DialogHeader className="px-6 pt-6 pb-4">
+            <DialogTitle>Conversas do Cliente</DialogTitle>
+            <DialogDescription>
+              {selectedClientForConversations?.name || 'Carregando...'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto">
+            {selectedClientForConversations && (
+              <ShowConversationsClientList
+                clientId={selectedClientForConversations.id}
+                workspaceId={workspaceId}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }

@@ -24,6 +24,7 @@ interface WhatsappTemplateDialogProps {
   onSendTemplate: (templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => void;
   disabled?: boolean; // Para desabilitar o botão trigger
   isSendingTemplate?: boolean; // Exibe loading ao enviar o template
+  triggerButton: React.ReactNode; // Adicionado: Elemento que irá triggar o diálogo
 }
 
 // Mock/Placeholder para tipo de Template (definir melhor depois ou importar de @/app/types)
@@ -36,7 +37,7 @@ interface WhatsappTemplateDialogProps {
 // }
 
 
-export default function WhatsappTemplateDialog({ onSendTemplate, disabled, isSendingTemplate }: WhatsappTemplateDialogProps) {
+export default function WhatsappTemplateDialog({ onSendTemplate, disabled, isSendingTemplate, triggerButton }: WhatsappTemplateDialogProps) {
   const { templates, loadingTemplates, templateError } = useWhatsappTemplates();
 
   // Estados internos do diálogo
@@ -135,9 +136,7 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled, isSen
       }
     }}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Inserir template" title="Inserir Template WhatsApp" disabled={disabled}>
-          <MessageSquareText className="h-5 w-5 text-muted-foreground" />
-        </Button>
+        {triggerButton}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[625px] h-[70vh] flex flex-col">
         <DialogHeader>
