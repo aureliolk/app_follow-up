@@ -55,9 +55,11 @@ export default function ConversationsPage() {
   useEffect(() => {
     if (conversations.length > 0 && !loadingConversations) {
       if (urlConversationId) {
+        console.log(`[ConversationsPage] URL Effect triggered. urlConversationId: ${urlConversationId}, conversations count: ${conversations.length}`);
         const conversationFromUrl = conversations.find(c => c.id === urlConversationId);
         if (conversationFromUrl && selectedConversation?.id !== urlConversationId) {
           console.log(`[ConversationsPage] Selecting conversation from URL: ${urlConversationId}`);
+          console.log(`[ConversationsPage] Calling selectConversation with:`, conversationFromUrl);
           selectConversation(conversationFromUrl);
         } else if (!conversationFromUrl) {
           console.warn(`[ConversationsPage] Conversation with ID ${urlConversationId} not found in list. Clearing selection.`);

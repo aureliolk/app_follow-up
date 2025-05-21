@@ -31,7 +31,7 @@ export default function ConversationList({
   hasMoreConversations,
   isLoadingMoreConversations,
 }: ConversationListProps) {
-  const { unreadConversationIds } = useConversationContext(); // Get unread IDs
+  const { unreadConversationIds } = useConversationContext();
   const router = useRouter();
   const observer = useRef<IntersectionObserver | null>(null);
 
@@ -46,18 +46,12 @@ export default function ConversationList({
     if (node) observer.current.observe(node);
   }, [isLoadingMoreConversations, hasMoreConversations, loadMoreConversations]);
 
-  useEffect(() => {
-    console.log('[ConversationList] Unread IDs atualizado:', unreadConversationIds);
-  }, [unreadConversationIds]);
-
   const getInitials = (name?: string | null): string => {
     if (!name) return '?';
     const names = name.split(' ');
     if (names.length === 1) return names[0].charAt(0).toUpperCase();
     return `${names[0].charAt(0)}${names[names.length - 1].charAt(0)}`.toUpperCase();
   };
-
-  console.log('[ConversationList] Rendering with conversations:', conversations);
 
   if (!conversations || conversations.length === 0) {
     return <div className="p-4 text-center text-muted-foreground text-sm">Nenhuma conversa encontrada.</div>;
@@ -66,10 +60,9 @@ export default function ConversationList({
   return (
     <div className="overflow-y-auto h-full">
       {conversations.map((convo, index) => {
-        console.log('[ConversationList] Mapping convo ID:', convo?.id, 'Convo:', convo);
         if (!convo || !convo.id) {
           console.error('[ConversationList] Found conversation with missing ID:', convo);
-          return null; // Skip rendering this item if ID is missing
+          return null;
         }
 
         const isActive = convo.id === selectedConversationId;

@@ -20,10 +20,11 @@ export async function fetchConversationMessagesApi(
   conversationId: string,
   offset: number,
   limit: number,
+  orderBy?: 'asc' | 'desc'
 ): Promise<{ data: Message[]; hasMore: boolean }> {
   const response = await axios.get<{ success: boolean; data?: Message[]; error?: string; hasMore?: boolean }>(
     `/api/conversations/${conversationId}/messages`,
-    { params: { offset, limit } },
+    { params: { offset, limit, orderBy } },
   );
   if (!response.data.success || !response.data.data) {
     throw new Error(response.data.error || 'Falha ao carregar mensagens');

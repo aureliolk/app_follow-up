@@ -82,11 +82,13 @@ export async function GET(
         const cursor = url.searchParams.get('cursor');
         const offset = parseInt(url.searchParams.get('offset') || '0', 10);
         const limit = parseInt(url.searchParams.get('limit') || '20', 10);
-        const take = limit + 1;
+        const orderParam = url.searchParams.get('orderBy') as 'asc' | 'desc' | null;
+        const orderBy = (orderParam === 'asc' || orderParam === 'desc') ? orderParam : 'asc'; // Default to asc
+        const take = limit + 1; // Fetch one more to check for hasMore
 
         const findParams: Prisma.MessageFindManyArgs = {
             where: { conversation_id: conversationId },
-            orderBy: { timestamp: 'asc' },
+            orderBy: { timestamp: orderBy }, // <-- Use the determined order
             select: {
                 id: true,
                 conversation_id: true,
@@ -109,7 +111,7 @@ export async function GET(
 
         if (cursor) {
             findParams.cursor = { id: cursor };
-            findParams.skip = 1;
+            findParams.skip = 1; // Skip the cursor item itself
         } else if (offset > 0) {
             findParams.skip = offset;
         }
@@ -125,7 +127,7 @@ export async function GET(
             message_type: 'TEXT', // Assign default 'TEXT' since it's missing from DB
         }));
 
-        console.log(`API GET Messages: Found ${messagesWithType.length} messages for conversation ${conversationId}. HasMore: ${hasMore}`);
+        console.log(`API GET Messages: Found ${messagesWithType.length} messages for conversation ${conversationId} (Order: ${orderBy}). HasMore: ${hasMore}`);
         return NextResponse.json({ success: true, data: messagesWithType as Message[], hasMore }); // Cast should be safer now
 
     } catch (error) {
