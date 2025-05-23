@@ -16,7 +16,7 @@ import { lookup } from 'mime-types'; // Para obter extensão do mime type
 import { describeImage } from '@/lib/ai/describeImage';
 import { transcribeAudio } from '@/lib/ai/transcribeAudio';
 import { Readable } from 'stream';
-import { generateChatCompletion } from '../ai/chatService';
+import { processAIChat } from '../ai/chatService';
 
 // Import Pusher server to notify real-time clients
 import pusher from '@/lib/pusher';
@@ -538,18 +538,32 @@ async function processJob(job: Job<JobData>) {
     let finalAiResponseText: string | null = null; // Alterado nome para clareza
 
     try {
-      let aiResult = await generateChatCompletion({
-        messages: aiMessages, // Histórico formatado
-        systemPrompt: systemPrompt,
-        modelId: modelId,
-        nameIa: workspace.ai_name || undefined,
-        conversationId: conversationId,
-        workspaceId: workspace.id,
-        clientName: client?.name || ''
-      });
+      let aiResult = await processAIChat(aiMessages, workspace.id, conversationId, true, modelId, systemPrompt);
 
-      console.log(`[MsgProcessor ${jobId}] Resposta final da IA:`, aiResult);
-      finalAiResponseText = aiResult.response as string;
+      // When streamMode is true, aiResult is a ReadableStream.
+      // We need to consume the stream to get the final text.
+      console.log(`[MsgProcessor ${jobId}] Consumindo stream da IA...`);
+      const reader = (aiResult as ReadableStream<any>).getReader();
+      let accumulatedText = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        // Assuming the stream chunks are text or have a text property
+        if (typeof value === 'string') {
+           accumulatedText += value;
+        } else if (value && typeof value === 'object' && 'textDelta' in value && typeof value.textDelta === 'string') {
+           // Handle specific AI SDK stream part types if necessary
+           accumulatedText += value.textDelta;
+        } else if (value && typeof value === 'object' && 'text' in value && typeof value.text === 'string') {
+            // Handle potential other text chunks
+            accumulatedText += value.text;
+        } else {
+            // Log unexpected chunk types for debugging
+            console.warn(`[MsgProcessor ${jobId}] Chunk de stream inesperado:`, value);
+        }
+      }
+      finalAiResponseText = accumulatedText;
+      console.log(`[MsgProcessor ${jobId}] Stream da IA consumido. Texto final: ${finalAiResponseText?.substring(0, 100)}...`);
       
     } catch (aiError) {
        console.error(`[MsgProcessor ${jobId}] Erro CRÍTICO durante o processamento com IA (chamada ou ferramentas):`, aiError);
