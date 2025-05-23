@@ -316,6 +316,8 @@ model Workspace {
   // Add this relation field for Custom HTTP Tools
   customHttpTools CustomHttpTool[]
 
+  aiStages AIStage[]
+
   @@map("workspaces")
   @@schema("workspace_schema")
 }
@@ -837,6 +839,55 @@ model PipelineRule {
   @@schema("workspace_schema")
 }
 
+
+model AIStage {
+  id                      String    @id @default(uuid())
+  workspaceId             String
+  workspace               Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name                    String    // Nome do estágio (ex: "Vídeo 1", "Consulta CEP")
+  condition               String    @db.Text // Condição geral para o estágio ser escolhido
+  isActive                Boolean   @default(true)
+  // Dados a coletar ANTES das instruções/ações (opcional)
+  dataToCollect           Json?     // Ex: ["nome_do_cliente", "tipo_de_video"]
+  // Instrução final para o usuário APÓS as ações (se houver)
+  finalResponseInstruction String?   @db.Text // Ex: "Seguir o vídeo {{nome_do_cliente}}"
+
+  // Relacionamento com Ações (adicionado na Fase 2)
+  actions                 AIStageAction[]
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([workspaceId, name]) // Nome do estágio deve ser único por workspace
+  @@index([workspaceId])
+  @@map("ai_stages") // Nome da tabela no DB
+  @@schema("workspace_schema")
+}
+
+
+enum AIStageActionType {
+  API_CALL
+  SEND_VIDEO // Futuro
+  CONNECT_CALENDAR // Futuro
+  TRANSFER_HUMAN // Futuro
+  @@schema("workspace_schema")
+}
+
+model AIStageAction {
+  id          String    @id @default(uuid())
+  stageId     String
+  stage       AIStage   @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  type        AIStageActionType // API_CALL, SEND_VIDEO, etc.
+  order       Int       // Ordem de execução se houver múltiplas ações
+  config      Json      // Configuração específica da ação (ex: detalhes da API call)
+  isEnabled   Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([stageId, order])
+  @@map("ai_stage_actions")
+  @@schema("workspace_schema")
+}
 // ==================================
 // ENUMS FOR AI TOOLS
 // ==================================
@@ -880,3 +931,5 @@ model CustomHttpTool {
   @@map("custom_http_tools") // Explicit table name
   @@schema("workspace_schema") // Ensure model is in the correct schema
 }
+
+
