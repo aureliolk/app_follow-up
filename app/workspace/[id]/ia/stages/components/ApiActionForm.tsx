@@ -24,7 +24,7 @@ interface ApiActionFormProps {
 export default function ApiActionForm({ config, onUpdate, workspaceId }: ApiActionFormProps) {
     const [apiName, setApiName] = useState(config.apiName || '');
     const [url, setUrl] = useState(config.url || '');
-    const [method, setMethod] = useState(config.method || 'GET');
+    const [method, setMethod] = useState<"GET" | "POST" | "PUT" | "DELETE" | "PATCH">(config.method as "GET" | "POST" | "PUT" | "DELETE" | "PATCH" || 'GET');
     const [headers, setHeaders] = useState(JSON.stringify(config.headers, null, 2) || '');
     const [querySchema, setQuerySchema] = useState(JSON.stringify(config.querySchema, null, 2) || '');
     const [bodySchema, setBodySchema] = useState(JSON.stringify(config.bodySchema, null, 2) || '');
@@ -111,7 +111,7 @@ export default function ApiActionForm({ config, onUpdate, workspaceId }: ApiActi
             </div>
             <div>
                 <Label htmlFor="method">Método HTTP</Label>
-                 <Select onValueChange={setMethod} value={method}>
+                 <Select onValueChange={(value) => setMethod(value as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH')} value={method}>
                      <SelectTrigger>
                          <SelectValue placeholder="Selecionar Método" />
                      </SelectTrigger>

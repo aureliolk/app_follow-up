@@ -329,3 +329,29 @@ export async function deleteAIStage(stageId: string) {
     return { success: false, message: error.message };
   }
 }
+
+export async function getAIStageByName(workspaceId: string, stageName: string) {
+  // TODO: Implement permission check
+  // Ex: ensure user has permission to access stages in this workspace
+
+  try {
+    const stage = await prisma.aIStage.findFirst({
+      where: {
+        workspaceId: workspaceId,
+        name: stageName,
+        isActive: true, // Only fetch active stages
+      },
+      include: {
+        actions: {
+          orderBy: { order: 'asc' },
+        },
+      },
+    });
+
+    return stage;
+  } catch (error: any) {
+    console.error(`[getAIStageByName] Error fetching stage by name "${stageName}" for workspace ${workspaceId}:`, error);
+    // Optionally, return a specific error type or null
+    throw new Error(`Failed to fetch AI stage by name: ${error.message}`);
+  }
+}
