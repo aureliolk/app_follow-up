@@ -5,7 +5,18 @@ import { revalidatePath } from 'next/cache';
 import { authOptions } from '@/lib/auth/auth-options';
 import { getServerSession } from 'next-auth';
 import axios from 'axios'; // Import axios for making HTTP requests
-import { AIStageActionTypeEnum, FrontendAIStageActionData, FrontendAIStageActionDataWithOrder, CreateAIStageData, ApiCallConfig } from '@/lib/types/ai-stages';
+import { AIStageActionTypeEnum, FrontendAIStageActionData, ApiCallConfig } from '@/lib/types/ai-stages';
+import { AIStageActionType } from '@prisma/client';
+
+// Define the CreateAIStageData interface locally
+interface CreateAIStageData {
+    name: string;
+    condition: string;
+    isActive?: boolean; // Optional as it defaults to true
+    dataToCollect?: string[]; // Assuming string[] based on StageForm usage
+    finalResponseInstruction?: string | null;
+    actions?: FrontendAIStageActionData[]; // Reusing FrontendAIStageActionData for action structure
+}
 
 // Placeholder for permission check utility
 // In a real scenario, this would verify if the user has permissions for the workspace
@@ -138,7 +149,7 @@ export async function createAIStage(workspaceId: string, data: CreateAIStageData
         },
         actions: { // Adicionado para criar ações relacionadas
           create: data.actions?.map(action => ({
-            type: action.type,
+            type: action.type as AIStageActionType,
             order: action.order,
             config: action.config,
             isEnabled: action.isEnabled ?? true,
@@ -268,13 +279,13 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
           upsert: incomingActions.map(action => ({
             where: { id: action.id || 'non-existent-id' }, // Usa o ID da ação ou um ID inexistente para 'create'
             update: { // Dados para atualizar se a ação já existe
-              type: action.type,
+              type: action.type as AIStageActionType,
               order: action.order,
               config: action.config,
               isEnabled: action.isEnabled ?? true,
             },
             create: { // Dados para criar se a ação é nova
-              type: action.type,
+              type: action.type as AIStageActionType,
               order: action.order,
               config: action.config,
               isEnabled: action.isEnabled ?? true,

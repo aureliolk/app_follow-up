@@ -10,7 +10,7 @@ import { createAIStage, updateAIStage } from '@/lib/actions/aiStageActions';
 import { toast } from 'react-hot-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ApiActionForm from './ApiActionForm';
-import { AIStageActionTypeEnum, ApiCallConfig, AIStage } from '@/lib/types/ai-stages';
+import { AIStageActionTypeEnum, ApiCallConfig } from '@/lib/types/ai-stages';
 import isEqual from 'lodash.isequal';
 import { useRouter } from 'next/navigation';
 
@@ -58,7 +58,7 @@ export default function StageForm({ workspaceId, initialData, onSuccess }: Stage
     
     // State for managing actions
     const [actions, setActions] = useState<AIStageAction[]>(initialData?.actions || []);
-    const [newActionType, setNewActionType] = useState<AIStageActionTypeEnum | ''>('');
+    const [newActionType, setNewActionType] = useState<AIStageActionTypeEnum | 'SEND_VIDEO' | 'CONNECT_CALENDAR' | ''>('');
 
     const [isPending, startTransition] = useTransition();
 
@@ -99,7 +99,7 @@ export default function StageForm({ workspaceId, initialData, onSuccess }: Stage
         // Create a basic structure for the new action
         const newAction: AIStageAction = {
              // No ID yet, it will be assigned by the backend on save
-            type: newActionType, // Use the state value directly
+            type: newActionType as AIStageActionTypeEnum, // Cast to AIStageActionTypeEnum for type compatibility where needed
             order: actions.length + 1, // Simple ordering for now
             config: {}, // Empty config, will be filled in specific action forms
             isEnabled: true,
@@ -252,14 +252,14 @@ export default function StageForm({ workspaceId, initialData, onSuccess }: Stage
                 </div>
 
                 <div className="flex space-x-2 items-center">
-                    <Select onValueChange={(value: AIStageActionTypeEnum) => setNewActionType(value)} value={newActionType}>
+                    <Select onValueChange={(value: AIStageActionTypeEnum | 'SEND_VIDEO' | 'CONNECT_CALENDAR') => setNewActionType(value)} value={newActionType}>
                         <SelectTrigger className="w-[240px]">
                             <SelectValue placeholder="Selecionar tipo de ação" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value={AIStageActionTypeEnum.API_CALL}>Chamar uma API</SelectItem>
-                            <SelectItem value={AIStageActionTypeEnum.SEND_VIDEO} disabled>Enviar Vídeo (em breve)</SelectItem>
-                            <SelectItem value={AIStageActionTypeEnum.CONNECT_CALENDAR} disabled>Conectar Calendário (em breve)</SelectItem>
+                            <SelectItem value="SEND_VIDEO" disabled>Enviar Vídeo (em breve)</SelectItem>
+                            <SelectItem value="CONNECT_CALENDAR" disabled>Conectar Calendário (em breve)</SelectItem>
                             {/* Removed duplicate SelectItems */}
                         </SelectContent>
                     </Select>
