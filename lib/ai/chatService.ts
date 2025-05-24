@@ -151,30 +151,26 @@ function getValueByPath(obj: any, path: string): any {
 }
 
 // Função para criar uma ferramenta de estágio
-function createStageTool(stage: any, workspaceId: string) {
+function createStageTool(stage: any, workspaceId: string): Tool<any, any> {
   // Criar schema dinâmico baseado em dataToCollect
   const properties: Record<string, any> = {};
-  
+
   if (Array.isArray(stage.dataToCollect)) {
     for (const field of stage.dataToCollect) {
-      // Determinar o tipo Zod com base na descrição ou inferência (simplificado como string por padrão)
-      let zodType = z.string(); // Schema Zod padrão é string
-      
-      // Adicionar descrição ao schema Zod
-      if (field.description) {
-          zodType = zodType.describe(field.description);
+      // Assumindo field é uma string (o nome do campo esperado)
+      if (typeof field === 'string' && field.trim() !== '') {
+        // Para simplicidade, vamos assumir tipo string e que são opcionais por padrão
+        properties[field.trim()] = z.string().optional();
+      } else {
+        console.warn(`[createStageTool] Campo inválido em dataToCollect para estágio ${stage.name}:`, field);
       }
-      
-      // Marcar como opcional se não for explicitamente obrigatório (assumindo optional por padrão se não especificado)
-      // Nota: Se stage.dataToCollect puder especificar required, essa lógica precisará ser ajustada.
-      // Atualmente, a lista `required` não é usada com .partial(), então vamos tornar todos opcionais.
-      properties[field.name] = zodType.optional();
     }
   }
-  
+
   return {
     description: `Ativar estágio: ${stage.name}. Condição: ${stage.condition}`,
-    parameters: z.object(properties),
+    // Usar partial() no objeto Zod para tornar todos os campos opcionais por padrão
+    parameters: z.object(properties).partial(),
     execute: async (params: any) => {
       return {
         stageId: stage.id,
@@ -242,11 +238,22 @@ export async function processAIChat(
     // Carregar ferramentas customizadas existentes
     const customTools = await getActiveToolsForWorkspace(workspaceId);
 
-    // Combinar todas as ferramentas
-    const allTools = {
+    // Combinar todas as ferramentas em um objeto ToolSet
+    const allTools: Record<string, Tool<any, any>> = {
       ...customTools,
       ...stageTools
     };
+
+    console.log('allTools', allTools);
+
+    const baseInstructions = `
+    Data e hora atual: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+    Timezone do cliente: America/Sao_Paulo
+    Id do workspace: ${workspaceId}
+    Id da conversa: ${conversationId}
+    Voce e capaz de Escutar audio e ver imagens. se o cliente pergunta se vc pode ver uma imagem, vc deve responder que sim. se o cliente pergunta se vc pode ouvir um audio, vc deve responder que sim.
+    `;
+
 
     // Preparar o prompt do sistema com informações sobre estágios
     const stageInstructions = activeStages.length > 0 ? `
@@ -266,7 +273,7 @@ ${stageContext.currentStage ? `Estágio atual: ${stageContext.currentStage}` : '
 ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${JSON.stringify(stageContext.collectedData)}` : ''}
 ` : '';
 
-    const systemPrompt = `${conversation?.workspace?.ai_default_system_prompt || ''}${stageInstructions}${additionalContext ? `\n\n${additionalContext}` : ''}`;
+    const systemPrompt = `${baseInstructions}${conversation?.workspace?.ai_default_system_prompt || ''}${stageInstructions}${additionalContext ? `\n\n${additionalContext}` : ''}`;
 
     // Obter modelo de linguagem
     const model = getModelInstance(

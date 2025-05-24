@@ -494,7 +494,7 @@ async function processJob(job: Job<JobData>) {
                     console.error(`[MsgProcessor ${jobId}] Falha ao buscar/processar imagem ${msg.media_url} do S3 para IA: ${fetchError.message}. Enviando apenas texto.`);
                     return {
                         role: 'user', // Explicitamente 'user'
-                        content: msg.content || '[Imagem Enviada pelo Cliente (Falha ao carregar para IA)]'
+                        content: msg.content || '[Imagem Enviada pelo Cliente (Falha ao carregar para IA)]' || '', // Ensure content is string
                     };
                 }
             } else if (msg.media_url && msg.media_mime_type?.startsWith('audio/')) {
@@ -507,21 +507,21 @@ async function processJob(job: Job<JobData>) {
                  } else {
                      return {
                          role: 'user', // Explicitamente 'user'
-                         content: msg.content || '[Áudio Enviado pelo Cliente (Sem transcrição)]'
+                         content: msg.content || '[Áudio Enviado pelo Cliente (Sem transcrição)]' || '', // Ensure content is string
                      };
                  }
             } else {
                  // Cliente enviou TEXTO
                  return {
                      role: 'user', // Explicitamente 'user'
-                     content: msg.content || ''
+                     content: msg.content || '' // Ensure content is string
                  };
             }
         } else {
 
              return {
                  role: 'assistant',
-                 content: msg.content || ''
+                 content: msg.content || '' // Ensure content is string
              };
         }
     });
@@ -548,18 +548,30 @@ async function processJob(job: Job<JobData>) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        // Assuming the stream chunks are text or have a text property
+
+        // --- Modificação: Processar apenas chunks de texto --- 
+        // O stream pode conter diferentes tipos de chunks. Queremos apenas o texto da resposta final.
+        // Chunks de texto final geralmente vêm como strings ou objetos com 'text' / 'textDelta'
+
         if (typeof value === 'string') {
+           // Este caso pode acontecer para compatibilidade, embora menos comum com streams estruturados
            accumulatedText += value;
-        } else if (value && typeof value === 'object' && 'textDelta' in value && typeof value.textDelta === 'string') {
-           // Handle specific AI SDK stream part types if necessary
-           accumulatedText += value.textDelta;
-        } else if (value && typeof value === 'object' && 'text' in value && typeof value.text === 'string') {
-            // Handle potential other text chunks
-            accumulatedText += value.text;
+        } else if (value && typeof value === 'object') {
+            // Chunks estruturados
+            if (value.type === 'text-delta' && typeof value.textDelta === 'string') {
+                // Chunks de texto incremental (mais comum)
+                accumulatedText += value.textDelta;
+            } else if (value.type === 'text' && typeof value.text === 'string') {
+                 // Chunks de texto completos (menos comum, mas possível)
+                 accumulatedText += value.text;
+            } else {
+                // Ignorar outros tipos de chunks (tool-call, tool-result, step-start, etc.)
+                // Mas vamos logar para depuração, se necessário
+                // console.warn(`[MsgProcessor ${jobId}] Ignorando chunk de stream tipo: ${value.type}`, value);
+            }
         } else {
-            // Log unexpected chunk types for debugging
-            console.warn(`[MsgProcessor ${jobId}] Chunk de stream inesperado:`, value);
+            // Logar quaisquer outros chunks inesperados não-objetos
+            console.warn(`[MsgProcessor ${jobId}] Chunk de stream inesperado (não string/objeto):`, value);
         }
       }
       finalAiResponseText = accumulatedText;

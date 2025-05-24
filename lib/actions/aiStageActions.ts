@@ -95,9 +95,8 @@ export async function testApiCall(workspaceId: string, config: ApiCallConfig) {
             method: config.method as any, // Cast method to any for axios type compatibility
             url: config.url,
             headers: headers,
-            // Note: For a simple test call, we might not send query/body data based on schemas.
-            // A more advanced test could involve mock data based on schemas.
-            // For now, we'll just send headers and URL.
+            // Include the body in the request config if the method supports it
+            ...(config.body && (config.method === 'POST' || config.method === 'PUT' || config.method === 'PATCH') ? { data: config.body } : {}),
         });
 
         // Return relevant parts of the response, ensuring headers are a plain object

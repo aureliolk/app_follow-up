@@ -10,6 +10,18 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'react-hot-toast';
 import isEqual from 'lodash.isequal';
 
+// Define a helper function for safe JSON parsing
+const safeJsonParse = (jsonString: string | undefined, fieldName?: string) => {
+    if (!jsonString) return undefined;
+    try {
+        return JSON.parse(jsonString);
+    } catch (error) {
+        console.error(`Failed to parse JSON string for ${fieldName || 'a field'}:`, jsonString, error);
+        toast.error(`Formato JSON inválido no campo '${fieldName || 'desconhecido'}'.`);
+        return undefined; // Return undefined or null on parsing error
+    }
+};
+
 // Import the testApiCall Server Action and its exported config type
 import { testApiCall } from '@/lib/actions/aiStageActions';
 // Import types from the new types file
@@ -35,39 +47,36 @@ export default function ApiActionForm({ config, onUpdate, workspaceId }: ApiActi
     const [testResult, setTestResult] = useState<any>(null);
     const [isTesting, startTestTransition] = useTransition();
 
+    // State for the body content to be sent during the test request
+    const [testRequestBody, setTestRequestBody] = useState('');
+
     // Ref to store the last reported config
     const lastReportedConfig = useRef<ApiCallConfig | null>(null);
 
     // Use effect to update the parent component whenever internal state changes
     useEffect(() => {
-        try {
-            const parsedHeaders = headers ? JSON.parse(headers) : undefined;
-            const parsedQuerySchema = querySchema ? JSON.parse(querySchema) : undefined;
-            const parsedBodySchema = bodySchema ? JSON.parse(bodySchema) : undefined;
-            const parsedResponseMapping = responseMapping ? JSON.parse(responseMapping) : undefined;
+        // Use the safeJsonParse helper to handle potential errors
+        const parsedHeaders = safeJsonParse(headers, 'Headers');
+        const parsedQuerySchema = safeJsonParse(querySchema, 'Schema da Query');
+        const parsedBodySchema = safeJsonParse(bodySchema, 'Schema do Body');
+        const parsedResponseMapping = safeJsonParse(responseMapping, 'Mapeamento da Resposta');
 
-            const currentConfig: ApiCallConfig = {
-                apiName,
-                url,
-                method,
-                headers: parsedHeaders,
-                querySchema: parsedQuerySchema,
-                bodySchema: parsedBodySchema,
-                responseMapping: parsedResponseMapping,
-                useApiResponse,
-            };
+        const currentConfig: ApiCallConfig = {
+            apiName,
+            url,
+            method,
+            headers: parsedHeaders,
+            querySchema: parsedQuerySchema,
+            bodySchema: parsedBodySchema,
+            responseMapping: parsedResponseMapping,
+            useApiResponse,
+        };
 
-            // Perform a deep comparison before calling onUpdate
-            if (!isEqual(currentConfig, lastReportedConfig.current)) {
-                onUpdate(currentConfig);
-                lastReportedConfig.current = currentConfig; // Update ref with the new reported config
-            }
-
-         } catch (error) {
-             console.error("Error parsing JSON config for API action:", error);
-             // Optionally, display a toast error to the user
-             // toast.error("Invalid JSON format in one of the fields.");
-         }
+        // Perform a deep comparison before calling onUpdate
+        if (!isEqual(currentConfig, lastReportedConfig.current)) {
+            onUpdate(currentConfig);
+            lastReportedConfig.current = currentConfig; // Update ref with the new reported config
+        }
     }, [apiName, url, method, headers, querySchema, bodySchema, responseMapping, useApiResponse, onUpdate]);
 
      // Handle test request button click
@@ -83,11 +92,16 @@ export default function ApiActionForm({ config, onUpdate, workspaceId }: ApiActi
              apiName, // Include apiName even if not used by backend test action for consistency
              url,
              method,
-             // Attempt to parse headers, send as empty object if parsing fails
-             headers: headers ? JSON.parse(headers) : {},
+             // Use safeJsonParse for headers, default to empty object. Ensure Content-Type is application/json if body is present.
+             headers: {
+                 'Content-Type': (method === 'POST' || method === 'PUT' || method === 'PATCH') && testRequestBody ? 'application/json' : undefined,
+                 ...(safeJsonParse(headers) || {}),
+             },
              // Schemas and mapping are not sent for a basic test call
              querySchema: undefined, // Ensure these are undefined as they are not needed for the test itself
              bodySchema: undefined,
+             // Include the test request body if the method supports it
+             ...(method === 'POST' || method === 'PUT' || method === 'PATCH' ? { body: safeJsonParse(testRequestBody, 'Corpo da Requisição para Teste') } : {}),
              responseMapping: undefined,
              useApiResponse: undefined,
          };
@@ -153,11 +167,26 @@ export default function ApiActionForm({ config, onUpdate, workspaceId }: ApiActi
             {/* Test Request Section */}
              <div className="border-t pt-4 mt-4">
                 <h3 className="text-lg font-semibold mb-2">Testar Requisição</h3>
-                 <Button onClick={handleTestRequest} disabled={isTesting || !url}>
-                     {isTesting ? 'Testando...' : 'Testar Requisição'}
-                 </Button>
 
-                 {testResult && (
+                 {/* Input for Test Request Body (appears for methods that support body) */}
+                 {(method === 'POST' || method === 'PUT' || method === 'PATCH') && (
+                     <div className="mb-4">
+                         <Label htmlFor="testRequestBody">Corpo da Requisição para Teste (JSON)</Label>
+                         <Textarea
+                             id="testRequestBody"
+                             value={testRequestBody}
+                             onChange={(e) => setTestRequestBody(e.target.value)}
+                             rows={6}
+                             placeholder='{ "chave": "valor" }'
+                         />
+                     </div>
+                 )}
+
+                  <Button onClick={handleTestRequest} disabled={isTesting || !url}>
+                      {isTesting ? 'Testando...' : 'Testar Requisição'}
+                  </Button>
+
+                  {testResult && (
                      <div className="mt-4">
                          <Label htmlFor="testResult">Resultado do Teste</Label>
                          <Textarea
