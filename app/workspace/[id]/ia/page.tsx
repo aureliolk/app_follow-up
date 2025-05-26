@@ -6,6 +6,7 @@ import AbandonedCartRules from "./components/AbandonedCartRules";
 import { prisma } from '@/lib/db'; // <<< Importar Prisma
 import { WorkspaceAiFollowUpRule, AbandonedCartRule } from '@prisma/client'; // <<< Importar tipos Prisma
 import { notFound } from 'next/navigation'; // <<< Importar notFound
+import AIStagesPage from "./stages/page";
 
 // <<< Tornar async e aceitar params com id >>>
 export default async function IaPage({ params }: { params: { id: string } }) {
@@ -95,6 +96,11 @@ export default async function IaPage({ params }: { params: { id: string } }) {
                     initialRules={followUpRules} 
                     workspaceId={workspaceId} 
                 />
+            </div>
+
+            {/* Card de Estágios de IA */}
+            <div>
+                <AIStagesPage params={{ id: workspaceId }} />
             </div>
         </div>
     )

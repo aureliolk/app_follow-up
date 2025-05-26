@@ -22,8 +22,6 @@ export default async function AIStagesPage({ params }: AIStagesPageProps) {
             </div>
 
             <StageList stages={stages} workspaceId={workspaceId} />
-
-            {/* TODO: Add components for listing stages and forms */}
         </div>
     );
 } 
