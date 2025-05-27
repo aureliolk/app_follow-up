@@ -285,7 +285,8 @@ model Workspace {
   ai_default_system_prompt String? @db.Text
   ai_model_preference      String?
   webhook_ingress_secret   String? @unique
-
+  delay_between_messages   Int?    @default(3000)
+  
   ai_name String? @default("Beatriz") @map("ai_name")
 
   google_refresh_token           String?   @map("google_refresh_token")
