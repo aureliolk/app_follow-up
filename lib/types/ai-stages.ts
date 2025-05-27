@@ -63,4 +63,4 @@ export interface FrontendAIStageData {
 
 // Re-exportar tipos do Prisma que são usados diretamente no backend/service
 export { AIStageActionType } from "@prisma/client";
-export type { AIStage as PrismaAIStage, AIStageAction } from "@prisma/client"; 
+export type { ai_stages as PrismaAIStage, ai_stage_actions as AIStageAction } from "@prisma/client"; 
