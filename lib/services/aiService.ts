@@ -40,10 +40,6 @@ export async function generateCartMessage(
 }
 
 /**
- * Gera conteúdo de mensagem para follow-up por inatividade via IA ou lógica definida.
- */
-
-/**
  * Gera conteúdo de mensagem para follow-up por inatividade via IA.
  * @param context Contexto com followUp, client e workspace
  * @param ruleId ID da regra de follow-up a ser aplicada
@@ -62,21 +58,37 @@ export async function generateFollowUpMessage(
 
   // Parâmetros para IA
   const modelId = workspace.ai_model_preference || 'gpt-4o';
-  const clientName = client.name || '';
   // Incluir a regra como mensagem inicial para evitar prompt vazio
   const messages: CoreMessage[] = [{ role: 'user', content: rule.message_content }];
+
   // Chamada ao serviço de IA
   const followResult = await processAIChat(
     messages,
-    systemPrompt,
-    modelId,
-    false,
-    
+    // Passar systemPrompt, workspaceId e conversationId são necessários para processAIChat
+    // Pelo código de processAIChat, ele precisa do workspaceId e conversationId para carregar ferramentas/estágios e contexto
+    // Vamos precisar obter o conversationId do contexto aqui. Assumindo que está disponível em context.conversation.id
+    workspace.id, // workspaceId: string
+    context.conversation.id, // conversationId: string
+    false, // streamMode: boolean
+    modelId, // modelPreference?: string
+    systemPrompt // additionalContext?: string - Passando o systemPrompt aqui
   );
 
-  if (followResult && typeof followResult === 'object' && 'content' in followResult && typeof followResult.content === 'string') {
-    return followResult.content;
+  // Verificar o resultado retornado por processAIChat no modo não-streaming
+  if (followResult && typeof followResult === 'object') {
+    // Verificar se há texto no resultado
+    if ('text' in followResult && typeof followResult.text === 'string' && followResult.text.length > 0) {
+      return followResult.text; // Retorna o texto se ele existir
+    }
+    // Se não há texto, verificar se a IA retornou toolCalls
+    if ('toolCalls' in followResult && Array.isArray(followResult.toolCalls) && followResult.toolCalls.length > 0) {
+        // Lançar um erro específico se a IA tentou usar ferramentas em vez de gerar texto
+        // Podemos incluir os nomes das ferramentas para ajudar no diagnóstico
+        const toolNames = followResult.toolCalls.map(tc => tc.toolName).join(', ');
+        throw new Error(`IA tentou usar ferramenta(s) (${toolNames}) em vez de gerar texto para follow-up.`);
+    }
   }
-  
-  throw new Error('IA não retornou texto válido para mensagem de follow-up.');
+
+  // Se não retornou texto nem toolCalls (ou o resultado não é o esperado), lançar erro genérico
+  throw new Error('IA não retornou um resultado válido (texto ou toolCalls) para mensagem de follow-up.');
 }
