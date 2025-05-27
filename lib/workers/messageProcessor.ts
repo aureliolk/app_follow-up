@@ -531,7 +531,7 @@ async function processJob(job: Job<JobData>) {
     const aiMessages = await Promise.all(aiMessagesPromises);
     console.log(`[MsgProcessor ${jobId}] Mensagens formatadas para IA (multimodal):`, JSON.stringify(aiMessages.slice(-5).map(m => ({ role: m.role, content: Array.isArray(m.content) ? m.content.map(c => c.type === 'text' ? { type: 'text', text: c.text.substring(0, 50)+'...' } : { type: c.type }) : typeof m.content === 'string' ? m.content.substring(0,100)+'...' : m.content })), null, 2)); // Log formatado
 
-    // --- 7. Obter Prompt e Modelo --- 
+    // --- 7. Obter Prompt e Modelo ---
     const modelId = workspace.ai_model_preference || 'gpt-4o';
     const systemPrompt = workspace.ai_default_system_prompt ?? undefined;
     
@@ -584,234 +584,158 @@ async function processJob(job: Job<JobData>) {
     }
     
     // --- 9. Salvar e Enviar Resposta da IA ---
-    if (finalAiResponseText ) {
-      const newAiMessageTimestamp = new Date();
+    if (finalAiResponseText) {
+      // Dividir o texto em parágrafos (dividir por duas quebras de linha)
+      const paragraphs = finalAiResponseText.split(/\n\s*\n/).filter(p => p.trim() !== '');
 
-      // Salvar resposta da IA
-      const newAiMessage = await prisma.message.create({
-          data: {
-            conversation_id: conversationId,
-            sender_type: MessageSenderType.AI,
-            content: finalAiResponseText, // <<< USAR CONTEÚDO FINAL DA IA
-            timestamp: newAiMessageTimestamp,
-            // <<< Definir Status inicial como PENDING >>>
-            status: 'PENDING' // Garante que começa como pendente antes do envio
-          },
-          select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true } // Select for publish
-      });
-      console.log(`[MsgProcessor ${jobId}] Resposta final da IA salva (ID: ${newAiMessage.id}).`);
+      console.log(`[MsgProcessor ${jobId}] Resposta da IA dividida em ${paragraphs.length} parágrafos.`);
 
-      // --- Adicionar Delay Configurável ---
-      const delay = job.data.delayBetweenMessages;
-      if (delay && delay > 0) {
-        console.log(`[MsgProcessor ${jobId}] Aguardando ${delay}ms antes de enviar resposta da IA.`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        console.log(`[MsgProcessor ${jobId}] Delay de envio concluído.`);
-      }
-      // --- Fim do Delay ---
+      for (const [index, paragraph] of paragraphs.entries()) {
+        if (!paragraph.trim()) continue; // Pular parágrafos vazios ou só com espaço
 
-      // Publicar notificação no canal Pusher do WORKSPACE
-      try {
-        // Preparar payload completo para a UI
-        const newAiMessagePayload = {
-            type: "new_message",
-            payload: { 
-              id: newAiMessage.id,
-              conversation_id: newAiMessage.conversation_id,
-              sender_type: newAiMessage.sender_type,
-              content: newAiMessage.content,
-              // Adicionar outros campos esperados pela UI
-              status: 'PENDING', // Mensagem começa PENDING
-              media_url: null,
-              media_mime_type: null,
-              media_filename: null,
-              timestamp: newAiMessage.timestamp.toISOString(), // Use ISO string
-              metadata: null 
-            }
-        };
+        const messageTimestamp = new Date(); // Timestamp para esta parte da mensagem
+
         try {
-           
-            try {
-                const pusherPayload = JSON.stringify(newAiMessagePayload);
-                const workspaceChannel = `private-workspace-${workspaceId}`;
-                await pusher.trigger(workspaceChannel, 'new_message', pusherPayload);
-                console.log(`[MsgProcessor ${jobId}] Mensagem da IA ${newAiMessage.id} publicada via Pusher no canal ${workspaceChannel}.`);
-            } catch (pusherError) {
-                console.error(`[MsgProcessor ${jobId}] Erro ao publicar mensagem da IA via Pusher:`, pusherError);
+          // Criar uma nova mensagem para este parágrafo no banco
+          const newMessage = await prisma.message.create({
+            data: {
+              conversation_id: conversationId,
+              sender_type: MessageSenderType.AI,
+              content: paragraph.trim(), // Salvar o conteúdo do parágrafo
+              timestamp: messageTimestamp,
+              status: 'PENDING', // Começa como pendente
+              // Outros campos como metadata, etc., podem ser adicionados se necessário
+            },
+            select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true, status: true } // Select for publish and update
+          });
+          console.log(`[MsgProcessor ${jobId}] Parágrafo ${index + 1}/${paragraphs.length} da IA salvo (ID: ${newMessage.id}).`);
+
+          // --- Adicionar Delay Configurable entre parágrafos ---
+          const delayBetweenParts = job.data.delayBetweenMessages || 500; // Usar delay do job ou default 500ms
+          if (delayBetweenParts > 0 && index < paragraphs.length - 1) { // Apenas se não for o último parágrafo
+             console.log(`[MsgProcessor ${jobId}] Aguardando ${delayBetweenParts}ms antes do próximo parágrafo.`);
+             await new Promise(resolve => setTimeout(resolve, delayBetweenParts));
+             console.log(`[MsgProcessor ${jobId}] Delay entre parágrafos concluído.`);
+          }
+          // --- Fim do Delay ---
+
+          // Publicar notificação no canal Pusher do WORKSPACE para a UI
+          try {
+            const pusherPayload = JSON.stringify({ type: "new_message", payload: {
+                id: newMessage.id,
+                conversation_id: newMessage.conversation_id,
+                sender_type: newMessage.sender_type,
+                content: newMessage.content,
+                status: newMessage.status,
+                timestamp: newMessage.timestamp.toISOString(),
+                media_url: null, media_mime_type: null, media_filename: null, metadata: null, // Outros campos comuns
+            }});
+            const workspaceChannel = `private-workspace-${workspaceId}`;
+            await pusher.trigger(workspaceChannel, 'new_message', pusherPayload);
+            console.log(`[MsgProcessor ${jobId}] Parágrafo ${index + 1} da IA (${newMessage.id}) publicado via Pusher no canal ${workspaceChannel}.`);
+          } catch (pusherError) {
+            console.error(`[MsgProcessor ${jobId}] Erro ao publicar parágrafo ${index + 1} (${newMessage.id}) via Pusher:`, pusherError);
+          }
+
+          // Enviar esta parte da resposta via Canal (WhatsApp/Evolution)
+          let sendResult: { success: boolean; wamid?: string; messageId?: string; error?: any } | undefined; // Declare sendResult here
+
+          try {
+            console.log(`[MsgProcessor ${jobId}] STEP 9: Sending paragraph ${index + 1} via Channel. Channel: ${channel}`);
+
+            if (channel === 'WHATSAPP' || channel === 'WHATSAPP_CLOUDAPI') {
+              const { whatsappPhoneNumberId, whatsappAccessToken } = workspace;
+              if (whatsappAccessToken && whatsappPhoneNumberId && clientPhoneNumber) {
+                sendResult = await sendWhatsAppMessage(
+                  whatsappPhoneNumberId,
+                  clientPhoneNumber,
+                  whatsappAccessToken,
+                  paragraph.trim(), // Enviar apenas o parágrafo atual
+                  workspace.ai_name || undefined
+                );
+                 console.log(`[MsgProcessor ${jobId}] Resultado do envio WhatsApp Cloud API para parágrafo ${index + 1}:`, sendResult);
+              } else {
+                console.error(`[MsgProcessor ${jobId}] Missing data for WhatsApp Cloud API send for paragraph ${index + 1} (Token: ${!!whatsappAccessToken}, PhoneID: ${!!whatsappPhoneNumberId}, ClientPhone: ${!!clientPhoneNumber}).`);
+                 sendResult = { success: false, error: "Dados de configuração do canal ausentes." };
+              }
+            } else if (channel === 'WHATSAPP_EVOLUTION') {
+              const { evolution_api_instance_name, evolution_api_token } = workspace;
+              const apiKeyToUse = evolution_api_token;
+              if (apiKeyToUse && evolution_api_instance_name && clientPhoneNumber) {
+                 sendResult = await sendEvolutionMessage({
+                    endpoint: process.env.apiUrlEvolution,
+                    apiKey: apiKeyToUse,
+                    instanceName: evolution_api_instance_name,
+                    toPhoneNumber: clientPhoneNumber,
+                    messageContent: paragraph.trim(), // Enviar apenas o parágrafo atual
+                    senderName: workspace.ai_name || undefined
+                });
+                console.log(`[MsgProcessor ${jobId}] Resultado do envio Evolution API para parágrafo ${index + 1}:`, sendResult);
+              } else {
+                 console.error(`[MsgProcessor ${jobId}] Missing data for Evolution API send for paragraph ${index + 1} (Token: ${!!apiKeyToUse}, Instance: ${!!evolution_api_instance_name}, ClientPhone: ${!!clientPhoneNumber}).`);
+                  sendResult = { success: false, error: "Dados de configuração do canal ausentes." };
+              }
+            } else {
+                console.warn(`[MsgProcessor ${jobId}] Canal ${channel} não suportado para envio de resposta da IA. Parágrafo ${index + 1} não enviado.`);
+                 sendResult = { success: false, error: `Canal ${channel} não suportado para envio.` };
             }
-        } catch (aiMsgPublishError) {
-            console.error(`[MsgProcessor ${jobId}] ERRO AO PUBLICAR mensagem da IA no Redis (Canal Conversa):`, aiMsgPublishError);
+
+          } catch (sendError: any) {
+            console.error(`[MsgProcessor ${jobId}] ERRO EXCEÇÃO ao enviar parágrafo ${index + 1} via Canal:`, sendError);
+             sendResult = { success: false, error: sendError?.message ?? `Erro desconhecido ao enviar parágrafo ${index + 1} via Canal` };
+          }
+
+          // Atualizar status da mensagem no DB com base no resultado do envio
+          if (sendResult?.success) {
+            console.log(`[MsgProcessor ${jobId}] Envio do parágrafo ${index + 1} bem-sucedido. Atualizando status para SENT.`);
+            await prisma.message.update({
+              where: { id: newMessage.id },
+              data: {
+                channel_message_id: sendResult.wamid || sendResult.messageId || null, // Usar wamid ou messageId
+                providerMessageId: sendResult.wamid || sendResult.messageId || null, // Usar wamid ou messageId
+                status: 'SENT' as const, // Marcar como enviado
+              },
+            });
+          } else if (sendResult) { // Falhou no envio via canal
+              console.error(`[MsgProcessor ${jobId}] Envio do parágrafo ${index + 1} FALHOU para o canal. Atualizando status para FAILED.`);
+              await prisma.message.update({
+                  where: { id: newMessage.id },
+                  data: {
+                      status: 'FAILED',
+                       errorMessage: typeof sendResult.error === 'string'
+                                                  ? sendResult.error
+                                                  : (typeof sendResult.error === 'object' && sendResult.error !== null && 'message' in sendResult.error)
+                                                      ? String((sendResult.error as any).message)
+                                                      : sendResult.error?.toString() || 'Falha no envio para o canal'
+                  },
+              });
+          } else {
+               // Caso onde sendResult é undefined (canal não suportado ou dados ausentes na configuração)
+               console.warn(`[MsgProcessor ${jobId}] Envio do parágrafo ${index + 1} não tentado devido a canal não suportado ou dados ausentes na configuração. Atualizando status para FAILED.`);
+                await prisma.message.update({
+                    where: { id: newMessage.id },
+                    data: {
+                        status: 'FAILED',
+                        errorMessage: 'Envio não tentado: Canal não suportado ou dados de configuração ausentes.'
+                    }
+                });
+          }
+
+        } catch (paragraphCreationError: any) {
+           console.error(`[MsgProcessor ${jobId}] ERRO ao criar mensagem DB para parágrafo ${index + 1}:`, paragraphCreationError);
+           // Lidar com erro na criação do DB message (talvez logar ou notificar de outra forma)
         }
-      } catch (publishError: any) {
-        console.error(`[MsgProcessor ${jobId}] Falha GERAL ao tentar publicar mensagem da IA no Redis (Canal Conversa):`, publishError);
       }
 
-      // <<< LOG ANTES DE ATUALIZAR CONVERSA >>>
-      console.log(`[MsgProcessor ${jobId}] STEP 9: Before prisma.conversation.update`);
-      // Atualizar last_message_at da conversa
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { last_message_at: newAiMessageTimestamp }
-      });
-      // <<< LOG DEPOIS DE ATUALIZAR CONVERSA >>>
-      console.log(`[MsgProcessor ${jobId}] STEP 9: After prisma.conversation.update. Timestamp da conversa atualizado.`);
-
-      // <<< LOG ANTES DO BLOCO WHATSAPP >>>
-      console.log(`[MsgProcessor ${jobId}] STEP 9: Checking channel for WhatsApp send. Channel: ${channel}`);
-      // Enviar resposta via WhatsApp (se aplicável)
-      if (channel === 'WHATSAPP' || channel === 'WHATSAPP_CLOUDAPI') {
-            console.log(`[MsgProcessor ${jobId}] STEP 9: ENTERING WhatsApp Cloud API send block for channel ${channel}.`);
-            const { whatsappPhoneNumberId } = workspace; 
-            const encryptedAccessToken = workspace.whatsappAccessToken; 
-
-            if (encryptedAccessToken && whatsappPhoneNumberId && clientPhoneNumber) {
-                try {
-                    console.log(`[MsgProcessor ${jobId}] STEP 9: Attempting sendWhatsAppMessage to ${clientPhoneNumber}...`);
-
-                    const sendResult = await sendWhatsAppMessage(
-                        whatsappPhoneNumberId,
-                        clientPhoneNumber,
-                        encryptedAccessToken,
-                        finalAiResponseText,
-                        workspace.ai_name || undefined
-                    );
-
-                     console.log(`[MsgProcessor ${jobId}] Resultado do envio WhatsApp Cloud API:`, sendResult);
-
-                    if (sendResult.success && sendResult.wamid) {
-                        console.log(`[MsgProcessor ${jobId}] Envio WhatsApp Cloud API da IA bem-sucedido. WAMID: ${sendResult.wamid}`);
-                        try {
-                            const dataToUpdate = {
-                                channel_message_id: sendResult.wamid,
-                                providerMessageId: sendResult.wamid, 
-                                status: 'SENT' as const
-                            };
-                            console.log(`[MsgProcessor ${jobId}] Atualizando mensagem IA ${newAiMessage.id} com dados (Cloud API):`, dataToUpdate);
-                            await prisma.message.update({
-                                where: { id: newAiMessage.id },
-                                data: dataToUpdate
-                            });
-                            console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para SENT (Cloud API).`);
-                        } catch (updateError) {
-                            console.error(`[MsgProcessor ${jobId}] Falha ao atualizar status/WAMID da mensagem IA ${newAiMessage.id} (Cloud API):`, updateError);
-                        }
-                    } else {
-                         console.error(`[MsgProcessor ${jobId}] Envio WhatsApp Cloud API da IA FALHOU ou WAMID ausente. Error: ${sendResult.error}`);
-                         try {
-                             await prisma.message.update({
-                                 where: { id: newAiMessage.id }, 
-                                 data: { 
-                                     status: 'FAILED', 
-                                     errorMessage: typeof sendResult.error === 'string' 
-                                                            ? sendResult.error 
-                                                            : (typeof sendResult.error === 'object' && sendResult.error !== null && 'message' in sendResult.error)
-                                                                ? String((sendResult.error as any).message)
-                                                                : 'Falha no envio Cloud API ou WAMID ausente' 
-                                 }
-                             });
-                             console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para FAILED (falha no envio Cloud API).`);
-                         } catch (failUpdateError) {
-                             console.error(`[MsgProcessor ${jobId}] CRITICAL: Falha ao atualizar mensagem IA ${newAiMessage.id} para FAILED após falha no envio (Cloud API):`, failUpdateError);
-                         }
-                    }
-                } catch (sendError: any) {
-                    console.error(`[MsgProcessor ${jobId}] Erro ao chamar sendWhatsAppMessage para resposta IA (Cloud API):`, sendError);
-                     try {
-                         await prisma.message.update({
-                             where: { id: newAiMessage.id }, 
-                             data: { 
-                                 status: 'FAILED', 
-                                 errorMessage: sendError?.message ?? 'Erro desconhecido ao enviar via WhatsApp Cloud API' 
-                             }
-                         });
-                         console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para FAILED (exceção no envio Cloud API).`);
-                     } catch (failUpdateError) {
-                         console.error(`[MsgProcessor ${jobId}] CRITICAL: Falha ao atualizar mensagem IA ${newAiMessage.id} para FAILED após exceção no envio (Cloud API):`, failUpdateError);
-                     }
-                }
-            } else {
-                 console.error(`[MsgProcessor ${jobId}] STEP 9: Missing data for WhatsApp Cloud API send (Token: ${!!encryptedAccessToken}, PhoneID: ${!!whatsappPhoneNumberId}, ClientPhone: ${!!clientPhoneNumber}).`);
-            }
-            console.log(`[MsgProcessor ${jobId}] STEP 9: Exiting WhatsApp Cloud API send block.`);
-      } else if (channel === 'WHATSAPP_EVOLUTION') {
-            console.log(`[MsgProcessor ${jobId}] STEP 9: ENTERING Evolution API send block for channel ${channel}.`);
-            const { evolution_api_instance_name, evolution_api_token } = workspace;
-
-            // Validar se o evolution_api_token existe e usá-lo como apiKey se evolution_api_key não estiver presente (legado)
-            const apiKeyToUse = evolution_api_token;
-
-            if (apiKeyToUse && evolution_api_instance_name && clientPhoneNumber) {
-                try {
-                    console.log(`[MsgProcessor ${jobId}] STEP 9: Attempting sendEvolutionMessage to ${clientPhoneNumber}...`);
-                    
-                    const sendResult = await sendEvolutionMessage({
-                        endpoint: process.env.apiUrlEvolution,
-                        apiKey: apiKeyToUse,
-                        instanceName: evolution_api_instance_name,
-                        toPhoneNumber: clientPhoneNumber,
-                        messageContent: finalAiResponseText,
-                        senderName: workspace.ai_name || undefined
-                    });
-
-                    console.log(`[MsgProcessor ${jobId}] Resultado do envio Evolution API:`, sendResult);
-
-                    if (sendResult.success && sendResult.messageId) {
-                        console.log(`[MsgProcessor ${jobId}] Envio Evolution API da IA bem-sucedido. Message ID: ${sendResult.messageId}`);
-                        try {
-                            const dataToUpdate = {
-                                channel_message_id: sendResult.messageId,
-                                providerMessageId: sendResult.messageId,
-                                status: 'SENT' as const
-                            };
-                            console.log(`[MsgProcessor ${jobId}] Atualizando mensagem IA ${newAiMessage.id} com dados (Evolution API):`, dataToUpdate);
-                            await prisma.message.update({
-                                where: { id: newAiMessage.id },
-                                data: dataToUpdate
-                            });
-                            console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para SENT (Evolution API).`);
-                        } catch (updateError) {
-                            console.error(`[MsgProcessor ${jobId}] Falha ao atualizar status/MessageID da mensagem IA ${newAiMessage.id} (Evolution API):`, updateError);
-                        }
-                    } else {
-                        console.error(`[MsgProcessor ${jobId}] Envio Evolution API da IA FALHOU ou Message ID ausente. Error: ${sendResult.error}`);
-                        try {
-                            await prisma.message.update({
-                                where: { id: newAiMessage.id },
-                                data: {
-                                    status: 'FAILED',
-                                    errorMessage: sendResult.error || 'Falha no envio Evolution API ou Message ID ausente'
-                                }
-                            });
-                            console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para FAILED (falha no envio Evolution API).`);
-                        } catch (failUpdateError) {
-                            console.error(`[MsgProcessor ${jobId}] CRITICAL: Falha ao atualizar mensagem IA ${newAiMessage.id} para FAILED após falha no envio (Evolution API):`, failUpdateError);
-                        }
-                    }
-                } catch (sendError: any) {
-                    console.error(`[MsgProcessor ${jobId}] Erro ao chamar sendEvolutionMessage para resposta IA (Evolution API):`, sendError);
-                    try {
-                        await prisma.message.update({
-                            where: { id: newAiMessage.id },
-                            data: {
-                                status: 'FAILED',
-                                errorMessage: sendError?.message ?? 'Erro desconhecido ao enviar via Evolution API'
-                            }
-                        });
-                        console.log(`[MsgProcessor ${jobId}] Mensagem IA ${newAiMessage.id} atualizada para FAILED (exceção no envio Evolution API).`);
-                    } catch (failUpdateError) {
-                        console.error(`[MsgProcessor ${jobId}] CRITICAL: Falha ao atualizar mensagem IA ${newAiMessage.id} para FAILED após exceção no envio (Evolution API):`, failUpdateError);
-                    }
-                }
-            } else {
-                console.error(`[MsgProcessor ${jobId}] STEP 9: Missing data for Evolution API send (Endpoint: ${!!process.env.apiUrlEvolution}, APIKey: ${!!apiKeyToUse}, Instance: ${!!evolution_api_instance_name}, ClientPhone: ${!!clientPhoneNumber}).`);
-            }
-            console.log(`[MsgProcessor ${jobId}] STEP 9: Exiting Evolution API send block.`);
-      } else {
-          console.warn(`[MsgProcessor ${jobId}] STEP 9: Channel ${channel} is not a recognized WhatsApp channel. Skipping send.`);
+      // Atualizar last_message_at da conversa com o timestamp do ÚLTIMO parágrafo enviado
+      if (paragraphs.length > 0) {
+         const lastParagraphTimestamp = new Date(); // Usar timestamp atual ou do último parágrafo criado
+         await prisma.conversation.update({
+           where: { id: conversationId },
+           data: { last_message_at: lastParagraphTimestamp }
+         });
+         console.log(`[MsgProcessor ${jobId}] Timestamp da conversa ${conversationId} atualizado para o último parágrafo.`);
       }
-
-    } else {
-      console.log(`[MsgProcessor ${jobId}] IA não retornou conteúdo. Nenhuma mensagem salva ou enviada.`);
     }
 
     console.log(`--- [MsgProcessor ${jobId}] FIM ---`);

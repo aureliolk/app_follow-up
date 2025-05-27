@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { authOptions } from '@/lib/auth/auth-options';
 import { getServerSession } from 'next-auth';
 import axios from 'axios'; // Import axios for making HTTP requests
+import { v4 as uuidv4 } from 'uuid'; // Import uuid
 import { AIStageActionTypeEnum, FrontendAIStageActionData, ApiCallConfig } from '@/lib/types/ai-stages';
 import { AIStageActionType } from '@prisma/client';
 
@@ -135,28 +136,32 @@ export async function createAIStage(workspaceId: string, data: CreateAIStageData
   // Exemplo: if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
 
   try {
-    const newStage = await prisma.aIStage.create({
+    const newStage = await prisma.ai_stages.create({
       data: {
+        id: uuidv4(),
         name: data.name,
         condition: data.condition,
         isActive: data.isActive ?? true,
         // Prisma automatically handles string[] to JsonValue conversion for dataToCollect
         dataToCollect: data.dataToCollect,
         finalResponseInstruction: data.finalResponseInstruction,
-        workspace: {
+        workspaces: {
           connect: { id: workspaceId },
         },
-        actions: { // Adicionado para criar ações relacionadas
+        ai_stage_actions: {
           create: data.actions?.map(action => ({
+            id: action.id || uuidv4(),
             type: action.type as AIStageActionType,
             order: action.order,
             config: action.config,
             isEnabled: action.isEnabled ?? true,
-          })) || [], // Use um array vazio se não houver ações
+            updatedAt: new Date(),
+          })) || [],
         },
+        updatedAt: new Date(),
       },
-      include: { // Incluir ações na resposta, se necessário
-        actions: true,
+      include: {
+        ai_stage_actions: true,
       },
     });
     revalidatePath(`/workspace/${workspaceId}/ia`);
@@ -184,12 +189,12 @@ export async function getAIStages(workspaceId: string) {
   // Exemplo: if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
 
   try {
-    const stages = await prisma.aIStage.findMany({
+    const stages = await prisma.ai_stages.findMany({
       where: {
         workspaceId: workspaceId,
       },
       include: { // Include actions when fetching stages
-          actions: true,
+          ai_stage_actions: true,
       },
       orderBy: {
         createdAt: 'asc',
@@ -212,10 +217,10 @@ export async function getAIStageById(stageId: string, workspaceId: string) {
   // Exemplo: if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { return null; }
 
   try {
-    const stage = await prisma.aIStage.findUnique({
+    const stage = await prisma.ai_stages.findUnique({
       where: { id: stageId, workspaceId: workspaceId },
        include: { // Include actions when fetching a single stage
-          actions: true,
+          ai_stage_actions: true,
       },
     });
     return stage as any; // Use any to bypass JsonValue typing issue for now
@@ -236,9 +241,9 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
 
   try {
     // Buscar o estágio existente com suas ações para determinar quais deletar
-    const existingStageWithActions = await prisma.aIStage.findUnique({
+    const existingStageWithActions = await prisma.ai_stages.findUnique({
       where: { id: stageId },
-      select: { workspaceId: true, actions: true },
+      select: { workspaceId: true, ai_stage_actions: true },
     });
 
     if (!existingStageWithActions) {
@@ -249,14 +254,33 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
     // TODO: Add permission check here using workspaceId
     // if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
 
-    const existingActionIds = existingStageWithActions.actions.map(action => action.id);
+    const existingActionIds = existingStageWithActions.ai_stage_actions.map(action => action.id);
     const incomingActions = data.actions || [];
     const incomingActionIds = incomingActions.map(action => action.id).filter(Boolean);
 
     // IDs das ações existentes que NÃO estão na lista de ações recebidas (serão deletadas)
     const actionsToDeleteIds = existingActionIds.filter(id => !incomingActionIds.includes(id));
 
-    const updatedStage = await prisma.aIStage.update({
+    const actionsToUpsert = incomingActions.map(action => ({
+       where: { id: action.id || uuidv4() },
+       update: {
+         type: action.type as AIStageActionType,
+         order: action.order,
+         config: action.config,
+         isEnabled: action.isEnabled ?? true,
+         updatedAt: new Date(),
+       },
+       create: {
+         id: action.id || uuidv4(),
+         type: action.type as AIStageActionType,
+         order: action.order,
+         config: action.config,
+         isEnabled: action.isEnabled ?? true,
+         updatedAt: new Date(),
+       },
+    }));
+
+    const updatedStage = await prisma.ai_stages.update({
       where: { id: stageId },
       data: {
         // Atualiza campos diretos do estágio se estiverem presentes no 'data'
@@ -267,7 +291,7 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
         ...(data.dataToCollect !== undefined && { dataToCollect: data.dataToCollect }),
         ...(data.finalResponseInstruction !== undefined && { finalResponseInstruction: data.finalResponseInstruction }),
 
-        actions: {
+        ai_stage_actions: {
           // 1. Deleta ações que não estão mais na lista recebida
           deleteMany: {
             id: {
@@ -275,25 +299,11 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
             },
           },
           // 2. Cria novas ações ou atualiza ações existentes
-          upsert: incomingActions.map(action => ({
-            where: { id: action.id || 'non-existent-id' }, // Usa o ID da ação ou um ID inexistente para 'create'
-            update: { // Dados para atualizar se a ação já existe
-              type: action.type as AIStageActionType,
-              order: action.order,
-              config: action.config,
-              isEnabled: action.isEnabled ?? true,
-            },
-            create: { // Dados para criar se a ação é nova
-              type: action.type as AIStageActionType,
-              order: action.order,
-              config: action.config,
-              isEnabled: action.isEnabled ?? true,
-            },
-          })),
+          upsert: actionsToUpsert,
         },
       },
       include: { // Incluir ações na resposta
-        actions: true,
+        ai_stage_actions: true,
       },
     });
 
@@ -313,8 +323,8 @@ export async function deleteAIStage(stageId: string) {
     return { success: false, message: 'Unauthorized' };
   }
 
-  // TODO: Implementar verificação de permissão real e obter workspaceId
-   const stageToDelete = await prisma.aIStage.findUnique({
+  // TODO: Implementar verificação de permissão real
+   const stageToDelete = await prisma.ai_stages.findUnique({
        where: { id: stageId },
        select: { workspaceId: true },
     });
@@ -328,7 +338,7 @@ export async function deleteAIStage(stageId: string) {
    // if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
 
   try {
-    const deletedStage = await prisma.aIStage.delete({
+    const deletedStage = await prisma.ai_stages.delete({
       where: { id: stageId },
     });
      revalidatePath(`/workspace/${workspaceId}/ia`);
@@ -345,14 +355,14 @@ export async function getAIStageByName(workspaceId: string, stageName: string) {
   // Ex: ensure user has permission to access stages in this workspace
 
   try {
-    const stage = await prisma.aIStage.findFirst({
+    const stage = await prisma.ai_stages.findFirst({
       where: {
         workspaceId: workspaceId,
         name: stageName,
         isActive: true, // Only fetch active stages
       },
       include: {
-        actions: {
+        ai_stage_actions: {
           orderBy: { order: 'asc' },
         },
       },

@@ -79,6 +79,11 @@ export default function ConversationDetail() {
     loadMoreMessages,
     toggleAIStatus,
     isTogglingAIStatus,
+    loadMoreConversations,
+    totalCountAll,
+    totalCountHuman,
+    totalCountAi,
+    removeConversationByClientId,
   } = useConversationContext();
   const { updateClient, deleteClient } = useClient();
 
@@ -151,7 +156,12 @@ export default function ConversationDetail() {
             throw new Error("Workspace ID não encontrado para deletar cliente.");
         }
         await deleteClient(clientId, conversation.workspace_id);
+        toast.success("Cliente excluído com sucesso.");
+        
+        removeConversationByClientId(clientId);
+
         selectConversation(null);
+
     } catch (error: any) {
         console.error(`[ConvDetail] Erro ao deletar cliente ${clientId}:`, error);
         toast.error(`Erro ao deletar cliente: ${error.message || 'Erro desconhecido'}`);

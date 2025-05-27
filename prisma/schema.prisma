@@ -7,7 +7,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["conversation_schema", "follow_up_schema", "products_schema", "prompts_schema", "public", "workspace_schema", "auth"]
+  schemas  = ["conversation_schema", "follow_up_schema", "products_schema", "prompts_schema", "public", "workspace_schema"]
 }
 
 model Product {
@@ -148,16 +148,18 @@ model FollowUp {
 }
 
 model FollowUpMessage {
-  id                 String            @id @default(uuid())
-  conversation_id    String
+  id              String    @id @default(uuid())
+  follow_up_id    String
+  content         String
+  sent_at         DateTime  @default(now())
+  delivered       Boolean   @default(false)
   delivered_at    DateTime?
   is_from_client  Boolean   @default(false)
   step_id         String?
-  follow_up       FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
   error_sending   String?
   is_ai_generated Boolean   @default(false)
   template_used   String?
-  follow_up_id       String
+  follow_up       FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
 
   @@index([follow_up_id])
   @@map("follow_up_messages")
@@ -165,11 +167,16 @@ model FollowUpMessage {
 }
 
 model FollowUpAIAnalysis {
-  id          String   @id @default(uuid())
-  follow_up_id String
-  ai_suggestion String @db.Text
-  created_at  DateTime @default(now())
-  follow_up   FollowUp @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  follow_up_id    String
+  message_id      String?
+  sentiment       String
+  intent          String
+  topics          String[]
+  next_action     String
+  suggested_stage String?
+  created_at      DateTime @default(now())
+  follow_up       FollowUp @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
 
   @@index([follow_up_id])
   @@map("follow_up_ai_analyses")
@@ -179,10 +186,11 @@ model FollowUpAIAnalysis {
 model User {
   id                String                @id @default(uuid())
   name              String?
-  email             String?               @unique
-  emailVerified     DateTime?
+  email             String                @unique
+  email_verified    DateTime?             @map("email_verified")
   image             String?
-  createdAt         DateTime              @default(now()) @map("created_at")
+  password          String?
+  created_at        DateTime              @default(now()) @map("created_at")
   updated_at        DateTime              @updatedAt @map("updated_at")
   is_super_admin    Boolean               @default(false) @map("is_super_admin")
   accounts          Account[]
@@ -194,61 +202,53 @@ model User {
   sessions          Session[]
   created_tokens    WorkspaceApiToken[]
   invitations       WorkspaceInvitation[]
+  workspace_members WorkspaceMember[]
   created_webhooks  WorkspaceWebhook[]
   owned_workspaces  Workspace[]           @relation("WorkspaceOwner")
-  workspaceMembers  WorkspaceMember[]
 
   @@map("users")
   @@schema("workspace_schema")
 }
 
 model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String  @map("provider_account_id")
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
+  id                  String  @id @default(uuid())
+  user_id             String  @map("user_id")
+  type                String
+  provider            String
+  provider_account_id String  @map("provider_account_id")
+  refresh_token       String?
+  access_token        String?
+  expires_at          Int?
+  token_type          String? @map("token_type")
+  scope               String?
+  id_token            String?
+  session_state       String? @map("session_state")
+  user                User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
+  @@unique([provider, provider_account_id], name: "provider_provider_account_id")
   @@map("accounts")
-  @@schema("auth")
+  @@schema("workspace_schema")
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique @map("session_token")
-  userId       String
-  expires      DateTime
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  session_token String   @unique @map("session_token")
+  user_id       String   @map("user_id")
+  expires       DateTime
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("sessions")
-  @@schema("auth")
+  @@schema("workspace_schema")
 }
 
 model VerificationToken {
   identifier String
-  token      String
+  token      String   @unique
   expires    DateTime
 
   @@unique([identifier, token])
-  @@map("verificationtokens")
-  @@schema("auth")
+  @@map("verification_tokens")
+  @@schema("workspace_schema")
 }
 
 model Workspace {
@@ -269,7 +269,7 @@ model Workspace {
   whatsappAppSecret                        String?                     @map("whatsapp_app_secret")
   whatsappWebhookRouteToken                String?                     @unique @map("whatsapp_webhook_route_token")
   ai_name                                  String?                     @default("Beatriz") @map("ai_name")
-  google_access_token_expires_at           DateTime?                     @map("google_access_token_expires_at")
+  google_access_token_expires_at           DateTime?                   @map("google_access_token_expires_at")
   google_account_email                     String?                     @map("google_account_email")
   google_calendar_scopes                   String[]                    @map("google_calendar_scopes")
   google_refresh_token                     String?                     @map("google_refresh_token")
@@ -303,14 +303,14 @@ model Workspace {
 }
 
 model WorkspaceMember {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   workspace_id String
   user_id      String
   role         String
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
   user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, user_id])
   @@map("workspace_members")
@@ -337,12 +337,12 @@ model WorkspaceInvitation {
 }
 
 model WorkspaceFollowUpCampaign {
-  id           String @id @default(uuid())
+  id           String           @id @default(uuid())
   workspace_id String
   campaign_id  String
-  created_at   DateTime @default(now())
+  created_at   DateTime         @default(now())
   campaign     FollowUpCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
-  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  workspace    Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, campaign_id])
   @@map("workspace_follow_up_campaigns")
@@ -350,16 +350,16 @@ model WorkspaceFollowUpCampaign {
 }
 
 model WorkspaceApiToken {
-  id           String   @id @default(uuid())
-  token        String   @unique
+  id           String    @id @default(uuid())
   workspace_id String
-  created_by   String // user id
-  created_at   DateTime @default(now())
+  name         String
+  token        String    @unique
+  created_at   DateTime  @default(now())
   expires_at   DateTime?
   last_used_at DateTime?
-  name         String?
-  is_enabled   Boolean  @default(true)
-  created_by_user User @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  revoked      Boolean   @default(false)
+  created_by   String
+  creator      User      @relation(fields: [created_by], references: [id], onDelete: Cascade)
   workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@index([workspace_id])
@@ -368,20 +368,19 @@ model WorkspaceApiToken {
 }
 
 model WorkspaceWebhook {
-  id                      String   @id @default(uuid())
-  workspace_id            String
-  url                     String
-  secret                  String
-  events                  String[] // List of events to subscribe to
-  is_enabled              Boolean  @default(true)
-  last_triggered_at       DateTime?
-  last_trigger_status     String?
-  last_trigger_error      String?
-  created_at              DateTime @default(now())
-  updated_at              DateTime @updatedAt
-  created_by              String
-  created_by_user         User     @relation(fields: [created_by], references: [id], onDelete: Cascade)
-  workspace               Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  workspace_id String
+  name         String
+  url          String
+  secret       String
+  events       String[]
+  active       Boolean   @default(true)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  last_used_at DateTime?
+  created_by   String
+  creator      User      @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@index([workspace_id])
   @@map("workspace_webhooks")
@@ -423,8 +422,10 @@ model Client {
 
   @@unique([workspace_id, phone_number, channel])
   @@index([workspace_id])
+  @@index([external_id])
+  @@index([phone_number])
   @@map("clients")
-  @@schema("workspace_schema")
+  @@schema("conversation_schema")
 }
 
 model Conversation {
@@ -448,7 +449,9 @@ model Conversation {
   @@unique([workspace_id, channel_conversation_id])
   @@index([workspace_id])
   @@index([client_id])
-  @@index([channel])
+  @@index([channel_conversation_id])
+  @@index([status])
+  @@index([last_message_at])
   @@map("conversations")
   @@schema("conversation_schema")
 }
@@ -474,7 +477,6 @@ model Message {
 
   @@index([conversation_id])
   @@index([timestamp])
-  @@index([sender_type])
   @@map("messages")
   @@schema("conversation_schema")
 }

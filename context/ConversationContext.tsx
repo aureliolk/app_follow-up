@@ -100,6 +100,9 @@ interface ConversationContextType {
     sendTemplateMessage: (conversationId: string, templateData: SendTemplateDataType) => Promise<void>;
     sendMediaMessage: (conversationId: string, file: File) => Promise<void>;
     toggleAIStatus: (conversationId: string, currentStatus: boolean) => Promise<void>;
+
+    // Nova função para remover conversa pela ID do cliente
+    removeConversationByClientId: (clientId: string) => void;
 }
 
 // --- Criação do Contexto --- //
@@ -926,6 +929,16 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
     );
 
+    // Implementação da nova função
+    const removeConversationByClientId = useCallback((clientId: string) => {
+        setConversations(prevConversations =>
+            prevConversations.filter(conv => conv.client?.id !== clientId)
+        );
+         // Opcional: se a conversa removida for a selecionada, deselecionar
+         if (selectedConversation?.client?.id === clientId) {
+             setSelectedConversation(null);
+         }
+    }, [selectedConversation]); // Adicionar selectedConversation como dependência
 
     // --- Valor do Contexto ---
     const contextValue = useMemo(() => ({
@@ -962,6 +975,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         selectConversationForClient,
         sendManualMessage,
         sendTemplateMessage, sendMediaMessage, toggleAIStatus,
+        removeConversationByClientId,
     }), [
         conversations, loadingConversations, isLoadingMoreConversations, hasMoreConversations, conversationsError,
         selectedConversation,
@@ -974,6 +988,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         sendManualMessage,
         sendTemplateMessage, sendMediaMessage, toggleAIStatus,
         totalCountAll, totalCountHuman, totalCountAi,
+        removeConversationByClientId,
     ]);
 
     return (

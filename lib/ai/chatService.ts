@@ -237,13 +237,13 @@ export async function processAIChat(
 ) {
   try {
     // Carregar estágios ativos do workspace
-    const activeStages = await prisma.aIStage.findMany({
+    const activeStages = await prisma.ai_stages.findMany({
       where: {
         workspaceId,
         isActive: true
       },
       include: {
-        actions: true
+        ai_stage_actions: true
       }
     });
 
