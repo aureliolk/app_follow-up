@@ -15,6 +15,7 @@ import { useFormStatus } from 'react-dom';
 import { useTransition } from 'react';
 import { updateAiSettingsAction } from '@/lib/actions/workspaceSettingsActions';
 import { useActionState } from 'react';
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Lista atualizada de modelos disponíveis
 const AVAILABLE_MODELS = [
@@ -34,6 +35,7 @@ export default function AISettingsForm() {
   const [aiName, setAiName] = useState('');
   const [aiDelayBetweenMessages, setAiDelayBetweenMessages] = useState<number>(3000); // Manter como number
   const [initialized, setInitialized] = useState(false);
+  const [aiSendFractionated, setAiSendFractionated] = useState(true); // Padrão para true
 
   // Estado para gerenciar o resultado da Server Action
   const [state, formAction] = useActionState(
@@ -52,6 +54,7 @@ export default function AISettingsForm() {
             ai_name: formData.get('ai_name') as string | null,
             // Converter o delay de string para number/null
             ai_delay_between_messages: formData.get('ai_delay_between_messages') ? parseInt(formData.get('ai_delay_between_messages') as string, 10) : null,
+            ai_send_fractionated: formData.get('ai_send_fractionated') === 'on', // Convert 'on' to true, null/undefined to false
         };
 
         // Chamar a Server Action
@@ -86,6 +89,7 @@ export default function AISettingsForm() {
           ? 3000
           : Number(workspace.ai_delay_between_messages)
       );
+      setAiSendFractionated(workspace.ai_send_fractionated ?? true);
       setInitialized(true);
     }
   }, [workspace, initialized]);
@@ -193,6 +197,22 @@ export default function AISettingsForm() {
                  </span>
              </div>
           </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="ai_send_fractionated"
+              name="ai_send_fractionated"
+              checked={aiSendFractionated}
+              onCheckedChange={(checked) => setAiSendFractionated(!!checked)}
+              disabled={workspaceLoading || undefined}
+            />
+            <Label htmlFor="ai_send_fractionated" className="text-foreground">
+              Enviar resposta da IA fracionada (em parágrafos)
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Se desmarcado, a resposta completa da IA será enviada em uma única mensagem.
+          </p>
 
         </CardContent>
         <CardFooter className="border-t border-border pt-4">

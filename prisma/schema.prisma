@@ -261,6 +261,7 @@ model Workspace {
   ai_default_system_prompt                 String?
   ai_model_preference                      String?
   ai_delay_between_messages                Int?                        @default(3000)
+  ai_send_fractionated                     Boolean                     @default(true)
   webhook_ingress_secret                   String?                     @unique
   whatsappAccessToken                      String?                     @map("whatsapp_access_token")
   whatsappBusinessAccountId                String?                     @map("whatsapp_business_account_id")

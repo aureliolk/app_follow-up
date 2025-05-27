@@ -514,6 +514,7 @@ const AiSettingsSchema = z.object({
   ai_model_preference: z.string().optional().nullable(),
   ai_name: z.string().optional().nullable(),
   ai_delay_between_messages: z.number().int().min(0, "Tempo de espera deve ser um número positivo.").optional().nullable(),
+  ai_send_fractionated: z.boolean().optional(),
 });
 
 // Server Action para atualizar as configurações de IA
@@ -547,6 +548,7 @@ export async function updateAiSettingsAction(
         ai_model_preference: updateData.ai_model_preference,
         ai_name: updateData.ai_name,
         ai_delay_between_messages: updateData.ai_delay_between_messages, // Prisma aceita Int? (number | null)
+        ai_send_fractionated: updateData.ai_send_fractionated,
       },
     });
 
