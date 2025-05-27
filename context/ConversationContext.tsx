@@ -88,7 +88,7 @@ interface ConversationContextType {
 
     // Handlers para serem chamados pelo WebSocketProvider
     handleRealtimeNewMessage: (message: Message) => void;
-    handleRealtimeStatusUpdate: (data: any) => void;
+    handleRealtimeStatusUpdate: (data: { id: string; status: string; channel_message_id?: string; errorMessage?: string }) => void;
     handleRealtimeAIStatusUpdate: (data: { conversationId: string; is_ai_active: boolean }) => void;
     // handleRealtimeContentUpdate: (data: any) => void;
 
@@ -441,56 +441,39 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
     }, [selectedConversation, messageCache, updateOrAddOptimisticallyInList, setUnreadConversationIds]);
 
-    const handleRealtimeStatusUpdate = useCallback((data: any) => {
-         const { messageId, conversation_id, newStatus, providerMessageId, errorMessage } = data;
-         if (!messageId || !conversation_id || !newStatus) {
-               return;
-          }
+    const handleRealtimeStatusUpdate = useCallback((data: { id: string; status: string; channel_message_id?: string; errorMessage?: string }) => {
+        console.log(`[ConversationContext] Realtime Status Update received for msg ID ${data.id} with status ${data.status}`);
 
-         setMessageCache(prevCache => {
-             const conversationMessages = prevCache[conversation_id];
-             if (!conversationMessages) return prevCache;
+        let updatedMessageConversationId: string | undefined;
 
-             const messageIndex = conversationMessages.findIndex(m => m.id === messageId || (providerMessageId && m.provider_message_id === providerMessageId));
-             if (messageIndex === -1) return prevCache;
-
-             const updatedMessages = [...conversationMessages];
-             const updatedMessage = {
-                 ...updatedMessages[messageIndex],
-                 status: newStatus,
-                 provider_message_id: providerMessageId || updatedMessages[messageIndex].provider_message_id,
-                 error_message: errorMessage || null,
-             };
-             updatedMessages[messageIndex] = updatedMessage;
-             return { ...prevCache, [conversation_id]: updatedMessages };
-         });
-
-         if (selectedConversation?.id === conversation_id) {
-             setSelectedConversationMessages(prev => {
-                 const messageIndex = prev.findIndex(m => m.id === messageId || (providerMessageId && m.provider_message_id === providerMessageId));
-                 if (messageIndex === -1) return prev;
-
-                 const updatedMessages = [...prev];
-                 const updatedMessage = {
-                     ...updatedMessages[messageIndex],
-                     status: newStatus,
-                     provider_message_id: providerMessageId || updatedMessages[messageIndex].provider_message_id,
-                     error_message: errorMessage || null,
-                 };
-                 updatedMessages[messageIndex] = updatedMessage;
-                 return updatedMessages;
+        // Update the message status in the selectedConversationMessages state
+        setSelectedConversationMessages(prevMessages => {
+             const updatedMessages = prevMessages.map(msg => {
+                if (msg.id === data.id) {
+                     updatedMessageConversationId = msg.conversation_id; // Capture conversation_id here
+                     return {
+                        ...msg,
+                        status: data.status,
+                        channel_message_id: data.channel_message_id || msg.channel_message_id,
+                        errorMessage: data.errorMessage || msg.errorMessage
+                    };
+                }
+                return msg;
              });
-         }
-         setConversations(prev => prev.map(conv => {
-             if (conv.id === conversation_id && conv.last_message?.id === messageId) {
-                 return {
-                     ...conv,
-                     last_message_status: newStatus,
-                 };
-             }
-             return conv;
-         }));
-    }, [selectedConversation, messageCache, setMessageCache, setSelectedConversationMessages, setConversations]);
+             return updatedMessages;
+        });
+
+
+         // If the selected conversation is the one of the updated message, ensure the timestamp is updated
+         // Use the captured conversationId
+         if (selectedConversation?.id && updatedMessageConversationId && selectedConversation.id === updatedMessageConversationId) {
+            setConversations(prevConversations =>
+                prevConversations.map(conv =>
+                    conv.id === selectedConversation.id ? { ...conv, last_message_at: new Date() } : conv
+                )
+            );
+        }
+    }, [selectedConversation, setConversations]); // Removed selectedConversationMessages from dependencies as we access it via updater
 
     const handleRealtimeAIStatusUpdate = useCallback((data: { conversationId: string; is_ai_active: boolean }) => {
         const { conversationId, is_ai_active } = data;

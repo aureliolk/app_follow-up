@@ -151,6 +151,7 @@ export interface Message {
   workspace_id?: string;
   llm_summary?: string | null;
   privates_notes?: boolean; // Adicionar campo para notas privadas
+  errorMessage?: string | null; // Adicionar campo para mensagens de erro
 }
 
 // <<< INÍCIO DA NOVA INTERFACE >>>

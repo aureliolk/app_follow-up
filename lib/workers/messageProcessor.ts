@@ -436,6 +436,22 @@ async function sendSingleMessage({ content, conversation, workspaceId, jobId, me
       data: updateData
     });
 
+    // Adicionar novo pusher trigger aqui para notificar a UI do status final
+    try {
+      await pusher.trigger(`private-workspace-${workspaceId}`, 'message_status_update', {
+        type: "message_status_update",
+        payload: {
+          id: newMessage.id,
+          status: updateData.status, // Envia o status atualizado
+          channel_message_id: updateData.channel_message_id,
+          errorMessage: (updateData as any).errorMessage // Inclui erro se falhou
+        }
+      });
+      console.log(`[MsgProcessor ${jobId}] Status da mensagem ${newMessage.id} (${updateData.status}) publicado no Pusher`);
+    } catch (pusherError) {
+      console.error(`[MsgProcessor ${jobId}] Erro no Pusher para atualização de status:`, pusherError);
+    }
+
     const statusText = sendResult.success ? 'ENVIADA com sucesso' : `FALHOU (${sendResult.error})`;
     console.log(`[MsgProcessor ${jobId}] Mensagem ${messageIndex}/${totalMessages} ${statusText}`);
 
