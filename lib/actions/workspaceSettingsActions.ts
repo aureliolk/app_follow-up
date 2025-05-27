@@ -42,10 +42,24 @@ export async function updateAiSettingsAction(data: AiSettingsInput) {
 
     const { workspaceId, ...updateData } = validationResult.data;
 
+    console.log('[updateAiSettingsAction] Received data:', {
+      workspaceId,
+      updateData
+    });
+
     // Verificar se o workspace existe e se o usuário tem permissão
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
-      select: { id: true, owner_id: true }
+      select: { 
+        id: true, 
+        owner_id: true,
+        // Buscar valores atuais para comparação
+        ai_default_system_prompt: true,
+        ai_model_preference: true,
+        ai_name: true,
+        ai_delay_between_messages: true,
+        ai_send_fractionated: true,
+      }
     });
 
     if (!workspace) {
@@ -53,10 +67,17 @@ export async function updateAiSettingsAction(data: AiSettingsInput) {
     }
 
     // Verificar permissões (simplificado - apenas o owner pode alterar por enquanto)
-    // TODO: Implementar verificação mais robusta de permissões baseada em roles
     if (workspace.owner_id !== session.user.id) {
       return { success: false, error: 'Você não tem permissão para alterar as configurações deste workspace.' };
     }
+
+    console.log('[updateAiSettingsAction] Current workspace values:', {
+      ai_default_system_prompt: workspace.ai_default_system_prompt,
+      ai_model_preference: workspace.ai_model_preference,
+      ai_name: workspace.ai_name,
+      ai_delay_between_messages: workspace.ai_delay_between_messages,
+      ai_send_fractionated: workspace.ai_send_fractionated,
+    });
 
     // Preparar dados para atualização, removendo campos undefined
     const dataToUpdate: any = {};
@@ -87,7 +108,7 @@ export async function updateAiSettingsAction(data: AiSettingsInput) {
       dataToUpdate.ai_send_fractionated = Boolean(updateData.ai_send_fractionated);
     }
 
-    console.log('[updateAiSettingsAction] Updating workspace with data:', {
+    console.log('[updateAiSettingsAction] Data to update in DB:', {
       workspaceId,
       dataToUpdate,
       originalUpdateData: updateData

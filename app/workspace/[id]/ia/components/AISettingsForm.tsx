@@ -66,6 +66,10 @@ export default function AISettingsForm() {
         };
 
         console.log("[AISettingsForm Action] Data to be sent:", data);
+        console.log("[AISettingsForm Action] FormData contents:");
+        for (const [key, value] of formData.entries()) {
+            console.log(`  ${key}: ${value}`);
+        }
         console.log("[AISettingsForm Action] FormData has ai_send_fractionated:", formData.has('ai_send_fractionated'));
         
         try {
@@ -99,21 +103,34 @@ export default function AISettingsForm() {
                 const updatedData = state.updatedData;
                 console.log("[AISettingsForm Effect] Updating local state with saved data:", updatedData);
                 
-                // Atualizar apenas os campos que foram salvos
-                if (updatedData.ai_default_system_prompt !== undefined) {
+                // IMPORTANTE: Atualizar apenas os campos que foram salvos e existem na resposta
+                if ('ai_default_system_prompt' in updatedData) {
                     setSystemPrompt(updatedData.ai_default_system_prompt || '');
+                    console.log("[AISettingsForm Effect] Updated systemPrompt:", updatedData.ai_default_system_prompt);
                 }
-                if (updatedData.ai_model_preference !== undefined) {
-                    setModelPreference(updatedData.ai_model_preference || AVAILABLE_MODELS[0].value);
+                
+                if ('ai_model_preference' in updatedData) {
+                    const newModel = updatedData.ai_model_preference || AVAILABLE_MODELS[0].value;
+                    console.log("[AISettingsForm Effect] Current modelPreference:", modelPreference);
+                    console.log("[AISettingsForm Effect] New modelPreference from server:", newModel);
+                    setModelPreference(newModel);
                 }
-                if (updatedData.ai_name !== undefined) {
+                
+                if ('ai_name' in updatedData) {
                     setAiName(updatedData.ai_name || 'Beatriz');
+                    console.log("[AISettingsForm Effect] Updated aiName:", updatedData.ai_name);
                 }
-                if (updatedData.ai_delay_between_messages !== undefined) {
+                
+                if ('ai_delay_between_messages' in updatedData) {
                     setAiDelayBetweenMessages(Number(updatedData.ai_delay_between_messages) || 3000);
+                    console.log("[AISettingsForm Effect] Updated aiDelayBetweenMessages:", updatedData.ai_delay_between_messages);
                 }
-                if (updatedData.ai_send_fractionated !== undefined) {
-                    setAiSendFractionated(updatedData.ai_send_fractionated || false);
+                
+                if ('ai_send_fractionated' in updatedData) {
+                    const newFractionated = updatedData.ai_send_fractionated || false;
+                    console.log("[AISettingsForm Effect] Current aiSendFractionated:", aiSendFractionated);
+                    console.log("[AISettingsForm Effect] New aiSendFractionated from server:", newFractionated);
+                    setAiSendFractionated(newFractionated);
                 }
             }
         } else if (state.error) {
