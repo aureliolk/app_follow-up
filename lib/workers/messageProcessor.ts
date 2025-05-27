@@ -35,6 +35,7 @@ interface JobData {
   newMessageId: string;    // ID da mensagem do cliente que disparou ESTE job
   workspaceId: string;
   receivedTimestamp: number; // Timestamp de quando o webhook recebeu a mensagem
+  delayBetweenMessages: number; // Delay entre mensagens
 }
 
 // Type guard for valid media metadata
@@ -599,6 +600,15 @@ async function processJob(job: Job<JobData>) {
           select: { id: true, conversation_id: true, content: true, timestamp: true, sender_type: true } // Select for publish
       });
       console.log(`[MsgProcessor ${jobId}] Resposta final da IA salva (ID: ${newAiMessage.id}).`);
+
+      // --- Adicionar Delay Configurável ---
+      const delay = job.data.delayBetweenMessages;
+      if (delay && delay > 0) {
+        console.log(`[MsgProcessor ${jobId}] Aguardando ${delay}ms antes de enviar resposta da IA.`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        console.log(`[MsgProcessor ${jobId}] Delay de envio concluído.`);
+      }
+      // --- Fim do Delay ---
 
       // Publicar notificação no canal Pusher do WORKSPACE
       try {

@@ -98,7 +98,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const workspace = await prisma.workspace.findUnique({
         where: { evolution_webhook_route_token: evolutionWebhookToken },
-        select: { id: true, evolution_api_token: true /* Este é o token da *instância* Evolution, pode ser útil para API calls futuras */ }
+        select: { id: true, evolution_api_token: true, ai_delay_between_messages: true /* Este é o token da *instância* Evolution, pode ser útil para API calls futuras */ }
     });
 
     if (!workspace) {
@@ -230,9 +230,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             }
 
 
-            const { client, conversation} = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
-            await handleDealCreationForNewClient(client, workspace.id);
-            await initiateFollowUpSequence(client, conversation, workspace.id);
+            const { client, conversation, conversationWasCreated } = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
+            if (conversationWasCreated) {
+                await handleDealCreationForNewClient(client, workspace.id);
+                await initiateFollowUpSequence(client, conversation, workspace.id);
+            }
            
 
             // Salvar registro da mensagem
@@ -277,6 +279,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                         newMessageId: savedMessage.id,
                         workspaceId: workspaceId,
                         receivedTimestamp: receivedTimestamp,
+                        delayBetweenMessages: workspace.ai_delay_between_messages
                     };
                     await addMessageProcessingJob(jobData);
                     console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Job adicionado à fila message-processing para msg ${savedMessage.id}.`);

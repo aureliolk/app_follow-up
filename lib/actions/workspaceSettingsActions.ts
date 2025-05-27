@@ -506,3 +506,60 @@ export async function deleteEvolutionInstanceAction(
     return { success: false, error: error.message || 'Erro do servidor ao deletar instância.' };
   }
 }
+
+// Schema para validação das configurações de IA
+const AiSettingsSchema = z.object({
+  workspaceId: z.string().uuid('ID do Workspace inválido.'),
+  ai_default_system_prompt: z.string().optional().nullable(),
+  ai_model_preference: z.string().optional().nullable(),
+  ai_name: z.string().optional().nullable(),
+  ai_delay_between_messages: z.number().int().min(0, "Tempo de espera deve ser um número positivo.").optional().nullable(),
+});
+
+// Server Action para atualizar as configurações de IA
+export async function updateAiSettingsAction(
+  data: z.infer<typeof AiSettingsSchema>
+): Promise<ActionResult> {
+  // TODO: Adicionar verificação de permissão do usuário (admin/owner do workspace)
+  // const session = await getSession();
+  // if (!session?.user?.id) {
+  //   return { success: false, error: 'Usuário não autenticado.' };
+  // }
+  // const hasPermission = await checkUserWorkspacePermission(session.user.id, data.workspaceId, ['admin', 'owner']);
+  // if (!hasPermission) {
+  //   return { success: false, error: 'Permissão negada.' };
+  // }
+
+  const validation = AiSettingsSchema.safeParse(data);
+  if (!validation.success) {
+    console.error("[ACTION ERROR] Validação falhou para AiSettingsSchema:", validation.error.errors);
+    return { success: false, error: validation.error.errors[0]?.message || 'Dados inválidos.' };
+  }
+
+  const { workspaceId, ...updateData } = validation.data;
+
+  try {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: {
+        // O schema já garante os tipos corretos, incluindo nullables
+        ai_default_system_prompt: updateData.ai_default_system_prompt,
+        ai_model_preference: updateData.ai_model_preference,
+        ai_name: updateData.ai_name,
+        ai_delay_between_messages: updateData.ai_delay_between_messages, // Prisma aceita Int? (number | null)
+      },
+    });
+
+    console.log(`[ACTION] Configurações de IA atualizadas para Workspace ${workspaceId}`);
+    
+    // Revalidar o cache da página de configurações de IA
+    // O path da página é /workspace/[id]/ia, precisamos do ID.
+    revalidatePath(`/workspace/${workspaceId}/ia`);
+
+    return { success: true };
+
+  } catch (error: any) {
+    console.error(`[ACTION ERROR] Falha ao atualizar configurações de IA para ${workspaceId}:`, error);
+    return { success: false, error: 'Erro do servidor ao salvar as configurações de IA.' };
+  }
+}

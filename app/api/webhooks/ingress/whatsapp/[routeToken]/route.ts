@@ -65,7 +65,7 @@ async function getWorkspaceByRouteToken(routeToken: string) {
             id: true,
             whatsappWebhookVerifyToken: true, // Usado no GET
             whatsappAppSecret: true,        // Usado no POST (precisa descriptografar)
-            // Inclua outros campos se necessário para o worker depois
+            ai_delay_between_messages: true,
         }
     });
 
@@ -170,10 +170,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Número do remetente inválido ou não padronizável: ${senderPhoneNumberRaw}. Pulando mensagem ${messageIdFromWhatsapp}.`);
                                     }
 
-                                    const { client, conversation, clientWasCreated, conversationWasCreated } =  await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_CLOUDAPI');
-                                    await handleDealCreationForNewClient(client, workspace.id);
-                                    await initiateFollowUpSequence(client, conversation, workspace.id);
-
+                                    const { client, conversation, conversationWasCreated } =  await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_CLOUDAPI');
+                                    if (conversationWasCreated) {
+                                        await handleDealCreationForNewClient(client, workspace.id);
+                                        await initiateFollowUpSequence(client, conversation, workspace.id);
+                                    }
 
                                     let messageContent: string | null = null;
                                     const messageType = message.type;
@@ -271,6 +272,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                                 newMessageId: savedMessage.id,
                                                 workspaceId: workspace.id,
                                                 receivedTimestamp: receivedTimestamp,
+                                                delayBetweenMessages: workspace.ai_delay_between_messages
                                             };
                                             await addMessageProcessingJob(jobData);
                                             console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Job adicionado à fila message-processing para msg ${savedMessage.id}.`);
