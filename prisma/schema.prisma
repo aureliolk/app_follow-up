@@ -1,7 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["multiSchema"]
   output          = "../node_modules/.prisma/client"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
@@ -53,28 +53,27 @@ model PromptContent {
 }
 
 model FollowUpCampaign {
-  id                           String   @id @default(uuid())
+  id                           String                      @id @default(uuid())
   name                         String
   description                  String?
-  created_at                   DateTime @default(now())
-  active                       Boolean  @default(true)
-  isDefaultInactivity          Boolean  @default(false)
+  created_at                   DateTime                    @default(now())
+  active                       Boolean                     @default(true)
   idLumibot                    String?
   tokenAgentLumibot            String?
-  ai_prompt_product_name       String?  @default("")
-  ai_prompt_target_audience    String?  @default("")
-  ai_prompt_pain_point         String?  @default("")
-  ai_prompt_main_benefit       String?  @default("")
-  ai_prompt_tone_of_voice      String?  @default("")
-  ai_prompt_extra_instructions String?  @default("")
-  ai_prompt_cta_link           String?  @default("")
-  ai_prompt_cta_text           String?  @default("")
-
-  rules                        WorkspaceAiFollowUpRule[] @relation("CampaignToRules")
-  stages     FollowUpFunnelStage[]       @relation("FollowUpCampaignToFollowUpFunnelStage")
-  follow_ups FollowUp[]
-  workspaces WorkspaceFollowUpCampaign[]
-  eventMappings EventFollowUpMapping[]
+  ai_prompt_product_name       String?                     @default("")
+  ai_prompt_target_audience    String?                     @default("")
+  ai_prompt_pain_point         String?                     @default("")
+  ai_prompt_main_benefit       String?                     @default("")
+  ai_prompt_tone_of_voice      String?                     @default("")
+  ai_prompt_extra_instructions String?                     @default("")
+  ai_prompt_cta_link           String?                     @default("")
+  ai_prompt_cta_text           String?                     @default("")
+  isDefaultInactivity          Boolean                     @default(false)
+  stages                       FollowUpFunnelStage[]       @relation("FollowUpCampaignToFollowUpFunnelStage")
+  follow_ups                   FollowUp[]
+  eventMappings                EventFollowUpMapping[]
+  rules                        WorkspaceAiFollowUpRule[]   @relation("CampaignToRules")
+  workspaces                   WorkspaceFollowUpCampaign[]
 
   @@index([isDefaultInactivity])
   @@map("follow_up_campaigns")
@@ -115,37 +114,32 @@ model FollowUpStep {
 }
 
 model FollowUp {
-  id                     String    @id @default(uuid())
-  campaign_id            String?
-  client_id              String
-  status                 String    @default("active")
-  started_at             DateTime  @default(now())
-  updated_at             DateTime  @updatedAt
-  next_message_at        DateTime?
-  completed_at           DateTime?
-  current_stage_id       String?
-  waiting_for_response   Boolean   @default(false)
-  last_response          String?
-  last_response_at       DateTime?
-  last_client_message_at DateTime?
-  next_evaluation_at     DateTime?
-  paused_reason          String?
-  ai_suggestion          String?
-
-  workspace_id String
-  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-
-  client Client @relation("ClientToFollowUp", fields: [client_id], references: [id], onDelete: Cascade)
-
-  current_sequence_step_order Int?      @default(0)
+  id                          String               @id @default(uuid())
+  campaign_id                 String?
+  client_id                   String
+  status                      String               @default("active")
+  started_at                  DateTime             @default(now())
+  updated_at                  DateTime             @updatedAt
+  next_message_at             DateTime?
+  completed_at                DateTime?
+  current_stage_id            String?
+  waiting_for_response        Boolean              @default(false)
+  last_response               String?
+  last_response_at            DateTime?
+  last_client_message_at      DateTime?
+  next_evaluation_at          DateTime?
+  paused_reason               String?
+  ai_suggestion               String?
+  current_sequence_step_order Int?                 @default(0)
   next_sequence_message_at    DateTime?
-
-  messages    FollowUpMessage[]
-  campaign    FollowUpCampaign?    @relation(fields: [campaign_id], references: [id])
-  ai_analyses FollowUpAIAnalysis[]
-
-  conversation   Conversation? @relation("ConversationToFollowUp", fields: [conversationId], references: [id], onDelete: SetNull)
-  conversationId String?       @unique
+  workspace_id                String
+  conversationId              String?              @unique
+  ai_analyses                 FollowUpAIAnalysis[]
+  messages                    FollowUpMessage[]
+  campaign                    FollowUpCampaign?    @relation(fields: [campaign_id], references: [id])
+  client                      Client               @relation("ClientToFollowUp", fields: [client_id], references: [id], onDelete: Cascade)
+  conversation                Conversation?        @relation("ConversationToFollowUp", fields: [conversationId], references: [id])
+  workspace                   Workspace            @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@index([client_id])
   @@index([status])
@@ -162,10 +156,10 @@ model FollowUpMessage {
   delivered_at    DateTime?
   is_from_client  Boolean   @default(false)
   step_id         String?
-  follow_up       FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
   error_sending   String?
   is_ai_generated Boolean   @default(false)
   template_used   String?
+  follow_up       FollowUp  @relation(fields: [follow_up_id], references: [id], onDelete: Cascade)
 
   @@index([follow_up_id])
   @@map("follow_up_messages")
@@ -200,19 +194,17 @@ model User {
   updated_at        DateTime              @updatedAt @map("updated_at")
   is_super_admin    Boolean               @default(false) @map("is_super_admin")
   accounts          Account[]
+  dealActivityLogs  DealActivityLog[]     @relation("UserDealActivityLogs")
+  dealDocuments     DealDocument[]        @relation("UserDealDocuments")
+  dealNotes         DealNote[]            @relation("UserDealNotes")
+  dealTasks         DealTask[]            @relation("UserDealTasks")
+  assignedDeals     Deal[]                @relation("UserDeals")
   sessions          Session[]
   created_tokens    WorkspaceApiToken[]
   invitations       WorkspaceInvitation[]
   workspace_members WorkspaceMember[]
   created_webhooks  WorkspaceWebhook[]
   owned_workspaces  Workspace[]           @relation("WorkspaceOwner")
-
-  // Kanban/Pipeline Relations
-  assignedDeals       Deal[]            @relation("UserDeals")
-  dealNotes           DealNote[]        @relation("UserDealNotes")
-  dealTasks           DealTask[]        @relation("UserDealTasks")
-  dealDocuments       DealDocument[]    @relation("UserDealDocuments")
-  dealActivityLogs    DealActivityLog[] @relation("UserDealActivityLogs")
 
   @@map("users")
   @@schema("workspace_schema")
@@ -260,62 +252,51 @@ model VerificationToken {
 }
 
 model Workspace {
-  id                  String                      @id @default(uuid())
-  name                String
-  slug                String                      @unique
-  owner_id            String
-  created_at          DateTime                    @default(now())
-  updated_at          DateTime                    @updatedAt
-  api_tokens          WorkspaceApiToken[]
-  follow_up_campaigns WorkspaceFollowUpCampaign[]
-  follow_ups          FollowUp[]
-  invitations         WorkspaceInvitation[]
-  members             WorkspaceMember[]
-  webhooks            WorkspaceWebhook[]
-  campaigns           Campaign[]
-  owner               User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
-  eventFollowUpMappings EventFollowUpMapping[]
-
-  clients       Client[]       @relation("WorkspaceToClient")
-  conversations Conversation[] @relation("WorkspaceToConversation")
-
-  ai_follow_up_rules WorkspaceAiFollowUpRule[]
-  abandonedCartRules AbandonedCartRule[]
-
-  ai_default_system_prompt String? @db.Text
-  ai_model_preference      String?
-  webhook_ingress_secret   String? @unique
-  delay_between_messages   Int?    @default(3000)
-  
-  ai_name String? @default("Beatriz") @map("ai_name")
-
-  google_refresh_token           String?   @map("google_refresh_token")
-  google_access_token_expires_at DateTime? @map("google_access_token_expires_at")
-  google_calendar_scopes         String[]  @map("google_calendar_scopes")
-  google_account_email           String?   @map("google_account_email")
-  google_calendar_event_conversion_enabled Boolean @default(false) @map("google_calendar_event_conversion_enabled")
-
-  whatsappPhoneNumberId      String? @map("whatsapp_phone_number_id")
-  whatsappBusinessAccountId  String? @map("whatsapp_business_account_id")
-  whatsappAccessToken        String? @map("whatsapp_access_token")
-  whatsappAppSecret          String? @map("whatsapp_app_secret")
-  whatsappWebhookVerifyToken String? @map("whatsapp_webhook_verify_token")
-  whatsappWebhookRouteToken  String? @unique @map("whatsapp_webhook_route_token")
-
-  evolution_api_endpoint      String? @map("evolution_api_endpoint")
-  evolution_api_key           String? @map("evolution_api_key")
-  evolution_api_instance_name String? @map("evolution_api_instance_name")
-  evolution_api_token         String? @unique @map("evolution_api_token")
-  evolution_webhook_route_token String? @unique @map("evolution_webhook_route_token")
-
-  tags WorkspaceTag[]
-
-  // Kanban/Pipeline Relations
-  pipelineStages PipelineStage[]
-  deals          Deal[]
-
-  // Add this relation field for Custom HTTP Tools
-  customHttpTools CustomHttpTool[]
+  id                                       String                      @id @default(uuid())
+  name                                     String
+  slug                                     String                      @unique
+  owner_id                                 String
+  created_at                               DateTime                    @default(now())
+  updated_at                               DateTime                    @updatedAt
+  ai_default_system_prompt                 String?
+  ai_model_preference                      String?
+  ai_delay_between_messages                Int?                        @default(3000)
+  webhook_ingress_secret                   String?                     @unique
+  whatsappAccessToken                      String?                     @map("whatsapp_access_token")
+  whatsappBusinessAccountId                String?                     @map("whatsapp_business_account_id")
+  whatsappPhoneNumberId                    String?                     @map("whatsapp_phone_number_id")
+  whatsappWebhookVerifyToken               String?                     @map("whatsapp_webhook_verify_token")
+  whatsappAppSecret                        String?                     @map("whatsapp_app_secret")
+  whatsappWebhookRouteToken                String?                     @unique @map("whatsapp_webhook_route_token")
+  ai_name                                  String?                     @default("Beatriz") @map("ai_name")
+  google_access_token_expires_at           DateTime?                   @map("google_access_token_expires_at")
+  google_account_email                     String?                     @map("google_account_email")
+  google_calendar_scopes                   String[]                    @map("google_calendar_scopes")
+  google_refresh_token                     String?                     @map("google_refresh_token")
+  evolution_api_endpoint                   String?                     @map("evolution_api_endpoint")
+  evolution_api_instance_name              String?                     @map("evolution_api_instance_name")
+  evolution_api_key                        String?                     @map("evolution_api_key")
+  google_calendar_event_conversion_enabled Boolean                     @default(false) @map("google_calendar_event_conversion_enabled")
+  evolution_api_token                      String?                     @unique @map("evolution_api_token")
+  evolution_webhook_route_token            String?                     @unique @map("evolution_webhook_route_token")
+  clients                                  Client[]                    @relation("WorkspaceToClient")
+  conversations                            Conversation[]              @relation("WorkspaceToConversation")
+  follow_ups                               FollowUp[]
+  tags                                     WorkspaceTag[]
+  abandonedCartRules                       AbandonedCartRule[]
+  ai_stages                                ai_stages[]
+  campaigns                                Campaign[]
+  customHttpTools                          CustomHttpTool[]
+  deals                                    Deal[]
+  eventFollowUpMappings                    EventFollowUpMapping[]
+  pipelineStages                           PipelineStage[]
+  ai_follow_up_rules                       WorkspaceAiFollowUpRule[]
+  api_tokens                               WorkspaceApiToken[]
+  follow_up_campaigns                      WorkspaceFollowUpCampaign[]
+  invitations                              WorkspaceInvitation[]
+  members                                  WorkspaceMember[]
+  webhooks                                 WorkspaceWebhook[]
+  owner                                    User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
 
   @@map("workspaces")
   @@schema("workspace_schema")
@@ -345,10 +326,10 @@ model WorkspaceInvitation {
   expires_at   DateTime
   created_at   DateTime         @default(now())
   invited_by   String
-  inviter      User             @relation(fields: [invited_by], references: [id])
-  workspace    Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   status       InvitationStatus @default(PENDING)
   updated_at   DateTime         @updatedAt
+  inviter      User             @relation(fields: [invited_by], references: [id])
+  workspace    Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, email])
   @@map("workspace_invitations")
@@ -360,8 +341,8 @@ model WorkspaceFollowUpCampaign {
   workspace_id String
   campaign_id  String
   created_at   DateTime         @default(now())
-  workspace    Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   campaign     FollowUpCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  workspace    Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, campaign_id])
   @@map("workspace_follow_up_campaigns")
@@ -407,20 +388,16 @@ model WorkspaceWebhook {
 }
 
 model WorkspaceAiFollowUpRule {
-  id           String    @id @default(uuid())
-  workspace_id String
-  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-
-  followUpCampaignId String?
-  followUpCampaign   FollowUpCampaign? @relation("CampaignToRules", fields: [followUpCampaignId], references: [id], onDelete: Cascade)
-
+  id                 String            @id @default(uuid())
+  workspace_id       String
   delay_milliseconds BigInt
-  message_content    String @db.Text
-
-  sequenceOrder      Int      @default(0)
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  message_content    String
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+  followUpCampaignId String?
+  sequenceOrder      Int               @default(0)
+  followUpCampaign   FollowUpCampaign? @relation("CampaignToRules", fields: [followUpCampaignId], references: [id], onDelete: Cascade)
+  workspace          Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
   @@index([followUpCampaignId, sequenceOrder])
   @@index([workspace_id, created_at])
@@ -429,26 +406,19 @@ model WorkspaceAiFollowUpRule {
 }
 
 model Client {
-  id           String    @id @default(uuid())
-  workspace_id String
-  workspace    Workspace @relation("WorkspaceToClient", fields: [workspace_id], references: [id], onDelete: Cascade)
-
-  external_id  String?
-  phone_number String?
-  name         String?
-  channel      String?
-
-  follow_ups FollowUp[] @relation("ClientToFollowUp")
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
+  id            String         @id @default(uuid())
+  workspace_id  String
+  external_id   String?
+  phone_number  String?
+  name          String?
+  channel       String?
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+  metadata      Json?
+  workspace     Workspace      @relation("WorkspaceToClient", fields: [workspace_id], references: [id], onDelete: Cascade)
   conversations Conversation[] @relation("ClientToConversation")
-
-  metadata Json?
-
-  // Kanban/Pipeline Relation
-  deals Deal[]
+  follow_ups    FollowUp[]     @relation("ClientToFollowUp")
+  deals         Deal[]
 
   @@unique([workspace_id, phone_number, channel])
   @@index([workspace_id])
@@ -459,26 +429,21 @@ model Client {
 }
 
 model Conversation {
-  id           String    @id @default(uuid())
-  workspace_id String
-  workspace    Workspace @relation("WorkspaceToConversation", fields: [workspace_id], references: [id], onDelete: Cascade)
-  client_id    String
-  client       Client    @relation("ClientToConversation", fields: [client_id], references: [id], onDelete: Cascade)
-
+  id                      String             @id @default(uuid())
+  workspace_id            String
+  client_id               String
   channel                 String?
   channel_conversation_id String?
   status                  ConversationStatus @default(ACTIVE)
   is_ai_active            Boolean            @default(true)
-
-  last_message_at DateTime?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
-
-  messages Message[] @relation("ConversationToMessage")
-
-  metadata Json?
-
-  followUp   FollowUp? @relation("ConversationToFollowUp")
+  last_message_at         DateTime?
+  created_at              DateTime           @default(now())
+  updated_at              DateTime           @updatedAt
+  metadata                Json?
+  client                  Client             @relation("ClientToConversation", fields: [client_id], references: [id], onDelete: Cascade)
+  workspace               Workspace          @relation("WorkspaceToConversation", fields: [workspace_id], references: [id], onDelete: Cascade)
+  messages                Message[]          @relation("ConversationToMessage")
+  followUp                FollowUp?          @relation("ConversationToFollowUp")
 
   @@unique([workspace_id, client_id, channel])
   @@unique([workspace_id, channel_conversation_id])
@@ -494,28 +459,305 @@ model Conversation {
 model Message {
   id                 String            @id @default(uuid())
   conversation_id    String
-  conversation       Conversation      @relation("ConversationToMessage", fields: [conversation_id], references: [id], onDelete: Cascade)
   sender_type        MessageSenderType
-  content            String?           @db.Text
-  ai_media_analysis  String?           @db.Text
+  content            String?
   timestamp          DateTime          @default(now())
   channel_message_id String?
   metadata           Json?
+  errorMessage       String?           @map("error_message")
+  media_filename     String?           @default("")
+  media_mime_type    String?           @default("")
+  media_url          String?           @default("")
+  providerMessageId  String?           @map("provider_message_id")
+  sentAt             DateTime?         @map("sent_at")
+  status             String?           @default("PENDING")
+  ai_media_analysis  String?
   privates_notes     Boolean           @default(false)
-
-  media_url       String? @default("")
-  media_mime_type String? @default("")
-  media_filename  String? @default("")
-
-  status            String?   @default("PENDING")
-  providerMessageId String?   @map("provider_message_id")
-  sentAt            DateTime? @map("sent_at")
-  errorMessage      String?   @map("error_message") @db.Text
+  conversation       Conversation      @relation("ConversationToMessage", fields: [conversation_id], references: [id], onDelete: Cascade)
 
   @@index([conversation_id])
   @@index([timestamp])
   @@map("messages")
   @@schema("conversation_schema")
+}
+
+model Campaign {
+  id                   String            @id @default(cuid())
+  name                 String
+  message              String
+  status               String            @default("PENDING")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  workspaceId          String            @map("workspace_id")
+  sendIntervalSeconds  Int               @map("send_interval_seconds")
+  allowedSendStartTime String            @map("allowed_send_start_time")
+  allowedSendEndTime   String            @map("allowed_send_end_time")
+  allowedSendDays      String            @map("allowed_send_days")
+  isTemplate           Boolean           @default(false) @map("is_template")
+  templateCategory     String?           @map("template_category")
+  templateName         String?           @map("template_name")
+  templateLanguage     String?           @map("template_language")
+  channelIdentifier    String?
+  contacts             CampaignContact[]
+  workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("campaigns")
+  @@schema("workspace_schema")
+}
+
+model CampaignContact {
+  id          String    @id @default(cuid())
+  campaignId  String    @map("campaign_id")
+  contactInfo String    @map("contact_info")
+  status      String    @default("PENDING")
+  sentAt      DateTime? @map("sent_at")
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  contactName String?   @map("contact_name")
+  variables   Json?     @default("{}")
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, status])
+  @@map("campaign_contacts")
+  @@schema("workspace_schema")
+}
+
+model WorkspaceTag {
+  id           String    @id @default(cuid())
+  name         String
+  workspace_id String
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, name])
+  @@index([workspace_id])
+  @@schema("workspace_schema")
+}
+
+model EventFollowUpMapping {
+  id                 String           @id @default(uuid())
+  workspaceId        String
+  eventName          String
+  followUpCampaignId String
+  isActive           Boolean          @default(true)
+  created_at         DateTime         @default(now())
+  updated_at         DateTime         @updatedAt
+  followUpCampaign   FollowUpCampaign @relation(fields: [followUpCampaignId], references: [id], onDelete: Cascade)
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, eventName])
+  @@index([workspaceId, isActive])
+  @@map("event_follow_up_mappings")
+  @@schema("workspace_schema")
+}
+
+model AbandonedCartRule {
+  id                 String    @id @default(uuid())
+  workspace_id       String
+  delay_milliseconds BigInt
+  message_content    String
+  sequenceOrder      Int       @default(0)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  workspace          Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id, sequenceOrder])
+  @@map("abandoned_cart_rules")
+  @@schema("workspace_schema")
+}
+
+model PipelineStage {
+  id           String         @id @default(uuid())
+  name         String
+  color        String         @default("#cccccc")
+  order        Int
+  workspace_id String
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  deals        Deal[]
+  rules        PipelineRule[]
+  workspace    Workspace      @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id, order])
+  @@map("pipeline_stages")
+  @@schema("workspace_schema")
+}
+
+model Deal {
+  id                String            @id @default(uuid())
+  name              String
+  value             Float?
+  probability       Float?            @default(0)
+  expectedCloseDate DateTime?         @map("expected_close_date")
+  source            DealSource?
+  workspace_id      String
+  client_id         String
+  stage_id          String
+  assigned_to_id    String?
+  ai_controlled     Boolean           @default(true) @map("ai_controlled")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  activityLogs      DealActivityLog[]
+  documents         DealDocument[]
+  notes             DealNote[]
+  tasks             DealTask[]
+  assignedTo        User?             @relation("UserDeals", fields: [assigned_to_id], references: [id])
+  client            Client            @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  stage             PipelineStage     @relation(fields: [stage_id], references: [id])
+  workspace         Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id])
+  @@index([client_id])
+  @@index([stage_id])
+  @@index([assigned_to_id])
+  @@map("deals")
+  @@schema("workspace_schema")
+}
+
+model DealNote {
+  id        String   @id @default(uuid())
+  content   String
+  deal_id   String
+  author_id String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  author    User     @relation("UserDealNotes", fields: [author_id], references: [id])
+  deal      Deal     @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+
+  @@index([deal_id])
+  @@index([author_id])
+  @@map("deal_notes")
+  @@schema("workspace_schema")
+}
+
+model DealTask {
+  id           String     @id @default(uuid())
+  title        String
+  description  String?
+  dueDate      DateTime?  @map("due_date")
+  status       TaskStatus @default(PENDING)
+  deal_id      String
+  assignedToId String?    @map("assigned_to_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  assignedTo   User?      @relation("UserDealTasks", fields: [assignedToId], references: [id])
+  deal         Deal       @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+
+  @@index([deal_id])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("deal_tasks")
+  @@schema("workspace_schema")
+}
+
+model DealDocument {
+  id           String   @id @default(uuid())
+  name         String
+  type         String
+  size         Int
+  url          String
+  deal_id      String
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  deal         Deal     @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+  uploadedBy   User     @relation("UserDealDocuments", fields: [uploadedById], references: [id])
+
+  @@index([deal_id])
+  @@index([uploadedById])
+  @@map("deal_documents")
+  @@schema("workspace_schema")
+}
+
+model DealActivityLog {
+  id        String         @id @default(uuid())
+  action    String
+  message   String
+  deal_id   String
+  user_id   String?
+  source    ActivitySource @default(AI)
+  createdAt DateTime       @default(now()) @map("created_at")
+  deal      Deal           @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+  user      User?          @relation("UserDealActivityLogs", fields: [user_id], references: [id])
+
+  @@index([deal_id])
+  @@index([user_id])
+  @@map("deal_activity_logs")
+  @@schema("workspace_schema")
+}
+
+model PipelineRule {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  condition   String
+  action      String
+  stage_id    String
+  is_active   Boolean       @default(true) @map("is_active")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  stage       PipelineStage @relation(fields: [stage_id], references: [id], onDelete: Cascade)
+
+  @@index([stage_id])
+  @@map("pipeline_rules")
+  @@schema("workspace_schema")
+}
+
+model CustomHttpTool {
+  id                    String     @id @default(cuid())
+  workspaceId           String
+  name                  String
+  description           String
+  method                HttpMethod
+  url                   String
+  headers               Json?
+  queryParametersSchema Json?
+  requestBodySchema     Json?
+  responseSchema        Json?
+  isEnabled             Boolean    @default(true)
+  createdAt             DateTime   @default(now()) @map("created_at")
+  updatedAt             DateTime   @updatedAt @map("updated_at")
+  workspace             Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, isEnabled])
+  @@map("custom_http_tools")
+  @@schema("workspace_schema")
+}
+
+model ai_stage_actions {
+  id        String            @id
+  stageId   String
+  type      AIStageActionType
+  order     Int
+  config    Json
+  isEnabled Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime
+  ai_stages ai_stages         @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@index([stageId, order])
+  @@schema("workspace_schema")
+}
+
+model ai_stages {
+  id                       String             @id
+  workspaceId              String
+  name                     String
+  condition                String
+  isActive                 Boolean            @default(true)
+  dataToCollect            Json?
+  finalResponseInstruction String?
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime
+  ai_stage_actions         ai_stage_actions[]
+  workspaces               Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@schema("workspace_schema")
 }
 
 enum ConversationStatus {
@@ -556,105 +798,6 @@ enum InvitationStatus {
   @@schema("workspace_schema")
 }
 
-model Campaign {
-  id          String    @id @default(cuid())
-  name        String
-  message     String    @db.Text
-  status      String    @default("PENDING")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  workspaceId String    @map("workspace_id")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  sendIntervalSeconds  Int    @map("send_interval_seconds")
-  allowedSendStartTime String @map("allowed_send_start_time")
-  allowedSendEndTime   String @map("allowed_send_end_time")
-  allowedSendDays      String @map("allowed_send_days")
-
-  isTemplate       Boolean @default(false) @map("is_template")
-  templateName     String? @map("template_name")
-  templateLanguage String? @map("template_language")
-  templateCategory String? @map("template_category")
-  channelIdentifier String?
-
-  contacts CampaignContact[]
-
-  @@map("campaigns")
-  @@schema("workspace_schema")
-}
-
-model CampaignContact {
-  id          String    @id @default(cuid())
-  campaignId  String    @map("campaign_id")
-  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contactInfo String    @map("contact_info")
-  contactName String?   @map("contact_name")
-  variables   Json?     @default("{}") 
-  status      String    @default("PENDING")
-  sentAt      DateTime? @map("sent_at")
-  error       String?   @db.Text
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  @@index([campaignId, status])
-  @@map("campaign_contacts")
-  @@schema("workspace_schema")
-}
-
-model WorkspaceTag {
-  id           String   @id @default(cuid())
-  name         String
-  workspace_id String
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-
-  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-
-  @@unique([workspace_id, name])
-  @@index([workspace_id])
-  @@schema("workspace_schema")
-}
-
-model EventFollowUpMapping {
-  id           String    @id @default(uuid())
-  workspaceId String
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  eventName         String
-  followUpCampaignId String
-  followUpCampaign   FollowUpCampaign @relation(fields: [followUpCampaignId], references: [id], onDelete: Cascade)
-
-  isActive   Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  @@unique([workspaceId, eventName])
-  @@index([workspaceId, isActive])
-  @@map("event_follow_up_mappings")
-  @@schema("workspace_schema")
-}
-
-model AbandonedCartRule {
-  id                 String   @id @default(uuid())
-  workspace_id       String
-  workspace          Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-
-  delay_milliseconds BigInt   // Time to wait after the event
-  message_content    String   @db.Text // Message to send
-  sequenceOrder      Int      @default(0) // Order if multiple rules exist
-
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
-
-  @@index([workspace_id, sequenceOrder]) // Index for efficient lookup
-  @@map("abandoned_cart_rules")          // Table name in the DB
-  @@schema("workspace_schema")           // Place in the same schema
-}
-
-// ==================================
-// ENUMS FOR KANBAN/PIPELINE
-// ==================================
-
 enum DealSource {
   WEBSITE
   LINKEDIN
@@ -687,161 +830,6 @@ enum ActivitySource {
   @@schema("workspace_schema")
 }
 
-
-// ==================================
-// MODELS FOR KANBAN/PIPELINE (Workspace Schema)
-// ==================================
-
-// Modelo para Etapas do Pipeline (Kanban)
-model PipelineStage {
-  id           String    @id @default(uuid())
-  name         String
-  color        String    @default("#cccccc") // Cor padrão para a coluna
-  order        Int       // Ordem da coluna no Kanban
-  workspace_id String
-  workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-
-  deals Deal[] // Relação com as Negociações/Deals
-  rules PipelineRule[] // Relação com as Regras de Automação
-
-  @@index([workspace_id, order])
-  @@map("pipeline_stages")
-  @@schema("workspace_schema")
-}
-
-// Modelo para Negociações/Deals (Cards do Kanban)
-model Deal {
-  id                String          @id @default(uuid())
-  name              String
-  value             Float?          // Valor estimado da negociação
-  probability       Float?          @default(0) // Probabilidade de fechamento (0 a 1)
-  expectedCloseDate DateTime?       @map("expected_close_date") // Data esperada de fechamento
-  source            DealSource?     // Origem do lead/negociação
-  workspace_id      String
-  workspace         Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
-  client_id         String          // Relacionado ao Cliente existente
-  client            Client          @relation(fields: [client_id], references: [id], onDelete: Cascade)
-  stage_id          String
-  stage             PipelineStage   @relation(fields: [stage_id], references: [id])
-  assigned_to_id    String?         // ID do usuário responsável
-  assignedTo        User?           @relation("UserDeals", fields: [assigned_to_id], references: [id], onDelete: SetNull)
-  ai_controlled     Boolean         @default(true) @map("ai_controlled") // Se a IA está controlando
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
-
-  notes        DealNote[]        // Notas da negociação
-  tasks        DealTask[]        // Tarefas da negociação
-  documents    DealDocument[]    // Documentos da negociação
-  activityLogs DealActivityLog[] // Log de atividades da negociação
-
-  @@index([workspace_id])
-  @@index([client_id])
-  @@index([stage_id])
-  @@index([assigned_to_id])
-  @@map("deals")
-  @@schema("workspace_schema")
-}
-
-// Modelo para Notas da Negociação
-model DealNote {
-  id         String   @id @default(uuid())
-  content    String   @db.Text
-  deal_id    String
-  deal       Deal     @relation(fields: [deal_id], references: [id], onDelete: Cascade)
-  author_id  String   // ID do usuário que criou a nota
-  author     User     @relation("UserDealNotes", fields: [author_id], references: [id])
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  @@index([deal_id])
-  @@index([author_id])
-  @@map("deal_notes")
-  @@schema("workspace_schema")
-}
-
-// Modelo para Tarefas da Negociação
-model DealTask {
-  id           String     @id @default(uuid())
-  title        String
-  description  String?    @db.Text
-  dueDate      DateTime?  @map("due_date")
-  status       TaskStatus @default(PENDING)
-  deal_id      String
-  deal         Deal       @relation(fields: [deal_id], references: [id], onDelete: Cascade)
-  assignedToId String?    @map("assigned_to_id") // ID do usuário responsável
-  assignedTo   User?      @relation("UserDealTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-
-  @@index([deal_id])
-  @@index([assignedToId])
-  @@index([status])
-  @@map("deal_tasks")
-  @@schema("workspace_schema")
-}
-
-// Modelo para Documentos da Negociação
-model DealDocument {
-  id           String   @id @default(uuid())
-  name         String
-  type         String   // Ex: pdf, docx, jpg
-  size         Int      // Tamanho em bytes
-  url          String   // URL do arquivo (S3, GCS, etc.)
-  deal_id      String
-  deal         Deal     @relation(fields: [deal_id], references: [id], onDelete: Cascade)
-  uploadedById String   @map("uploaded_by_id") // ID do usuário que fez upload
-  uploadedBy   User     @relation("UserDealDocuments", fields: [uploadedById], references: [id])
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  @@index([deal_id])
-  @@index([uploadedById])
-  @@map("deal_documents")
-  @@schema("workspace_schema")
-}
-
-// Modelo para Log de Atividades da Negociação
-model DealActivityLog {
-  id        String         @id @default(uuid())
-  action    String         // Ex: "Nota Adicionada", "Email Enviado", "Estágio Alterado"
-  message   String         @db.Text
-  deal_id   String
-  deal      Deal           @relation(fields: [deal_id], references: [id], onDelete: Cascade)
-  user_id   String?        // ID do usuário que realizou a ação (se aplicável)
-  user      User?          @relation("UserDealActivityLogs", fields: [user_id], references: [id], onDelete: SetNull)
-  source    ActivitySource @default(AI) // AI, USER, SYSTEM
-  createdAt DateTime       @default(now()) @map("created_at")
-
-  @@index([deal_id])
-  @@index([user_id])
-  @@map("deal_activity_logs")
-  @@schema("workspace_schema")
-}
-
-// Modelo para Regras de Automação do Pipeline
-model PipelineRule {
-  id          String        @id @default(uuid())
-  name        String
-  description String?       @db.Text
-  condition   String        @db.Text // Lógica da condição (pode ser JSON ou DSL)
-  action      String        @db.Text // Ação a ser executada (pode ser JSON ou DSL)
-  stage_id    String        // Etapa do pipeline onde a regra se aplica
-  stage       PipelineStage @relation(fields: [stage_id], references: [id], onDelete: Cascade)
-  is_active   Boolean       @default(true) @map("is_active")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-
-  @@index([stage_id])
-  @@map("pipeline_rules")
-  @@schema("workspace_schema")
-}
-
-// ==================================
-// ENUMS FOR AI TOOLS
-// ==================================
-
 enum HttpMethod {
   GET
   POST
@@ -849,35 +837,14 @@ enum HttpMethod {
   PATCH
   DELETE
 
-  @@schema("workspace_schema") // Ensure enum is in the correct schema if needed
+  @@schema("workspace_schema")
 }
 
-// ==================================
-// MODELS FOR AI TOOLS
-// ==================================
+enum AIStageActionType {
+  API_CALL
+  SEND_VIDEO
+  CONNECT_CALENDAR
+  TRANSFER_HUMAN
 
-// Add this Model
-model CustomHttpTool {
-  id            String     @id @default(cuid())
-  workspaceId   String
-  name          String     // Nome da ferramenta (usado pela IA, ex: buscar_cliente_crm)
-  description   String     @db.Text // Descrição detalhada para a IA entender o uso
-  method        HttpMethod // Método HTTP (GET, POST, etc.)
-  url           String     @db.Text // URL do endpoint
-  headers       Json?      // Cabeçalhos HTTP como JSON (ex: {"Authorization": "Bearer {{API_KEY}}"})
-  // Usaremos JSON Schema para definir os parâmetros esperados pela IA
-  queryParametersSchema Json?      // JSON Schema para parâmetros da URL
-  requestBodySchema     Json?      // JSON Schema para o corpo da requisição (POST/PUT/PATCH)
-  responseSchema        Json?      // (Opcional) JSON Schema para validar/descrever a resposta esperada
-  isEnabled     Boolean    @default(true) // Flag para ativar/desativar
-
-  createdAt     DateTime   @default(now()) @map("created_at") // Added map for consistency
-  updatedAt     DateTime   @updatedAt @map("updated_at") // Added map for consistency
-
-  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([workspaceId])
-  @@index([workspaceId, isEnabled])
-  @@map("custom_http_tools") // Explicit table name
-  @@schema("workspace_schema") // Ensure model is in the correct schema
+  @@schema("workspace_schema")
 }

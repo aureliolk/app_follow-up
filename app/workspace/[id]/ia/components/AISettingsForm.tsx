@@ -46,6 +46,7 @@ export default function AISettingsForm() {
       return initialValue ?? AVAILABLE_MODELS[0].value;
   });
   const [aiName, setAiName] = useState('Beatriz');
+  const [aiDelayBetweenMessages, setAiDelayBetweenMessages] = useState(workspace?.ai_delay_between_messages || 3000);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +67,11 @@ export default function AISettingsForm() {
           console.log(`[Effect] AI Name changed. Updating state from '${aiName}' to '${workspaceAiName}'`);
           setAiName(workspaceAiName);
       }
+      const workspaceAiDelay = workspace.ai_delay_between_messages || 3000;
+      if (workspaceAiDelay !== aiDelayBetweenMessages) {
+          console.log(`[Effect] AI Delay changed. Updating state from '${aiDelayBetweenMessages}' to '${workspaceAiDelay}'`);
+          setAiDelayBetweenMessages(workspaceAiDelay);
+      }
     }
   }, [workspace]);
 
@@ -76,7 +82,7 @@ export default function AISettingsForm() {
     setIsSaving(true);
     setError(null);
 
-    const dataToUpdate: { ai_default_system_prompt?: string | null; ai_model_preference?: string | null; ai_name?: string | null } = {};
+    const dataToUpdate: { ai_default_system_prompt?: string | null; ai_model_preference?: string | null; ai_name?: string | null; ai_delay_between_messages?: string | null } = {};
     let changed = false;
 
     const currentPrompt = workspace.ai_default_system_prompt || '';
@@ -90,6 +96,7 @@ export default function AISettingsForm() {
     console.log("  New Model:", `"${modelPreference}"`);
     console.log("  Current AI Name:", `"${currentAiName}"`);
     console.log("  New AI Name:", `"${aiName}"`);
+    console.log("  Current AI Delay:", `"${workspace?.ai_delay_between_messages}"`);
 
     if (systemPrompt.trim() !== currentPrompt.trim()) {
       dataToUpdate.ai_default_system_prompt = systemPrompt.trim() === '' ? null : systemPrompt.trim();
@@ -107,6 +114,12 @@ export default function AISettingsForm() {
       dataToUpdate.ai_name = aiName.trim() === '' ? 'Beatriz' : aiName.trim();
       changed = true;
       console.log("  -> AI Name changed. Adding to update.");
+    }
+
+    if (workspace?.ai_delay_between_messages !== workspace?.ai_delay_between_messages) {
+      dataToUpdate.ai_delay_between_messages = workspace?.ai_delay_between_messages?.toString() || null;
+      changed = true;
+      console.log("  -> AI Delay changed. Adding to update.");
     }
 
     if (!changed) {
@@ -152,8 +165,9 @@ export default function AISettingsForm() {
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="ai_name" className="text-foreground">
+          <div className="flex flex-col md:flex-row gap-4">
+           <div className="w-full ">
+           <Label htmlFor="ai_name" className="text-foreground">
               Nome da IA
             </Label>
             <Input
@@ -162,13 +176,32 @@ export default function AISettingsForm() {
               value={aiName}
               onChange={(e) => setAiName(e.target.value)}
               placeholder="Ex: Beatriz, Atendente Virtual"
-              className="bg-input border-input w-full md:w-1/2"
+              className="bg-input border-input w-full"
               disabled={isSaving || workspaceLoading}
               maxLength={50}
             />
              <p className="text-xs text-muted-foreground">
                 Este nome será usado para assinar as mensagens enviadas pela IA.
              </p>
+           </div>
+           <div className="w-full md:w-1/2">
+            <Label htmlFor="ai_delay_between_messages" className="text-foreground">
+              Tempo de espera entre mensagens
+            </Label>
+            <Input
+              type="number"
+              id="ai_delay_between_messages"
+              name="ai_delay_between_messages"
+              value={aiDelayBetweenMessages}
+              onChange={(e) => setAiDelayBetweenMessages(parseInt(e.target.value))}
+              placeholder="Ex: 3000"
+              className="bg-input border-input w-full"
+              disabled={isSaving || workspaceLoading}
+            />
+            <p className="text-xs text-muted-foreground">
+              Tempo de espera entre mensagens em milissegundos.
+            </p>
+           </div>
           </div>
 
           <div className="space-y-1.5">

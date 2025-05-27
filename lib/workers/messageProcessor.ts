@@ -35,6 +35,7 @@ interface JobData {
   newMessageId: string;    // ID da mensagem do cliente que disparou ESTE job
   workspaceId: string;
   receivedTimestamp: number; // Timestamp de quando o webhook recebeu a mensagem
+  delayBetweenMessages: number; // Delay entre mensagens
 }
 
 // Type guard for valid media metadata

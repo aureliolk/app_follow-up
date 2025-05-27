@@ -65,7 +65,7 @@ async function getWorkspaceByRouteToken(routeToken: string) {
             id: true,
             whatsappWebhookVerifyToken: true, // Usado no GET
             whatsappAppSecret: true,        // Usado no POST (precisa descriptografar)
-            // Inclua outros campos se necessário para o worker depois
+            ai_delay_between_messages: true,
         }
     });
 
@@ -271,6 +271,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                                 newMessageId: savedMessage.id,
                                                 workspaceId: workspace.id,
                                                 receivedTimestamp: receivedTimestamp,
+                                                delayBetweenMessages: workspace.ai_delay_between_messages
                                             };
                                             await addMessageProcessingJob(jobData);
                                             console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Job adicionado à fila message-processing para msg ${savedMessage.id}.`);

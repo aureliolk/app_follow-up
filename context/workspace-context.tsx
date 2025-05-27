@@ -50,6 +50,7 @@ type WorkspaceUpdateData = {
   ai_default_system_prompt?: string | null;
   ai_model_preference?: string | null;
   ai_name?: string | null;
+  ai_delay_between_messages?: string | null;
 };
 
 
