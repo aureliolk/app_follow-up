@@ -19,6 +19,7 @@ import { sendWhatsAppMessage, sendEvolutionMessage } from '../services/channelSe
 
 const QUEUE_NAME = 'message-processing';
 const HISTORY_LIMIT = 20;
+const FRACTIONED_MESSAGE_DELAY = 3000; // Delay fixo de 3s entre mensagens fracionadas
 
 interface JobData {
   conversationId: string;
@@ -73,24 +74,30 @@ async function processJob(job: Job<JobData>) {
       return { status: 'skipped', reason: 'IA inativa' };
     }
 
-    // 3. Verificar se é a mensagem mais recente (debounce)
+    // 3. Aplicar DEBOUNCE usando ai_delay_between_messages
+    const debounceMs = Number(conversation.workspace.ai_delay_between_messages) || 3000;
+    console.log(`[MsgProcessor ${jobId}] Aplicando debounce de ${debounceMs}ms...`);
+    await new Promise(resolve => setTimeout(resolve, debounceMs));
+    console.log(`[MsgProcessor ${jobId}] Debounce concluído.`);
+
+    // 4. Verificar se é a mensagem mais recente (após debounce)
     const isLatestMessage = await checkIfLatestMessage(conversationId, newMessageId);
     if (!isLatestMessage) {
-      console.log(`[MsgProcessor ${jobId}] Não é a mensagem mais recente. Pulando processamento IA`);
-      return { status: 'skipped', reason: 'Não é a mensagem mais recente' };
+      console.log(`[MsgProcessor ${jobId}] Não é a mensagem mais recente após debounce. Pulando processamento IA`);
+      return { status: 'skipped', reason: 'Não é a mensagem mais recente após debounce' };
     }
 
-    // 4. Processar mídia se necessário
+    // 5. Processar mídia se necessário
     await processMediaIfExists(message, conversation.workspace, jobId);
 
-    // 5. Gerar resposta da IA
+    // 6. Gerar resposta da IA
     const aiResponse = await generateAIResponse(conversationId, conversation.workspace, jobId);
     if (!aiResponse) {
       console.log(`[MsgProcessor ${jobId}] Não foi possível gerar resposta da IA`);
       return { status: 'failed', reason: 'Falha na geração da resposta IA' };
     }
 
-    // 6. Enviar resposta baseada na configuração
+    // 7. Enviar resposta baseada na configuração
     await sendAIResponse({
       aiResponse,
       conversation,
@@ -98,7 +105,7 @@ async function processJob(job: Job<JobData>) {
       jobId
     });
 
-    // 7. Atualizar timestamp da conversa
+    // 8. Atualizar timestamp da conversa
     await prisma.conversation.update({
       where: { id: conversationId },
       data: { last_message_at: new Date() }
@@ -161,8 +168,9 @@ async function fetchMessageAndConversation(messageId: string) {
   // Log das configurações do workspace para debug
   const workspace = message.conversation.workspace;
   console.log(`[DEBUG] Configurações do Workspace ${workspace.id}:`);
-  console.log(`  - ai_delay_between_messages: ${workspace.ai_delay_between_messages} (tipo: ${typeof workspace.ai_delay_between_messages})`);
-  console.log(`  - ai_send_fractionated: ${workspace.ai_send_fractionated} (tipo: ${typeof workspace.ai_send_fractionated})`);
+  console.log(`  - ai_delay_between_messages: ${workspace.ai_delay_between_messages}ms (usado como DEBOUNCE entre jobs)`);
+  console.log(`  - ai_send_fractionated: ${workspace.ai_send_fractionated} (fracionamento de mensagens)`);
+  console.log(`  - FRACTIONED_MESSAGE_DELAY: ${FRACTIONED_MESSAGE_DELAY}ms (delay fixo entre parágrafos)`);
   console.log(`  - ai_name: ${workspace.ai_name}`);
 
   return {
@@ -327,9 +335,8 @@ interface SendAIResponseParams {
 
 async function sendAIResponse({ aiResponse, conversation, workspaceId, jobId }: SendAIResponseParams) {
   const shouldFractionate = conversation.workspace.ai_send_fractionated === true;
-  const delayMs = Number(conversation.workspace.ai_delay_between_messages) || 3000;
 
-  console.log(`[MsgProcessor ${jobId}] Configuração: Fracionado=${shouldFractionate}, Delay=${delayMs}ms`);
+  console.log(`[MsgProcessor ${jobId}] Configuração: Fracionado=${shouldFractionate}`);
 
   if (shouldFractionate) {
     console.log(`[MsgProcessor ${jobId}] Enviando resposta fracionada`);
@@ -348,11 +355,11 @@ async function sendAIResponse({ aiResponse, conversation, workspaceId, jobId }: 
         totalMessages: paragraphs.length
       });
 
-      // Aplicar delay APÓS cada mensagem (exceto a última)
-      if (i < paragraphs.length - 1 && delayMs > 0) {
-        console.log(`[MsgProcessor ${jobId}] Aplicando delay de ${delayMs}ms antes do próximo parágrafo...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        console.log(`[MsgProcessor ${jobId}] Delay concluído, prosseguindo...`);
+      // Aplicar delay FIXO de 3s entre mensagens fracionadas (exceto na última)
+      if (i < paragraphs.length - 1) {
+        console.log(`[MsgProcessor ${jobId}] Aplicando delay fixo de ${FRACTIONED_MESSAGE_DELAY}ms entre parágrafos...`);
+        await new Promise(resolve => setTimeout(resolve, FRACTIONED_MESSAGE_DELAY));
+        console.log(`[MsgProcessor ${jobId}] Delay entre parágrafos concluído.`);
       }
     }
     console.log(`[MsgProcessor ${jobId}] Todos os ${paragraphs.length} parágrafos foram enviados`);

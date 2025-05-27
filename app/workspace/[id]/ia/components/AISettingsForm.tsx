@@ -196,7 +196,7 @@ export default function AISettingsForm() {
             
             <div className="w-full md:w-1/2">
               <Label htmlFor="ai_delay_between_messages" className="text-foreground">
-                Tempo de espera entre mensagens (ms)
+                Tempo de debounce entre jobs (ms)
               </Label>
               <Input
                 type="number"
@@ -204,14 +204,14 @@ export default function AISettingsForm() {
                 name="ai_delay_between_messages"
                 value={aiDelayBetweenMessages}
                 onChange={(e) => setAiDelayBetweenMessages(parseInt(e.target.value, 10) || 0)}
-                placeholder="Ex: 3000"
+                placeholder="Ex: 10000"
                 className="bg-input border-input w-full"
                 disabled={workspaceLoading}
                 min="0"
                 step="100"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Tempo em milissegundos. Ex: 3000 para 3 segundos.
+                Tempo de espera para agrupar mensagens sequenciais. Ex: 10000 para 10 segundos.
               </p>
             </div>
           </div>
@@ -284,7 +284,8 @@ export default function AISettingsForm() {
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Se desmarcado, a resposta completa da IA será enviada em uma única mensagem.
+              Se marcado, divide respostas longas em parágrafos com delay fixo de 3 segundos entre eles. 
+              Se desmarcado, envia a resposta completa em uma única mensagem.
             </p>
           </div>
         </CardContent>
