@@ -27,9 +27,10 @@ interface ConversationMetadata {
 // Função auxiliar para executar ações de um estágio
 async function executeStageActions(stage: any, context: StageContext, conversationId: string) {
   const results: any[] = [];
+  let apiResponseData: any = null; // Para armazenar a resposta da API
 
   if (!stage.actions || stage.actions.length === 0) {
-    return results;
+    return { results, apiResponseData };
   }
 
   // Ordenar e executar ações habilitadas
@@ -47,6 +48,9 @@ async function executeStageActions(stage: any, context: StageContext, conversati
             name: action.config.apiName || 'unnamed_api',
             result: apiResult
           });
+
+          // Armazenar a resposta da API para retornar à IA
+          apiResponseData = apiResult;
 
           // Se configurado, mapear resposta para variáveis de contexto
           if (action.config.useApiResponse && action.config.responseMapping) {
@@ -70,7 +74,7 @@ async function executeStageActions(stage: any, context: StageContext, conversati
     }
   }
 
-  return results;
+  return { results, apiResponseData };
 }
 
 // Função para executar chamada de API
@@ -172,6 +176,46 @@ function createStageTool(stage: any, workspaceId: string): Tool<any, any> {
     // Usar partial() no objeto Zod para tornar todos os campos opcionais por padrão
     parameters: z.object(properties).partial(),
     execute: async (params: any) => {
+      console.log(`[Stage Tool] Executando estágio '${stage.name}' com parâmetros:`, params);
+
+      // Criar contexto temporário para o estágio
+      const tempContext: StageContext = {
+        currentStage: stage.name,
+        collectedData: params,
+        stageHistory: []
+      };
+
+      // Executar ações do estágio
+      const { results, apiResponseData } = await executeStageActions(stage, tempContext, workspaceId);
+
+      // Se houver resposta da API, retorná-la de forma estruturada
+      if (apiResponseData) {
+        console.log(`[Stage Tool] Retornando dados da API para o estágio '${stage.name}'`);
+
+        // Verificar se há instrução final de resposta
+        let responseText = '';
+        if (stage.finalResponseInstruction) {
+          responseText = stage.finalResponseInstruction;
+          // Substituir placeholders na instrução final
+          for (const [key, value] of Object.entries(tempContext.collectedData)) {
+            responseText = responseText.replace(`{{${key}}}`, String(value));
+          }
+        } else if (apiResponseData.responseInstruction) {
+            // Check if responseInstruction is directly in apiResponseData
+            responseText = apiResponseData.responseInstruction
+        }
+
+
+        return {
+          stageId: stage.id,
+          stageName: stage.name,
+          collectedData: params,
+          apiResponse: apiResponseData,
+          responseInstruction: responseText,
+          message: `Estágio '${stage.name}' executado com sucesso. Dados da API recebidos.`
+        };
+      }
+
       return {
         stageId: stage.id,
         stageName: stage.name,
@@ -267,7 +311,14 @@ ${activeStages.map(stage => `- ${stage.name}: ${stage.condition}`).join('\n')}
 Quando identificar que uma condição de estágio foi atendida:
 1. Use a ferramenta correspondente ao estágio (stage_[nome])
 2. Colete os dados necessários antes de ativar o estágio
-3. Após ativar o estágio, siga as instruções de resposta final do estágio
+3. Após ativar o estágio, você receberá os dados da API no campo 'apiResponse'
+4. Use esses dados para formular sua resposta ao usuário
+5. Se houver uma 'responseInstruction', use-a como base para sua resposta
+
+IMPORTANTE: Quando receber dados de API através de um estágio:
+- Os dados estarão no campo 'apiResponse' do retorno da ferramenta
+- Use esses dados para responder ao usuário de forma completa e detalhada
+- Se os dados estiverem vazios ou nulos, informe que não foram encontradas informações
 
 ${stageContext.currentStage ? `Estágio atual: ${stageContext.currentStage}` : ''}
 ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${JSON.stringify(stageContext.collectedData)}` : ''}
@@ -305,31 +356,54 @@ ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${J
                 );
 
                 if (stage) {
-                  // Atualizar contexto
+                  // Atualizar contexto (dados coletados são os args da tool call)
                   stageContext.currentStage = stage.name;
-                  stageContext.stageHistory.push(stage.name);
+                  // Evita duplicidade no histórico se a tool call for re-executada
+                  if (stageContext.stageHistory[stageContext.stageHistory.length - 1] !== stage.name) {
+                     stageContext.stageHistory.push(stage.name);
+                  }
                   Object.assign(stageContext.collectedData, toolCall.args);
 
-                  // Executar ações do estágio
-                  const actionResults = await executeStageActions(stage, stageContext, conversationId);
+
+                  // Executar ações do estágio para obter o apiResponseData
+                  // Note: No streaming mode, we don't directly return tool results this way.
+                  // The tool's execute function would have already returned the data in the non-streaming part.
+                  // In streaming, the AI processes the tool_result chunk itself.
+                  // We execute actions here primarily for side effects (like saving metadata).
+                  // The actual apiResponseData should ideally come from the tool_result chunk processed by the AI.
+                  // However, based on the user's request structure (modifying createStageTool return),
+                  // we need to ensure the tool result contains the apiResponse.
+                  // The AI SDK is supposed to handle the tool execution and provide the result chunk.
+                  // Let's assume the modification in createStageTool is correctly picked up by the SDK.
+                  // We still need to update the metadata based on the execution side effects.
+                  const { results: actionResults, apiResponseData: executedApiResponse } = await executeStageActions(stage, stageContext, conversationId);
+
 
                   // Salvar contexto atualizado na conversa
+                   // We save both collectedData and any API response data from the execution,
+                   // although the AI should primarily rely on the tool_result chunk for the API response.
+                   const updatedMetadata: any = {
+                       ...(conversationMetadata || {}),
+                       currentStage: stageContext.currentStage,
+                       collectedData: stageContext.collectedData,
+                       stageHistory: stageContext.stageHistory,
+                       lastStageActions: actionResults,
+                   };
+                   // Optionally save the executed API response data in metadata if needed for debugging or state tracking
+                   if (executedApiResponse) {
+                       updatedMetadata.lastApiResponse = executedApiResponse;
+                   }
+
+
                   await prisma.conversation.update({
                     where: { id: conversationId },
                     data: {
-                      metadata: {
-                        ...conversationMetadata as any, // Use the checked metadata variable
-                        currentStage: stageContext.currentStage,
-                        collectedData: stageContext.collectedData,
-                        stageHistory: stageContext.stageHistory,
-                        lastStageActions: actionResults
-                      }
+                      metadata: updatedMetadata
                     }
                   });
 
-                  // You might want to add the tool result to the messages here if needed
-                  // However, the tool result is already part of the fullStream,
-                  // so just yielding the chunk should be enough for the stream consumer.
+                  // The tool result chunk should contain the return value from createStageTool.execute
+                  // The AI will process this chunk and see the apiResponse field.
                 }
               }
             }
@@ -342,7 +416,7 @@ ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${J
 
       return stream;
 
-    } else {
+    } else { // Non-streaming mode
       const result = await generateText({
         model,
         messages,
@@ -354,8 +428,46 @@ ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${J
       // Processar tool calls de estágios no modo não-streaming
       for (const toolCall of result.toolCalls || []) {
         if (toolCall.toolName.startsWith('stage_')) {
-          // Similar ao processamento acima...
-          // (código omitido por brevidade, mas seria o mesmo processamento)
+           const stageName = toolCall.toolName.replace('stage_', '').replace(/_/g, ' ');
+           const stage = activeStages.find(s =>
+             s.name.toLowerCase() === stageName.toLowerCase()
+           );
+
+           if (stage) {
+              // Update context
+              stageContext.currentStage = stage.name;
+               if (stageContext.stageHistory[stageContext.stageHistory.length - 1] !== stage.name) {
+                  stageContext.stageHistory.push(stage.name);
+               }
+              Object.assign(stageContext.collectedData, toolCall.args);
+
+              // Execute actions (this will also update context via mapApiResponseToContext if configured)
+              const { results: actionResults, apiResponseData: executedApiResponse } = await executeStageActions(stage, stageContext, conversationId);
+
+              // Save updated context and action results in metadata
+              const updatedMetadata: any = {
+                  ...(conversationMetadata || {}),
+                  currentStage: stageContext.currentStage,
+                  collectedData: stageContext.collectedData,
+                  stageHistory: stageContext.stageHistory,
+                  lastStageActions: actionResults,
+              };
+               // Optionally save the executed API response data in metadata
+               if (executedApiResponse) {
+                   updatedMetadata.lastApiResponse = executedApiResponse;
+               }
+
+              await prisma.conversation.update({
+                where: { id: conversationId },
+                data: {
+                  metadata: updatedMetadata
+                }
+              });
+
+              // In non-streaming mode, the result object itself has the tool results.
+              // The AI will receive the return value from createStageTool.execute directly here.
+              // We don't need to manually add it to messages for processing by the AI in this mode.
+           }
         }
       }
 
