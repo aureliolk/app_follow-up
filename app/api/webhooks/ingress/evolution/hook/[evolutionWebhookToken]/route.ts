@@ -230,9 +230,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             }
 
 
-            const { client, conversation} = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
-            await handleDealCreationForNewClient(client, workspace.id);
-            await initiateFollowUpSequence(client, conversation, workspace.id);
+            const { client, conversation, conversationWasCreated } = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
+            if (conversationWasCreated) {
+                await handleDealCreationForNewClient(client, workspace.id);
+                await initiateFollowUpSequence(client, conversation, workspace.id);
+            }
            
 
             // Salvar registro da mensagem

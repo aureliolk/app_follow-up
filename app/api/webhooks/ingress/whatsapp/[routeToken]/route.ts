@@ -170,10 +170,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Número do remetente inválido ou não padronizável: ${senderPhoneNumberRaw}. Pulando mensagem ${messageIdFromWhatsapp}.`);
                                     }
 
-                                    const { client, conversation, clientWasCreated, conversationWasCreated } =  await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_CLOUDAPI');
-                                    await handleDealCreationForNewClient(client, workspace.id);
-                                    await initiateFollowUpSequence(client, conversation, workspace.id);
-
+                                    const { client, conversation, conversationWasCreated } =  await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_CLOUDAPI');
+                                    if (conversationWasCreated) {
+                                        await handleDealCreationForNewClient(client, workspace.id);
+                                        await initiateFollowUpSequence(client, conversation, workspace.id);
+                                    }
 
                                     let messageContent: string | null = null;
                                     const messageType = message.type;
