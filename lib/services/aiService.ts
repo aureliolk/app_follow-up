@@ -1,4 +1,4 @@
-import { generateChatCompletion } from '@/lib/ai/chatService';
+import { processAIChat } from '@/lib/ai/chatService';
 import type { CoreMessage } from 'ai';
 import { AbandonedCartContext, FollowUpContext } from './conversationService';
 
@@ -24,16 +24,12 @@ export async function generateCartMessage(
   // Incluir a regra como mensagem inicial para evitar prompt vazio
   const messages: CoreMessage[] = [{ role: 'user', content: rule.message_content }];
   // Chamada ao serviço de IA
-  const cartResult = await generateChatCompletion({
+  const cartResult = await processAIChat(
     messages,
     systemPrompt,
     modelId,
-    nameIa: workspace.ai_name,
-    clientName,
-    conversationId: conversation.id,
-    workspaceId: workspace.id,
-    tools: {}
-  });
+    false,
+  );
 
   // Extrair texto, se retornado
   if (cartResult && typeof cartResult === 'object' && (cartResult as any).type === 'text') {
@@ -70,16 +66,17 @@ export async function generateFollowUpMessage(
   // Incluir a regra como mensagem inicial para evitar prompt vazio
   const messages: CoreMessage[] = [{ role: 'user', content: rule.message_content }];
   // Chamada ao serviço de IA
-  const followResult = await generateChatCompletion({
+  const followResult = await processAIChat(
     messages,
     systemPrompt,
     modelId,
-    nameIa: workspace.ai_name,
-    clientName,
-    conversationId: context.conversation.id,
-    workspaceId: workspace.id,
-    tools: {}
-  });
+    false,
+    
+  );
 
-  return followResult.response as string
+  if (followResult && typeof followResult === 'object' && 'content' in followResult && typeof followResult.content === 'string') {
+    return followResult.content;
+  }
+  
+  throw new Error('IA não retornou texto válido para mensagem de follow-up.');
 }
