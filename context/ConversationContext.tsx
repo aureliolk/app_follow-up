@@ -507,18 +507,36 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     const handleRealtimeAIStatusUpdate = useCallback((data: { conversationId: string; is_ai_active: boolean }) => {
         const { conversationId, is_ai_active } = data;
+        console.log(`[Realtime AI Status Update] Received for conversation ${conversationId}, new status: ${is_ai_active}`);
 
-        setConversations(prev =>
-            prev.map(conv =>
-                conv.id === conversationId ? { ...conv, is_ai_active: is_ai_active } : conv
-            )
-        );
+        setConversations(prevConversations => {
+            const updatedConversations = prevConversations.map(conv => {
+                if (conv.id === conversationId) {
+                    console.log(`[Realtime AI Status Update] Updating conversation ${conv.id} from is_ai_active: ${conv.is_ai_active} to ${is_ai_active}`);
+                    return { ...conv, is_ai_active: is_ai_active };
+                }
+                return conv;
+            });
+
+            // Recalculate counts
+            let newTotalAll = updatedConversations.length;
+            let newTotalHuman = updatedConversations.filter(c => c.is_ai_active === false).length;
+            let newTotalAi = updatedConversations.filter(c => c.is_ai_active === true).length;
+
+            console.log(`[Realtime AI Status Update] Recalculated counts: All=${newTotalAll}, Human=${newTotalHuman}, AI=${newTotalAi}`);
+
+            setTotalCountAll(newTotalAll);
+            setTotalCountHuman(newTotalHuman);
+            setTotalCountAi(newTotalAi);
+
+            return updatedConversations;
+        });
 
         if (selectedConversation?.id === conversationId) {
             setSelectedConversation(prev => prev ? { ...prev, is_ai_active: is_ai_active } : null);
         }
 
-    }, [selectedConversation?.id]);
+    }, [selectedConversation?.id, setConversations, setTotalCountAll, setTotalCountHuman, setTotalCountAi]);
 
     // --- Ações do Usuário ---
     const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string, isPrivateNote: boolean = false) => {
@@ -1018,4 +1036,4 @@ export const useConversationContext = (): ConversationContextType => {
         throw new Error('useConversationContext must be used within a ConversationProvider');
     }
     return context;
-}; 
+};
