@@ -30,11 +30,15 @@
     --ring: 20 100% 48%;
     --radius: 0.625rem; /* Valor base do raio */
     --header-background: 0 0% 100%;
+    --primary-light: 20 100% 90%; /* A more noticeable light orange for unread messages */
+    --accent: 240 4.8% 95.9%; /* Reverted to original light grey */
   }
 
   .dark {
     /* Variáveis CSS com os VALORES HSL para o tema ESCURO */
     --background: 240 8% 4%;
+    --primary-light: 20 100% 20%; /* A slightly darker light orange for dark mode */
+    --accent: 240 5% 18%; /* Reverted to original dark grey */
     --foreground: 210 20% 98%;
     --card: 240 6% 9%;
     --card-foreground: 210 20% 98%;
@@ -46,7 +50,6 @@
     --secondary-foreground: 210 20% 94%;
     --muted: 240 5% 14%;
     --muted-foreground: 240 5% 64%;
-    --accent: 240 5% 18%;
     --accent-foreground: 210 20% 98%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
@@ -176,4 +179,3 @@ html {
 .prose table td {
   padding: 0.75rem; border: 1px solid hsl(var(--border));
 }
-

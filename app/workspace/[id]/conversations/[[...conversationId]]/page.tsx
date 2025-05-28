@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const CONVERSATIONS_PER_PAGE = 50;
-const ITEM_HEIGHT = 72;
+const ITEM_HEIGHT = 64; // Reduced item height to reduce perceived spacing
 
 type AiFilterType = 'all' | 'human' | 'ai';
 
@@ -34,6 +34,7 @@ export default function ConversationsPage() {
     totalCountAll,
     totalCountHuman,
     totalCountAi,
+    unreadConversationIds, // Add unreadConversationIds here
   } = useConversationContext();
 
   const params = useParams();
@@ -181,7 +182,8 @@ export default function ConversationsPage() {
                     onSelect: handleSelectConversation,
                     selectedId: selectedConversation?.id || urlConversationId,
                     basePath: baseConversationsPath,
-                    isLoadingMore: isLoadingMoreConversations
+                    isLoadingMore: isLoadingMoreConversations,
+                    unreadConversationIds: unreadConversationIds // Pass unreadConversationIds
                   }}
                 >
                   {({ index, style, data }) => {
@@ -192,13 +194,16 @@ export default function ConversationsPage() {
                         </div>
                       );
                     }
+                    const conversation = data.conversations[index];
+                    const isUnread = data.unreadConversationIds.has(conversation.id); // Determine if conversation is unread
                     return (
                       <div style={style}>
                         <ConversationItem
-                          conversation={data.conversations[index]}
+                          conversation={conversation}
                           onSelect={data.onSelect}
-                          isSelected={data.conversations[index].id === data.selectedId}
+                          isSelected={conversation.id === data.selectedId}
                           basePath={data.basePath}
+                          unreadCount={isUnread ? 1 : 0} // Pass unreadCount based on isUnread
                         />
                       </div>
                     );

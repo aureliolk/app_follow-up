@@ -53,6 +53,9 @@ const config: Config = { // Tipagem explícita para v3
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				'primary-light': { // Add primary-light here
+					DEFAULT: 'hsl(var(--primary-light))',
+				},
 				chart: {
 					'1': 'hsl(var(--chart-1))',
 					'2': 'hsl(var(--chart-2))',
