@@ -1,9 +1,12 @@
+// app/api/webhooks/ingress/evolution/hook/[evolutionWebhookToken]/route.ts
+
 import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { addMessageProcessingJob } from '@/lib/queues/queueService';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import { saveMessageRecord } from '@/lib/services/persistenceService';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import { getOrCreateConversation, initiateFollowUpSequence, handleDealCreationForNewClient } from '@/lib/services/createConversation';
 import { Prisma } from '@prisma/client';
 import { SelectedMessageInfo } from '@/lib/types/message';
@@ -246,9 +249,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 metadata: {
                     messageIdFromProvider: messageIdFromEvolution,
                     provider: 'evolution',
+                    clientId: client.id, // Add client ID
+                    clientName: client.name, // Add client name
+                    clientPhone: client.phone_number, // Add client phone number
                     ...(mediaUrlOutput && { mediaUrl: mediaUrlOutput }),
                     ...(mediaTypeOutput && { mediaType: mediaTypeOutput }),
-                    ...(mediaData_base64 && { mediaData_base64: mediaData_base64 }), // <<< ADICIONADO O CAMPO mediaData_base64
+                    ...(mediaData_base64 && { mediaData_base64: mediaData_base64 }),
                     ...(mediaDurationOutput !== undefined && { mediaDuration: mediaDurationOutput }),
                     ...(isPttOutput !== undefined && { isPtt: isPttOutput }),
                     messageType: messageTypeOutput,
@@ -263,7 +269,34 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             // Disparar evento Pusher
             try {
                 const channelName = `private-workspace-${workspaceId}`;
-                const eventPayloadPusher = { type: 'new_message', payload: savedMessage };
+                // Create a copy of savedMessage.metadata without mediaData_base64 for Pusher
+                const originalMetadata = savedMessage.metadata;
+                let pusherMetadata: Record<string, any>; // Explicitly type as object
+
+                if (typeof originalMetadata === 'object' && originalMetadata !== null) {
+                    pusherMetadata = { ...originalMetadata as Record<string, any> }; // Cast and spread
+                } else {
+                    pusherMetadata = {}; // Default to empty object if not a valid object
+                }
+
+                if (pusherMetadata.mediaData_base64) {
+                    delete pusherMetadata.mediaData_base64;
+                }
+
+                const eventPayloadPusher = {
+                    type: 'new_message',
+                    payload: {
+                        id: (savedMessage as any).id,
+                        conversation_id: (savedMessage as any).conversation_id,
+                        sender_type: (savedMessage as any).sender_type,
+                        content: (savedMessage as any).content,
+                        timestamp: (savedMessage as any).timestamp,
+                        status: (savedMessage as any).status,
+                        channel_message_id: (savedMessage as any).channel_message_id,
+                        providerMessageId: (savedMessage as any).providerMessageId,
+                        metadata: pusherMetadata, // Use the modified metadata
+                    }
+                };
                 await pusher.trigger(channelName, 'new_message', eventPayloadPusher);
                 console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Pusher event 'new_message' triggered on channel ${channelName} for msg ${savedMessage.id}`);
             } catch (pusherError) {
@@ -298,13 +331,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             const recipientJidRaw = statusData.remoteJid; // Este é o JID do destinatário da mensagem original
 
             if (!providerMessageIdToUpdate) {
-                console.warn(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] keyId (providerMessageId) não encontrado no payload de status. Pulando.`);
+                console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] keyId (providerMessageId) não encontrado no payload de status. Pulando.`);
                 return new NextResponse('EVENT_RECEIVED_STATUS_UPDATE_MISSING_KEY_ID', { status: 200 });
             }
 
             const recipientPhoneNumber = standardizeBrazilianPhoneNumber(recipientJidRaw.split('@')[0]);
             if (!recipientPhoneNumber) {
-                console.warn(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Recipient JID ${recipientJidRaw} inválido ou não padronizável. Pulando status para ${providerMessageIdToUpdate}.`);
+                console.warn(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Recipient JID ${recipientJidRaw} inválido ou não padronizável. Pulando status para ${providerMessageIdToUpdate}.`);
                 return new NextResponse('EVENT_RECEIVED_STATUS_UPDATE_INVALID_RECIPIENT', { status: 200 });
             }
             
@@ -402,10 +435,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 }
 
                 const payloadToPublish = {
-                    messageId: targetMessage.id,
+                    id: targetMessage.id, // Changed from messageId
                     conversation_id: targetMessage.conversation_id,
-                    newStatus: dbNewStatus,
-                    providerMessageId: providerMessageIdToUpdate,
+                    status: dbNewStatus, // Changed from newStatus
+                    channel_message_id: providerMessageIdToUpdate, // Changed from providerMessageId
                     errorMessage: dbNewStatus === 'FAILED' ? (statusData.errorMessage || 'Failed via Evolution') : undefined
                 };
                 console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Preparing 'message_status_updated' (${dbNewStatus}) for Msg ID ${targetMessage.id}`);
@@ -442,4 +475,4 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 // (Opcional) Adicionar método GET se a Evolution precisar de verificação como a Meta
 // Esta API da Evolution normalmente não usa GET para verificação de webhook como a Meta.
 // O token na URL é a forma de autenticação do webhook.
-// export async function GET(request: NextRequest, { params }: RouteParams) { ... } 
+// export async function GET(request: NextRequest, { params }: RouteParams) { ... }

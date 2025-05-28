@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client';
 import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
 import { sendOperatorMessage } from '@/lib/services/conversationService';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 
 export async function GET(
   req: NextRequest,

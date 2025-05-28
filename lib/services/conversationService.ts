@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { FollowUpStatus, MessageSenderType, ConversationStatus } from '@prisma/client';
 import { sendWhatsAppMessage, sendEvolutionMessage } from "@/lib/services/channelService";
 import { Prisma } from '@prisma/client';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 
 // Context shapes for services
 import type { Conversation, Client, Workspace, AbandonedCartRule, FollowUp as FollowUpModel, WorkspaceAiFollowUpRule, FollowUp } from '@prisma/client';

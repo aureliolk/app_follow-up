@@ -63,7 +63,7 @@ export default function ConversationInputArea({
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const sendingRef = useRef(false);
+  // Removed sendingRef as it's redundant with isSendingMessage prop from context
 
   const handleEmojiClick = (emojiData: EmojiClickData) => {
     setInternalNewMessage(prev => prev + emojiData.emoji);
@@ -215,10 +215,10 @@ export default function ConversationInputArea({
 
   const safeHandleSendMessage = useCallback(async () => {
     const trimmedMessage = internalNewMessage.trim();
-    if (!trimmedMessage || isSendingMessage || sendingRef.current || !conversationId || (isRecording && messageType === 'reply')) {
+    if (!trimmedMessage || isSendingMessage || !conversationId || (isRecording && messageType === 'reply')) { // Removed sendingRef.current
       return;
     }
-    sendingRef.current = true;
+    // Removed sendingRef.current = true;
     setInternalNewMessage('');
     try {
       await sendManualMessage(conversationId, trimmedMessage, workspaceId, messageType === 'private-note');
@@ -229,7 +229,7 @@ export default function ConversationInputArea({
       // E reponha a mensagem no input para o usuário não perdê-la:
       // setInternalNewMessage(trimmedMessage);
     } finally {
-      sendingRef.current = false;
+      // Removed sendingRef.current = false;
       setTimeout(() => textareaRef.current?.focus(), 0);
     }
   }, [internalNewMessage, isSendingMessage, conversationId, workspaceId, sendManualMessage, textareaRef, messageType, isRecording]);
@@ -278,26 +278,26 @@ export default function ConversationInputArea({
             "focus-within:ring-1 focus-within:ring-ring focus-within:ring-offset-0",
             messageType === 'private-note' ? "border-yellow-400/60 dark:border-yellow-500/50" : "border-input"
           )}>
-            <Textarea
-              placeholder={messageType === 'reply' ? "Digite sua resposta aqui..." : "Digite sua nota privada aqui..."}
-              className={cn(
-                "min-h-[60px] sm:min-h-[70px] w-full rounded-md rounded-t-none border-0 border-t bg-transparent px-3 py-2 shadow-none resize-none",
-                "focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60",
-                messageType === 'private-note'
-                  ? "text-yellow-900 dark:text-yellow-200 placeholder:text-yellow-700/70 dark:placeholder:text-yellow-400/50 bg-yellow-50/20 dark:bg-yellow-800/10 border-yellow-400/60 dark:border-yellow-500/50"
-                  : "text-foreground border-input" // A borda superior é dada pelo Textarea, ou pelo div pai se for border-0
-              )}
-              value={internalNewMessage}
-              onChange={(e) => setInternalNewMessage(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !isSendingMessage && !isUploading && !(isRecording && messageType === 'reply')) {
-                  e.preventDefault();
-                  safeHandleSendMessage();
-                }
-              }}
-              ref={textareaRef}
-              disabled={isUploading || (isRecording && messageType === 'reply')}
-            />
+          <Textarea
+            placeholder={messageType === 'reply' ? "Digite sua resposta aqui..." : "Digite sua nota privada aqui..."}
+            className={cn(
+              "min-h-[60px] sm:min-h-[70px] w-full rounded-md rounded-t-none border-0 border-t bg-transparent px-3 py-2 shadow-none resize-none",
+              "focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60",
+              messageType === 'private-note'
+                ? "text-yellow-900 dark:text-yellow-200 placeholder:text-yellow-700/70 dark:placeholder:text-yellow-400/50 bg-yellow-50/20 dark:bg-yellow-800/10 border-yellow-400/60 dark:border-yellow-500/50"
+                : "text-foreground border-input" // A borda superior é dada pelo Textarea, ou pelo div pai se for border-0
+            )}
+            value={internalNewMessage}
+            onChange={(e) => setInternalNewMessage(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !isSendingMessage && !isUploading && !(isRecording && messageType === 'reply')) {
+                e.preventDefault();
+                safeHandleSendMessage();
+              }
+            }}
+            ref={textareaRef}
+            disabled={isSendingMessage || isUploading || (isRecording && messageType === 'reply')} // Use isSendingMessage prop directly
+          />
           </div>
         </div>
       </Tabs>
@@ -355,23 +355,23 @@ export default function ConversationInputArea({
            }
         </div>
 
-        <Button
-          onClick={safeHandleSendMessage}
-          disabled={commonDisabled || (isRecording && messageType === 'reply') || !internalNewMessage.trim()}
-          className={cn(
-            "min-w-[90px] sm:min-w-[110px] h-8 sm:h-9 px-3 py-2 text-xs sm:text-sm", // Ajuste de tamanho
-            messageType === 'private-note' 
-              ? "bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white dark:text-primary-foreground" 
-              : "bg-primary text-primary-foreground hover:bg-primary/90"
-          )}
-        >
-          {isSendingMessage || (isUploading && messageType !== 'private-note') ? ( // Mostrar loader para upload apenas em reply
-            <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" />
-          ) : (
-            <Send className="h-4 w-4 mr-1 sm:mr-2" />
-          )}
-          Send <span className="ml-1 text-xs opacity-70 hidden sm:inline">(⌘+↵)</span>
-        </Button>
+          <Button
+            onClick={safeHandleSendMessage}
+            disabled={isSendingMessage || isUploading || (isRecording && messageType === 'reply') || !internalNewMessage.trim()} // Use isSendingMessage directly
+            className={cn(
+              "min-w-[90px] sm:min-w-[110px] h-8 sm:h-9 px-3 py-2 text-xs sm:text-sm", // Ajuste de tamanho
+              messageType === 'private-note' 
+                ? "bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white dark:text-primary-foreground" 
+                : "bg-primary text-primary-foreground hover:bg-primary/90"
+            )}
+          >
+            {isSendingMessage || isUploading ? ( // Show loader if isSendingMessage or isUploading (simplified condition)
+              <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" />
+            ) : (
+              <Send className="h-4 w-4 mr-1 sm:mr-2" />
+            )}
+            Send <span className="ml-1 text-xs opacity-70 hidden sm:inline">(⌘+↵)</span>
+          </Button>
       </div>
     </div>
   );

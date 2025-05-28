@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/db';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import type { ClientConversation, Message } from '@/app/types'; // Assuming Conversation type exists here
 
 /**
@@ -153,4 +154,4 @@ export async function getConversationsByClientId(clientId: string): Promise<{ su
     console.error('[Server Action] Error fetching conversations by client ID:', error);
     return { success: false, error: error.message || 'Failed to fetch conversations.' };
   }
-} 
+}

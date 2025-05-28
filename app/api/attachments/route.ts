@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client';
 import type { Role } from '@/lib/permissions';
 import { whatsappOutgoingMediaQueue, WHATSAPP_OUTGOING_MEDIA_QUEUE } from '@/lib/queues/whatsappOutgoingMediaQueue';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 
 // Define allowed MIME types and max size (e.g., 16MB for WhatsApp images/videos)
 const MAX_FILE_SIZE_MB = 16;
@@ -207,10 +208,7 @@ export async function POST(req: NextRequest) {
 
       // --- Disparar evento Pusher para notificar a UI ---
       try {
-        const channelName = `private-workspace-${workspaceId}`;
-        const eventPayload = JSON.stringify({ type: 'new_message', payload: newMessage });
-        await pusher.trigger(channelName, 'new_message', eventPayload);
-        console.log(`[Attachments API] Pusher event 'new_message' triggered on channel ${channelName} for msg ${newMessage.id}`);
+        await triggerWorkspacePusherEvent(workspaceId, 'new_message', newMessage);
     } catch (pusherError) {
         console.error(`[Attachments API] Failed to trigger Pusher event for msg ${newMessage.id}:`, pusherError);
         // Não falhar o processamento do webhook por causa do Pusher, apenas logar.
@@ -239,4 +237,4 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: false, error: errorMessage }, { status: statusCode });
   }
-} 
+}

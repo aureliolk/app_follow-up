@@ -8,6 +8,7 @@ import { sendWhatsappTemplateMessage, SendResult as SendTemplateResult } from '@
 import { sendWhatsAppMessage, sendEvolutionMessage } from "@/lib/services/channelService";
 import { decrypt } from '@/lib/encryption';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import { Prisma } from '@prisma/client';
 // TODO: Importar serviços de canal (ex: import { sendWhatsAppMessage } from '@/lib/channel/whatsappService')
 
@@ -397,4 +398,4 @@ messageSenderWorker.on('error', err => {
     console.error('[MessageSender] Erro no worker:', err);
 });
 
-export { messageSenderWorker }; 
+export { messageSenderWorker };

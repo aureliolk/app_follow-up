@@ -6,10 +6,11 @@
 - [x] Database schema
 - [x] Basic UI components
 - [x] API endpoints
+- [x] **Real-time messaging (Pusher integration and message status updates)**
+- [x] **Fix 'NOVO CONTATO' issue**
 
 ## In Progress
 - [ ] Authentication
-- [ ] Real-time messaging
 - [ ] AI model integration
 - [ ] Admin dashboard
 
@@ -22,7 +23,7 @@
 ## Issues
 - AI model latency
 - Database query optimization
-- Real-time sync delays
+- Real-time sync delays (addressed, but monitoring needed)
 - UI performance on mobile
 
 ## Milestones

@@ -13,6 +13,7 @@ import os from 'os';
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import { sendEvolutionMediaMessage } from '../services/channelService';
 
 // --- Helper para converter Stream para Buffer ---
@@ -467,4 +468,3 @@ whatsappMediaSenderWorker.on('error', (error: Error) => {
 });
 
 console.log(`[Worker:${WHATSAPP_OUTGOING_MEDIA_QUEUE}] Worker inicializado e escutando a fila.`);
-

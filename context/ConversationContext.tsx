@@ -458,12 +458,13 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         channel_message_id?: string; 
         errorMessage?: string 
     }) => {
-        console.log(`[Status Update] Message ${data.id}: ${data.status}`);
+        console.log(`[Status Update] Received data:`, data);
 
         // Atualizar mensagens selecionadas
         setSelectedConversationMessages(prevMessages => {
-            return prevMessages.map(msg => {
+            const updatedMessages = prevMessages.map(msg => {
                 if (msg.id === data.id) {
+                    console.log(`[Status Update] Matched message in selectedConversationMessages: ${msg.id}. Updating status to ${data.status}`);
                     return {
                         ...msg,
                         status: data.status,
@@ -473,22 +474,51 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 }
                 return msg;
             });
-        });
-
-        // CORREÇÃO: Atualizar cache também
-        setMessageCache(prevCache => {
-            const updatedCache = { ...prevCache };
-            Object.keys(updatedCache).forEach(conversationId => {
-                updatedCache[conversationId] = updatedCache[conversationId].map(msg =>
-                    msg.id === data.id 
-                        ? {
+            // If no direct match by ID, try matching by provider_message_id if data.channel_message_id is present
+            if (!updatedMessages.some(msg => msg.id === data.id) && data.channel_message_id) {
+                console.log(`[Status Update] No direct ID match. Trying to match by channel_message_id: ${data.channel_message_id}`);
+                return prevMessages.map(msg => {
+                    if (msg.provider_message_id === data.channel_message_id) {
+                        console.log(`[Status Update] Matched message by provider_message_id: ${msg.id}. Updating status to ${data.status}`);
+                        return {
                             ...msg,
                             status: data.status,
                             channel_message_id: data.channel_message_id || msg.channel_message_id,
                             errorMessage: data.errorMessage || msg.errorMessage
-                        }
-                        : msg
-                );
+                        };
+                    }
+                    return msg;
+                });
+            }
+            return updatedMessages;
+        });
+
+        // Atualizar cache também
+        setMessageCache(prevCache => {
+            const updatedCache = { ...prevCache };
+            Object.keys(updatedCache).forEach(conversationId => {
+                updatedCache[conversationId] = updatedCache[conversationId].map(msg => {
+                    if (msg.id === data.id) {
+                        console.log(`[Status Update] Matched message in cache for conv ${conversationId}: ${msg.id}. Updating status to ${data.status}`);
+                        return {
+                            ...msg,
+                            status: data.status,
+                            channel_message_id: data.channel_message_id || msg.channel_message_id,
+                            errorMessage: data.errorMessage || msg.errorMessage
+                        };
+                    }
+                    // If no direct match by ID, try matching by provider_message_id if data.channel_message_id is present
+                    if (data.channel_message_id && msg.provider_message_id === data.channel_message_id) {
+                        console.log(`[Status Update] Matched message in cache by provider_message_id for conv ${conversationId}: ${msg.id}. Updating status to ${data.status}`);
+                        return {
+                            ...msg,
+                            status: data.status,
+                            channel_message_id: data.channel_message_id || msg.channel_message_id,
+                            errorMessage: data.errorMessage || msg.errorMessage
+                        };
+                    }
+                    return msg;
+                });
             });
             return updatedCache;
         });
@@ -588,6 +618,26 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
             const sentMessage = response.data.message;
             toast.success("Mensagem enviada!");
+
+            // Create a final message object with status 'SENT' and the real ID
+            const finalMessage: Message = {
+                ...optimisticMessage, // Start with optimistic message properties
+                ...sentMessage,      // Overlay with properties from the real message (like real ID)
+                id: sentMessage?.id || optimisticId, // Ensure real ID is used
+                status: 'SENT',      // Explicitly set status to SENT
+            };
+
+            // Replace optimistic message with the final message in selectedConversationMessages
+            setSelectedConversationMessages(prev =>
+                prev.map(m => m.id === optimisticId ? finalMessage : m)
+            );
+            // Replace optimistic message with the final message in messageCache
+            setMessageCache(prevCache => ({
+                ...prevCache,
+                [conversationId]: (prevCache[conversationId] || []).map(m =>
+                    m.id === optimisticId ? finalMessage : m
+                )
+            }));
 
         } catch (err: any) {
             const errorMsg = err.response?.data?.error || err.message || 'Erro desconhecido ao enviar mensagem.';
@@ -691,24 +741,25 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             console.log(`[ConversationContext] Template action successful. Provider Msg ID (WAMID): ${result.messageId}`);
             toast.success("Template enviado!");
 
-            setMessageCache(prevCache => {
-                 const current = prevCache[conversationId] || [];
-                 return {
-                     ...prevCache,
-                     [conversationId]: current.map(m =>
-                         m.id === optimisticId
-                         ? { ...m, provider_message_id: result.messageId || null, status: 'SENT' }
-                         : m
-                     )
-                 };
-             });
-             if (selectedConversation?.id === conversationId) {
-                 setSelectedConversationMessages(prev => prev.map(m =>
-                     m.id === optimisticId
-                     ? { ...m, provider_message_id: result.messageId || null, status: 'SENT' }
-                     : m
-                 ));
-             }
+            // Update optimistic message with real message ID and SENT status
+            const updatedOptimisticMessage: Message = {
+                ...optimisticMessage,
+                id: result.messageId || optimisticId, // Use real ID if available, otherwise keep optimistic
+                provider_message_id: result.messageId || null,
+                status: 'SENT', // Set status to SENT after successful API call
+            };
+
+            // Replace optimistic message with updated message in selectedConversationMessages
+            setSelectedConversationMessages(prev => prev.map(m =>
+                m.id === optimisticId ? updatedOptimisticMessage : m
+            ));
+            // Replace optimistic message with updated message in messageCache
+            setMessageCache(prevCache => ({
+                ...prevCache,
+                [conversationId]: (prevCache[conversationId] || []).map(m =>
+                    m.id === optimisticId ? updatedOptimisticMessage : m
+                )
+            }));
 
         } catch (err: any) {
             const errorMsg = err.response?.data?.error || err.message || 'Erro desconhecido ao enviar template.';
@@ -773,7 +824,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
              },
             media_url: localPreviewUrl,
             media_mime_type: file.type,
-            media_filename: file.name,
+            media_filename: null,
             provider_message_id: null,
         };
 
@@ -812,6 +863,18 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             if (localPreviewUrl) {
                 URL.revokeObjectURL(localPreviewUrl);
             }
+
+            // Replace optimistic message with real message in selectedConversationMessages
+            setSelectedConversationMessages(prev =>
+                prev.map(m => m.id === optimisticId ? createdMessage : m)
+            );
+            // Replace optimistic message with real message in messageCache
+            setMessageCache(prevCache => ({
+                ...prevCache,
+                [conversationId]: (prevCache[conversationId] || []).map(m =>
+                    m.id === optimisticId ? createdMessage : m
+                )
+            }));
 
         } catch (err: any) {
             const errorMsg = err.response?.data?.error || err.message || 'Erro desconhecido ao enviar mídia.';

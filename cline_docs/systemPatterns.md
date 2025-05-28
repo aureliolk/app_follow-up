@@ -4,7 +4,7 @@
 - **Frontend**: Next.js with TypeScript
 - **Backend**: API routes with Node.js
 - **Database**: PostgreSQL with Prisma ORM
-- **Real-time**: Redis for pub/sub messaging
+- **Real-time**: Redis for pub/sub messaging, **Pusher for real-time client-side communication**
 - **AI Services**: Custom AI model integration
 
 ## Core Components
@@ -16,6 +16,7 @@
    - Business logic
    - Data processing
    - AI model integration
+   - **Centralized Pusher Event Helper (`lib/pusherEvents.ts`)**
 3. **Data Layer**
    - Database access
    - Caching
@@ -27,3 +28,4 @@
 - CQRS for data operations
 - Repository pattern for data access
 - Dependency injection for service management
+- **Consistent real-time event triggering via a dedicated helper function**

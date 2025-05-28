@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { sendWhatsappTemplateMessage } from '@/lib/channel/whatsappSender';
 import { decrypt } from '@/lib/encryption'; // Assumindo que as credenciais estão criptografadas
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import type { Message } from '@/app/types';
 
 interface SendTemplateArgs {
@@ -144,10 +145,11 @@ export async function sendWhatsappTemplateAction(
         try {
           const statusPayload = {
             payload: {
-              messageId: createdMessage.id,
+              id: createdMessage.id, // Changed from messageId
               conversation_id: args.conversationId,
-              newStatus: messageStatus,
-              providerMessageId: wamid,
+              status: messageStatus, // Changed from newStatus
+              channel_message_id: wamid, // Changed from providerMessageId
+              // errorMessage is not applicable for initial SENT status
             }
           };
           // Pusher
@@ -177,4 +179,4 @@ export async function sendWhatsappTemplateAction(
     console.error('[Server Action] Error in sendWhatsappTemplateAction:', error);
     return { success: false, error: error.message || 'Erro desconhecido ao enviar template via Server Action.' };
   }
-} 
+}

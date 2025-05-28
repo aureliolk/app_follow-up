@@ -9,6 +9,7 @@ import { calculateNextValidSendTime } from '@/lib/timeUtils'; // scheduling simp
 import { MessageSenderType, Prisma } from '@prisma/client';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
 import { getOrCreateConversation, handleDealCreationForNewClient, initiateFollowUpSequence } from '../services/createConversation';
 
@@ -337,4 +338,4 @@ campaignProcessorWorker.on('error', err => {
   console.error('[CampaignProcessor] Erro no worker:', err);
 });
 
-export { campaignProcessorWorker }; 
+export { campaignProcessorWorker };

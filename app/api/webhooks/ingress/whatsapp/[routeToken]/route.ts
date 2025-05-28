@@ -9,6 +9,7 @@ import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< IMPOR
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
 import { saveMessageRecord } from '@/lib/services/persistenceService';
 import pusher from '@/lib/pusher'; // <-- Adicionar importação do Pusher
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import { createDeal } from '@/lib/actions/pipelineActions';
 import { getPipelineStages } from '@/lib/actions/pipelineActions';
 import { 
@@ -403,10 +404,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     }
 
                                     const payloadToPublish = {
-                                        messageId: targetMessage.id,
+                                        id: targetMessage.id, // Changed from messageId
                                         conversation_id: targetConversationId,
-                                        newStatus: dbNewStatus,
-                                        providerMessageId: status.id,
+                                        status: dbNewStatus, // Changed from newStatus
+                                        channel_message_id: status.id, // Changed from providerMessageId
                                         errorMessage: dbNewStatus === 'FAILED' ? (status.errors?.[0]?.title || 'Failed') : undefined
                                     };
                                     console.log(`[WH_STATUS_LOG] Preparing 'message_status_updated' (${dbNewStatus}) for Msg ID ${targetMessage.id}`);

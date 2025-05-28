@@ -9,6 +9,7 @@ import axios from 'axios';
 import { z } from 'zod';
 import { Prisma, MessageSenderType } from '@prisma/client';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 
 // Esquema de validação para o corpo da requisição
 const sendTemplateSchema = z.object({
@@ -216,10 +217,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
                 if (savedMessage) { // Só publica se conseguiu salvar
                     try {
                         // Canal do Workspace no Pusher
-                        const pusherChannel = `private-workspace-${workspaceId}`;
-                        const eventPayload = JSON.stringify({ type: 'new_message', payload: savedMessage });
-                        await pusher.trigger(pusherChannel, 'new_message', eventPayload);
-                        console.log(`[API POST /send-template] Evento 'new_message' enviado via Pusher para ${pusherChannel}.`);
+                        await triggerWorkspacePusherEvent(workspaceId, 'new_message', savedMessage);
 
                     } catch (publishError) {
                          console.error(`[API POST /send-template] Error triggering Pusher for message ${savedMessage.id}:`, publishError);
@@ -248,4 +246,3 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ success: false, error: 'Erro interno do servidor' }, { status: 500 });
     }
 }
-

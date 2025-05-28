@@ -15,6 +15,7 @@ import { transcribeAudio } from '@/lib/ai/transcribeAudio';
 import { Readable } from 'stream';
 import { processAIChat } from '../ai/chatService';
 import pusher from '@/lib/pusher';
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import { sendWhatsAppMessage, sendEvolutionMessage } from '../services/channelService';
 
 const QUEUE_NAME = 'message-processing';
