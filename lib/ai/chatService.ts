@@ -339,7 +339,8 @@ ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${J
         system: systemPrompt,
         tools: allTools,
         toolChoice: 'auto',
-        maxSteps: 5
+        maxSteps: 5,
+        maxTokens: 1000000
       });
 
       // Processar tool calls a partir do fullStream
@@ -422,7 +423,8 @@ ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${J
         messages,
         system: systemPrompt,
         tools: allTools,
-        toolChoice: 'auto'
+        toolChoice: 'auto',
+        maxTokens: 1000000
       });
 
       // Processar tool calls de estágios no modo não-streaming

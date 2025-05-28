@@ -1,19 +1,21 @@
-// apps/next-app/app/workspace/[slug]/conversations/[[...conversationId]]/page.tsx
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useWorkspace } from '@/context/workspace-context';
 import { useConversationContext } from '@/context/ConversationContext';
+import { FixedSizeList as List } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import ErrorMessage from '@/components/ui/ErrorMessage';
-import ConversationList from '../components/ConversationList';
 import ConversationDetail from '../components/ConversationDetail';
+import { ConversationItem } from '../components/ConversationItem';
 import type { ClientConversation } from '@/app/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-const CONVERSATIONS_PER_PAGE = 20;
+const CONVERSATIONS_PER_PAGE = 50;
+const ITEM_HEIGHT = 72;
 
 type AiFilterType = 'all' | 'human' | 'ai';
 
@@ -40,6 +42,8 @@ export default function ConversationsPage() {
 
   const [aiFilter, setAiFilter] = useState<AiFilterType>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const listRef = useRef(null);
+  const loadingRef = useRef(false);
 
   const urlConversationId = Array.isArray(params.conversationId) && params.conversationId.length > 0
     ? params.conversationId[0]
@@ -49,7 +53,6 @@ export default function ConversationsPage() {
     const wsId = workspace?.id;
     if (wsId && !workspaceLoading) {
       const currentFilter = 'ATIVAS';
-      console.log(`[ConversationsPage] useEffect (initial): Fetching via context for wsId ${wsId} with filter ${currentFilter}`);
       setCurrentPage(1);
       fetchConversations(currentFilter, wsId, 1, CONVERSATIONS_PER_PAGE);
     }
@@ -58,22 +61,14 @@ export default function ConversationsPage() {
   useEffect(() => {
     if (conversations.length > 0 && !loadingConversations) {
       if (urlConversationId) {
-        console.log(`[ConversationsPage] URL Effect triggered. urlConversationId: ${urlConversationId}, conversations count: ${conversations.length}`);
         const conversationFromUrl = conversations.find(c => c.id === urlConversationId);
         if (conversationFromUrl && selectedConversation?.id !== urlConversationId) {
-          console.log(`[ConversationsPage] Selecting conversation from URL: ${urlConversationId}`);
-          console.log(`[ConversationsPage] Calling selectConversation with:`, conversationFromUrl);
           selectConversation(conversationFromUrl);
         } else if (!conversationFromUrl) {
-          console.warn(`[ConversationsPage] Conversation with ID ${urlConversationId} not found in list. Clearing selection.`);
           selectConversation(null);
           const basePath = `/workspace/${workspace?.id}/conversations`;
           if (pathname !== basePath) router.push(basePath);
         }
-      } else if (selectedConversation) {
-        // If no ID in URL but a conversation is selected (e.g. from previous state), clear it
-        // This might happen if user navigates back from a selected conversation URL
-        // selectConversation(null); // Or keep it, depending on desired UX
       }
     }
   }, [urlConversationId, conversations, loadingConversations, selectConversation, selectedConversation, workspace?.id, router, pathname]);
@@ -88,13 +83,31 @@ export default function ConversationsPage() {
     }
   }, [selectConversation, router, pathname, workspace?.id]);
 
-  const loadMore = () => {
-    if (!loadingConversations && !isLoadingMoreConversations && hasMoreConversations && workspace) {
+  const loadMore = useCallback(() => {
+    if (!loadingRef.current && hasMoreConversations && workspace) {
+      loadingRef.current = true;
       const nextPage = currentPage + 1;
       setCurrentPage(nextPage);
-      fetchConversations('ATIVAS', workspace.id, nextPage, CONVERSATIONS_PER_PAGE, true);
+      fetchConversations('ATIVAS', workspace.id, nextPage, CONVERSATIONS_PER_PAGE, true)
+        .finally(() => {
+          loadingRef.current = false;
+        });
     }
-  };
+  }, [currentPage, hasMoreConversations, workspace?.id]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMoreConversations) {
+        loadMore();
+      }
+    }, { threshold: 0.1 });
+
+    if (listRef.current) {
+      observer.observe(listRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMoreConversations, loadMore]);
 
   const isLoading = loadingConversations || workspaceLoading;
   const displayError = conversationsError || workspaceError;
@@ -107,12 +120,8 @@ export default function ConversationsPage() {
   }
 
   const filteredConversations = conversations.filter(convo => {
-    if (aiFilter === 'human') {
-      return convo.is_ai_active === false;
-    }
-    if (aiFilter === 'ai') {
-      return convo.is_ai_active === true;
-    }
+    if (aiFilter === 'human') return convo.is_ai_active === false;
+    if (aiFilter === 'ai') return convo.is_ai_active === true;
     return true; 
   });
 
@@ -159,25 +168,51 @@ export default function ConversationsPage() {
               </Button>
             </div>
           </div>
-          <ConversationList
-            conversations={filteredConversations}
-            onSelectConversation={handleSelectConversation}
-            selectedConversationId={selectedConversation?.id || urlConversationId}
-            basePath={baseConversationsPath}
-            loadMoreConversations={loadMore}
-            hasMoreConversations={hasMoreConversations}
-            isLoadingMoreConversations={isLoadingMoreConversations}
-          />
+          <div className="h-full">
+            <AutoSizer>
+              {({ height, width }) => (
+                <List
+                  height={height}
+                  itemCount={filteredConversations.length + (hasMoreConversations ? 1 : 0)}
+                  itemSize={ITEM_HEIGHT}
+                  width={width}
+                  itemData={{
+                    conversations: filteredConversations,
+                    onSelect: handleSelectConversation,
+                    selectedId: selectedConversation?.id || urlConversationId,
+                    basePath: baseConversationsPath,
+                    isLoadingMore: isLoadingMoreConversations
+                  }}
+                >
+                  {({ index, style, data }) => {
+                    if (index >= data.conversations.length) {
+                      return (
+                        <div style={style} className="flex justify-center items-center p-4" ref={listRef}>
+                          {data.isLoadingMore ? <LoadingSpinner size="small" /> : null}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div style={style}>
+                        <ConversationItem
+                          conversation={data.conversations[index]}
+                          onSelect={data.onSelect}
+                          isSelected={data.conversations[index].id === data.selectedId}
+                          basePath={data.basePath}
+                        />
+                      </div>
+                    );
+                  }}
+                </List>
+              )}
+            </AutoSizer>
+          </div>
         </div>
 
         <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col bg-background">
-          <ConversationDetail 
-            // Pass conversationId from URL to ConversationDetail if needed for direct loading
-            // conversationIdFromUrl={urlConversationId} // Example, if ConversationDetail can fetch its own data
-          />
+          <ConversationDetail />
         </div>
       </div>
     </div>
   );
 }
-

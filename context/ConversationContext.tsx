@@ -267,29 +267,33 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, [isLoadingMoreMessages, hasMoreMessages, selectedConversation, currentMessagesPage, fetchConversationMessages]);
 
     const selectConversation = useCallback((conversation: ClientConversation | null) => {
-        console.log(`[ConversationContext] selectConversation called with conversation: ${conversation?.id}`); // Temporarily log selectConversation call
         const newConversationId = conversation?.id ?? null;
         const currentConversationId = selectedConversation?.id ?? null;
+        
         if (newConversationId === currentConversationId) return;
 
+        // Limpar estado anterior
         setSelectedConversation(conversation);
         setSelectedConversationMessages([]);
         setSelectedConversationError(null);
         setLoadingSelectedConversationMessages(false);
-
-        if (conversation) {
-            // Call fetchConversationMessages for initial load with orderBy: 'desc'
-            fetchConversationMessages(conversation.id, 1, 20, false, 'desc');
+        setCurrentMessagesPage(1);
+        setHasMoreMessages(true);
+        
+        // Marcar como lida
+        if (conversation && unreadConversationIds.has(conversation.id)) {
             setUnreadConversationIds(prev => {
-                if (prev.has(conversation.id)) {
-                    const newSet = new Set(prev);
-                    newSet.delete(conversation.id);
-                    return newSet;
-                }
-                return prev;
+                const newSet = new Set(prev);
+                newSet.delete(conversation.id);
+                return newSet;
             });
-        } 
-    }, [selectedConversation, setUnreadConversationIds, messageCache, fetchConversationMessages]);
+        }
+
+        // CORREÇÃO: Buscar mensagens se houver conversa
+        if (conversation) {
+            fetchConversationMessages(conversation.id, 1, 20, false, 'desc');
+        }
+    }, [selectedConversation?.id, fetchConversationMessages, setUnreadConversationIds, unreadConversationIds]);
 
      const fetchConversations = useCallback(async (
         filter: string = 'ATIVAS',
@@ -305,6 +309,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             selectConversation(null);
             return;
         }
+        
         if (append) {
             setIsLoadingMoreConversations(true);
         } else {
@@ -314,9 +319,12 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             setCurrentFilter(filter);
         }
         setConversationsError(null);
+        
         try {
             const { data: fetchedData, hasMore, totalCounts } = await fetchConversationsApi(filter, wsId, page, pageSize);
+            
             if (append) {
+                // CORREÇÃO: Append sem mexer na seleção
                 setConversations(prev => [...prev, ...fetchedData]);
             } else {
                 setConversations(fetchedData);
@@ -326,23 +334,26 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             }
             setHasMoreConversations(hasMore);
 
-            const currentSelectedId = selectedConversation?.id;
-            const listHasSelected = fetchedData.some(c => c.id === currentSelectedId);
+            // CORREÇÃO: Só alterar seleção se não for append
+            if (!append) {
+                const currentSelectedId = selectedConversation?.id;
+                const listHasSelected = fetchedData.some(c => c.id === currentSelectedId);
 
-            if (currentSelectedId && !listHasSelected) {
-                 selectConversation(fetchedData.length > 0 ? fetchedData[0] : null);
-            } else if (!currentSelectedId && fetchedData.length > 0) {
-                 selectConversation(fetchedData[0]);
-            } else if (!currentSelectedId && fetchedData.length === 0) {
-                 selectConversation(null);
+                if (!currentSelectedId && fetchedData.length > 0) {
+                    selectConversation(fetchedData[0]);
+                } else if (currentSelectedId && !listHasSelected && fetchedData.length === 0) {
+                    selectConversation(null);
+                }
             }
 
         } catch (err: any) {
             console.error("[ConversationContext] Erro ao buscar conversas:", err);
             const message = err.message || 'Erro ao buscar conversas.';
             setConversationsError(message);
-            setConversations([]);
-            selectConversation(null);
+            if (!append) {
+                setConversations([]);
+                selectConversation(null);
+            }
             toast.error(message);
         } finally {
             setLoadingConversations(false);
@@ -441,17 +452,19 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         }
     }, [selectedConversation, messageCache, updateOrAddOptimisticallyInList, setUnreadConversationIds]);
 
-    const handleRealtimeStatusUpdate = useCallback((data: { id: string; status: string; channel_message_id?: string; errorMessage?: string }) => {
-        console.log(`[ConversationContext] Realtime Status Update received for msg ID ${data.id} with status ${data.status}`);
+    const handleRealtimeStatusUpdate = useCallback((data: { 
+        id: string; 
+        status: string; 
+        channel_message_id?: string; 
+        errorMessage?: string 
+    }) => {
+        console.log(`[Status Update] Message ${data.id}: ${data.status}`);
 
-        let updatedMessageConversationId: string | undefined;
-
-        // Update the message status in the selectedConversationMessages state
+        // Atualizar mensagens selecionadas
         setSelectedConversationMessages(prevMessages => {
-             const updatedMessages = prevMessages.map(msg => {
+            return prevMessages.map(msg => {
                 if (msg.id === data.id) {
-                     updatedMessageConversationId = msg.conversation_id; // Capture conversation_id here
-                     return {
+                    return {
                         ...msg,
                         status: data.status,
                         channel_message_id: data.channel_message_id || msg.channel_message_id,
@@ -459,21 +472,38 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                     };
                 }
                 return msg;
-             });
-             return updatedMessages;
+            });
         });
 
+        // CORREÇÃO: Atualizar cache também
+        setMessageCache(prevCache => {
+            const updatedCache = { ...prevCache };
+            Object.keys(updatedCache).forEach(conversationId => {
+                updatedCache[conversationId] = updatedCache[conversationId].map(msg =>
+                    msg.id === data.id 
+                        ? {
+                            ...msg,
+                            status: data.status,
+                            channel_message_id: data.channel_message_id || msg.channel_message_id,
+                            errorMessage: data.errorMessage || msg.errorMessage
+                        }
+                        : msg
+                );
+            });
+            return updatedCache;
+        });
 
-         // If the selected conversation is the one of the updated message, ensure the timestamp is updated
-         // Use the captured conversationId
-         if (selectedConversation?.id && updatedMessageConversationId && selectedConversation.id === updatedMessageConversationId) {
-            setConversations(prevConversations =>
-                prevConversations.map(conv =>
-                    conv.id === selectedConversation.id ? { ...conv, last_message_at: new Date() } : conv
+        // Atualizar timestamp da conversa
+        if (selectedConversation?.id) {
+            setConversations(prev =>
+                prev.map(conv =>
+                    conv.id === selectedConversation.id 
+                        ? { ...conv, last_message_at: new Date().toISOString() } 
+                        : conv
                 )
             );
         }
-    }, [selectedConversation, setConversations]); // Removed selectedConversationMessages from dependencies as we access it via updater
+    }, [selectedConversation?.id, setConversations, setMessageCache]);
 
     const handleRealtimeAIStatusUpdate = useCallback((data: { conversationId: string; is_ai_active: boolean }) => {
         const { conversationId, is_ai_active } = data;
