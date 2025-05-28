@@ -434,7 +434,10 @@ async function sendSingleMessage({ content, conversation, workspaceId, jobId, me
 
     await prisma.message.update({
       where: { id: newMessage.id },
-      data: updateData
+      data: {
+        ...updateData,
+        providerMessageId: updateData.channel_message_id, // Ensure providerMessageId is also set
+      }
     });
 
     // Adicionar novo pusher trigger aqui para notificar a UI do status final

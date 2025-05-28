@@ -324,7 +324,7 @@ export default function ConversationDetail() {
                   <span title={format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>{format(new Date(message.timestamp), 'HH:mm', { locale: ptBR })}</span>
                   {message.sender_type !== 'CLIENT' && !message.privates_notes && (
                     <span className="ml-2 inline-flex items-center" title={`Status: ${message.status}`}>
-                      {message.status === 'PENDING' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {message.status === 'PENDING' && <Check className="h-3 w-3 text-muted-foreground/70" />}
                       {message.status === 'SENT' && <Check className="h-3 w-3 text-primary-foreground/70" />}
                       {message.status === 'DELIVERED' && <CheckCheck className="h-4 w-4 text-primary-foreground/70" />}
                       {message.status === 'READ' && <CheckCheck className="h-3 w-3 text-blue-400" />}
