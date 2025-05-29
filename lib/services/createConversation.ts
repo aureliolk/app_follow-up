@@ -131,6 +131,8 @@ export async function handleDealCreationForNewClient(
     }
 }
 
+import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
+
 export async function initiateFollowUpSequence(
     client: Client,
     conversation: Conversation,
@@ -179,6 +181,55 @@ export async function initiateFollowUpSequence(
                     });
                     console.log(`[Follow-Up Logic] FollowUp ${newFollowUp.id} criado para conversa ${conversation.id}.`);
 
+                    // Atualizar a conversa para conectar com o follow-up
+                    await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: {
+                            followUp: {
+                                connect: { id: newFollowUp.id }
+                            }
+                        }
+                    });
+                    console.log(`[Follow-Up Logic] Conversa ${conversation.id} atualizada com link para FollowUp ${newFollowUp.id}.`);
+
+                    // Notificar a UI sobre a atualização do follow-up
+                    // Adicionar um pequeno delay para garantir que a conversa esteja disponível no frontend
+                    setTimeout(async () => {
+                        try {
+                            // Buscar a conversa atualizada com o follow-up para garantir que temos todos os dados
+                            const updatedConversation = await prisma.conversation.findUnique({
+                                where: { id: conversation.id },
+                                include: {
+                                    followUp: true
+                                }
+                            });
+
+                            if (updatedConversation && updatedConversation.followUp) {
+                                console.log(`[Follow-Up Logic] Enviando evento Pusher para conversa ${conversation.id} com followUp:`, {
+                                    id: updatedConversation.followUp.id,
+                                    status: updatedConversation.followUp.status
+                                });
+                                
+                                await triggerWorkspacePusherEvent(
+                                    workspaceId,
+                                    'conversation_updated',
+                                    {
+                                        id: conversation.id,
+                                        activeFollowUp: {
+                                            id: updatedConversation.followUp.id,
+                                            status: updatedConversation.followUp.status
+                                        }
+                                    }
+                                );
+                                console.log(`[Follow-Up Logic] Evento Pusher 'conversation_updated' enviado para workspace ${workspaceId} com followUp ${updatedConversation.followUp.id}.`);
+                            } else {
+                                console.error(`[Follow-Up Logic] Conversa atualizada não encontrada ou sem followUp após conexão.`);
+                            }
+                        } catch (pusherError) {
+                            console.error(`[Follow-Up Logic] Erro ao enviar evento Pusher:`, pusherError);
+                        }
+                    }, 1000); // Delay de 1 segundo para garantir que a conversa esteja disponível no frontend
+
                     const jobData = {
                         followUpId: newFollowUp.id,
                         stepRuleId: firstRule.id,
@@ -203,4 +254,3 @@ export async function initiateFollowUpSequence(
         console.log(`[Follow-Up Logic] Follow-up ativo ${existingActiveFollowUp.id} já existe para cliente ${client.id}. Nenhuma nova sequência iniciada.`);
     }
 }
-

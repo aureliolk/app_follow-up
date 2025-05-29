@@ -179,9 +179,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
 
             const { client, conversation, conversationWasCreated } = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
+            console.log(`[EVOLUTION WEBHOOK] Conversation created: ${conversationWasCreated}, Client ID: ${client.id}, Conversation ID: ${conversation.id}`);
+            
             if (conversationWasCreated) {
+                console.log(`[EVOLUTION WEBHOOK] New conversation detected. Starting deal creation and follow-up sequence...`);
                 await handleDealCreationForNewClient(client, workspace.id);
                 await initiateFollowUpSequence(client, conversation, workspace.id);
+                console.log(`[EVOLUTION WEBHOOK] Deal creation and follow-up sequence completed for conversation ${conversation.id}`);
+            } else {
+                console.log(`[EVOLUTION WEBHOOK] Existing conversation ${conversation.id}. No follow-up sequence needed.`);
             }
            
 

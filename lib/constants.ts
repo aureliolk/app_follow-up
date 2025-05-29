@@ -5,7 +5,7 @@ export const AVAILABLE_MODELS = [
 
   // Modelos Google
   { value: 'openrouter/google/gemini-2.5-pro-preview-03-25', tool:true, label: 'Google: Gemini 2.5 Pro Preview' },
-  { value: 'google/gemini-2.0-flash-exp:free', tool:false, label: 'Google: Gemini 2.0 Flash Exp (Free)' },
+  // { value: 'google/gemini-2.0-flash-exp:free', tool:false, label: 'Google: Gemini 2.0 Flash Exp (Free)' },
 
   // Modelos DeepSeek
   { value: 'openrouter/deepseek/deepseek-chat-v3-0324:free', tool:false, label: 'DeepSeek: DeepSeek Chat v3 (Free)' },

@@ -7,6 +7,7 @@ export interface PusherHandlers {
   onNewMessage?: (message: any) => void;
   onStatusUpdate?: (data: any) => void;
   onAIStatusUpdate?: (data: any) => void;
+  onConversationUpdate?: (data: any) => void;
 }
 
 export function useWorkspacePusher(
@@ -109,6 +110,20 @@ export function useWorkspacePusher(
         });
       }
 
+      if (handlers.onConversationUpdate) {
+        channel.bind('conversation_updated', (data: any) => {
+          try {
+            const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+            if (parsed?.payload) {
+              console.log('[useWorkspacePusher] Received conversation_updated event:', parsed.payload);
+              handlers.onConversationUpdate!(parsed.payload);
+            }
+          } catch (err) {
+            console.error('[useWorkspacePusher] Error parsing conversation_updated', err);
+          }
+        });
+      }
+
       pusherRef.current = pusher;
       channelRef.current = channel;
     } catch (err) {
@@ -118,7 +133,7 @@ export function useWorkspacePusher(
     }
 
     return cleanup;
-  }, [workspaceId, config, loadingConfig, handlers.onNewMessage, handlers.onStatusUpdate, handlers.onAIStatusUpdate]);
+  }, [workspaceId, config, loadingConfig, handlers.onNewMessage, handlers.onStatusUpdate, handlers.onAIStatusUpdate, handlers.onConversationUpdate]);
 
   return { isConnected, loadingConfig };
 }

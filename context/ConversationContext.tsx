@@ -90,6 +90,7 @@ interface ConversationContextType {
     handleRealtimeNewMessage: (message: Message) => void;
     handleRealtimeStatusUpdate: (data: { id: string; status: string; channel_message_id?: string; errorMessage?: string }) => void;
     handleRealtimeAIStatusUpdate: (data: { conversationId: string; is_ai_active: boolean }) => void;
+    handleRealtimeConversationUpdate: (data: { id: string; activeFollowUp?: ActiveFollowUpInfo | null }) => void;
     // handleRealtimeContentUpdate: (data: any) => void;
 
     // Funções de Ação Direta no Contexto
@@ -568,6 +569,65 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     }, [selectedConversation?.id, setConversations, setTotalCountAll, setTotalCountHuman, setTotalCountAi]);
 
+    const handleRealtimeConversationUpdate = useCallback((data: { id: string; activeFollowUp?: ActiveFollowUpInfo | null }) => {
+        const { id, activeFollowUp } = data;
+        console.log(`[Realtime Conversation Update] Received for conversation ${id}, activeFollowUp:`, activeFollowUp);
+
+        // Forçar uma atualização imediata para garantir que a UI seja atualizada
+        if (activeFollowUp) {
+            // Atualizar a lista de conversas
+            setConversations(prevConversations => {
+                const conversationExists = prevConversations.some(conv => conv.id === id);
+                
+                if (!conversationExists) {
+                    console.log(`[Realtime Conversation Update] Conversation ${id} not found in list. Skipping list update.`);
+                    return prevConversations;
+                }
+                
+                console.log(`[Realtime Conversation Update] Updating conversation ${id} in list with activeFollowUp:`, activeFollowUp);
+                
+                const updatedConversations = prevConversations.map(conv => {
+                    if (conv.id === id) {
+                        const updated = { ...conv, activeFollowUp };
+                        console.log(`[Realtime Conversation Update] Updated conversation in list:`, updated);
+                        return updated;
+                    }
+                    return conv;
+                });
+                
+                return updatedConversations;
+            });
+
+            // Atualizar a conversa selecionada se for a mesma
+            if (selectedConversation?.id === id) {
+                console.log(`[Realtime Conversation Update] Updating selected conversation ${id} with activeFollowUp:`, activeFollowUp);
+                
+                setSelectedConversation(prev => {
+                    if (!prev) return null;
+                    
+                    const updated = { ...prev, activeFollowUp };
+                    console.log(`[Realtime Conversation Update] Updated selected conversation:`, updated);
+                    return updated;
+                });
+                
+                // Forçar múltiplas atualizações para garantir que a UI seja re-renderizada
+                setTimeout(() => {
+                    console.log(`[Realtime Conversation Update] First forced update for conversation ${id}`);
+                    setSelectedConversation(prev => prev ? { ...prev, activeFollowUp } : null);
+                }, 100);
+                
+                setTimeout(() => {
+                    console.log(`[Realtime Conversation Update] Second forced update for conversation ${id}`);
+                    setConversations(prev => prev.map(conv => 
+                        conv.id === id ? { ...conv, activeFollowUp } : conv
+                    ));
+                }, 200);
+            }
+        } else {
+            console.warn(`[Realtime Conversation Update] Received empty or null activeFollowUp for conversation ${id}`);
+        }
+    }, [selectedConversation?.id, setConversations, setSelectedConversation]);
+
     // --- Ações do Usuário ---
     const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string, isPrivateNote?: boolean) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
@@ -862,6 +922,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             onNewMessage: handleRealtimeNewMessage,
             onStatusUpdate: handleRealtimeStatusUpdate,
             onAIStatusUpdate: handleRealtimeAIStatusUpdate,
+            onConversationUpdate: handleRealtimeConversationUpdate,
         }
     );
 
@@ -908,6 +969,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         handleRealtimeNewMessage,
         handleRealtimeStatusUpdate,
         handleRealtimeAIStatusUpdate,
+        handleRealtimeConversationUpdate,
         selectConversationForClient,
         sendManualMessage,
         sendTemplateMessage, sendMediaMessage, toggleAIStatus,
