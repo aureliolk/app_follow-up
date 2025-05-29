@@ -9,6 +9,8 @@ import { AIStageActionTypeEnum } from '@/lib/types/ai-stages';
 import axios from 'axios';
 import { z } from 'zod';
 import { AVAILABLE_MODELS } from '@/lib/constants';
+import { systemPromptCheckName } from './tools/openRouterModel';
+import { aiResponseText } from './tools/openRouterModel';
 
 // Interface para contexto de estágio
 interface StageContext {
@@ -258,6 +260,11 @@ export async function processAIChat(
             ai_default_system_prompt: true,
             ai_model_preference: true
           }
+        },
+        client: {
+          select: {
+            name: true
+          }
         }
       }
     });
@@ -289,16 +296,19 @@ export async function processAIChat(
       ...stageTools
     };
 
-    console.log('allTools', allTools);
+    const responseCheckName = await aiResponseText([{ role: 'user', content: conversation?.client?.name }], systemPromptCheckName);
+
 
     const baseInstructions = `
     Data e hora atual: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
     Timezone do cliente: America/Sao_Paulo
     Id do workspace: ${workspaceId}
     Id da conversa: ${conversationId}
+    Nome do cliente:  ${responseCheckName.text}
     Voce e capaz de Escutar audio e ver imagens. se o cliente pergunta se vc pode ver uma imagem, vc deve responder que sim. se o cliente pergunta se vc pode ouvir um audio, vc deve responder que sim.
     `;
 
+    console.log('baseInstructions', baseInstructions);
 
     // Preparar o prompt do sistema com informações sobre estágios
     const stageInstructions = activeStages.length > 0 ? `

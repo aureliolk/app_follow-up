@@ -89,7 +89,7 @@ async function processJob(job: Job<JobData>) {
     }
 
     // 5. Processar mídia se necessário
-    await processMediaIfExists(message, conversation.workspace, jobId);
+    await processMediaIfExists(message, conversation, conversation.workspace, jobId);
 
     // 6. Gerar resposta da IA
     const aiResponse = await generateAIResponse(conversationId, conversation.workspace, jobId);
@@ -133,6 +133,7 @@ async function fetchMessageAndConversation(messageId: string) {
       media_url: true,
       media_mime_type: true,
       ai_media_analysis: true,
+      timestamp: true,
       conversation: {
         select: {
           id: true,
@@ -204,29 +205,56 @@ async function checkIfLatestMessage(conversationId: string, messageId: string): 
          messageId === newClientMessages[newClientMessages.length - 1].id;
 }
 
-async function processMediaIfExists(message: any, workspace: WorkspaceConfig, jobId: string) {
-  // Simplificado - apenas para WhatsApp Cloud API
-  if (!message.metadata?.mediaId || !workspace.whatsappAccessToken) {
+async function processMediaIfExists(message: any, conversation: ConversationData, workspace: WorkspaceConfig, jobId: string) {
+  // MODIFICADO: Adicionar lógica para Evolution API (Base64)
+  const isWhatsappCloudAPI = message.metadata?.mediaId && workspace.whatsappAccessToken;
+  const isEvolutionAPI = conversation.channel === 'WHATSAPP_EVOLUTION' && message.metadata?.mediaData_base64 && message.metadata?.mediaType?.startsWith('audio/'); // Verificar se tem base64 e é áudio
+
+  if (!isWhatsappCloudAPI && !isEvolutionAPI) {
+    // Se não for nenhum dos casos, sair
     return;
   }
 
   try {
-    console.log(`[MsgProcessor ${jobId}] Processando mídia: ${message.metadata.mediaId}`);
-    
-    const decryptedToken = decrypt(workspace.whatsappAccessToken);
-    if (!decryptedToken) throw new Error('Falha ao descriptografar token');
+    console.log(`[MsgProcessor ${jobId}] Processando mídia. Canal: ${conversation.channel}`);
 
-    const mediaUrl = await getWhatsappMediaUrl(message.metadata.mediaId, decryptedToken);
-    const response = await axios.get(mediaUrl, {
-      responseType: 'arraybuffer',
-      headers: { Authorization: `Bearer ${decryptedToken}` }
-    });
+    let mediaBuffer: Buffer;
+    let mimeType = message.metadata.mediaType;
+    let mediaSourceUrl: string | null = null; // Para registrar a URL original (se houver)
 
-    const mediaBuffer = Buffer.from(response.data);
-    const mimeType = message.metadata.mimeType;
-    
-    // Upload para S3
-    const s3Key = `media/${workspace.id}/${message.conversation.id}/${message.id}${lookup(mimeType) ? '.' + lookup(mimeType) : ''}`;
+    if (isWhatsappCloudAPI) {
+      console.log(`[MsgProcessor ${jobId}] Fonte: WhatsApp Cloud API`);
+      const decryptedToken = decrypt(workspace.whatsappAccessToken as string); // Garantir que não é null aqui
+      if (!decryptedToken) throw new Error('Falha ao descriptografar token do WhatsApp');
+
+      const mediaUrl = await getWhatsappMediaUrl(message.metadata.mediaId, decryptedToken);
+      mediaSourceUrl = mediaUrl; // Registrar URL original
+      const response = await axios.get(mediaUrl, {
+        responseType: 'arraybuffer',
+        headers: { Authorization: `Bearer ${decryptedToken}` }
+      });
+      mediaBuffer = Buffer.from(response.data);
+    } else { // isEvolutionAPI
+      console.log(`[MsgProcessor ${jobId}] Fonte: Evolution API (Base64)`);
+      const base64Data = message.metadata.mediaData_base64 as string; // Garantir que é string
+      // Decodificar o base64 para Buffer
+      mediaBuffer = Buffer.from(base64Data, 'base64');
+      // O mimeType já deve estar no metadata, mas garantir
+      if (!mimeType) {
+          // Tentar inferir mime type se estiver faltando no metadata
+          mimeType = lookup(mediaBuffer.subarray(0, 20).toString('hex')) || 'application/octet-stream';
+          console.warn(`[MsgProcessor ${jobId}] Mime type faltando no metadata, inferido como: ${mimeType}`);
+      }
+      mediaSourceUrl = message.metadata.mediaUrl || null; // Registrar URL original da Evolution, se houver
+    }
+
+    // Upload para S3 (Este passo é comum para ambos os canais)
+    // Gerar um nome de arquivo baseado no timestamp e ID da mensagem para evitar colisões
+    const fileExtension = lookup(mimeType) ? '.' + lookup(mimeType) : '';
+    // Usar timestamp + ID da mensagem para nome único, convertendo timestamp para string explicitamente
+    const s3Key = `media/${workspace.id}/${conversation.id}/${message.timestamp.getTime().toString()}-${message.id}${fileExtension}`;
+    console.log(`[MsgProcessor ${jobId}] Fazendo upload para S3 key: ${s3Key}`);
+
     await s3Client.send(new PutObjectCommand({
       Bucket: s3BucketName,
       Key: s3Key,
@@ -235,32 +263,113 @@ async function processMediaIfExists(message: any, workspace: WorkspaceConfig, jo
     }));
 
     const mediaS3Url = `${process.env.STORAGE_ENDPOINT?.replace(/\/$/, '')}/${s3BucketName}/${s3Key}`;
+    console.log(`[MsgProcessor ${jobId}] Upload para S3 concluído. URL: ${mediaS3Url}`);
+
 
     // Processar com IA
     let aiAnalysis = null;
-    const mediaType = mimeType.split('/')[0];
-    
-    if (mediaType === 'image') {
+    const mediaPrimaryType = mimeType.split('/')[0];
+
+    if (mediaPrimaryType === 'image') {
+      console.log(`[MsgProcessor ${jobId}] Enviando imagem para análise de IA...`);
       aiAnalysis = await describeImage(mediaBuffer);
-    } else if (mediaType === 'audio') {
-      aiAnalysis = await transcribeAudio(mediaBuffer, mimeType, undefined, 'pt');
+      console.log(`[MsgProcessor ${jobId}] Análise de imagem concluída.`);
+    } else if (mediaPrimaryType === 'audio') {
+      console.log(`[MsgProcessor ${jobId}] Enviando áudio para transcrição...`);
+      // Para Evolution, o mimeType já deve ser correto (e.g., 'audio/ogg; codecs=opus')
+      // Podemos usar o mimeType diretamente
+      aiAnalysis = await transcribeAudio(mediaBuffer, mimeType, undefined, 'pt'); // Assumindo pt-BR
+      console.log(`[MsgProcessor ${jobId}] Transcrição de áudio concluída.`);
+    } else {
+        console.log(`[MsgProcessor ${jobId}] Tipo de mídia (${mimeType}) não suportado para análise de IA.`);
     }
 
-    // Atualizar mensagem
+    // Atualizar mensagem no banco com URL do S3, análise de IA e status
+    const updateData: any = {
+      media_url: mediaS3Url,
+      media_mime_type: mimeType, // Salvar o mime type determinado
+      status: 'RECEIVED' // Marcar como recebida após processamento
+    };
+
+    if (aiAnalysis) {
+        updateData.ai_media_analysis = aiAnalysis;
+        // Se o conteúdo original for apenas o placeholder, atualizar com a análise/transcrição
+        // ou adicionar a análise ao conteúdo existente. Decidi adicionar ao conteúdo.
+        if (message.content === '[Áudio Recebido]' || message.content === '[Imagem Recebida]' || message.content === `[${mediaPrimaryType === 'image' ? 'Imagem' : 'Mídia'} Recebida]`) {
+             updateData.content = `[${mediaPrimaryType === 'image' ? 'Imagem Analisada' : 'Áudio Transcrito'}]: ${aiAnalysis}`;
+        } else if (aiAnalysis !== '[Análise da mídia: ]' && aiAnalysis !== '[]') { // Evitar adicionar análise vazia
+             // Se já houver conteúdo (ex: caption da imagem), adicionar a análise.
+             // Limitar o tamanho do conteúdo para evitar estouro no DB? Por enquanto, adicionar.
+             updateData.content = `${message.content}\n[Análise: ${aiAnalysis}]`;
+        } else {
+             // Se a análise for vazia ou placeholder, manter o conteúdo original ou placeholder
+             console.log(`[MsgProcessor ${jobId}] Análise de IA vazia ou placeholder, mantendo conteúdo original.`);
+        }
+    } else if (mediaPrimaryType === 'audio') {
+         // Se for áudio e não houve análise (ex: erro na transcrição), manter o placeholder original.
+         updateData.content = message.content || "[Áudio Recebido - Falha na Transcrição]";
+         console.warn(`[MsgProcessor ${jobId}] Falha na transcrição de áudio para mensagem ${message.id}.`);
+    } else {
+         // Para outras mídias sem análise, manter o conteúdo original (caption/placeholder).
+         updateData.content = message.content;
+    }
+
+    // Adicionar URL original ao metadata, se houver e não estiver lá
+    const currentMetadata = (typeof message.metadata === 'object' && message.metadata !== null) ? message.metadata : {};
+     if (mediaSourceUrl && !currentMetadata.mediaSourceUrl) {
+         updateData.metadata = {
+             ...currentMetadata,
+             mediaSourceUrl: mediaSourceUrl,
+             processedAt: new Date().toISOString(), // Adicionar timestamp de processamento
+         };
+     } else {
+          // Apenas adicionar timestamp de processamento se metadata já existe
+          updateData.metadata = {
+              ...currentMetadata,
+              processedAt: new Date().toISOString(),
+          };
+     }
+
+
     await prisma.message.update({
       where: { id: message.id },
-      data: {
-        content: `[${mediaType === 'image' ? 'Imagem' : 'Mídia'} Recebida]`,
-        ai_media_analysis: aiAnalysis,
-        media_url: mediaS3Url,
-        media_mime_type: mimeType,
-        status: 'RECEIVED'
-      }
+      data: updateData
     });
 
-    console.log(`[MsgProcessor ${jobId}] Mídia processada com sucesso`);
+    console.log(`[MsgProcessor ${jobId}] Mensagem ${message.id} atualizada com detalhes da mídia e análise.`);
+
+    // TODO: Considerar disparar um Pusher event 'media_processed' ou 'message_updated' aqui
+    // para que a UI possa atualizar a mensagem em tempo real com a transcrição/análise.
+    // Isso evita que a UI mostre "[Áudio Recebido]" até a próxima recarga da conversa.
+    try {
+        await pusher.trigger(`private-workspace-${workspace.id}`, 'message_updated', {
+            type: 'message_updated',
+            payload: {
+                id: message.id,
+                conversation_id: message.conversation.id, // Usar o ID da conversa
+                content: updateData.content, // Enviar o conteúdo atualizado (com transcrição/análise)
+                media_url: updateData.media_url,
+                media_mime_type: updateData.media_mime_type,
+                ai_media_analysis: updateData.ai_media_analysis,
+                status: updateData.status,
+                timestamp: message.timestamp.toISOString(), // Manter o timestamp original
+                sender_type: message.sender_type, // Manter o tipo de sender
+                metadata: updateData.metadata, // Incluir metadata atualizado
+                channel_message_id: message.channel_message_id,
+                providerMessageId: message.providerMessageId,
+            }
+        });
+        console.log(`[MsgProcessor ${jobId}] Evento 'message_updated' disparado para mensagem ${message.id}.`);
+    } catch (pusherError: any) {
+        console.error(`[MsgProcessor ${jobId}] Falha ao disparar evento 'message_updated' para mensagem ${message.id}:`, pusherError?.message || pusherError);
+    }
+
+
   } catch (error: any) {
     console.error(`[MsgProcessor ${jobId}] Erro no processamento de mídia:`, error.message);
+    // Se o processamento de mídia falhar, não vamos falhar o job principal.
+    // A mensagem ficará sem a análise de IA, mas o fluxo de resposta da IA ainda pode tentar prosseguir
+    // baseado no conteúdo "[Áudio Recebido]". Talvez seja melhor logar e continuar.
   }
 }
 
