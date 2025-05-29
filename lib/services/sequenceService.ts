@@ -76,77 +76,84 @@ export async function processFollowUp(
   jobData: SequenceJobData
 ): Promise<void> {
   const { followUpId, stepRuleId: ruleId, workspaceId } = jobData;
-  
+
   try {
-  // Carrega contexto
-  const context = await loadFollowUpContext(followUpId, workspaceId);
+    // 1. Carregar contexto primeiro
+    const context = await loadFollowUpContext(followUpId, workspaceId);
     
-  // Gera mensagem com IA
-  const text = await generateFollowUpMessage(context, ruleId);
-
-  const channel = context.conversation.channel;
-  let sendResult: { success: boolean; wamid?: string; messageId?: string; error?: any };
-
-  console.log(`[SEQUENCESERVICE] CHANNEL ${channel}`)
-
-  if (channel === 'WHATSAPP_CLOUDAPI') {
-    if (!context.workspace.whatsappPhoneNumberId || !context.workspace.whatsappAccessToken) {
-      throw new Error('Credenciais do WhatsApp Cloud API ausentes.');
+    // Validar se deve processar
+    if (!context.conversation?.is_ai_active) {
+      console.log(`[MsgProcessor ${followUpId}] IA inativa para follow-up ${followUpId}`);
+      return;
     }
-    sendResult = await sendWhatsAppMessage(
-      context.workspace.whatsappPhoneNumberId,
-      context.client.phone_number,
-      context.workspace.whatsappAccessToken,
-      text,
-      context.workspace.ai_name
-    );
-  } else if (channel === 'WHATSAPP_EVOLUTION') {
-    const {  evolution_api_token, evolution_api_instance_name } = context.workspace;
-    if ( !evolution_api_instance_name || !evolution_api_token) {
-      throw new Error('Credenciais da Evolution API ausentes.');
+    
+    // Gera mensagem com IA
+    const text = await generateFollowUpMessage(context, ruleId);
+
+    const channel = context.conversation.channel;
+    let sendResult: { success: boolean; wamid?: string; messageId?: string; error?: any };
+
+    console.log(`[SEQUENCESERVICE] CHANNEL ${channel}`);
+
+    if (channel === 'WHATSAPP_CLOUDAPI') {
+      if (!context.workspace.whatsappPhoneNumberId || !context.workspace.whatsappAccessToken) {
+        throw new Error('Credenciais do WhatsApp Cloud API ausentes.');
+      }
+      sendResult = await sendWhatsAppMessage(
+        context.workspace.whatsappPhoneNumberId,
+        context.client.phone_number,
+        context.workspace.whatsappAccessToken,
+        text,
+        context.workspace.ai_name
+      );
+    } else if (channel === 'WHATSAPP_EVOLUTION') {
+      const {  evolution_api_token, evolution_api_instance_name } = context.workspace;
+      if ( !evolution_api_instance_name || !evolution_api_token) {
+        throw new Error('Credenciais da Evolution API ausentes.');
+      }
+      sendResult = await sendEvolutionMessage({
+        endpoint: process.env.apiUrlEvolution,
+        apiKey: evolution_api_token,
+        instanceName: evolution_api_instance_name,
+        toPhoneNumber: context.client.phone_number,
+        messageContent: text,
+        senderName: context.workspace.ai_name || ''
+      });
+    } else {
+      console.error(`[SequenceService] Canal não suportado: ${channel}`);
+      throw new Error(`Canal ${channel} não é suportado para follow-up.`);
     }
-    sendResult = await sendEvolutionMessage({
-      endpoint: process.env.apiUrlEvolution,
-      apiKey: evolution_api_token,
-      instanceName: evolution_api_instance_name,
-      toPhoneNumber: context.client.phone_number,
-      messageContent: text,
-      senderName: context.workspace.ai_name || ''
+
+    if (!sendResult.success) {
+      throw new Error(`Erro no envio da mensagem: ${sendResult.error}`);
+    }
+
+    const messageId = sendResult.wamid || sendResult.messageId || undefined;
+
+    const saved = await saveMessageRecord({
+      conversation_id: context.conversation.id,
+      sender_type: 'AI',
+      content: text,
+      timestamp: new Date(),
+      metadata: { ruleId, followUpId },
+      channel_message_id: messageId
     });
-  } else {
-    console.error(`[SequenceService] Canal não suportado: ${channel}`);
-    throw new Error(`Canal ${channel} não é suportado para follow-up.`);
-  }
-
-  if (!sendResult.success) {
-    throw new Error(`Erro no envio da mensagem: ${sendResult.error}`);
-  }
-
-  const messageId = sendResult.wamid || sendResult.messageId || undefined;
-
-  const conversationId = context.conversation.id;
-  const saved = await saveMessageRecord({
-    conversation_id: conversationId,
-    sender_type: 'AI',
-    content: text,
-    timestamp: new Date(),
-    metadata: { ruleId, followUpId },
-    channel_message_id: messageId
-  });
-  // Notifica UI
-  const pusherChannel = `private-workspace-${workspaceId}`;
-  await pusher.trigger(pusherChannel, 'new_message', JSON.stringify({ type: 'new_message', payload: saved }));
-  // Agenda próximo passo se houver
-  const rules = context.workspace.ai_follow_up_rules;
-  const idx = rules.findIndex(r => r.id === ruleId);
-  if (idx >= 0 && idx + 1 < rules.length) {
-    const next = rules[idx + 1];
-    const delay = Number(next.delay_milliseconds);
-    await scheduleSequenceJob(
-      { followUpId, stepRuleId: next.id, workspaceId, jobType: 'inactivity' },
-      delay,
-      `fup_${followUpId}_${next.id}`
-    );
+    
+    // Notifica UI
+    const pusherChannel = `private-workspace-${workspaceId}`;
+    await pusher.trigger(pusherChannel, 'new_message', JSON.stringify({ type: 'new_message', payload: saved }));
+    
+    // Agenda próximo passo se houver
+    const rules = context.workspace.ai_follow_up_rules;
+    const idx = rules.findIndex(r => r.id === ruleId);
+    if (idx >= 0 && idx + 1 < rules.length) {
+      const next = rules[idx + 1];
+      const delay = Number(next.delay_milliseconds);
+      await scheduleSequenceJob(
+        { followUpId, stepRuleId: next.id, workspaceId, jobType: 'inactivity' },
+        delay,
+        `fup_${followUpId}_${next.id}`
+      );
     }
   } catch (error: any) {
     // Capturar erros específicos relacionados a followUps convertidos/removidos

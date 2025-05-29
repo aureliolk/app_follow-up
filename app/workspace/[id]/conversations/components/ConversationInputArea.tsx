@@ -72,9 +72,10 @@ export default function ConversationInputArea({
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[InputArea] handleFileChange called. isSendingMessage:', isSendingMessage, 'isUploading:', isUploading);
     const file = event.target.files?.[0];
     if (!file || !conversationId) {
-      if(event.target) event.target.value = ""; // Limpa o input para permitir selecionar o mesmo arquivo novamente
+      if (event.target) event.target.value = ""; // Limpa o input para permitir selecionar o mesmo arquivo novamente
       return;
     }
     // setIsUploading(true); // Opcional: definir estado de upload aqui se gerenciado internamente
@@ -84,15 +85,16 @@ export default function ConversationInputArea({
       console.error("Erro capturado no InputArea ao tentar enviar anexo:", error);
       // toast.error("Falha ao enviar anexo."); // O toast pode ser gerenciado pela função sendMediaMessage
     } finally {
-      if(event.target) event.target.value = "";
+      if (event.target) event.target.value = "";
       // setIsUploading(false); // Opcional: resetar estado de upload
     }
   };
 
   const handleSendAudioFile = async (audioFile: File) => {
+    console.log('[InputArea] handleSendAudioFile called. isSendingMessage:', isSendingMessage, 'isUploading:', isUploading);
     if (!conversationId) {
-        toast.error("Conversa não selecionada.");
-        return;
+      toast.error("Conversa não selecionada.");
+      return;
     }
     // setIsUploading(true); // Opcional
     try {
@@ -101,7 +103,7 @@ export default function ConversationInputArea({
       console.error("Erro capturado no InputArea ao tentar enviar áudio:", error);
       // toast.error("Falha ao enviar áudio.");
     } finally {
-        // setIsUploading(false); // Opcional
+      // setIsUploading(false); // Opcional
     }
   };
 
@@ -140,10 +142,10 @@ export default function ConversationInputArea({
         // setIsRecording(false); // Movido para ser chamado antes de handleSendAudioFile
 
         if (audioChunksRef.current.length === 0) {
-            console.warn("[AudioRecord] Gravação parada sem dados de áudio.");
-            setIsRecording(false); // Garante que o estado seja resetado
-            stream.getTracks().forEach(track => track.stop());
-            return;
+          console.warn("[AudioRecord] Gravação parada sem dados de áudio.");
+          setIsRecording(false); // Garante que o estado seja resetado
+          stream.getTracks().forEach(track => track.stop());
+          return;
         }
 
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
@@ -160,9 +162,9 @@ export default function ConversationInputArea({
         console.error("[AudioRecord] Erro no MediaRecorder:", event);
         toast.error("Erro durante a gravação.");
         setIsRecording(false);
-         if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
-         setRecordingDuration(0);
-         stream.getTracks().forEach(track => track.stop());
+        if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+        setRecordingDuration(0);
+        stream.getTracks().forEach(track => track.stop());
       };
 
       recorder.start();
@@ -170,7 +172,7 @@ export default function ConversationInputArea({
       setIsRecording(true); // Definir como true após o start bem-sucedido
       recordingIntervalRef.current = setInterval(() => {
         if (recordingStartTimeRef.current) {
-           setRecordingDuration(Math.floor((Date.now() - recordingStartTimeRef.current) / 1000));
+          setRecordingDuration(Math.floor((Date.now() - recordingStartTimeRef.current) / 1000));
         }
       }, 1000);
 
@@ -186,13 +188,14 @@ export default function ConversationInputArea({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     } else {
-        setIsRecording(false);
-        if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
-        setRecordingDuration(0);
+      setIsRecording(false);
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+      setRecordingDuration(0);
     }
   };
 
   const handleMicClick = () => {
+    console.log('[InputArea] handleMicClick called. isRecording:', isRecording, 'isSendingMessage:', isSendingMessage, 'isUploading:', isUploading);
     if (isRecording) {
       stopRecording();
     } else {
@@ -202,8 +205,8 @@ export default function ConversationInputArea({
 
   const handleSendTemplate = async (templateData: { name: string; language: string; variables: Record<string, string>; body: string }) => {
     if (!conversationId) {
-        toast.error("Conversa não selecionada.");
-        return;
+      toast.error("Conversa não selecionada.");
+      return;
     }
     try {
       await sendTemplateMessage(conversationId, templateData);
@@ -214,29 +217,39 @@ export default function ConversationInputArea({
   };
 
   const safeHandleSendMessage = useCallback(async () => {
+    console.log('[InputArea] safeHandleSendMessage called. isSendingMessage:', isSendingMessage, 'isUploading:', isUploading);
     const trimmedMessage = internalNewMessage.trim();
-    if (!trimmedMessage || isSendingMessage || !conversationId || (isRecording && messageType === 'reply')) { // Removed sendingRef.current
+    if (!trimmedMessage || isSendingMessage || !conversationId || (isRecording && messageType === 'reply')) {
+      console.log('[InputArea] safeHandleSendMessage: Conditions not met for sending.');
       return;
     }
-    // Removed sendingRef.current = true;
-    setInternalNewMessage('');
+
     try {
+      setInternalNewMessage('');
       await sendManualMessage(conversationId, trimmedMessage, workspaceId, messageType === 'private-note');
     } catch (error) {
-      console.error('[InputArea Send] Erro sending manual message (context should handle toast):', error);
-      // Não precisa de toast aqui se o contexto já lida com isso.
-      // Se não, adicione: toast.error("Falha ao enviar mensagem.");
-      // E reponha a mensagem no input para o usuário não perdê-la:
-      // setInternalNewMessage(trimmedMessage);
+      console.error('[InputArea Send] Erro ao enviar mensagem:', error);
+      // Restaura a mensagem em caso de erro
+      setInternalNewMessage(trimmedMessage);
     } finally {
-      // Removed sendingRef.current = false;
-      setTimeout(() => textareaRef.current?.focus(), 0);
+      // Garante que o campo seja desbloqueado e focado
+      if (textareaRef.current) {
+        setTimeout(() => {
+          requestAnimationFrame(() => {
+            textareaRef.current?.focus(); // Attempt to focus using requestAnimationFrame after a delay
+          });
+        }, 100); // A slight delay before attempting focus animation frame
+      }
     }
   }, [internalNewMessage, isSendingMessage, conversationId, workspaceId, sendManualMessage, textareaRef, messageType, isRecording]);
+
 
   const commonDisabled = isSendingMessage || isUploading;
   // Desabilitar abas se estiver gravando áudio (somente para 'reply')
   const tabsDisabled = commonDisabled || (isRecording && messageType === 'reply');
+
+  const isTextareaDisabled = isSendingMessage || isUploading || (isRecording && messageType === 'reply');
+  console.log('[InputArea] Render state. isSendingMessage:', isSendingMessage, 'isUploading:', isUploading, 'isRecording:', isRecording, 'messageType:', messageType, 'isTextareaDisabled:', isTextareaDisabled);
 
   return (
     <div className="bg-card text-sm flex flex-col shadow-sm"> {/* bg-card ou bg-background */}
@@ -250,7 +263,7 @@ export default function ConversationInputArea({
                 "data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground",
                 "data-[state=active]:text-orange-500 dark:data-[state=active]:text-orange-400 after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-1px] after:h-[2px] data-[state=active]:after:bg-orange-500 dark:data-[state=active]:after:bg-orange-400"
               )}
-              disabled={tabsDisabled}
+              // disabled={tabsDisabled}
             >
               Responder
             </TabsTrigger>
@@ -261,7 +274,7 @@ export default function ConversationInputArea({
                 "data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground",
                 "data-[state=active]:text-yellow-500 dark:data-[state=active]:text-yellow-400 after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-1px] after:h-[2px] data-[state=active]:after:bg-yellow-500 dark:data-[state=active]:after:bg-yellow-400"
               )}
-              disabled={tabsDisabled}
+              // disabled={tabsDisabled}
             >
               Nota Privada
             </TabsTrigger>
@@ -278,26 +291,28 @@ export default function ConversationInputArea({
             "focus-within:ring-1 focus-within:ring-ring focus-within:ring-offset-0",
             messageType === 'private-note' ? "border-yellow-400/60 dark:border-yellow-500/50" : "border-input"
           )}>
-          <Textarea
-            placeholder={messageType === 'reply' ? "Digite sua resposta aqui..." : "Digite sua nota privada aqui..."}
-            className={cn(
-              "min-h-[60px] sm:min-h-[70px] w-full rounded-md rounded-t-none border-0 border-t bg-transparent px-3 py-2 shadow-none resize-none",
-              "focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60",
-              messageType === 'private-note'
-                ? "text-yellow-900 dark:text-yellow-200 placeholder:text-yellow-700/70 dark:placeholder:text-yellow-400/50 bg-yellow-50/20 dark:bg-yellow-800/10 border-yellow-400/60 dark:border-yellow-500/50"
-                : "text-foreground border-input" // A borda superior é dada pelo Textarea, ou pelo div pai se for border-0
-            )}
-            value={internalNewMessage}
-            onChange={(e) => setInternalNewMessage(e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !isSendingMessage && !isUploading && !(isRecording && messageType === 'reply')) {
-                e.preventDefault();
-                safeHandleSendMessage();
-              }
-            }}
-            ref={textareaRef}
-            disabled={isSendingMessage || isUploading || (isRecording && messageType === 'reply')} // Use isSendingMessage prop directly
-          />
+            <Textarea
+              placeholder={messageType === 'reply' ? "Digite sua resposta aqui..." : "Digite sua nota privada aqui..."}
+              className={cn(
+                "min-h-[60px] sm:min-h-[70px] w-full rounded-md rounded-t-none border-0 border-t bg-transparent px-3 py-2 shadow-none resize-none",
+                "focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60",
+                messageType === 'private-note'
+                  ? "text-yellow-900 dark:text-yellow-200 placeholder:text-yellow-700/70 dark:placeholder:text-yellow-400/50 bg-yellow-50/20 dark:bg-yellow-800/10 border-yellow-400/60 dark:border-yellow-500/50"
+                  : "text-foreground border-input" // A borda superior é dada pelo Textarea, ou pelo div pai se for border-0
+              )}
+              value={internalNewMessage}
+              onChange={(e) => setInternalNewMessage(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !isSendingMessage && !isUploading && !(isRecording && messageType === 'reply')) {
+                  e.preventDefault();
+                  safeHandleSendMessage();
+                }
+              }}
+              ref={textareaRef}
+              // disabled={isTextareaDisabled}
+              onFocus={() => console.log('[InputArea] Textarea focused')}
+              onBlur={() => console.log('[InputArea] Textarea blurred')}
+            />
           </div>
         </div>
       </Tabs>
@@ -323,55 +338,55 @@ export default function ConversationInputArea({
               <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" onClick={handleMicClick} disabled={commonDisabled || permissionStatus === 'prompting'} title="Gravar áudio">
-                 <Mic className="h-5 w-5" />
+                <Mic className="h-5 w-5" />
               </Button>
-              
+
               <WhatsappTemplateDialog
                 onSendTemplate={handleSendTemplate}
                 disabled={commonDisabled || loadingTemplates || (isRecording && messageType === 'reply')}
                 isSendingTemplate={isSendingMessage} // Renomeie para isSending se for genérico
                 triggerButton={ // Certifique-se que WhatsappTemplateDialog aceita esta prop
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" disabled={commonDisabled || loadingTemplates} title="Usar template">
-                        <Layout className="h-5 w-5" />
-                    </Button>
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" disabled={commonDisabled || loadingTemplates} title="Usar template">
+                    <Layout className="h-5 w-5" />
+                  </Button>
                 }
-               />
+              />
             </>
           )}
           {messageType === 'reply' && isRecording && (
-             <div className="flex items-center gap-2 text-muted-foreground px-1 h-8 sm:h-9">
-                <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-xs font-mono">{formatDuration(recordingDuration)}</span>
-                <Button variant="ghost" size="icon" onClick={stopRecording} title="Parar Gravação" className="text-red-500 hover:text-red-600 h-8 w-8 sm:h-9 sm:w-9">
-                  <PauseCircle className="h-5 w-5" />
-                </Button>
-             </div>
-           )}
-           {/* Espaço reservado para alinhar o botão "Send" quando não há ícones (Private Note) */}
-           {(messageType === 'private-note' || (messageType === 'reply' && !isRecording && !isRecording /* redundante, mas para clareza do else */)) && 
-             ! (messageType === 'reply' && !isRecording) && // Se for private note
-             ! (messageType === 'reply' && isRecording) && // Ou se for reply e não está gravando (a condição de cima cobre isso)
-             <div className="w-auto h-8 sm:h-9"></div> // Este div pode não ser necessário se o flex-grow no botão Send funcionar bem
-           }
+            <div className="flex items-center gap-2 text-muted-foreground px-1 h-8 sm:h-9">
+              <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="text-xs font-mono">{formatDuration(recordingDuration)}</span>
+              <Button variant="ghost" size="icon" onClick={stopRecording} title="Parar Gravação" className="text-red-500 hover:text-red-600 h-8 w-8 sm:h-9 sm:w-9">
+                <PauseCircle className="h-5 w-5" />
+              </Button>
+            </div>
+          )}
+          {/* Espaço reservado para alinhar o botão "Send" quando não há ícones (Private Note) */}
+          {(messageType === 'private-note' || (messageType === 'reply' && !isRecording && !isRecording /* redundante, mas para clareza do else */)) &&
+            !(messageType === 'reply' && !isRecording) && // Se for private note
+            !(messageType === 'reply' && isRecording) && // Ou se for reply e não está gravando (a condição de cima cobre isso)
+            <div className="w-auto h-8 sm:h-9"></div> // Este div pode não ser necessário se o flex-grow no botão Send funcionar bem
+          }
         </div>
 
-          <Button
-            onClick={safeHandleSendMessage}
-            disabled={isSendingMessage || isUploading || (isRecording && messageType === 'reply') || !internalNewMessage.trim()} // Use isSendingMessage directly
-            className={cn(
-              "min-w-[90px] sm:min-w-[110px] h-8 sm:h-9 px-3 py-2 text-xs sm:text-sm", // Ajuste de tamanho
-              messageType === 'private-note' 
-                ? "bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white dark:text-primary-foreground" 
-                : "bg-primary text-primary-foreground hover:bg-primary/90"
-            )}
-          >
-            {isSendingMessage || isUploading ? ( // Show loader if isSendingMessage or isUploading (simplified condition)
-              <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" />
-            ) : (
-              <Send className="h-4 w-4 mr-1 sm:mr-2" />
-            )}
-            Send <span className="ml-1 text-xs opacity-70 hidden sm:inline">(⌘+↵)</span>
-          </Button>
+        <Button
+          onClick={safeHandleSendMessage}
+          // disabled={isSendingMessage || isUploading || (isRecording && messageType === 'reply') || !internalNewMessage.trim()} // Use isSendingMessage directly
+          className={cn(
+            "min-w-[90px] sm:min-w-[110px] h-8 sm:h-9 px-3 py-2 text-xs sm:text-sm", // Ajuste de tamanho
+            messageType === 'private-note'
+              ? "bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white dark:text-primary-foreground"
+              : "bg-primary text-primary-foreground hover:bg-primary/90"
+          )}
+        >
+          {isSendingMessage || isUploading ? ( // Show loader if isSendingMessage or isUploading (simplified condition)
+            <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" />
+          ) : (
+            <Send className="h-4 w-4 mr-1 sm:mr-2" />
+          )}
+          Send <span className="ml-1 text-xs opacity-70 hidden sm:inline">(⌘+↵)</span>
+        </Button>
       </div>
     </div>
   );

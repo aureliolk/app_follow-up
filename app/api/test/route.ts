@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { CoreMessage, tool, generateText } from 'ai';
 import { setConversationAIStatus } from "@/lib/actions/conversationActions";
 import { setCurrentWorkspaceId, listCalendarEventsTool, scheduleCalendarEventTool } from '@/lib/ai/tools/googleTools';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { openai } from '@ai-sdk/openai';
 
 
@@ -25,11 +26,15 @@ export async function POST(req: NextRequest) {
   
       // Monta as mensagens no formato esperado
       const messages: CoreMessage[] = [{ role: 'user', content: message }];
-      
+
+      const openrouter = createOpenRouter({
+        apiKey: process.env.OPENROUTER_API_KEY,
+      });
+
       // Chama o modelo diretamente
       const aiResponseText = await generateText({
         messages: messages,
-        model: openai("gpt-4o-mini"),
+        model: openrouter("openai/gpt-4o-mini"),
         system: `Data e hora atual: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} ${systemPrompt}`,
         tools: {
           humanTransferTool: tool({
@@ -55,11 +60,12 @@ export async function POST(req: NextRequest) {
           listCalendarEventsTool,
           scheduleCalendarEventTool,
         },
+        
         });
 
-      if( aiResponseText.toolResults.length > 0){
-        return NextResponse.json({ response: aiResponseText.toolResults[0].result }, { status: 200 });
-      }
+      // if( aiResponseText.toolResults.length > 0){
+      //   return NextResponse.json({ response: aiResponseText.toolResults[0].result }, { status: 200 });
+      // }
 
       // Retorna a resposta da IA
       return NextResponse.json({ response: aiResponseText }, { status: 200 });

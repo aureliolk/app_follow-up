@@ -18,61 +18,6 @@ interface RouteParams {
     }
 }
 
-interface EvolutionMessageData {
-    key: {
-        remoteJid: string;
-        fromMe: boolean;
-        id: string;
-        participant?: string;
-    };
-    pushName?: string;
-    message?: { // O conteúdo da mensagem varia
-        conversation?: string; // Para mensagens de texto
-        imageMessage?: {
-            caption?: string;
-            url?: string;
-            directPath?: string;
-            mimetype?: string;
-            fileLength?: string; // Adicionado com base nos logs
-        };
-        audioMessage?: {
-            url?: string;
-            directPath?: string;
-            mimetype?: string;
-            seconds?: number;
-            ptt?: boolean;
-            fileLength?: string; // Adicionado com base nos logs
-        };
-        videoMessage?: {
-            caption?: string;
-            url?: string;
-            directPath?: string;
-            mimetype?: string;
-            seconds?: number;
-            fileLength?: string; // Adicionado com base nos logs
-        };
-        documentMessage?: {
-            caption?: string;
-            fileName?: string;
-            url?: string;
-            directPath?: string;
-            mimetype?: string;
-            fileLength?: string;
-        };
-        stickerMessage?: {
-            url?: string;
-            directPath?: string;
-            mimetype?: string;
-            fileLength?: string;
-        };
-        // Adicionar outros tipos se necessário
-    };
-    messageTimestamp: string | number; // Vem como string ou número
-    messageType?: string; // Adicionado com base nos logs, ex: "imageMessage", "audioMessage"
-    // Adicionar outros campos de 'data' se necessário
-}
-
-
 
 // --- Função auxiliar para mapear status da Evolution para status do DB ---
 // TODO: Ajustar os status da Evolution e do DB conforme necessário

@@ -569,342 +569,184 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }, [selectedConversation?.id, setConversations, setTotalCountAll, setTotalCountHuman, setTotalCountAi]);
 
     // --- Ações do Usuário ---
-    const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string, isPrivateNote: boolean = false) => {
+    const sendManualMessage = useCallback(async (conversationId: string, content: string, workspaceId?: string, isPrivateNote?: boolean) => {
         const wsId = getActiveWorkspaceId(workspaceContext, workspaceId);
         if (!wsId) {
-            toast.error("Não foi possível determinar o workspace ativo.");
-            return;
-        }
-        if (!content.trim()) {
-            toast.error("A mensagem não pode estar vazia.");
+            toast.error("Workspace ID não encontrado para enviar a mensagem.");
             return;
         }
 
-        const optimisticId = `optimistic-${Date.now()}`;
-        const optimisticMessage: Message = {
-            id: optimisticId,
+        // Optimistic update
+        const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        const newMessage: Message = {
+            id: tempId,
             conversation_id: conversationId,
-            sender_type: 'AGENT',
+            sender_type: 'AGENT', // Assuming manual message is from an agent
+            message_type: 'TEXT', // Corrected property name
             content: content,
             timestamp: new Date().toISOString(),
-            status: 'PENDING',
-            message_type: 'TEXT',
+            status: 'SENDING', // Status de envio
+            privates_notes: isPrivateNote || false, // Corrected property name
             channel_message_id: null,
-            metadata: { senderName: session?.user?.name || 'Agente' },
-            media_url: null,
-            media_mime_type: null,
-            media_filename: null,
             provider_message_id: null,
+            metadata: null,
         };
 
-        if (selectedConversation?.id === conversationId) {
-            setSelectedConversationMessages(prev => [...prev, optimisticMessage]);
-        }
-        setMessageCache(prevCache => ({
-            ...prevCache,
-            [conversationId]: [...(prevCache[conversationId] || []), optimisticMessage]
-        }));
+        // Add optimistic message to UI immediately
+        setMessageCache(prev => {
+            const currentMessages = prev[conversationId] || [];
+            return { ...prev, [conversationId]: [...currentMessages, newMessage] };
+        });
+        setSelectedConversationMessages(prev => [...prev, newMessage]);
+        // Temporarily disable input while sending
+        setIsSendingMessage(true); // Set sending state to true
 
-        setIsSendingMessage(true);
         try {
-            const response = await axios.post<{ success: boolean, message?: Message, error?: string }>(
-                `/api/conversations/${conversationId}/messages`,
-                { content, isPrivateNote }
-            );
-
-            if (!response.data.success || !response.data.message) {
-                throw new Error(response.data.error || 'Falha ao enviar mensagem pela API');
-            }
-
-            const sentMessage = response.data.message;
-            toast.success("Mensagem enviada!");
-
-            // Create a final message object with status 'SENT' and the real ID
-            const finalMessage: Message = {
-                ...optimisticMessage, // Start with optimistic message properties
-                ...sentMessage,      // Overlay with properties from the real message (like real ID)
-                id: sentMessage?.id || optimisticId, // Ensure real ID is used
-                status: 'SENT',      // Explicitly set status to SENT
-            };
-
-            // Replace optimistic message with the final message in selectedConversationMessages
-            setSelectedConversationMessages(prev =>
-                prev.map(m => m.id === optimisticId ? finalMessage : m)
-            );
-            // Replace optimistic message with the final message in messageCache
-            setMessageCache(prevCache => ({
-                ...prevCache,
-                [conversationId]: (prevCache[conversationId] || []).map(m =>
-                    m.id === optimisticId ? finalMessage : m
-                )
-            }));
-
-        } catch (err: any) {
-            const errorMsg = err.response?.data?.error || err.message || 'Erro desconhecido ao enviar mensagem.';
-            console.error("[ConversationContext] Erro ao enviar mensagem manual:", errorMsg);
-            toast.error(`Falha ao enviar: ${errorMsg}`);
-
-             const updateStateWithError = () => {
-                 const failedMessage = { ...optimisticMessage, status: 'FAILED' } as Message;
-                 if (selectedConversation?.id === conversationId) {
-                     setSelectedConversationMessages(prev =>
-                         prev.map(m => m.id === optimisticId ? failedMessage : m)
-                     );
-                 }
-                 setMessageCache(prevCache => {
-                     const current = prevCache[conversationId] || [];
-                     return {
-                         ...prevCache,
-                         [conversationId]: current.map(m => m.id === optimisticId ? failedMessage : m)
-                     };
-                 });
-             };
-             updateStateWithError();
-
-        } finally {
-            setIsSendingMessage(false);
-        }
-    }, [workspaceContext, selectedConversation, session]);
-
-    const sendTemplateMessage = useCallback(async (conversationId: string, templateData: SendTemplateDataType) => {
-        const wsId = getActiveWorkspaceId(workspaceContext, undefined);
-        const currentClientId = selectedConversation?.client_id;
-
-        if (!wsId || !currentClientId) {
-            toast.error("Workspace ou Cliente não selecionado corretamente.");
-            return;
-        }
-        if (!templateData || !templateData.name || !templateData.language || !templateData.body) {
-            toast.error("Dados do template incompletos.");
-            return;
-        }
-
-        let renderedContent = templateData.body;
-        try {
-            Object.entries(templateData.variables || {})
-                .sort(([keyA], [keyB]) => parseInt(keyA) - parseInt(keyB))
-                .forEach(([key, value]) => {
-                  const placeholder = `{{\s*${key}\s*}}`;
-                  renderedContent = renderedContent.replace(new RegExp(placeholder, 'g'), value || '');
-                });
-        } catch (renderError) {
-            console.error("[ConversationContext] Erro ao renderizar template para UI otimista:", renderError);
-            renderedContent = `(Template: ${templateData.name}) ${templateData.body}`;
-        }
-
-        const optimisticId = `optimistic-${Date.now()}`;
-        const optimisticMessage: Message = {
-            id: optimisticId,
-            conversation_id: conversationId,
-            sender_type: 'AGENT',
-            content: renderedContent,
-            timestamp: new Date().toISOString(),
-            status: 'SENDING',
-            message_type: 'TEMPLATE',
-            channel_message_id: null,
-            metadata: {
-                senderName: session?.user?.name || 'Sistema',
-                templateName: templateData.name,
-                templateLanguage: templateData.language,
-             },
-            media_url: null,
-            media_mime_type: null,
-            media_filename: null,
-            provider_message_id: null,
-        };
-
-        if (selectedConversation?.id === conversationId) {
-            setSelectedConversationMessages(prev => [...prev, optimisticMessage]);
-        }
-        setMessageCache(prevCache => ({
-            ...prevCache,
-            [conversationId]: [...(prevCache[conversationId] || []), optimisticMessage]
-        }));
-
-        setIsSendingMessage(true);
-        try {
-
-            const result = await sendWhatsappTemplateAction({
-                conversationId: conversationId,
+            const response = await axios.post(`/api/conversations/${conversationId}/messages`, {
+                content,
+                isPrivateNote: isPrivateNote || false,
                 workspaceId: wsId,
-                clientId: currentClientId,
-                templateName: templateData.name,
-                templateLanguage: templateData.language,
-                variables: templateData.variables || {},
-                templateBody: templateData.body,
             });
 
-            if (!result.success) {
-                throw new Error(result.error || 'Falha ao enviar template via Server Action');
-            }
+            const sentMessage = response.data; // Assuming the API returns the final message object
 
-            console.log(`[ConversationContext] Template action successful. Provider Msg ID (WAMID): ${result.messageId}`);
-            toast.success("Template enviado!");
+            // Replace optimistic message with the actual sent message
+            setMessageCache(prev => {
+                const currentMessages = prev[conversationId] || [];
+                const updatedMessages = currentMessages.map(msg => msg.id === tempId ? sentMessage : msg);
+                return { ...prev, [conversationId]: updatedMessages };
+            });
+            setSelectedConversationMessages(prev => prev.map(msg => msg.id === tempId ? sentMessage : msg));
 
-            // Update optimistic message with real message ID and SENT status
-            const updatedOptimisticMessage: Message = {
-                ...optimisticMessage,
-                id: result.messageId || optimisticId, // Use real ID if available, otherwise keep optimistic
-                provider_message_id: result.messageId || null,
-                status: 'SENT', // Set status to SENT after successful API call
-            };
+            // Update the conversation in the list with the new last message
+            handleRealtimeNewMessage(sentMessage); // Reuse realtime handler to update list
 
-            // Replace optimistic message with updated message in selectedConversationMessages
-            setSelectedConversationMessages(prev => prev.map(m =>
-                m.id === optimisticId ? updatedOptimisticMessage : m
-            ));
-            // Replace optimistic message with updated message in messageCache
-            setMessageCache(prevCache => ({
-                ...prevCache,
-                [conversationId]: (prevCache[conversationId] || []).map(m =>
-                    m.id === optimisticId ? updatedOptimisticMessage : m
-                )
-            }));
+            return sentMessage; // Return the actual message object
+        } catch (error: any) {
+            console.error('[ConversationContext] Erro ao enviar mensagem manual:', error);
+            toast.error("Falha ao enviar mensagem.");
 
-        } catch (err: any) {
-            const errorMsg = err.response?.data?.error || err.message || 'Erro desconhecido ao enviar template.';
-            console.error("[ConversationContext] Erro ao enviar template:", errorMsg);
-            toast.error(`Falha ao enviar: ${errorMsg}`);
+            // Update status of optimistic message to FAILED
+            const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
+            setMessageCache(prev => {
+                const currentMessages = prev[conversationId] || [];
+                const updatedMessages = currentMessages.map(msg => msg.id === tempId ? { ...msg, status: 'FAILED', errorMessage: errorMessage } : msg);
+                return { ...prev, [conversationId]: updatedMessages };
+            });
+            setSelectedConversationMessages(prev => prev.map(msg => msg.id === tempId ? { ...msg, status: 'FAILED', errorMessage: errorMessage } : msg));
 
-             const updateStateWithError = () => {
-                const failedMessage = { ...optimisticMessage, status: 'FAILED' } as Message;
-                if (selectedConversation?.id === conversationId) {
-                    setSelectedConversationMessages(prev =>
-                        prev.map(m => m.id === optimisticId ? failedMessage : m)
-                    );
-                }
-                 setMessageCache(prevCache => {
-                     const current = prevCache[conversationId] || [];
-                     return {
-                         ...prevCache,
-                         [conversationId]: current.map(m => m.id === optimisticId ? failedMessage : m)
-                     };
-                 });
-             };
-             updateStateWithError();
+            throw error; // Re-throw to allow calling component to handle
         } finally {
-            setIsSendingMessage(false);
+            // Re-enable input after sending attempt
+            setIsSendingMessage(false); // Reset sending state to false
         }
-    }, [workspaceContext, selectedConversation, session]);
+    }, [workspaceContext.workspace?.id, setMessageCache, setSelectedConversationMessages, handleRealtimeNewMessage]);
 
-    const sendMediaMessage = useCallback(async (conversationId: string, file: File) => {
-        const wsId = getActiveWorkspaceId(workspaceContext, undefined);
-        if (!wsId || !conversationId || !file) {
-            toast.error("Dados insuficientes para enviar mídia.");
+    const sendTemplateMessage = useCallback(async (conversationId: string, templateData: SendTemplateDataType) => {
+        const wsId = getActiveWorkspaceId(workspaceContext);
+        if (!wsId) {
+            toast.error("Workspace ID não encontrado para enviar o template.");
+            return;
+        }
+        if (!conversationId) {
+            toast.error("Conversa não selecionada para enviar o template.");
             return;
         }
 
-        const optimisticId = `optimistic-${Date.now()}`;
-        const messageType = getMessageTypeFromMime(file.type);
-        const optimisticContent = `*${session?.user?.name || 'Agente'}*`;
+        setIsSendingMessage(true); // Set sending state to true
 
-        let localPreviewUrl: string | null = null;
-        if (messageType === 'IMAGE' || messageType === 'VIDEO' || messageType === 'AUDIO') {
-            try {
-                localPreviewUrl = URL.createObjectURL(file);
-            } catch (e) {
-                console.warn("Não foi possível criar URL de objeto para preview:", e);
+        try {
+            // Assuming sendWhatsappTemplateAction handles the API call and returns success/failure
+            const result = await sendWhatsappTemplateAction({
+                conversationId: conversationId,
+                templateName: templateData.name,
+                templateLanguage: templateData.language,
+                variables: Object.entries(templateData.variables).reduce((acc, [key, value]) => {
+                    // WhatsApp API expects 1-based index for variables in components
+                    const whatsappKey = (parseInt(key, 10)).toString(); // Ensure key is a number string
+                     if (!isNaN(parseInt(key, 10))) {
+                         acc[whatsappKey] = value;
+                     } else {
+                          console.warn(`[ConversationContext] Skipping non-numeric template variable key: ${key}`);
+                     }
+                    return acc;
+                }, {} as Record<string, string>),
+                templateBody: templateData.body,
+                 clientId: selectedConversation?.client_id || '',
+                 workspaceId: wsId,
+            });
+
+            if (result.success) {
+                toast.success("Template enviado!");
+                // O Pusher deve lidar com a adição da mensagem ao UI
+            } else {
+                // Ação falhou antes mesmo de tentar enviar (ex: validação no server action)
+                const errorMessage = result.error || "Falha ao enviar template.";
+                console.error("[ConversationContext] Erro no Server Action de template:", result.error);
+                toast.error(errorMessage);
             }
+        } catch (error: any) {
+            // Erro inesperado durante a execução do server action
+            const errorMessage = error.message || "Erro inesperado ao enviar template.";
+            console.error("[ConversationContext] Erro inesperado ao enviar template:", error);
+            toast.error(errorMessage);
+        } finally {
+            setIsSendingMessage(false); // Reset sending state to false
+        }
+    }, [workspaceContext, selectedConversation]);
+
+    const sendMediaMessage = useCallback(async (conversationId: string, file: File) => {
+        const wsId = getActiveWorkspaceId(workspaceContext);
+        if (!wsId) {
+            toast.error("Workspace ID não encontrado para enviar a mídia.");
+            return;
+        }
+        if (!conversationId) {
+            toast.error("Conversa não selecionada para enviar a mídia.");
+            return;
+        }
+        if (!file) {
+            toast.error("Nenhum arquivo selecionado.");
+            return;
         }
 
-        const optimisticMessage: Message = {
-            id: optimisticId,
-            conversation_id: conversationId,
-            sender_type: 'AGENT',
-            content: (messageType !== 'AUDIO' && messageType !== 'IMAGE' && messageType !== 'VIDEO' && messageType !== 'DOCUMENT') ? `[Enviando ${file.name}]` : null,
-            timestamp: new Date().toISOString(),
-            status: 'SENDING',
-            message_type: messageType,
-            channel_message_id: null,
-            metadata: {
-                senderName: session?.user?.name || 'Agente',
-                originalFilename: file.name,
-                mimeType: file.type,
-                size: file.size,
-             },
-            media_url: localPreviewUrl,
-            media_mime_type: file.type,
-            media_filename: null,
-            provider_message_id: null,
-        };
+        setIsSendingMessage(true); // Set sending state to true
+        // Note: isUploading prop in InputArea is separate and can be managed there
+        // if a separate upload indicator is needed alongside sending.
+        // For simplicity, we'll use isSendingMessage to cover both here.
 
-        if (selectedConversation?.id === conversationId) {
-            setSelectedConversationMessages(prev => [...prev, optimisticMessage]);
-        }
-        setMessageCache(prevCache => ({
-            ...prevCache,
-            [conversationId]: [...(prevCache[conversationId] || []), optimisticMessage]
-        }));
-
-        setIsSendingMessage(true);
         const formData = new FormData();
         formData.append('file', file);
         formData.append('conversationId', conversationId);
         formData.append('workspaceId', wsId);
 
         try {
+            // Assuming this endpoint handles the media upload and message creation
+            const response = await axios.post<{ success: boolean; message?: Message; error?: string }>(`/api/conversations/${conversationId}/media`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
 
-            const response = await axios.post<{ success: boolean, data?: Message, error?: string }>(
-                `/api/attachments`,
-                formData,
-                { 
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                }
-            );
-
-            if (!response.data.success || !response.data.data) {
-                throw new Error(response.data.error || 'Falha ao fazer upload da mídia');
+            if (response.data.success && response.data.message) {
+                 // O Pusher deve lidar com a adição da mensagem ao UI
+                console.log("[ConversationContext] Mídia enviada com sucesso. Mensagem criada:", response.data.message);
+                // toast.success("Mídia enviada!"); // Opcional, UI pode mostrar indicador
+            } else {
+                const errorMessage = response.data.error || "Falha ao enviar mídia pela API.";
+                console.error("[ConversationContext] Erro na API de envio de mídia:", errorMessage);
+                toast.error(`Falha ao enviar mídia: ${errorMessage}`);
+                 throw new Error(errorMessage); // Re-throw to be caught by the finally block
             }
-
-            const createdMessage = response.data.data;
-            console.log(`[ConversationContext] Media upload successful. DB Message ID: ${createdMessage.id}`);
-            toast.success("Arquivo enviado!");
-
-            if (localPreviewUrl) {
-                URL.revokeObjectURL(localPreviewUrl);
-            }
-
-            // Replace optimistic message with real message in selectedConversationMessages
-            setSelectedConversationMessages(prev =>
-                prev.map(m => m.id === optimisticId ? createdMessage : m)
-            );
-            // Replace optimistic message with real message in messageCache
-            setMessageCache(prevCache => ({
-                ...prevCache,
-                [conversationId]: (prevCache[conversationId] || []).map(m =>
-                    m.id === optimisticId ? createdMessage : m
-                )
-            }));
-
-        } catch (err: any) {
-            const errorMsg = err.response?.data?.error || err.message || 'Erro desconhecido ao enviar mídia.';
-            console.error("[ConversationContext] Erro ao enviar mídia:", errorMsg);
-            toast.error(`Falha ao enviar ${messageType.toLowerCase()}: ${errorMsg}`);
-
-             if (localPreviewUrl) {
-                URL.revokeObjectURL(localPreviewUrl);
-             }
-
-             const updateStateWithError = () => {
-                 const failedMessage = { ...optimisticMessage, status: 'FAILED', media_url: null } as Message;
-                 if (selectedConversation?.id === conversationId) {
-                     setSelectedConversationMessages(prev =>
-                         prev.map(m => m.id === optimisticId ? failedMessage : m)
-                     );
-                 }
-                 setMessageCache(prevCache => {
-                     const current = prevCache[conversationId] || [];
-                     return {
-                         ...prevCache,
-                         [conversationId]: current.map(m => m.id === optimisticId ? failedMessage : m)
-                     };
-                 });
-             };
-             updateStateWithError();
+        } catch (error: any) {
+            console.error("[ConversationContext] Erro inesperado ao enviar mídia:", error);
+            const errorMessage = error.message || "Erro inesperado ao enviar mídia.";
+            toast.error(errorMessage);
+             throw error; // Re-throw to be caught by the finally block
         } finally {
-            setIsSendingMessage(false);
+            setIsSendingMessage(false); // Reset sending state to false
         }
-    }, [workspaceContext, selectedConversation, session]);
+    }, [workspaceContext]);
 
     const toggleAIStatus = useCallback(async (conversationId: string, currentStatus: boolean) => {
         const newStatus = !currentStatus;

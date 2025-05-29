@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db';
 import { AIStageActionTypeEnum } from '@/lib/types/ai-stages';
 import axios from 'axios';
 import { z } from 'zod';
+import { AVAILABLE_MODELS } from '@/lib/constants';
 
 // Interface para contexto de estágio
 interface StageContext {
@@ -327,9 +328,17 @@ ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${J
     const systemPrompt = `${baseInstructions}${conversation?.workspace?.ai_default_system_prompt || ''}${stageInstructions}${additionalContext ? `\n\n${additionalContext}` : ''}`;
 
     // Obter modelo de linguagem
+    const modelIdentifier = modelPreference || conversation?.workspace?.ai_model_preference || AVAILABLE_MODELS[0].value;
     const model = getModelInstance(
-      modelPreference || conversation?.workspace?.ai_model_preference || 'openrouter/google/gemini-2.0-flash-001'
+      modelIdentifier
     );
+
+    // Encontrar o objeto do modelo na lista para verificar se suporta tools
+    const selectedModel = AVAILABLE_MODELS.find(m => m.value === modelIdentifier);
+    const supportsTools = selectedModel ? selectedModel.tool : false; // Assume false se não encontrar (deveria encontrar)
+
+    console.log('modelIdentifier', modelIdentifier);
+    console.log('supportsTools', supportsTools);
 
     // Processar com streaming ou não
     if (streamMode) {
@@ -337,10 +346,11 @@ ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${J
         model,
         messages,
         system: systemPrompt,
+        ...(supportsTools ? { 
         tools: allTools,
         toolChoice: 'auto',
-        maxSteps: 5,
-        maxTokens: 1000000
+        maxSteps: 5
+        } : {}),
       });
 
       // Processar tool calls a partir do fullStream
@@ -422,9 +432,11 @@ ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${J
         model,
         messages,
         system: systemPrompt,
-        tools: allTools,
-        toolChoice: 'auto',
-        maxTokens: 1000000
+        ...(supportsTools ? { 
+          tools: allTools,
+          toolChoice: 'auto',
+          maxSteps: 5
+        } : {}),
       });
 
       // Processar tool calls de estágios no modo não-streaming

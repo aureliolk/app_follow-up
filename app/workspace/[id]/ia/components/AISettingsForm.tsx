@@ -15,25 +15,7 @@ import { toast } from 'react-hot-toast';
 import { useFormStatus } from 'react-dom';
 import { useActionState } from 'react';
 import { updateAiSettingsAction } from '@/lib/actions/workspaceSettingsActions';
-
-// Lista atualizada de modelos disponíveis
-const AVAILABLE_MODELS = [
-    // Modelos via OpenRouter
-    // Modelos OpenAI
-    { value: 'openrouter/openai/gpt-4o-mini', label: 'OpenAI: GPT-4o Mini' },
-
-    // Modelos Google
-    { value: 'openrouter/google/gemini-2.5-pro-exp-03-25:free', label: 'Google: Gemini 2.5 Pro (Free)' },
-    { value: 'openrouter/google/gemini-2.5-pro-preview-03-25', label: 'Google: Gemini 2.5 Pro Preview' },
-    { value: 'openrouter/google/gemini-2.0-flash-001', label: 'Google: Gemini 2.0 Flash' },
-
-    // Modelos XAI
-    { value: 'openrouter/x-ai/grok-3-beta', label: 'XAI: Grok-3 Beta' }, 
-    { value: 'openrouter/x-ai/grok-3-mini-beta', label: 'XAI: Grok-3 Mini Beta' }, 
-
-    // Modelos DeepSeek
-    { value: 'openrouter/deepseek/deepseek-chat-v3-0324', label: 'DeepSeek: DeepSeek Chat v3' },
-];
+import { AVAILABLE_MODELS } from '@/lib/constants';
 
 export default function AISettingsForm() {
   const { workspace, isLoading: workspaceLoading } = useWorkspace();
@@ -48,46 +30,45 @@ export default function AISettingsForm() {
   // Estado para gerenciar o resultado da Server Action
   const [state, formAction] = useActionState(
     async (prevState: any, formData: FormData) => {
-        if (!workspace?.id) {
-            return { success: false, error: 'ID do workspace não encontrado.' };
+      if (!workspace?.id) {
+        return { success: false, error: 'ID do workspace não encontrado.' };
+      }
+
+      // Construir o objeto de dados para a action
+      const data = {
+        workspaceId: workspace.id,
+        ai_default_system_prompt: formData.get('ai_default_system_prompt') as string | null,
+        ai_model_preference: formData.get('ai_model_preference') as string | null,
+        ai_name: formData.get('ai_name') as string | null,
+        ai_delay_between_messages: formData.get('ai_delay_between_messages')
+          ? parseInt(formData.get('ai_delay_between_messages') as string, 10)
+          : null,
+        ai_send_fractionated: formData.has('ai_send_fractionated'),
+      };
+
+      console.log("[AISettingsForm Action] Data to be sent:", data);
+      console.log("[AISettingsForm Action] FormData contents:");
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}: ${value}`);
+      }
+      console.log("[AISettingsForm Action] FormData has ai_send_fractionated:", formData.has('ai_send_fractionated'));
+
+      try {
+        const result = await updateAiSettingsAction(data);
+
+        // Se sucesso, incluir os dados atualizados no resultado
+        if (result.success && result.data) {
+          return {
+            ...result,
+            updatedData: result.data
+          };
         }
 
-        // Construir o objeto de dados para a action
-        const data = {
-            workspaceId: workspace.id,
-            ai_default_system_prompt: formData.get('ai_default_system_prompt') as string | null,
-            ai_model_preference: formData.get('ai_model_preference') as string | null,
-            ai_name: formData.get('ai_name') as string | null,
-            ai_delay_between_messages: formData.get('ai_delay_between_messages') 
-                ? parseInt(formData.get('ai_delay_between_messages') as string, 10) 
-                : null,
-            // Checkbox fix: se não existe no FormData, significa que está desmarcado
-            ai_send_fractionated: formData.has('ai_send_fractionated'),
-        };
-
-        console.log("[AISettingsForm Action] Data to be sent:", data);
-        console.log("[AISettingsForm Action] FormData contents:");
-        for (const [key, value] of formData.entries()) {
-            console.log(`  ${key}: ${value}`);
-        }
-        console.log("[AISettingsForm Action] FormData has ai_send_fractionated:", formData.has('ai_send_fractionated'));
-        
-        try {
-            const result = await updateAiSettingsAction(data);
-            
-            // Se sucesso, incluir os dados atualizados no resultado
-            if (result.success && result.data) {
-                return {
-                    ...result,
-                    updatedData: result.data
-                };
-            }
-            
-            return result;
-        } catch (error: any) {
-            console.error("[AISettingsForm Action] Error:", error);
-            return { success: false, error: error.message || 'Erro desconhecido' };
-        }
+        return result;
+      } catch (error: any) {
+        console.error("[AISettingsForm Action] Error:", error);
+        return { success: false, error: error.message || 'Erro desconhecido' };
+      }
     },
     null // Estado inicial
   );
@@ -95,47 +76,47 @@ export default function AISettingsForm() {
   // Efeito para mostrar toasts com base no resultado da Server Action
   useEffect(() => {
     if (state) {
-        if (state.success) {
-            toast.success('Configurações de IA salvas com sucesso!');
-            
-            // Atualizar os campos locais com os dados salvos para sincronizar
-            if (state.updatedData) {
-                const updatedData = state.updatedData;
-                console.log("[AISettingsForm Effect] Updating local state with saved data:", updatedData);
-                
-                // IMPORTANTE: Atualizar apenas os campos que foram salvos e existem na resposta
-                if ('ai_default_system_prompt' in updatedData) {
-                    setSystemPrompt(updatedData.ai_default_system_prompt || '');
-                    console.log("[AISettingsForm Effect] Updated systemPrompt:", updatedData.ai_default_system_prompt);
-                }
-                
-                if ('ai_model_preference' in updatedData) {
-                    const newModel = updatedData.ai_model_preference || AVAILABLE_MODELS[0].value;
-                    console.log("[AISettingsForm Effect] Current modelPreference:", modelPreference);
-                    console.log("[AISettingsForm Effect] New modelPreference from server:", newModel);
-                    setModelPreference(newModel);
-                }
-                
-                if ('ai_name' in updatedData) {
-                    setAiName(updatedData.ai_name || 'Beatriz');
-                    console.log("[AISettingsForm Effect] Updated aiName:", updatedData.ai_name);
-                }
-                
-                if ('ai_delay_between_messages' in updatedData) {
-                    setAiDelayBetweenMessages(Number(updatedData.ai_delay_between_messages) || 3000);
-                    console.log("[AISettingsForm Effect] Updated aiDelayBetweenMessages:", updatedData.ai_delay_between_messages);
-                }
-                
-                if ('ai_send_fractionated' in updatedData) {
-                    const newFractionated = updatedData.ai_send_fractionated || false;
-                    console.log("[AISettingsForm Effect] Current aiSendFractionated:", aiSendFractionated);
-                    console.log("[AISettingsForm Effect] New aiSendFractionated from server:", newFractionated);
-                    setAiSendFractionated(newFractionated);
-                }
-            }
-        } else if (state.error) {
-            toast.error(`Erro ao salvar: ${state.error}`);
+      if (state.success) {
+        toast.success('Configurações de IA salvas com sucesso!');
+
+        // Atualizar os campos locais com os dados salvos para sincronizar
+        if (state.updatedData) {
+          const updatedData = state.updatedData;
+          console.log("[AISettingsForm Effect] Updating local state with saved data:", updatedData);
+
+          // IMPORTANTE: Atualizar apenas os campos que foram salvos e existem na resposta
+          if ('ai_default_system_prompt' in updatedData) {
+            setSystemPrompt(updatedData.ai_default_system_prompt || '');
+            console.log("[AISettingsForm Effect] Updated systemPrompt:", updatedData.ai_default_system_prompt);
+          }
+
+          if ('ai_model_preference' in updatedData) {
+            const newModel = updatedData.ai_model_preference || AVAILABLE_MODELS[0].value;
+            console.log("[AISettingsForm Effect] Current modelPreference:", modelPreference);
+            console.log("[AISettingsForm Effect] New modelPreference from server:", newModel);
+            setModelPreference(newModel);
+          }
+
+          if ('ai_name' in updatedData) {
+            setAiName(updatedData.ai_name || 'Beatriz');
+            console.log("[AISettingsForm Effect] Updated aiName:", updatedData.ai_name);
+          }
+
+          if ('ai_delay_between_messages' in updatedData) {
+            setAiDelayBetweenMessages(Number(updatedData.ai_delay_between_messages) || 3000);
+            console.log("[AISettingsForm Effect] Updated aiDelayBetweenMessages:", updatedData.ai_delay_between_messages);
+          }
+
+          if ('ai_send_fractionated' in updatedData) {
+            const newFractionated = updatedData.ai_send_fractionated || false;
+            console.log("[AISettingsForm Effect] Current aiSendFractionated:", aiSendFractionated);
+            console.log("[AISettingsForm Effect] New aiSendFractionated from server:", newFractionated);
+            setAiSendFractionated(newFractionated);
+          }
         }
+      } else if (state.error) {
+        toast.error(`Erro ao salvar: ${state.error}`);
+      }
     }
   }, [state]);
 
@@ -170,7 +151,7 @@ export default function AISettingsForm() {
           Personalize o comportamento da IA para este workspace. Defina a persona, o contexto e os objetivos.
         </CardDescription>
       </CardHeader>
-      
+
       <form action={formAction}>
         <CardContent className="space-y-6">
           {/* Primeira linha: Nome da IA e Delay */}
@@ -193,7 +174,7 @@ export default function AISettingsForm() {
                 Este nome será usado para assinar as mensagens enviadas pela IA.
               </p>
             </div>
-            
+
             <div className="w-full md:w-1/2">
               <Label htmlFor="ai_delay_between_messages" className="text-foreground">
                 Tempo de debounce entre jobs (ms)
@@ -222,24 +203,24 @@ export default function AISettingsForm() {
               Modelo de IA Preferido
             </Label>
             <Select
-                name="ai_model_preference"
-                value={modelPreference}
-                onValueChange={(value) => setModelPreference(value)}
-                disabled={workspaceLoading}
+              name="ai_model_preference"
+              value={modelPreference}
+              onValueChange={(value) => setModelPreference(value)}
+              disabled={workspaceLoading}
             >
               <SelectTrigger className="w-full md:w-1/2 bg-input border-input">
                 <SelectValue placeholder="Selecione um modelo..." />
               </SelectTrigger>
               <SelectContent>
                 {AVAILABLE_MODELS.map(model => (
-                    <SelectItem key={model.value} value={model.value}>
-                        {model.label}
-                    </SelectItem>
+                  <SelectItem key={model.value} value={model.value}>
+                    {model.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-                Escolha o modelo de linguagem que a IA usará para gerar respostas.
+              Escolha o modelo de linguagem que a IA usará para gerar respostas.
             </p>
           </div>
 
@@ -284,12 +265,12 @@ export default function AISettingsForm() {
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Se marcado, divide respostas longas em parágrafos com delay fixo de 3 segundos entre eles. 
+              Se marcado, divide respostas longas em parágrafos com delay fixo de 3 segundos entre eles.
               Se desmarcado, envia a resposta completa em uma única mensagem.
             </p>
           </div>
         </CardContent>
-        
+
         <CardFooter className="border-t border-border pt-4">
           <SubmitButton />
         </CardFooter>
@@ -300,7 +281,7 @@ export default function AISettingsForm() {
 
 function SubmitButton() {
   const { pending } = useFormStatus();
-  const { isLoading: workspaceLoading } = useWorkspace(); 
+  const { isLoading: workspaceLoading } = useWorkspace();
 
   return (
     <Button type="submit" disabled={pending || workspaceLoading}>
