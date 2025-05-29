@@ -185,15 +185,6 @@ export async function DELETE(
     }
     const userId = session.user.id;
 
-    if (!workspaceId) {
-      return NextResponse.json({ success: false, error: 'ID do Workspace é obrigatório' }, { status: 400 });
-    }
-
-    // Verificar permissão (ADMIN necessário para excluir?)
-    const hasPermission = await checkPermission(workspaceId, userId, 'ADMIN');
-    if (!hasPermission) {
-      return NextResponse.json({ success: false, error: 'Permissão negada para excluir este cliente' }, { status: 403 });
-    }
 
     // Verificar se o cliente pertence ao workspace antes de excluir
     const clientToDelete = await prisma.client.findFirst({

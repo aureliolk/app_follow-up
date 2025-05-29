@@ -9,18 +9,11 @@ import { calculateNextValidSendTime } from '@/lib/timeUtils'; // scheduling simp
 import { MessageSenderType, Prisma } from '@prisma/client';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import pusher from '@/lib/pusher';
-import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
-import { createDeal, getPipelineStages } from '@/lib/actions/pipelineActions';
-import { getOrCreateConversation, handleDealCreationForNewClient, initiateFollowUpSequence } from '../services/createConversation';
 
-// <<< INÍCIO: Função Auxiliar para Substituir Variáveis >>>
-/**
- * Substitui placeholders como {{key}} em uma string de template
- * pelos valores correspondentes em um objeto de variáveis.
- * @param template A string do template.
- * @param variables Um objeto onde as chaves são os identificadores das variáveis (ex: "1", "body1") e os valores são o que substituir.
- * @returns A string com as variáveis substituídas.
- */
+import { getOrCreateConversation, handleDealCreationForNewClient, initiateFollowUpSequence } from '../services/createConversation';
+import { triggerNewMessageNotification } from '../pusherEvents';
+
+
 function substituteTemplateVariables(template: string, variables: Record<string, string>): string {
   if (!template) return ''; // Retorna vazio se o template for nulo/vazio
   let substitutedMessage = template;
@@ -37,14 +30,7 @@ function substituteTemplateVariables(template: string, variables: Record<string,
   // substitutedMessage = substitutedMessage.replace(/\\{\\{.*?\\}\\}/g, ''); // Opcional
   return substitutedMessage;
 }
-// <<< FIM: Função Auxiliar >>>
 
-console.log(`[Worker] Inicializando Worker para a fila: ${CAMPAIGN_SENDER_QUEUE}`);
-
-/**
- * Worker que processa o início de uma campanha de disparo em massa.
- * Recebe o campaignId, busca os contatos e agenda os envios individuais.
- */
 const campaignProcessorWorker = new Worker(
   CAMPAIGN_SENDER_QUEUE,
   async (job: Job<{ campaignId: string }>) => {
@@ -126,11 +112,10 @@ const campaignProcessorWorker = new Worker(
         let conversationId: string | null = null; // <<< Variável para guardar o ID da conversa >>>
         let clientId: string | null = null; // <<< Variável para guardar o ID do cliente >>>
         let createdMessageId: string | null = null; // <<< Variável para guardar ID da msg criada >>>
+        const clientPhoneNumberRaw = contact.contactInfo;
+        const standardizedPhoneNumber = standardizeBrazilianPhoneNumber(clientPhoneNumberRaw);
 
         try {
-          const clientPhoneNumberRaw = contact.contactInfo;
-          const standardizedPhoneNumber = standardizeBrazilianPhoneNumber(clientPhoneNumberRaw);
-
           if (!standardizedPhoneNumber) {
             console.warn(`[CampaignProcessor ${job.id}] Número de contato inválido ou não padronizável: ${clientPhoneNumberRaw} para Contato ${contact.id}. Marcando como FAILED.`);
             await prisma.campaignContact.update({
@@ -141,22 +126,22 @@ const campaignProcessorWorker = new Worker(
             continue; // Pula para o próximo contato no loop
           }
 
-          const channel = updatedCampaign.channelIdentifier || 'UNKNOWN_CHANNEL';
-          console.log(`[CampaignProcessor ${job.id}] Padronizado ${clientPhoneNumberRaw} -> ${standardizedPhoneNumber}. Buscando/Criando conversa no canal ${channel} para Contato ${contact.id}...`);
-
-          const { conversation, client } = await getOrCreateConversation(
-            updatedCampaign.workspaceId, // Usar o workspaceId da campanha atualizada
+          const { conversation, client, conversationWasCreated } = await getOrCreateConversation(
+            updatedCampaign.workspaceId, 
             standardizedPhoneNumber,
-            contact.contactName || undefined, // Passa o nome se existir
-            updatedCampaign.channelIdentifier || undefined // Canal de origem
+            contact.contactName,
+            updatedCampaign.channelIdentifier 
           );
+          if (conversationWasCreated) {
+            await handleDealCreationForNewClient(client, updatedCampaign.workspaceId);
+            await initiateFollowUpSequence(client, conversation, updatedCampaign.workspaceId);
+        }
           
           conversationId = conversation.id
           clientId = client.id
 
         } catch (convFollowUpError) {
-          console.error(`[CampaignProcessor ${job.id}] Erro crítico durante getOrCreateConversation ou setup de FollowUp para Contato ${contact.id}:`, convFollowUpError);
-          // Marcar contato como FAILED
+     
           await prisma.campaignContact.update({
             where: { id: contact.id },
             data: { status: 'FAILED', error: `Erro ao criar/buscar conversa ou iniciar follow-up: ${convFollowUpError instanceof Error ? convFollowUpError.message : String(convFollowUpError)}` },
@@ -164,14 +149,11 @@ const campaignProcessorWorker = new Worker(
           shouldScheduleMessage = false; // Não agendar mensagem
           continue; // Pula para o próximo contato no loop
         }
-        // <<< FIM: Lógica de Criação de Conversa e Follow-up >>>
 
-        // Só agenda o envio se a criação/verificação da conversa e follow-up ocorreram sem erros críticos
-        if (shouldScheduleMessage && conversationId && clientId) { // <<< Adiciona verificação de conversationId e clientId
+        if (shouldScheduleMessage && conversationId && clientId) { 
 
-          // <<< INÍCIO: Salvar Mensagem Inicial e Notificar UI >>>
           try {
-            const scheduledTimestamp = new Date(); // Hora em que foi agendada
+            const scheduledTimestamp = new Date(); 
             const savedMessage = await prisma.message.create({
               data: {
                 conversation_id: conversationId,
@@ -187,6 +169,10 @@ const campaignProcessorWorker = new Worker(
                 metadata: {
                   campaignId: updatedCampaign.id,
                   campaignContactId: contact.id,
+                  clientId: clientId,
+                  clientPhone: standardizedPhoneNumber,
+                  clientName: contact.contactName,
+                  provider: 'campaign',
                   isCampaignMessage: true,
                   ...(updatedCampaign.isTemplate && {
                     templateName: updatedCampaign.templateName,
@@ -201,12 +187,9 @@ const campaignProcessorWorker = new Worker(
               include: { conversation: { select: { client: true } } }
             });
             createdMessageId = savedMessage.id;
-            console.log(`[CampaignProcessor ${job.id}] Mensagem inicial ${savedMessage.id} salva (PENDING) para Conv ${conversationId}`); // <<< Log ajustado >>>
+            console.log(`[CampaignProcessor ${job.id}] Mensagem inicial ${savedMessage.id} salva (PENDING) para Conv ${conversationId}. Incluindo dados do cliente no metadata para Pusher.`);
 
-            // Notificar front-end via Pusher
-            const pusherChannel = `private-workspace-${updatedCampaign.workspaceId}`;
-            await pusher.trigger(pusherChannel, 'new_message', JSON.stringify({ type: 'new_message', payload: createdMessageId }));
-            console.log(`[CampaignProcessor ${job.id}] Evento 'new_message' enviado via Pusher para ${pusherChannel}`);
+          await triggerNewMessageNotification(updatedCampaign.workspaceId, savedMessage, updatedCampaign.channelIdentifier as 'evolution' | 'whatsapp' );
 
           } catch (saveMsgError) {
             console.error(`[CampaignProcessor ${job.id}] Erro ao salvar mensagem inicial PENDING ou notificar UI para Contato ${contact.id}:`, saveMsgError);

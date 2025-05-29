@@ -8,8 +8,7 @@ import { Prisma, FollowUpStatus } from '@prisma/client'; // Importar tipos neces
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< IMPORTAR a fila de sequência
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
 import { saveMessageRecord } from '@/lib/services/persistenceService';
-import pusher from '@/lib/pusher'; // <-- Adicionar importação do Pusher
-import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
+import { triggerNewMessageNotification, triggerStatusUpdateNotification } from '@/lib/pusherEvents';
 import { createDeal } from '@/lib/actions/pipelineActions';
 import { getPipelineStages } from '@/lib/actions/pipelineActions';
 import { 
@@ -233,13 +232,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     }
 
                                     // --- Save Message ---
-                                    // Persiste mensagem no banco via saveMessageRecord
                                     const savedMessage = await saveMessageRecord({
                                         conversation_id: conversation.id,
                                         sender_type: 'CLIENT',
                                         content: messageContent!,
                                         timestamp: new Date(receivedTimestamp),
                                         metadata: {
+                                            provider: 'whatsapp_cloudapi',
+                                            clientId: client.id,
+                                            clientPhone: senderPhoneNumber,
+                                            clientName: senderName,
                                             messageIdFromWhatsapp,
                                             ...(mediaId && { mediaId }),
                                             ...(mimeType && { mimeType }),
@@ -254,17 +256,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                                     // --- Disparar evento Pusher para notificar a UI ---
                                     try {
-                                        const channelName = `private-workspace-${workspace.id}`;
-                                        const eventPayload = JSON.stringify({ type: 'new_message', payload: savedMessage });
-                                        await pusher.trigger(channelName, 'new_message', eventPayload);
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Pusher event 'new_message' triggered on channel ${channelName} for msg ${savedMessage.id}`);
+                                        await triggerNewMessageNotification(workspace.id, savedMessage, 'whatsapp');
                                     } catch (pusherError) {
                                         console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Failed to trigger Pusher event for msg ${savedMessage.id}:`, pusherError);
                                         // Não falhar o processamento do webhook por causa do Pusher, apenas logar.
                                     }
-                                    // --- Fim do disparo Pusher ---
-
-                                    // --- Enqueue Job para Processamento da Mensagem (IA, etc.) ---
+                                 
                                     if (requiresProcessing) {
                                         try {
                                             const jobData = {
@@ -287,9 +284,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
                                 } // Fim if message.from
                             } // Fim loop messages
-                        } // Fim if change.field === 'messages'
+                        }
 
-                        // <<< INÍCIO: Processamento de Statuses >>>
+                     
                         if (change.field === 'messages' && change.value?.statuses?.length > 0) {
                             console.log(`[WH_STATUS_LOG] Processing ${change.value.statuses.length} status update(s).`);
 
@@ -403,21 +400,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         console.error(`[WH_STATUS_LOG DB_UPDATE] Error updating message ${targetMessage.id} in DB:`, dbError);
                                     }
 
-                                    const payloadToPublish = {
-                                        id: targetMessage.id, // Changed from messageId
-                                        conversation_id: targetConversationId,
-                                        status: dbNewStatus, // Changed from newStatus
-                                        channel_message_id: status.id, // Changed from providerMessageId
-                                        errorMessage: dbNewStatus === 'FAILED' ? (status.errors?.[0]?.title || 'Failed') : undefined
-                                    };
                                     console.log(`[WH_STATUS_LOG] Preparing 'message_status_updated' (${dbNewStatus}) for Msg ID ${targetMessage.id}`);
 
-                                    const channelName = `private-workspace-${workspace.id}`;
-                                    const eventPayloadPusher = { type: 'message_status_update', payload: payloadToPublish };
-
                                     try {
-                                        await pusher.trigger(channelName, 'message_status_update', eventPayloadPusher);
-                                        console.log(`[WH_STATUS_LOG] Pusher event 'message_status_update' triggered on ${channelName} for Msg ID ${targetMessage.id}`);
+                                        const errorMessage = dbNewStatus === 'FAILED' ? (status.errors?.[0]?.title || 'Failed') : undefined;
+                                        await triggerStatusUpdateNotification(
+                                            workspace.id,
+                                            targetMessage.id,
+                                            targetConversationId,
+                                            dbNewStatus,
+                                            status.id,
+                                            errorMessage,
+                                            'whatsapp'
+                                        );
                                     } catch (pusherError: any) {
                                         console.error(`[WH_STATUS_LOG] Failed to trigger Pusher event for Msg ID ${targetMessage.id}:`, pusherError?.message || pusherError);
                                     }
@@ -425,19 +420,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     console.log(`[WH_STATUS_LOG] Received status '${status.status}' (maps to ${dbNewStatus}) for Msg ID ${targetMessage.id}, but current status is '${targetMessage.status}' (${existingStatusIndex} >= ${newStatusIndex}) or new status is not FAILED while current is. No update or Pusher event needed.`);
                                 }
                             }
-                        } // <<< FIM: Processamento de Statuses >>>
+                        } 
 
-                    } // Fim loop changes
-                } // Fim if entry.changes
-            } // Fim loop entry
-        } // Fim if payload.object
+                    } 
+                } 
+            } 
+        } 
     } catch (parseError) {
         console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Erro ao fazer parse do JSON ou processar payload:`, parseError);
-        // Não falhar a resposta para a Meta aqui, pois a assinatura foi válida.
-        // Responder 200 OK mesmo assim, mas logar o erro interno.
     }
-    // --- FIM: Processamento do Payload ---
 
-    // 5. Responder 200 OK para a Meta RAPIDAMENTE!
     return new NextResponse('EVENT_RECEIVED', { status: 200 });
 }

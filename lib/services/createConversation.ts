@@ -9,17 +9,12 @@ export async function getOrCreateConversation(
     clientName?: string | null,
     channelIdentifier?: string | null
 ): Promise<{ client: Client; conversation: Conversation; conversationWasCreated: boolean; clientWasCreated: boolean }> {
-    const targetChannel = channelIdentifier || 'UNKNOWN_CHANNEL';
-    if (targetChannel === 'UNKNOWN_CHANNEL') {
-        console.warn(`[getOrCreateConversation] Chamada sem channelIdentifier específico para workspace ${workspaceId}, phoneNumber ${phoneNumber}. Isso pode levar a problemas de roteamento.`);
-    }
+    const targetChannel = channelIdentifier 
 
     let client = await prisma.client.findFirst({
         where: {
             workspace_id: workspaceId,
             phone_number: phoneNumber,
-            // Não se busca cliente pelo canal, um mesmo número pode estar em vários canais
-            // mas o canal do cliente é atualizado para o mais recente usado.
         }
     });
 

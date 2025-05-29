@@ -5,8 +5,7 @@ import { prisma } from '@/lib/db';
 import { addMessageProcessingJob } from '@/lib/queues/queueService';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import { saveMessageRecord } from '@/lib/services/persistenceService';
-import pusher from '@/lib/pusher';
-import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
+import { triggerNewMessageNotification, triggerStatusUpdateNotification } from '@/lib/pusherEvents';
 import { getOrCreateConversation, initiateFollowUpSequence, handleDealCreationForNewClient } from '@/lib/services/createConversation';
 import { Prisma } from '@prisma/client';
 import { SelectedMessageInfo } from '@/lib/types/message';
@@ -219,37 +218,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
             // Disparar evento Pusher
             try {
-                const channelName = `private-workspace-${workspaceId}`;
-                // Create a copy of savedMessage.metadata without mediaData_base64 for Pusher
-                const originalMetadata = savedMessage.metadata;
-                let pusherMetadata: Record<string, any>; // Explicitly type as object
-
-                if (typeof originalMetadata === 'object' && originalMetadata !== null) {
-                    pusherMetadata = { ...originalMetadata as Record<string, any> }; // Cast and spread
-                } else {
-                    pusherMetadata = {}; // Default to empty object if not a valid object
-                }
-
-                if (pusherMetadata.mediaData_base64) {
-                    delete pusherMetadata.mediaData_base64;
-                }
-
-                const eventPayloadPusher = {
-                    type: 'new_message',
-                    payload: {
-                        id: (savedMessage as any).id,
-                        conversation_id: (savedMessage as any).conversation_id,
-                        sender_type: (savedMessage as any).sender_type,
-                        content: (savedMessage as any).content,
-                        timestamp: (savedMessage as any).timestamp,
-                        status: (savedMessage as any).status,
-                        channel_message_id: (savedMessage as any).channel_message_id,
-                        providerMessageId: (savedMessage as any).providerMessageId,
-                        metadata: pusherMetadata, // Use the modified metadata
-                    }
-                };
-                await pusher.trigger(channelName, 'new_message', eventPayloadPusher);
-                console.log(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Pusher event 'new_message' triggered on channel ${channelName} for msg ${savedMessage.id}`);
+                await triggerNewMessageNotification(workspaceId, savedMessage, 'evolution');
             } catch (pusherError) {
                 console.error(`[EVOLUTION WEBHOOK - POST ${evolutionWebhookToken}] Failed to trigger Pusher event for msg ${savedMessage.id}:`, pusherError);
             }
@@ -385,21 +354,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                     console.error(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] DB_UPDATE: Error updating message ${targetMessage.id} in DB:`, dbError);
                 }
 
-                const payloadToPublish = {
-                    id: targetMessage.id, // Changed from messageId
-                    conversation_id: targetMessage.conversation_id,
-                    status: dbNewStatus, // Changed from newStatus
-                    channel_message_id: providerMessageIdToUpdate, // Changed from providerMessageId
-                    errorMessage: dbNewStatus === 'FAILED' ? (statusData.errorMessage || 'Failed via Evolution') : undefined
-                };
                 console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Preparing 'message_status_updated' (${dbNewStatus}) for Msg ID ${targetMessage.id}`);
 
-                const channelName = `private-workspace-${workspace.id}`;
-                const eventPayloadPusher = { type: 'message_status_update', payload: payloadToPublish };
-
                 try {
-                    await pusher.trigger(channelName, 'message_status_update', eventPayloadPusher);
-                    console.log(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Pusher event 'message_status_update' triggered on ${channelName} for Msg ID ${targetMessage.id}`);
+                    const errorMessage = dbNewStatus === 'FAILED' ? (statusData.errorMessage || 'Failed via Evolution') : undefined;
+                    await triggerStatusUpdateNotification(
+                        workspace.id,
+                        targetMessage.id,
+                        targetMessage.conversation_id,
+                        dbNewStatus,
+                        providerMessageIdToUpdate,
+                        errorMessage,
+                        'evolution'
+                    );
                 } catch (pusherError: any) {
                     console.error(`[EVO_STATUS_LOG - ${evolutionWebhookToken}] Failed to trigger Pusher event for Msg ID ${targetMessage.id}:`, pusherError?.message || pusherError);
                 }
