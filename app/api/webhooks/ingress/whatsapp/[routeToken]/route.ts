@@ -4,18 +4,11 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
 import { addMessageProcessingJob } from '@/lib/queues/queueService'; // Importar função de enfileiramento
-import { Prisma, FollowUpStatus } from '@prisma/client'; // Importar tipos necessários E FollowUpStatus
-import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue'; // <<< IMPORTAR a fila de sequência
+import { Prisma } from '@prisma/client'; // Importar tipos necessários E FollowUpStatus
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
 import { saveMessageRecord } from '@/lib/services/persistenceService';
 import { triggerNewMessageNotification, triggerStatusUpdateNotification } from '@/lib/pusherEvents';
-import { createDeal } from '@/lib/actions/pipelineActions';
-import { getPipelineStages } from '@/lib/actions/pipelineActions';
-import { 
-  getOrCreateConversation, 
-  handleDealCreationForNewClient, 
-  initiateFollowUpSequence 
-} from '@/lib/services/createConversation';
+import { processClientAndConversation } from '@/lib/services/clientConversationService';
 
 
 // Define a type for the selected message fields
@@ -157,24 +150,26 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                             for (const message of change.value.messages) {
                                 
                                 if (message.from) {
-                                    const senderName = contacts?.[0]?.profile?.name;
+                                    const senderName = contacts?.[0]?.profile?.name || ''; // Ensure senderName is always a string
 
                                     const receivedTimestamp = parseInt(message.timestamp, 10) * 1000; // Timestamp da mensagem (em segundos, converter para ms)
                                     const senderPhoneNumberRaw = message.from; // Número original
                                     const messageIdFromWhatsapp = message.id; // ID da mensagem na API do WhatsApp
                                     const workspacePhoneNumberId = metadata?.phone_number_id; // <<< USAR METADATA DEFINIDO ACIMA
-
+                                    console.log("Numero Serializado")
                                     // Padronizar número do remetente
                                     const senderPhoneNumber = standardizeBrazilianPhoneNumber(senderPhoneNumberRaw);
                                     if (!senderPhoneNumber) {
                                         console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Número do remetente inválido ou não padronizável: ${senderPhoneNumberRaw}. Pulando mensagem ${messageIdFromWhatsapp}.`);
                                     }
 
-                                    const { client, conversation, conversationWasCreated } =  await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_CLOUDAPI');
-                                    if (conversationWasCreated) {
-                                        await handleDealCreationForNewClient(client, workspace.id);
-                                        await initiateFollowUpSequence(client, conversation, workspace.id);
-                                    }
+                                    const { client, conversation } = await processClientAndConversation(
+                                        workspace.id,
+                                        senderPhoneNumber,
+                                        senderName,
+                                        'WHATSAPP_CLOUDAPI'
+                                    );
+                                    console.log("client", client)
 
                                     let messageContent: string | null = null;
                                     const messageType = message.type;
@@ -249,17 +244,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                         },
                                         channel_message_id: messageIdFromWhatsapp
                                     });
-                                    console.log(
-                                        `[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${savedMessage.id} salva para Conv ${conversation.id}.`
-                                    );
+                                    console.log( `[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem ${savedMessage.id} salva para Conv ${conversation.id}.` );
 
 
-                                    // --- Disparar evento Pusher para notificar a UI ---
                                     try {
                                         await triggerNewMessageNotification(workspace.id, savedMessage, 'whatsapp');
                                     } catch (pusherError) {
                                         console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] Failed to trigger Pusher event for msg ${savedMessage.id}:`, pusherError);
-                                        // Não falhar o processamento do webhook por causa do Pusher, apenas logar.
                                     }
                                  
                                     if (requiresProcessing) {

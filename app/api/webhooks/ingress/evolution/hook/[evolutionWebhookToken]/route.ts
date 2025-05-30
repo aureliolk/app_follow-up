@@ -6,9 +6,9 @@ import { addMessageProcessingJob } from '@/lib/queues/queueService';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import { saveMessageRecord } from '@/lib/services/persistenceService';
 import { triggerNewMessageNotification, triggerStatusUpdateNotification } from '@/lib/pusherEvents';
-import { getOrCreateConversation, initiateFollowUpSequence, handleDealCreationForNewClient } from '@/lib/services/createConversation';
 import { Prisma } from '@prisma/client';
 import { SelectedMessageInfo } from '@/lib/types/message';
+import { processClientAndConversation } from '@/lib/services/clientConversationService'; // Import the new service
 
 // Interface para os parâmetros da rota
 interface RouteParams {
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 return new NextResponse('EVENT_RECEIVED_MISSING_SENDER_JID', { status: 200 });
             }
 
-            const senderName = messageData.pushName || null; // Nome do contato
+            const senderName = messageData.pushName || ''; // Ensure senderName is always a string
             const messageIdFromEvolution = messageData.key.id; // ID da mensagem na Evolution
 
             let messageContentOutput: string | null = null;
@@ -176,19 +176,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                 return new NextResponse('EVENT_RECEIVED_INVALID_SENDER', { status: 200 });
             }
 
-
-            const { client, conversation, conversationWasCreated } = await getOrCreateConversation(workspace.id, senderPhoneNumber, senderName, 'WHATSAPP_EVOLUTION');
-            console.log(`[EVOLUTION WEBHOOK] Conversation created: ${conversationWasCreated}, Client ID: ${client.id}, Conversation ID: ${conversation.id}`);
-            
-            if (conversationWasCreated) {
-                console.log(`[EVOLUTION WEBHOOK] New conversation detected. Starting deal creation and follow-up sequence...`);
-                await handleDealCreationForNewClient(client, workspace.id);
-                await initiateFollowUpSequence(client, conversation, workspace.id);
-                console.log(`[EVOLUTION WEBHOOK] Deal creation and follow-up sequence completed for conversation ${conversation.id}`);
-            } else {
-                console.log(`[EVOLUTION WEBHOOK] Existing conversation ${conversation.id}. No follow-up sequence needed.`);
-            }
-           
+            const { client, conversation } = await processClientAndConversation(
+                workspace.id,
+                senderPhoneNumber,
+                senderName,
+                'WHATSAPP_EVOLUTION'
+            );
 
             // Salvar registro da mensagem
             const savedMessage = await saveMessageRecord({

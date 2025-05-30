@@ -9,7 +9,7 @@ import { AIStageActionTypeEnum } from '@/lib/types/ai-stages';
 import axios from 'axios';
 import { z } from 'zod';
 import { AVAILABLE_MODELS } from '@/lib/constants';
-import { systemPromptCheckName } from './tools/openRouterModel';
+import { aiAnalizedStinel, systemPromptCheckName } from './tools/openRouterModel';
 import { aiResponseText } from './tools/openRouterModel';
 
 // Interface para contexto de estágio
@@ -297,7 +297,6 @@ export async function processAIChat(
     };
 
     const responseCheckName = await aiResponseText([{ role: 'user', content: conversation?.client?.name }], systemPromptCheckName);
-
 
     const baseInstructions = `
     Data e hora atual: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}

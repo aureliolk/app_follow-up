@@ -569,62 +569,75 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     }, [selectedConversation?.id, setConversations, setTotalCountAll, setTotalCountHuman, setTotalCountAi]);
 
-    const handleRealtimeConversationUpdate = useCallback((data: { id: string; activeFollowUp?: ActiveFollowUpInfo | null }) => {
-        const { id, activeFollowUp } = data;
-        console.log(`[Realtime Conversation Update] Received for conversation ${id}, activeFollowUp:`, activeFollowUp);
+    const handleRealtimeConversationUpdate = useCallback((data: { 
+        id: string; 
+        activeFollowUp?: ActiveFollowUpInfo | null;
+        client?: ClientConversation['client']; // Add client info for new conversations
+        conversation?: Omit<ClientConversation, 'client' | 'activeFollowUp' | 'last_message' | 'last_message_timestamp'>; // Add conversation info for new conversations
+    }) => {
+        const { id, activeFollowUp, client, conversation } = data;
+        console.log(`[Realtime Conversation Update] Received for conversation ${id}, activeFollowUp:`, activeFollowUp, 'client:', client, 'conversation:', conversation);
 
-        // Forçar uma atualização imediata para garantir que a UI seja atualizada
-        if (activeFollowUp) {
-            // Atualizar a lista de conversas
-            setConversations(prevConversations => {
-                const conversationExists = prevConversations.some(conv => conv.id === id);
-                
-                if (!conversationExists) {
-                    console.log(`[Realtime Conversation Update] Conversation ${id} not found in list. Skipping list update.`);
-                    return prevConversations;
-                }
-                
-                console.log(`[Realtime Conversation Update] Updating conversation ${id} in list with activeFollowUp:`, activeFollowUp);
-                
-                const updatedConversations = prevConversations.map(conv => {
+        setConversations(prevConversations => {
+            const conversationExists = prevConversations.some(conv => conv.id === id);
+            let updatedConversations = [...prevConversations];
+
+            if (!conversationExists && client && conversation) {
+                // This is a new conversation, add it to the list
+                const newConvo: ClientConversation = {
+                    ...conversation,
+                    client: client,
+                    activeFollowUp: activeFollowUp || null,
+                    last_message: null, // No message in this event, will be added by new_message event
+                    last_message_timestamp: new Date(conversation.last_message_at).toISOString(), // Ensure ISO string
+                    status: conversation.status, // Explicitly set status
+                };
+                updatedConversations.unshift(newConvo); // Add to the beginning of the list
+                console.log(`[Realtime Conversation Update] Added new conversation ${id} to list.`);
+            } else if (conversationExists) {
+                // Update existing conversation
+                updatedConversations = prevConversations.map(conv => {
                     if (conv.id === id) {
-                        const updated = { ...conv, activeFollowUp };
-                        console.log(`[Realtime Conversation Update] Updated conversation in list:`, updated);
+                        const updated = { 
+                            ...conv, 
+                            ...(activeFollowUp !== undefined && { activeFollowUp }), // Update followUp if present
+                            ...(conversation && { // Update conversation details if present
+                                status: conversation.status,
+                                channel: conversation.channel,
+                                last_message_at: new Date(conversation.last_message_at).toISOString(), // Ensure ISO string
+                                is_ai_active: conversation.is_ai_active,
+                            }),
+                            ...(client && { client: { ...conv.client, ...client } }) // Update client details if present
+                        };
+                        console.log(`[Realtime Conversation Update] Updated existing conversation ${id} in list:`, updated);
                         return updated;
                     }
                     return conv;
                 });
-                
-                return updatedConversations;
-            });
-
-            // Atualizar a conversa selecionada se for a mesma
-            if (selectedConversation?.id === id) {
-                console.log(`[Realtime Conversation Update] Updating selected conversation ${id} with activeFollowUp:`, activeFollowUp);
-                
-                setSelectedConversation(prev => {
-                    if (!prev) return null;
-                    
-                    const updated = { ...prev, activeFollowUp };
-                    console.log(`[Realtime Conversation Update] Updated selected conversation:`, updated);
-                    return updated;
-                });
-                
-                // Forçar múltiplas atualizações para garantir que a UI seja re-renderizada
-                setTimeout(() => {
-                    console.log(`[Realtime Conversation Update] First forced update for conversation ${id}`);
-                    setSelectedConversation(prev => prev ? { ...prev, activeFollowUp } : null);
-                }, 100);
-                
-                setTimeout(() => {
-                    console.log(`[Realtime Conversation Update] Second forced update for conversation ${id}`);
-                    setConversations(prev => prev.map(conv => 
-                        conv.id === id ? { ...conv, activeFollowUp } : conv
-                    ));
-                }, 200);
+            } else {
+                console.warn(`[Realtime Conversation Update] Conversation ${id} not found in list and no full conversation data provided to add. Skipping list update.`);
             }
-        } else {
-            console.warn(`[Realtime Conversation Update] Received empty or null activeFollowUp for conversation ${id}`);
+            return updatedConversations;
+        });
+
+        // Also update the selected conversation if it's the one being updated
+        if (selectedConversation?.id === id) {
+            setSelectedConversation(prev => {
+                if (!prev) return null;
+                const updated = { 
+                    ...prev, 
+                    ...(activeFollowUp !== undefined && { activeFollowUp }),
+                    ...(conversation && { 
+                        status: conversation.status,
+                        channel: conversation.channel,
+                        last_message_at: new Date(conversation.last_message_at).toISOString(), // Ensure ISO string
+                        is_ai_active: conversation.is_ai_active,
+                    }),
+                    ...(client && { client: { ...prev.client, ...client } })
+                };
+                console.log(`[Realtime Conversation Update] Updated selected conversation ${id}:`, updated);
+                return updated;
+            });
         }
     }, [selectedConversation?.id, setConversations, setSelectedConversation]);
 
@@ -717,6 +730,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
         try {
             // Assuming sendWhatsappTemplateAction handles the API call and returns success/failure
+            console.log("LOG PARA O ID CONVERSA", conversationId)
             const result = await sendWhatsappTemplateAction({
                 conversationId: conversationId,
                 templateName: templateData.name,

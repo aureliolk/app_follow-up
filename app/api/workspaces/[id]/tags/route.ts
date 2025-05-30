@@ -6,54 +6,17 @@ import { getServerSession } from "next-auth/next"
 // Importar a configuração do NextAuth (ajuste o caminho se necessário)
 import { authOptions } from "@/lib/auth/auth-options";
 
-// --- Validação de Acesso (Exemplo usando NextAuth) ---
-async function validateAccess(request: NextRequest, workspaceId: string) {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-        return { authorized: false, userId: null, error: 'Usuário não autenticado.', status: 401 };
-    }
-    const userId = session.user.id;
-
-    console.log(`[validateAccess] Usuário ${userId} não é Super Admin. Verificando membro do Workspace ${workspaceId}...`);
-
-    const workspace = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { owner_id: true },
-    });
-
-
-    // Verificar se o usuário é membro do workspace
-    const membership = await prisma.workspaceMember.findUnique({
-        where: {
-            workspace_id_user_id: {
-                workspace_id: workspaceId,
-                user_id: workspace.owner_id,
-            },
-        },
-        select: { role: true }, 
-    });// Se não for Super Admin, continua a verificação de membro
-    
-
-    if (!membership) {
-         console.log(`[validateAccess] Acesso negado para Usuário ${userId} no Workspace ${workspaceId} (não é membro).`);
-        return { authorized: false, userId: null, error: 'Acesso negado a este workspace.', status: 403 };
-    }
-
-    console.log(`[validateAccess] Acesso permitido para Membro (User ID: ${userId}, Role: ${membership.role}) no Workspace ${workspaceId}`);
-    return { authorized: true, userId, role: membership.role };
-}
 
 // --- GET: Buscar todas as tags disponíveis do workspace ---
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+
     // Aguardar params antes de acessar id
     const awaitedParams = await params; 
     const workspaceId = awaitedParams.id;
 
-    // Validar Acesso
-    const { authorized, error, status } = await validateAccess(request, workspaceId);
-    if (!authorized) {
-        return NextResponse.json({ success: false, error }, { status });
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+        return { authorized: false, userId: null, error: 'Usuário não autenticado.', status: 401 };
     }
 
     try {
@@ -80,15 +43,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const awaitedParams = await params;
     const workspaceId = awaitedParams.id;
 
-    // Validar Acesso e Permissão (Ex: só ADMIN ou MEMBER podem criar?)
-    const { authorized, role, error, status } = await validateAccess(request, workspaceId);
-    if (!authorized) {
-        return NextResponse.json({ success: false, error }, { status });
-    }
-
-    // Validar permissão - Permitir SUPER_ADMIN, ADMIN e MEMBER
-    if (role !== 'SUPER_ADMIN' && role !== 'ADMIN' && role !== 'MEMBER') {
-        return NextResponse.json({ success: false, error: 'Permissão insuficiente para criar tags.' }, { status: 403 });
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+        return { authorized: false, userId: null, error: 'Usuário não autenticado.', status: 401 };
     }
 
     try {

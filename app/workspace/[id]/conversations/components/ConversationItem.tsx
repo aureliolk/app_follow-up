@@ -72,8 +72,8 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
               )}
             </div>
             <span className={cn("text-xs text-muted-foreground flex-shrink-0 ml-2", unreadCount > 0 && !isSelected ? "text-blue-400 font-medium" : "")}>
-              {conversation.updated_at
-                ? new Date(conversation.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              {conversation.last_message_at
+                ? new Date(conversation.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 : '--:--'}
             </span>
           </div>
@@ -145,5 +145,3 @@ export const ConversationItem: React.FC<ConversationItemProps> = ({
     </>
   );
 };
-
-

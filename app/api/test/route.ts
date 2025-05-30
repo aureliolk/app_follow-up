@@ -1,11 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { CoreMessage, tool, generateText } from 'ai';
-import { setConversationAIStatus } from "@/lib/actions/conversationActions";
-import { setCurrentWorkspaceId, listCalendarEventsTool, scheduleCalendarEventTool } from '@/lib/ai/tools/googleTools';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { aiResponseText, systemPromptCheckName } from '@/lib/ai/tools/openRouterModel';
+import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
+import { processClientAndConversation } from '@/lib/services/clientConversationService';
 
 
 // Você pode adicionar um handler GET para simplesmente verificar se a rota está funcionando
@@ -81,10 +78,29 @@ export async function GET() {
 //   }
 
 
+// export async function POST(req: NextRequest) {
+//     const body = await req.json();
+//     const message = body.message;
+    
+//     const responseCheckName = await aiResponseText([{ role: 'user', content: message }], systemPromptCheckName);
+//     return NextResponse.json({ response: responseCheckName.text }, { status: 200 });
+// }
+
 export async function POST(req: NextRequest) {
     const body = await req.json();
-    const message = body.message;
+    const phoneNumber = body.phoneNumber
+    const senderName = body.senderName 
+    const workspaceId = body.workspaceId
+    const channel = body.channel
+
+    console.log(`[API TEST] Recebida requisição POST para /api/test com os seguintes parâmetros: phoneNumber=${phoneNumber}, senderName=${senderName}, workspaceId=${workspaceId}`);
+   
+    const { client, conversation } = await processClientAndConversation(
+        workspaceId,
+        standardizeBrazilianPhoneNumber(phoneNumber),
+        senderName,
+        channel
+    );
     
-    const responseCheckName = await aiResponseText([{ role: 'user', content: message }], systemPromptCheckName);
-    return NextResponse.json({ response: responseCheckName.text }, { status: 200 });
+    return NextResponse.json({ response: conversation, client: client }, { status: 200 });
 }

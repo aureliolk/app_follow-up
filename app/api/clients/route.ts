@@ -6,8 +6,8 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
 import { Prisma } from '@prisma/client';
-import { getOrCreateConversation, handleDealCreationForNewClient, initiateFollowUpSequence } from '@/lib/services/createConversation';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃO: Importar do local correto
+import { processClientAndConversation } from '@/lib/services/clientConversationService';
 
 
 
@@ -182,15 +182,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Criar conversa associada ao cliente
-    console.log(`API POST Clients: Tentando criar conversa para novo cliente ${newClient.id}...`);
-    const { client, conversation } =  await getOrCreateConversation(workspaceId, phoneNumber, name, channel);
-    if(client && conversation) {
-      console.log(`API POST Clients: Criando Deal para novo cliente ${newClient.id}...`);
-      await handleDealCreationForNewClient(client, workspaceId);
-      console.log(`API POST Clients: Iniciando sequência de follow-up para nova conversa ${conversation.id}...`);
-      await initiateFollowUpSequence(client, conversation, workspaceId);
-    }
+     // Criar conversa associada ao cliente
+     console.log(`API POST Clients: Tentando criar conversa para novo cliente ${newClient.id}...`);
+      await processClientAndConversation(
+       workspaceId,
+       phoneNumber,
+       name,
+       channel
+   );
 
 
     console.log(`API POST Clients: Cliente ${newClient.id} criado com sucesso.`);

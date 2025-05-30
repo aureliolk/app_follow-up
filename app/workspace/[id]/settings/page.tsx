@@ -76,14 +76,14 @@ export default function WorkspaceSettingsPage() {
               />
             </div>
             <div>
-              <Label htmlFor="wsCreatedAt" className="block text-xs font-medium text-muted-foreground mb-1">
+              <Label htmlFor="wsId" className="block text-xs font-medium text-muted-foreground mb-1">
                 Workspace ID
               </Label>
               <Input
                 id="wsId"
                 type="text"
                 value={workspace.id}
-                disabled
+                readOnly
                 className="bg-input border-input text-foreground text-sm"
               />
             </div>

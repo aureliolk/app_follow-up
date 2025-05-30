@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Bad Request' }, { status: 400 });
     }
 
-    // Expecting channel format: private-workspace-<workspaceId>
     const match = channelName.match(/^private-workspace-(.+)$/);
     if (!match || !match[1]) {
       console.warn(`[API /api/pusher/auth] Invalid channel name format: ${channelName}`);
@@ -40,37 +39,36 @@ export async function POST(req: NextRequest) {
     const workspaceId = match[1];
     console.log(`[API /api/pusher/auth] Extracted workspace ID ${workspaceId} from channel ${channelName}`);
 
-    let isAuthorized = false;
+    // let isAuthorized = false;
 
-    if (isSuperAdmin) {
-      console.log(`[API /api/pusher/auth] Granting access to super admin ${userId} for workspace ${workspaceId}`);
-      isAuthorized = true;
-    } else {
-      // Check if the user is a member of the workspace (only if not super admin)
-      console.log(`[API /api/pusher/auth] User ${userId} is not super admin. Checking workspace membership...`);
-      const membership = await prisma.workspaceMember.findUnique({
-        where: {
-          workspace_id_user_id: {
-            workspace_id: workspaceId,
-            user_id: userId,
-          },
-        },
-      });
+    // if (isSuperAdmin) {
+    //   console.log(`[API /api/pusher/auth] Granting access to super admin ${userId} for workspace ${workspaceId}`);
+    //   isAuthorized = true;
+    // } else {
+    //   console.log(`[API /api/pusher/auth] User ${userId} is not super admin. Checking workspace membership...`);
+    //   const membership = await prisma.workspaceMember.findUnique({
+    //     where: {
+    //       workspace_id_user_id: {
+    //         workspace_id: workspaceId,
+    //         user_id: userId,
+    //       },
+    //     },
+    //   });
 
-      if (membership) {
-        console.log(`[API /api/pusher/auth] User ${userId} is a member of workspace ${workspaceId}`);
-        isAuthorized = true;
-      } else {
-        console.warn(`[API /api/pusher/auth] Forbidden - User ${userId} is not a member of workspace ${workspaceId}`);
-      }
-    }
+    //   if (membership) {
+    //     console.log(`[API /api/pusher/auth] User ${userId} is a member of workspace ${workspaceId}`);
+    //     isAuthorized = true;
+    //   } else {
+    //     console.warn(`[API /api/pusher/auth] Forbidden - User ${userId} is not a member of workspace ${workspaceId}`);
+    //   }
+    // }
 
     // Final authorization check
-    if (!isAuthorized) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    // if (!isAuthorized) {
+    //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // }
 
-    console.log(`[API /api/pusher/auth] User ${userId} authorized for channel ${channelName}`);
+    // console.log(`[API /api/pusher/auth] User ${userId} authorized for channel ${channelName}`);
 
     // Prepare presence data if needed (optional, not used here)
     // const userData = {

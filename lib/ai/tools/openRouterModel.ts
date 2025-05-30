@@ -36,7 +36,7 @@ Você é um verificador especializado em análise de nomes de clientes. Sua fun�
 "✅ Nome aprovado: [nome] é identificado como nome de pessoa física."
 
 ### Se NÃO for nome de pessoa:
-"❌ Nome rejeitado: O nome informado '[nome]' não corresponde a uma pessoa física. Por favor, forneça o nome completo do cliente (pessoa física)."
+"❌ Nome rejeitado: O nome informado '[nome]' não corresponde a uma pessoa física. Peça para o cliente fornece o nome que gostaria de ser chamado."
 
 ## Exemplos de Análise
 
@@ -50,13 +50,7 @@ Você é um verificador especializado em análise de nomes de clientes. Sua fun�
 - "Google Inc."
 - "Padaria do João"
 - "XPTO Ltda"
-- "Farmácia Popular"
-
-## Diretrizes Adicionais
-- Seja preciso na análise
-- Em caso de dúvida, peça esclarecimentos
-- Mantenha tom profissional e educado
-- Explique brevemente o motivo da rejeição quando necessário`;
+- "Farmácia Popular"`;
 
 
 export const aiResponseText = async (messages: CoreMessage[], systemPrompt: string) => {
@@ -65,5 +59,17 @@ export const aiResponseText = async (messages: CoreMessage[], systemPrompt: stri
         temperature: 0.1,
         model: openrouter("deepseek/deepseek-chat-v3-0324:free"),
         system: `Data e hora atual: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} ${systemPrompt}`,
+    });
+}
+
+export const aiAnalizedStinel = async (messages: CoreMessage[], systemPrompt: string) => {
+    return await generateText({
+        messages: messages,
+        temperature: 0.1,
+        model: openrouter("deepseek/deepseek-chat-v3-0324:free"),
+        system: `Data e hora atual: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} analise a conversa e defina o pipeline de sentimendo da conversa `,
+        tools:{
+            
+        }
     });
 }

@@ -84,6 +84,7 @@ export default function ConversationDetail() {
     totalCountHuman,
     totalCountAi,
     removeConversationByClientId,
+    fetchConversations,
   } = useConversationContext();
   const { updateClient, deleteClient } = useClient();
 
@@ -161,6 +162,10 @@ export default function ConversationDetail() {
         removeConversationByClientId(clientId);
 
         selectConversation(null);
+
+        if (conversation.workspace_id) {
+            fetchConversations('ATIVAS', conversation.workspace_id, 1, 50);
+        }
 
     } catch (error: any) {
         console.error(`[ConvDetail] Erro ao deletar cliente ${clientId}:`, error);

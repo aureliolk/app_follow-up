@@ -46,19 +46,19 @@ export default function RootLayout({
         {/* Envolver TUDO com o SessionProvider */}
         <SessionProvider>
           <WorkspaceProvider>
-            <ClientProvider>
-              <ConversationProvider>
-                <FollowUpProvider>
-                <div className="flex flex-col min-h-screen">
-                  {/* Adicionar Header aqui depois */}
-                  <Header />
-                  <main className="flex-grow">{children}</main> {/* Adicionado flex-grow */}
-                  {/* Adicionar Footer aqui depois */}
-                  <Footer />
-                </div>
-                </FollowUpProvider>
-              </ConversationProvider>
-            </ClientProvider>
+              <ClientProvider>
+                <ConversationProvider>
+                  <FollowUpProvider>
+                  <div className="flex flex-col min-h-screen">
+                    {/* Adicionar Header aqui depois */}
+                    <Header />
+                    <main className="flex-grow">{children}</main> {/* Adicionado flex-grow */}
+                    {/* Adicionar Footer aqui depois */}
+                    <Footer />
+                  </div>
+                  </FollowUpProvider>
+                </ConversationProvider>
+              </ClientProvider>
           </WorkspaceProvider>
         </SessionProvider>
         <Toaster />
