@@ -586,6 +586,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 // This is a new conversation, add it to the list
                 const newConvo: ClientConversation = {
                     ...conversation,
+                    workspace_id: workspaceContext.workspace?.id || 'unknown',
                     client_id: client.id, // Adicionado: Garante que client_id é populado
                     client: client,
                     activeFollowUp: activeFollowUp || null,
