@@ -178,6 +178,25 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
       }
     }, [unreadConversationIds, workspaceContext.workspace?.id]);
 
+    // --- Efeito para Recalcular Contadores Baseado no Array de Conversas ---
+    useEffect(() => {
+        // Recalculate counts whenever the conversations array changes
+        const newTotalAll = conversations.length;
+        const newTotalHuman = conversations.filter(c => c.is_ai_active === false).length;
+        const newTotalAi = conversations.filter(c => c.is_ai_active === true).length;
+
+        // Only update if values have actually changed to prevent unnecessary re-renders
+        if (newTotalAll !== totalCountAll) {
+            setTotalCountAll(newTotalAll);
+        }
+        if (newTotalHuman !== totalCountHuman) {
+            setTotalCountHuman(newTotalHuman);
+        }
+        if (newTotalAi !== totalCountAi) {
+            setTotalCountAi(newTotalAi);
+        }
+        console.log(`[ConversationContext] useEffect: Recalculated counts based on conversations array. All=${newTotalAll}, Human=${newTotalHuman}, AI=${newTotalAi}`);
+    }, [conversations, totalCountAll, totalCountHuman, totalCountAi]); // Dependencies
 
 
     // --- Funções de Busca/Seleção ---
@@ -329,6 +348,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 setConversations(prev => [...prev, ...fetchedData]);
             } else {
                 setConversations(fetchedData);
+                console.log(`[ConversationContext] fetchConversations: Setting total counts from API: All=${totalCounts.all}, Human=${totalCounts.human}, AI=${totalCounts.ai}`);
                 setTotalCountAll(totalCounts.all);
                 setTotalCountHuman(totalCounts.human);
                 setTotalCountAi(totalCounts.ai);
@@ -554,7 +574,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
             let newTotalHuman = updatedConversations.filter(c => c.is_ai_active === false).length;
             let newTotalAi = updatedConversations.filter(c => c.is_ai_active === true).length;
 
-            console.log(`[Realtime AI Status Update] Recalculated counts: All=${newTotalAll}, Human=${newTotalHuman}, AI=${newTotalAi}`);
+            console.log(`[Realtime AI Status Update] Recalculated counts based on conversations array (length: ${updatedConversations.length}): All=${newTotalAll}, Human=${newTotalHuman}, AI=${newTotalAi}`);
 
             setTotalCountAll(newTotalAll);
             setTotalCountHuman(newTotalHuman);
@@ -579,47 +599,28 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         console.log(`[Realtime Conversation Update] Received for conversation ${id}, activeFollowUp:`, activeFollowUp, 'client:', client, 'conversation:', conversation);
 
         setConversations(prevConversations => {
-            const conversationExists = prevConversations.some(conv => conv.id === id);
-            let updatedConversations = [...prevConversations];
+            // Sempre filtrar para garantir que não haja duplicatas e que a ordem seja mantida
+            let updatedConversations = prevConversations.filter(conv => conv.id !== id);
 
-            if (!conversationExists && client && conversation) {
-                // This is a new conversation, add it to the list
+            if (client && conversation) { // Processar se houver dados de cliente e conversa
                 const newConvo: ClientConversation = {
                     ...conversation,
                     workspace_id: workspaceContext.workspace?.id || 'unknown',
-                    client_id: client.id, // Adicionado: Garante que client_id é populado
+                    client_id: client.id, // Garante que client_id é populado
                     client: client,
                     activeFollowUp: activeFollowUp || null,
                     last_message: null, // No message in this event, will be added by new_message event
                     last_message_timestamp: new Date(conversation.last_message_at).toISOString(), // Ensure ISO string
                     status: conversation.status, // Explicitly set status
                 };
-                updatedConversations.unshift(newConvo); // Add to the beginning of the list
-                console.log(`[Realtime Conversation Update] Added new conversation ${id} to list.`);
-            } else if (conversationExists) {
-                // Update existing conversation
-                updatedConversations = prevConversations.map(conv => {
-                    if (conv.id === id) {
-                        const updated = { 
-                            ...conv, 
-                            ...(activeFollowUp !== undefined && { activeFollowUp }), // Update followUp if present
-                            ...(conversation && { // Update conversation details if present
-                                status: conversation.status,
-                                channel: conversation.channel,
-                                last_message_at: new Date(conversation.last_message_at).toISOString(), // Ensure ISO string
-                                is_ai_active: conversation.is_ai_active,
-                            }),
-                            ...(client && { client: { ...conv.client, ...client } }), // Update client details if present
-                            // Se o client_id não estiver no 'conversation' do payload, ele não será atualizado aqui.
-                            // Mas para conversas existentes, ele já deve estar correto.
-                        };
-                        console.log(`[Realtime Conversation Update] Updated existing conversation ${id} in list:`, updated);
-                        return updated;
-                    }
-                    return conv;
-                });
+                
+                updatedConversations.unshift(newConvo); // Adicionar a nova/atualizada no início
+                console.log(`[Realtime Conversation Update] Processed conversation ${id}. New list length: ${updatedConversations.length}`);
+
+                // REMOVIDO: Lógica de incremento de contadores aqui.
+                // Os contadores serão recalculados por um useEffect separado.
             } else {
-                console.warn(`[Realtime Conversation Update] Conversation ${id} not found in list and no full conversation data provided to add. Skipping list update.`);
+                console.warn(`[Realtime Conversation Update] Conversation ${id} data incomplete or not found in previous list. Skipping add/update.`);
             }
             return updatedConversations;
         });
