@@ -43,8 +43,8 @@ export default function ConversationsPage() {
 
   const [aiFilter, setAiFilter] = useState<AiFilterType>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const listRef = useRef(null);
-  const loadingRef = useRef(false);
+  const listRef = useRef(null); // This ref is no longer used for IntersectionObserver, but can be kept for other purposes if needed.
+  const loadingRef = useRef(false); // Still used to prevent multiple loadMore calls
 
   const urlConversationId = Array.isArray(params.conversationId) && params.conversationId.length > 0
     ? params.conversationId[0]
@@ -96,19 +96,8 @@ export default function ConversationsPage() {
     }
   }, [currentPage, hasMoreConversations, workspace?.id]);
 
-  useEffect(() => {
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && hasMoreConversations) {
-        loadMore();
-      }
-    }, { threshold: 0.1 });
-
-    if (listRef.current) {
-      observer.observe(listRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, [hasMoreConversations, loadMore]);
+  // REMOVIDO: useEffect com IntersectionObserver para a lista de conversas
+  // A lógica de infinite scroll será movida para onItemsRendered da List.
 
   const isLoading = loadingConversations || workspaceLoading;
   const displayError = conversationsError || workspaceError;
@@ -185,11 +174,17 @@ export default function ConversationsPage() {
                     isLoadingMore: isLoadingMoreConversations,
                     unreadConversationIds: unreadConversationIds // Pass unreadConversationIds
                   }}
+                  onItemsRendered={({ overscanStopIndex }) => {
+                    // Trigger loadMore when user scrolls near the end of the list
+                    if (hasMoreConversations && !isLoadingMoreConversations && overscanStopIndex >= filteredConversations.length - 1) {
+                      loadMore();
+                    }
+                  }}
                 >
                   {({ index, style, data }) => {
                     if (index >= data.conversations.length) {
                       return (
-                        <div style={style} className="flex justify-center items-center p-4" ref={listRef}>
+                        <div style={style} className="flex justify-center items-center p-4">
                           {data.isLoadingMore ? <LoadingSpinner size="small" /> : null}
                         </div>
                       );

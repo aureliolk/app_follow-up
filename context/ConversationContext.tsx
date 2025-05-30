@@ -178,26 +178,6 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
       }
     }, [unreadConversationIds, workspaceContext.workspace?.id]);
 
-    // --- Efeito para Recalcular Contadores Baseado no Array de Conversas ---
-    useEffect(() => {
-        // Recalculate counts whenever the conversations array changes
-        const newTotalAll = conversations.length;
-        const newTotalHuman = conversations.filter(c => c.is_ai_active === false).length;
-        const newTotalAi = conversations.filter(c => c.is_ai_active === true).length;
-
-        // Only update if values have actually changed to prevent unnecessary re-renders
-        if (newTotalAll !== totalCountAll) {
-            setTotalCountAll(newTotalAll);
-        }
-        if (newTotalHuman !== totalCountHuman) {
-            setTotalCountHuman(newTotalHuman);
-        }
-        if (newTotalAi !== totalCountAi) {
-            setTotalCountAi(newTotalAi);
-        }
-        console.log(`[ConversationContext] useEffect: Recalculated counts based on conversations array. All=${newTotalAll}, Human=${newTotalHuman}, AI=${newTotalAi}`);
-    }, [conversations, totalCountAll, totalCountHuman, totalCountAi]); // Dependencies
-
 
     // --- Funções de Busca/Seleção ---
     const fetchConversationMessages = useCallback(async (

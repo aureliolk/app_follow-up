@@ -92,6 +92,7 @@ export default function ConversationDetail() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isClientSidebarOpen, setIsClientSidebarOpen] = useState(false);
+  const topSentinelRef = useRef<HTMLDivElement>(null); // Declaração do topSentinelRef
 
   // --- Scroll Logic ---
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -105,6 +106,7 @@ export default function ConversationDetail() {
   }, []);
 
   useEffect(() => {
+    // Scroll to bottom when conversation changes or initial messages load
     if (messages.length > 0 && !isLoadingMessages) {
       const timer = setTimeout(() => scrollToBottom('auto'), 150);
       return () => clearTimeout(timer);
@@ -112,10 +114,45 @@ export default function ConversationDetail() {
   }, [messages, isLoadingMessages, conversation?.id, scrollToBottom]);
 
   const prevMessagesLengthRef = useRef(messages.length);
+  const prevScrollHeightRef = useRef(0);
+
+  // Effect for infinite scroll (loading older messages)
   useEffect(() => {
+    const scrollAreaElement = scrollAreaRef.current;
+    const viewportElement = scrollAreaElement?.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]');
+
+    if (viewportElement) {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMoreMessages && !isLoadingMoreMessages) {
+          console.log("[ConversationDetail] Top sentinel intersected. Loading more messages...");
+          prevScrollHeightRef.current = viewportElement.scrollHeight; // Capture scroll height before loading more
+          loadMoreMessages();
+        }
+      }, { threshold: 0.1 });
+
+      if (topSentinelRef.current) {
+        observer.observe(topSentinelRef.current);
+      }
+
+      return () => observer.disconnect();
+    }
+  }, [hasMoreMessages, isLoadingMoreMessages, loadMoreMessages]);
+
+  // Effect for scroll position adjustment when new (older) messages are prepended
+  useEffect(() => {
+    const scrollAreaElement = scrollAreaRef.current;
+    const viewportElement = scrollAreaElement?.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]');
+
+    if (viewportElement && messages.length > prevMessagesLengthRef.current && prevScrollHeightRef.current > 0) {
+      const newScrollHeight = viewportElement.scrollHeight;
+      const scrollDiff = newScrollHeight - prevScrollHeightRef.current;
+      viewportElement.scrollTop += scrollDiff;
+      console.log(`[ConversationDetail] Adjusted scroll by ${scrollDiff}. New scrollTop: ${viewportElement.scrollTop}`);
+      prevScrollHeightRef.current = 0; // Reset after adjustment
+    }
+
+    // Logic for scrolling to bottom on new messages (if near bottom)
     if (messages.length > prevMessagesLengthRef.current) {
-      const scrollAreaElement = scrollAreaRef.current;
-      const viewportElement = scrollAreaElement?.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]');
       if (viewportElement) {
         const isScrolledToBottom = viewportElement.scrollHeight - viewportElement.scrollTop - viewportElement.clientHeight < 150;
         if (isScrolledToBottom) {
@@ -125,6 +162,7 @@ export default function ConversationDetail() {
     }
     prevMessagesLengthRef.current = messages.length;
   }, [messages, scrollToBottom]);
+
 
   // --- Send Handler (Simplified - Logic moved to input area) ---
   // const handleSendMessage = async (e?: React.FormEvent) => {
@@ -274,16 +312,23 @@ export default function ConversationDetail() {
 
       {/* Messages */}
       <ScrollArea ref={scrollAreaRef} className="flex-grow p-4 overflow-y-auto">
-        {hasMoreMessages && (
+        {/* Loading more messages spinner at the top */}
+        {isLoadingMoreMessages && (
           <div className="flex justify-center mb-2">
-            <Button variant="ghost" size="sm" onClick={loadMoreMessages} disabled={isLoadingMoreMessages}>
-              {isLoadingMoreMessages ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Carregar mais'}
-            </Button>
+            <LoadingSpinner size="small" message="Carregando mensagens antigas..." />
           </div>
         )}
+        {/* Sentinel for infinite scroll */}
+        {hasMoreMessages && (
+          <div ref={topSentinelRef} style={{ height: '1px', margin: '-1px' }} />
+        )}
+
         {isLoadingMessages && messages.length === 0 && <LoadingSpinner message="Carregando..." />}
         {messageError && messages.length === 0 && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
-        {messages.map((message) => {
+        
+        {messages.map((message, index) => {
+          // Determine if this is the first message (oldest) to attach the sentinel
+          const isFirstMessage = index === 0;
           return (
             <div
               key={message.id}
