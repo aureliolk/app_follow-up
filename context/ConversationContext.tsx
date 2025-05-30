@@ -586,6 +586,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                 // This is a new conversation, add it to the list
                 const newConvo: ClientConversation = {
                     ...conversation,
+                    client_id: client.id, // Adicionado: Garante que client_id é populado
                     client: client,
                     activeFollowUp: activeFollowUp || null,
                     last_message: null, // No message in this event, will be added by new_message event
@@ -607,7 +608,9 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                                 last_message_at: new Date(conversation.last_message_at).toISOString(), // Ensure ISO string
                                 is_ai_active: conversation.is_ai_active,
                             }),
-                            ...(client && { client: { ...conv.client, ...client } }) // Update client details if present
+                            ...(client && { client: { ...conv.client, ...client } }), // Update client details if present
+                            // Se o client_id não estiver no 'conversation' do payload, ele não será atualizado aqui.
+                            // Mas para conversas existentes, ele já deve estar correto.
                         };
                         console.log(`[Realtime Conversation Update] Updated existing conversation ${id} in list:`, updated);
                         return updated;
@@ -633,7 +636,9 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
                         last_message_at: new Date(conversation.last_message_at).toISOString(), // Ensure ISO string
                         is_ai_active: conversation.is_ai_active,
                     }),
-                    ...(client && { client: { ...prev.client, ...client } })
+                    ...(client && { client: { ...prev.client, ...client } }),
+                    // Garantir que o client_id do selectedConversation também seja atualizado se for uma nova conversa
+                    ...(client && !prev.client_id && { client_id: client.id })
                 };
                 console.log(`[Realtime Conversation Update] Updated selected conversation ${id}:`, updated);
                 return updated;
