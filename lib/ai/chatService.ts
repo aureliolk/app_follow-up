@@ -9,7 +9,7 @@ import { AIStageActionTypeEnum } from '@/lib/types/ai-stages';
 import axios from 'axios';
 import { z } from 'zod';
 import { AVAILABLE_MODELS } from '@/lib/constants';
-import { aiAnalizedStinel, systemPromptCheckName } from './tools/openRouterModel';
+import {  systemPromptCheckName } from './tools/openRouterModel';
 import { aiResponseText } from './tools/openRouterModel';
 
 // Interface para contexto de estágio
@@ -61,7 +61,7 @@ async function executeStageActions(stage: any, context: StageContext, conversati
           }
           break;
 
-        case AIStageActionTypeEnum.SEND_MESSAGE:
+        case AIStageActionTypeEnum.SEND_TEXT_MESSAGE:
           // TODO: Implementar envio de mensagem
           break;
 
@@ -161,13 +161,14 @@ function getValueByPath(obj: any, path: string): any {
 function createStageTool(stage: any, workspaceId: string): Tool<any, any> {
   // Criar schema dinâmico baseado em dataToCollect
   const properties: Record<string, any> = {};
+  const requiredFieldsInTool: string[] = []; // Para rastrear os campos obrigatórios
 
   if (Array.isArray(stage.dataToCollect)) {
     for (const field of stage.dataToCollect) {
-      // Assumindo field é uma string (o nome do campo esperado)
       if (typeof field === 'string' && field.trim() !== '') {
-        // Para simplicidade, vamos assumir tipo string e que são opcionais por padrão
-        properties[field.trim()] = z.string().optional();
+        const fieldName = field.trim();
+        properties[fieldName] = z.string(); // Todos os campos são obrigatórios por padrão
+        requiredFieldsInTool.push(fieldName);
       } else {
         console.warn(`[createStageTool] Campo inválido em dataToCollect para estágio ${stage.name}:`, field);
       }
@@ -176,15 +177,31 @@ function createStageTool(stage: any, workspaceId: string): Tool<any, any> {
 
   return {
     description: `Ativar estágio: ${stage.name}. Condição: ${stage.condition}`,
-    // Usar partial() no objeto Zod para tornar todos os campos opcionais por padrão
-    parameters: z.object(properties).partial(),
+    // Todos os campos são obrigatórios, então não usamos .partial()
+    parameters: z.object(properties),
     execute: async (params: any) => {
       console.log(`[Stage Tool] Executando estágio '${stage.name}' com parâmetros:`, params);
 
-      // Criar contexto temporário para o estágio
+      const missingRequiredFields: string[] = [];
+      for (const requiredField of requiredFieldsInTool) {
+        if (!params[requiredField]) { // Verifica se o parâmetro obrigatório não foi fornecido pela IA
+          missingRequiredFields.push(requiredField);
+        }
+      }
+
+      if (missingRequiredFields.length > 0) {
+        // Se faltarem dados obrigatórios, a ferramenta retorna um feedback estruturado para a IA
+        return {
+          type: "missing_data", // Um novo tipo de retorno para a IA
+          missingFields: missingRequiredFields,
+          message: `Para ativar o estágio '${stage.name}', preciso dos seguintes dados: ${missingRequiredFields.join(', ')}. Por favor, pergunte ao usuário por essas informações.`
+        };
+      }
+
+      // Se todos os dados obrigatórios estiverem presentes, continua com a lógica original do estágio
       const tempContext: StageContext = {
         currentStage: stage.name,
-        collectedData: params,
+        collectedData: params, // Os dados que a IA "coletou" (passou como parâmetros)
         stageHistory: []
       };
 
@@ -208,8 +225,8 @@ function createStageTool(stage: any, workspaceId: string): Tool<any, any> {
             responseText = apiResponseData.responseInstruction
         }
 
-
         return {
+          type: "api_response", // Tipo de retorno para a IA
           stageId: stage.id,
           stageName: stage.name,
           collectedData: params,
@@ -220,6 +237,7 @@ function createStageTool(stage: any, workspaceId: string): Tool<any, any> {
       }
 
       return {
+        type: "success", // Tipo de retorno para a IA
         stageId: stage.id,
         stageName: stage.name,
         collectedData: params,
@@ -316,19 +334,23 @@ INSTRUÇÕES DE ESTÁGIOS:
 Você tem acesso a estágios específicos que podem ser ativados durante a conversa. Cada estágio tem uma condição para ativação e pode coletar dados específicos.
 
 Estágios disponíveis:
-${activeStages.map(stage => `- ${stage.name}: ${stage.condition}`).join('\n')}
+${activeStages.map(stage => {
+  const dataToCollectList = Array.isArray(stage.dataToCollect) && stage.dataToCollect.length > 0
+    ? ` (Dados a coletar - TODOS OBRIGATÓRIOS: ${stage.dataToCollect.map((f: string) => f.trim()).join(', ')})`
+    : '';
+  return `- ${stage.name}: ${stage.condition}${dataToCollectList}`;
+}).join('\n')}
 
 Quando identificar que uma condição de estágio foi atendida:
-1. Use a ferramenta correspondente ao estágio (stage_[nome])
-2. Colete os dados necessários antes de ativar o estágio
-3. Após ativar o estágio, você receberá os dados da API no campo 'apiResponse'
-4. Use esses dados para formular sua resposta ao usuário
-5. Se houver uma 'responseInstruction', use-a como base para sua resposta
+1.  **Priorize a Coleta de Dados**: Antes de chamar a ferramenta do estágio, certifique-se de ter coletado TODOS os dados listados em "Dados a coletar" para aquele estágio. Se você não tiver um dado, **pergunte diretamente ao usuário por ele**.
+2.  Use a ferramenta correspondente ao estágio (stage_[nome]).
+3.  **Interprete o Retorno da Ferramenta**:
+    *   Se a ferramenta retornar um objeto com \`type: "missing_data"\`, isso significa que faltam dados obrigatórios. Você receberá uma lista em \`missingFields\`. **Sua tarefa é perguntar ao usuário por esses campos específicos.**
+    *   Se a ferramenta retornar um objeto com \`type: "api_response"\` ou \`type: "success"\`, o estágio foi executado. Use as informações fornecidas (como \`apiResponse\` ou \`responseInstruction\`) para formular sua resposta ao usuário.
 
-IMPORTANTE: Quando receber dados de API através de um estágio:
-- Os dados estarão no campo 'apiResponse' do retorno da ferramenta
-- Use esses dados para responder ao usuário de forma completa e detalhada
-- Se os dados estiverem vazios ou nulos, informe que não foram encontradas informações
+IMPORTANTE:
+-   Sempre que um dado obrigatório estiver faltando, você DEVE perguntar ao usuário por ele.
+-   Somente chame a ferramenta do estágio quando tiver todos os dados obrigatórios, ou quando o usuário indicar que não pode fornecer mais informações.
 
 ${stageContext.currentStage ? `Estágio atual: ${stageContext.currentStage}` : ''}
 ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${JSON.stringify(stageContext.collectedData)}` : ''}

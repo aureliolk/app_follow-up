@@ -194,8 +194,8 @@ model User {
   updated_at        DateTime              @updatedAt @map("updated_at")
   is_super_admin    Boolean               @default(false) @map("is_super_admin")
   accounts          Account[]
-  dealActivityLogs  DealActivityLog[]     @relation("UserDealActivityLogs")
-  dealDocuments     DealDocument[]        @relation("UserDealDocuments")
+  dealActivityLogs  DealActivityLog[]     @relation("UserActivityLogs")
+  dealDocuments     DealDocument[]        @relation("UserDocuments")
   dealNotes         DealNote[]            @relation("UserDealNotes")
   dealTasks         DealTask[]            @relation("UserDealTasks")
   assignedDeals     Deal[]                @relation("UserDeals")
@@ -664,7 +664,7 @@ model DealDocument {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
   deal         Deal     @relation(fields: [deal_id], references: [id], onDelete: Cascade)
-  uploadedBy   User     @relation("UserDealDocuments", fields: [uploadedById], references: [id])
+  uploadedBy   User     @relation("UserDocuments", fields: [uploadedById], references: [id])
 
   @@index([deal_id])
   @@index([uploadedById])
@@ -681,7 +681,7 @@ model DealActivityLog {
   source    ActivitySource @default(AI)
   createdAt DateTime       @default(now()) @map("created_at")
   deal      Deal           @relation(fields: [deal_id], references: [id], onDelete: Cascade)
-  user      User?          @relation("UserDealActivityLogs", fields: [user_id], references: [id])
+  user      User?          @relation("UserActivityLogs", fields: [user_id], references: [id])
 
   @@index([deal_id])
   @@index([user_id])
@@ -843,7 +843,10 @@ enum HttpMethod {
 
 enum AIStageActionType {
   API_CALL
+  SEND_TEXT_MESSAGE
   SEND_VIDEO
+  SEND_IMAGE
+  SEND_DOCUMENT
   CONNECT_CALENDAR
   TRANSFER_HUMAN
 

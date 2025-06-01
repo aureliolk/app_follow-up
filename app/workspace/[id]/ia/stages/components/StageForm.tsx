@@ -10,8 +10,7 @@ import { createAIStage, updateAIStage } from '@/lib/actions/aiStageActions';
 import { toast } from 'react-hot-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ApiActionForm from './ApiActionForm';
-import { AIStageActionTypeEnum, ApiCallConfig } from '@/lib/types/ai-stages';
-import isEqual from 'lodash.isequal';
+import { AIStageActionTypeEnum } from '@/lib/types/ai-stages';
 import { useRouter } from 'next/navigation';
 
 // Define the AIStage type locally, using `any` for JsonValue

@@ -1,7 +1,6 @@
 // app/workspace/[slug]/ia/page.tsx
 import AISettingsForm from "./components/AISettingsForm";
 import AiFollowUpRules from "./components/AiFollowUpRules";
-import GoogleIntegrationsCard from "../integrations/components/GoogleIntegrationsCard";
 import AbandonedCartRules from "./components/AbandonedCartRules";
 import { prisma } from '@/lib/db'; // <<< Importar Prisma
 import { WorkspaceAiFollowUpRule, AbandonedCartRule } from '@prisma/client'; // <<< Importar tipos Prisma
@@ -10,9 +9,7 @@ import AIStagesPage from "./stages/page";
 
 // <<< Tornar async e aceitar params com id >>>
 export default async function IaPage({ params }: { params: { id: string } }) {
-    console.log("Rendering IaPage, Params:", params);
 
-    // <<< Aguardar e extrair ID diretamente de params >>>
     const { id: workspaceId } = await params; // <<< Correção aqui >>>
 
     // <<< Verificar se workspaceId existe >>>
@@ -55,11 +52,7 @@ export default async function IaPage({ params }: { params: { id: string } }) {
         abandonedCartRules = [];
     }
 
-    // Optional: Display a generic fetch error message
-    if (fetchError) {
-        // You might want a more prominent error display
-        console.warn("Fetch error message:", fetchError);
-    }
+   
 
     return (
         <div className="p-4 md:p-6 space-y-8"> {/* Adiciona espaçamento entre os cards */}

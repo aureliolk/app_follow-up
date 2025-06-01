@@ -1,8 +1,12 @@
 // Enum para os tipos de ações de um estágio
 export enum AIStageActionTypeEnum {
     API_CALL = 'API_CALL',
-    SEND_MESSAGE = 'SEND_MESSAGE',
-    // TODO: Add other types as needed
+    SEND_TEXT_MESSAGE = 'SEND_TEXT_MESSAGE',
+    SEND_VIDEO = 'SEND_VIDEO',
+    SEND_IMAGE = 'SEND_IMAGE',
+    SEND_DOCUMENT = 'SEND_DOCUMENT',
+    CONNECT_CALENDAR = 'CONNECT_CALENDAR',
+    TRANSFER_HUMAN = 'TRANSFER_HUMAN',
 }
 
 // Interface base para as configurações de qualquer ação
@@ -30,14 +34,41 @@ export interface ApiCallConfig extends BaseActionConfig {
     }
 }
 
-// Interface para os dados de configuração de uma ação de enviar mensagem
-export interface SendMessageConfig extends BaseActionConfig {
+// Interface para os dados de configuração de uma ação de enviar mensagem de texto
+export interface SendTextMessageConfig extends BaseActionConfig {
   message: string;
-  // TODO: Add other message options (e.g., attachments, rich text)
+}
+
+// Interface base para configurações de envio de mídia
+export interface SendMediaConfig extends BaseActionConfig {
+  mediaUrl: string;
+  caption?: string; // Legenda opcional para imagens/vídeos
+}
+
+// Interface para os dados de configuração de uma ação de enviar vídeo
+export interface SendVideoConfig extends SendMediaConfig {
+  // Campos específicos de vídeo, se houver
+}
+
+// Interface para os dados de configuração de uma ação de enviar imagem
+export interface SendImageConfig extends SendMediaConfig {
+  // Campos específicos de imagem, se houver
+}
+
+// Interface para os dados de configuração de uma ação de enviar documento
+export interface SendDocumentConfig extends SendMediaConfig {
+  fileName: string; // Nome do arquivo para documentos
+  // Campos específicos de documento, se houver
 }
 
 // Union type para todas as possíveis configurações de ação
-export type AIStageActionConfig = ApiCallConfig | SendMessageConfig | BaseActionConfig;
+export type AIStageActionConfig = 
+  ApiCallConfig | 
+  SendTextMessageConfig | 
+  SendVideoConfig | 
+  SendImageConfig | 
+  SendDocumentConfig | 
+  BaseActionConfig;
 
 // Interface para os dados básicos de uma ação no frontend (para formulário)
 export interface FrontendAIStageActionData {
@@ -63,4 +94,4 @@ export interface FrontendAIStageData {
 
 // Re-exportar tipos do Prisma que são usados diretamente no backend/service
 export { AIStageActionType } from "@prisma/client";
-export type { ai_stages as PrismaAIStage, ai_stage_actions as AIStageAction } from "@prisma/client"; 
+export type { ai_stages as PrismaAIStage, ai_stage_actions as AIStageAction } from "@prisma/client";

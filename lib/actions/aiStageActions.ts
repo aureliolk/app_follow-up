@@ -4,125 +4,114 @@ import { prisma } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
 import { authOptions } from '@/lib/auth/auth-options';
 import { getServerSession } from 'next-auth';
-import axios from 'axios'; // Import axios for making HTTP requests
-import { v4 as uuidv4 } from 'uuid'; // Import uuid
-import { AIStageActionTypeEnum, FrontendAIStageActionData, ApiCallConfig } from '@/lib/types/ai-stages';
+import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
+import { FrontendAIStageActionData, ApiCallConfig } from '@/lib/types/ai-stages';
 import { AIStageActionType } from '@prisma/client';
 
 // Define the CreateAIStageData interface locally
 interface CreateAIStageData {
-    name: string;
-    condition: string;
-    isActive?: boolean; // Optional as it defaults to true
-    dataToCollect?: string[]; // Assuming string[] based on StageForm usage
-    finalResponseInstruction?: string | null;
-    actions?: FrontendAIStageActionData[]; // Reusing FrontendAIStageActionData for action structure
-}
-
-// Placeholder for permission check utility
-// In a real scenario, this would verify if the user has permissions for the workspace
-async function checkWorkspacePermissions(userId: string, workspaceId: string) {
-    // Implement permission logic here
-    // For now, we'll just return true as a placeholder
-    console.log(`Checking permissions for user ${userId} on workspace ${workspaceId}`);
-    return true; // TODO: Implement actual permission check
+  name: string;
+  condition: string;
+  isActive?: boolean;
+  dataToCollect?: string[];
+  finalResponseInstruction?: string | null;
+  actions?: FrontendAIStageActionData[];
 }
 
 // Helper function to convert potentially complex headers to a plain object
 const toPlainObject = (headers: any): Record<string, string> => {
-     const plainHeaders: Record<string, string> = {};
-     // Check if headers exist and are an object before iterating
-     if (headers && typeof headers === 'object') {
-         // Use headers.toJSON() if available
-         if (typeof headers.toJSON === 'function') {
-             try {
-                 const jsonHeaders = headers.toJSON();
-                  // Ensure the result of toJSON() is also a plain object before iterating
-                  if (jsonHeaders && typeof jsonHeaders === 'object' && !Array.isArray(jsonHeaders)){
-                     for (const key in jsonHeaders) {
-                         if (Object.prototype.hasOwnProperty.call(jsonHeaders, key)) {
-                             const value = jsonHeaders[key];
-                             plainHeaders[key] = typeof value === 'string' ? value : JSON.stringify(value);
-                          }
-                      }
-                  } else {
-                      // Fallback to manual iteration if toJSON result is not a plain object
-                      for (const key in headers) {
-                          if (Object.prototype.hasOwnProperty.call(headers, key)) {
-                              const value = headers[key];
-                              plainHeaders[key] = typeof value === 'string' ? value : JSON.stringify(value);
-                          }
-                      }
-                  }
-             } catch (e) {
-                 console.error("Error calling toJSON or processing its result:", e);
-                  // Fallback to manual iteration on error
-                  for (const key in headers) {
-                      if (Object.prototype.hasOwnProperty.call(headers, key)) {
-                          const value = headers[key];
-                          plainHeaders[key] = typeof value === 'string' ? value : JSON.stringify(value);
-                      }
-                  }
-             }
-         } else {
-             // Manual iteration if toJSON method is not available
-             for (const key in headers) {
-                 if (Object.prototype.hasOwnProperty.call(headers, key)) {
-                     const value = headers[key];
-                     plainHeaders[key] = typeof value === 'string' ? value : JSON.stringify(value);
-                 }
-             }
-         }
-     }
-     return plainHeaders;
- };
+  const plainHeaders: Record<string, string> = {};
+  // Check if headers exist and are an object before iterating
+  if (headers && typeof headers === 'object') {
+    // Use headers.toJSON() if available
+    if (typeof headers.toJSON === 'function') {
+      try {
+        const jsonHeaders = headers.toJSON();
+        // Ensure the result of toJSON() is also a plain object before iterating
+        if (jsonHeaders && typeof jsonHeaders === 'object' && !Array.isArray(jsonHeaders)) {
+          for (const key in jsonHeaders) {
+            if (Object.prototype.hasOwnProperty.call(jsonHeaders, key)) {
+              const value = jsonHeaders[key];
+              plainHeaders[key] = typeof value === 'string' ? value : JSON.stringify(value);
+            }
+          }
+        } else {
+          // Fallback to manual iteration if toJSON result is not a plain object
+          for (const key in headers) {
+            if (Object.prototype.hasOwnProperty.call(headers, key)) {
+              const value = headers[key];
+              plainHeaders[key] = typeof value === 'string' ? value : JSON.stringify(value);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error calling toJSON or processing its result:", e);
+        // Fallback to manual iteration on error
+        for (const key in headers) {
+          if (Object.prototype.hasOwnProperty.call(headers, key)) {
+            const value = headers[key];
+            plainHeaders[key] = typeof value === 'string' ? value : JSON.stringify(value);
+          }
+        }
+      }
+    } else {
+      // Manual iteration if toJSON method is not available
+      for (const key in headers) {
+        if (Object.prototype.hasOwnProperty.call(headers, key)) {
+          const value = headers[key];
+          plainHeaders[key] = typeof value === 'string' ? value : JSON.stringify(value);
+        }
+      }
+    }
+  }
+  return plainHeaders;
+};
 
 // Função para testar uma chamada de API
 export async function testApiCall(workspaceId: string, config: ApiCallConfig) {
-     const session = await getServerSession(authOptions);
-     if (!session) {
-         return { success: false, message: 'Unauthorized' };
-     }
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return { success: false, message: 'Unauthorized' };
+  }
 
-    // TODO: Implementar verificação de permissão real para o workspace
-    // Exemplo: if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
 
-    try {
-        // Prepare headers, ensuring it's an object
-        const headers = config.headers && typeof config.headers === 'object' ? config.headers : {};
+  try {
+    // Prepare headers, ensuring it's an object
+    const headers = config.headers && typeof config.headers === 'object' ? config.headers : {};
 
-        // Make the HTTP request using axios
-        const response = await axios({
-            method: config.method as any, // Cast method to any for axios type compatibility
-            url: config.url,
-            headers: headers,
-            // Include the body in the request config if the method supports it
-            ...(config.body && (config.method === 'POST' || config.method === 'PUT' || config.method === 'PATCH') ? { data: config.body } : {}),
-        });
+    // Make the HTTP request using axios
+    const response = await axios({
+      method: config.method as any, // Cast method to any for axios type compatibility
+      url: config.url,
+      headers: headers,
+      // Include the body in the request config if the method supports it
+      ...(config.body && (config.method === 'POST' || config.method === 'PUT' || config.method === 'PATCH') ? { data: config.body } : {}),
+    });
 
-        // Return relevant parts of the response, ensuring headers are a plain object
-        return {
-            success: true,
-            status: response.status,
-            statusText: response.statusText,
-            headers: toPlainObject(response.headers), // Convert headers to plain object using the helper
-            data: response.data, // Assuming data is already serializable (JSON)
-        };
+    // Return relevant parts of the response, ensuring headers are a plain object
+    return {
+      success: true,
+      status: response.status,
+      statusText: response.statusText,
+      headers: toPlainObject(response.headers), // Convert headers to plain object using the helper
+      data: response.data, // Assuming data is already serializable (JSON)
+    };
 
-    } catch (error: any) {
-        console.error('Error testing API call:', error.message);
-         // Handle error response, ensuring headers are a plain object if they exist
-         const errorHeaders = error.response?.headers ? toPlainObject(error.response.headers) : undefined;
+  } catch (error: any) {
+    console.error('Error testing API call:', error.message);
+    // Handle error response, ensuring headers are a plain object if they exist
+    const errorHeaders = error.response?.headers ? toPlainObject(error.response.headers) : undefined;
 
-        return {
-            success: false,
-            message: error.message,
-             status: error.response?.status,
-             statusText: error.response?.statusText,
-             headers: errorHeaders, // Use the converted plain headers or undefined
-             data: error.response?.data, // Assuming error data is also serializable
-        };
-    }
+    return {
+      success: false,
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      headers: errorHeaders, // Use the converted plain headers or undefined
+      data: error.response?.data, // Assuming error data is also serializable
+    };
+  }
 }
 
 // Função para criar um novo estágio de IA
@@ -131,9 +120,6 @@ export async function createAIStage(workspaceId: string, data: CreateAIStageData
   if (!session) {
     return { success: false, message: 'Unauthorized' };
   }
-
-  // TODO: Implementar verificação de permissão real
-  // Exemplo: if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
 
   try {
     const newStage = await prisma.ai_stages.create({
@@ -169,10 +155,7 @@ export async function createAIStage(workspaceId: string, data: CreateAIStageData
     return { success: true, data: newStage };
   } catch (error: any) {
     console.error('Error creating AI Stage:', error);
-    // Handle unique constraint error specifically if needed
-    // if (error instanceof PrismaClientKnownRequestError && error.code === 'P2002') {
-    //     throw new Error(`Stage with name "${data.name}" already exists in this workspace.`);
-    // }
+
     return { success: false, message: error.message };
   }
 }
@@ -185,16 +168,13 @@ export async function getAIStages(workspaceId: string) {
     return [];
   }
 
-  // TODO: Implementar verificação de permissão real
-  // Exemplo: if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
-
   try {
     const stages = await prisma.ai_stages.findMany({
       where: {
         workspaceId: workspaceId,
       },
       include: { // Include actions when fetching stages
-          ai_stage_actions: true,
+        ai_stage_actions: true,
       },
       orderBy: {
         createdAt: 'asc',
@@ -209,18 +189,16 @@ export async function getAIStages(workspaceId: string) {
 
 // Função para buscar um estágio específico por ID
 export async function getAIStageById(stageId: string, workspaceId: string) {
-   const session = await getServerSession(authOptions);
+  const session = await getServerSession(authOptions);
   if (!session) {
     return null; // Ou lançar erro
   }
-   // TODO: Implementar verificação de permissão real
-  // Exemplo: if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { return null; }
 
   try {
     const stage = await prisma.ai_stages.findUnique({
       where: { id: stageId, workspaceId: workspaceId },
-       include: { // Include actions when fetching a single stage
-          ai_stage_actions: true,
+      include: { // Include actions when fetching a single stage
+        ai_stage_actions: true,
       },
     });
     return stage as any; // Use any to bypass JsonValue typing issue for now
@@ -236,8 +214,6 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
   if (!session) {
     return { success: false, message: 'Unauthorized' };
   }
-
-  // TODO: Implementar verificação de permissão real
 
   try {
     // Buscar o estágio existente com suas ações para determinar quais deletar
@@ -262,22 +238,22 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
     const actionsToDeleteIds = existingActionIds.filter(id => !incomingActionIds.includes(id));
 
     const actionsToUpsert = incomingActions.map(action => ({
-       where: { id: action.id || uuidv4() },
-       update: {
-         type: action.type as AIStageActionType,
-         order: action.order,
-         config: action.config,
-         isEnabled: action.isEnabled ?? true,
-         updatedAt: new Date(),
-       },
-       create: {
-         id: action.id || uuidv4(),
-         type: action.type as AIStageActionType,
-         order: action.order,
-         config: action.config,
-         isEnabled: action.isEnabled ?? true,
-         updatedAt: new Date(),
-       },
+      where: { id: action.id || uuidv4() },
+      update: {
+        type: action.type as AIStageActionType,
+        order: action.order,
+        config: action.config,
+        isEnabled: action.isEnabled ?? true,
+        updatedAt: new Date(),
+      },
+      create: {
+        id: action.id || uuidv4(),
+        type: action.type as AIStageActionType,
+        order: action.order,
+        config: action.config,
+        isEnabled: action.isEnabled ?? true,
+        updatedAt: new Date(),
+      },
     }));
 
     const updatedStage = await prisma.ai_stages.update({
@@ -318,31 +294,30 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
 
 // Função para deletar um estágio
 export async function deleteAIStage(stageId: string) {
-   const session = await getServerSession(authOptions);
+  const session = await getServerSession(authOptions);
   if (!session) {
     return { success: false, message: 'Unauthorized' };
   }
 
-  // TODO: Implementar verificação de permissão real
-   const stageToDelete = await prisma.ai_stages.findUnique({
-       where: { id: stageId },
-       select: { workspaceId: true },
-    });
+  const stageToDelete = await prisma.ai_stages.findUnique({
+    where: { id: stageId },
+    select: { workspaceId: true },
+  });
 
-    if (!stageToDelete) {
-        return { success: false, message: 'Stage not found' };
-    }
+  if (!stageToDelete) {
+    return { success: false, message: 'Stage not found' };
+  }
 
-   const workspaceId = stageToDelete.workspaceId; // Fetch workspaceId from the stage
-   // TODO: Add permission check here
-   // if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
+  const workspaceId = stageToDelete.workspaceId; // Fetch workspaceId from the stage
+  // TODO: Add permission check here
+  // if (!await isAdminOrMemberOfWorkspace(session.user.id, workspaceId)) { ... }
 
   try {
     const deletedStage = await prisma.ai_stages.delete({
       where: { id: stageId },
     });
-     revalidatePath(`/workspace/${workspaceId}/ia`);
-     revalidatePath(`/workspace/${workspaceId}/ia/stages`);
+    revalidatePath(`/workspace/${workspaceId}/ia`);
+    revalidatePath(`/workspace/${workspaceId}/ia/stages`);
     return { success: true };
   } catch (error: any) {
     console.error('Error deleting AI Stage:', error);
@@ -351,8 +326,10 @@ export async function deleteAIStage(stageId: string) {
 }
 
 export async function getAIStageByName(workspaceId: string, stageName: string) {
-  // TODO: Implement permission check
-  // Ex: ensure user has permission to access stages in this workspace
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return { success: false, message: 'Unauthorized' };
+  }
 
   try {
     const stage = await prisma.ai_stages.findFirst({
