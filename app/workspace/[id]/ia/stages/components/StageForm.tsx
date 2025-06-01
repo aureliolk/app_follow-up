@@ -10,6 +10,7 @@ import { createAIStage, updateAIStage } from '@/lib/actions/aiStageActions';
 import { toast } from 'react-hot-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ApiActionForm from './ApiActionForm';
+import MediaActionForm from './MediaActionForm'; // Import the new component
 import { AIStageActionTypeEnum } from '@/lib/types/ai-stages';
 import { useRouter } from 'next/navigation';
 
@@ -57,7 +58,7 @@ export default function StageForm({ workspaceId, initialData, onSuccess }: Stage
     
     // State for managing actions
     const [actions, setActions] = useState<AIStageAction[]>(initialData?.actions || []);
-    const [newActionType, setNewActionType] = useState<AIStageActionTypeEnum | 'SEND_VIDEO' | 'CONNECT_CALENDAR' | ''>('');
+    const [newActionType, setNewActionType] = useState<AIStageActionTypeEnum | ''>(''); // Remove hardcoded types
 
     const [isPending, startTransition] = useTransition();
 
@@ -245,21 +246,34 @@ export default function StageForm({ workspaceId, initialData, onSuccess }: Stage
                                      onUpdate={(newConfig) => handleUpdateActionConfig(index, newConfig)}
                                  />
                              )}
-                            {/* Add other action types here later */}
+                            {/* Render specific form for media action types */}
+                            {(action.type === AIStageActionTypeEnum.SEND_TEXT_MESSAGE ||
+                              action.type === AIStageActionTypeEnum.SEND_VIDEO ||
+                              action.type === AIStageActionTypeEnum.SEND_IMAGE ||
+                              action.type === AIStageActionTypeEnum.SEND_DOCUMENT) && (
+                                <MediaActionForm
+                                    actionType={action.type}
+                                    config={action.config}
+                                    onUpdate={(newConfig) => handleUpdateActionConfig(index, newConfig)}
+                                />
+                            )}
                          </div>
                     ))}
                 </div>
 
                 <div className="flex space-x-2 items-center">
-                    <Select onValueChange={(value: AIStageActionTypeEnum | 'SEND_VIDEO' | 'CONNECT_CALENDAR') => setNewActionType(value)} value={newActionType}>
+                    <Select onValueChange={(value: AIStageActionTypeEnum) => setNewActionType(value)} value={newActionType}>
                         <SelectTrigger className="w-[240px]">
                             <SelectValue placeholder="Selecionar tipo de ação" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value={AIStageActionTypeEnum.API_CALL}>Chamar uma API</SelectItem>
-                            <SelectItem value="SEND_VIDEO" disabled>Enviar Vídeo (em breve)</SelectItem>
-                            <SelectItem value="CONNECT_CALENDAR" disabled>Conectar Calendário (em breve)</SelectItem>
-                            {/* Removed duplicate SelectItems */}
+                            <SelectItem value={AIStageActionTypeEnum.SEND_TEXT_MESSAGE}>Enviar Mensagem de Texto</SelectItem>
+                            <SelectItem value={AIStageActionTypeEnum.SEND_VIDEO}>Enviar Vídeo</SelectItem>
+                            <SelectItem value={AIStageActionTypeEnum.SEND_IMAGE}>Enviar Imagem</SelectItem>
+                            <SelectItem value={AIStageActionTypeEnum.SEND_DOCUMENT}>Enviar Documento</SelectItem>
+                            <SelectItem value={AIStageActionTypeEnum.CONNECT_CALENDAR} disabled>Conectar Calendário (em breve)</SelectItem>
+                            <SelectItem value={AIStageActionTypeEnum.TRANSFER_HUMAN} disabled>Transferir para Humano (em breve)</SelectItem>
                         </SelectContent>
                     </Select>
                      <Button onClick={handleAddAction} disabled={!newActionType || isPending}>
@@ -273,4 +287,4 @@ export default function StageForm({ workspaceId, initialData, onSuccess }: Stage
             </Button>
         </form>
     );
-} 
+}
