@@ -283,8 +283,69 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
       },
     });
 
+    // Após atualizar o estágio e suas ações, garantir que as CustomHttpTools estejam em sync
+    for (const action of incomingActions) {
+      if (action.type === AIStageActionType.API_CALL && action.isEnabled) {
+        const toolData = {
+          workspaceId: workspaceId,
+          name: action.config.apiName,
+          description: `Ferramenta gerada automaticamente do estágio AI: ${data.name || 'Sem Nome'} - Ação: ${action.config.apiName}`,
+          method: action.config.method,
+          url: action.config.url,
+          headers: action.config.headers || null,
+          queryParametersSchema: action.config.querySchema || null,
+          requestBodySchema: action.config.bodySchema || null,
+          isEnabled: true, // Sempre habilitar se a ação estiver habilitada
+        };
+
+        // Tentar encontrar uma ferramenta existente com o mesmo nome e workspaceId
+        const existingTool = await prisma.customHttpTool.findFirst({
+          where: {
+            name: toolData.name,
+            workspaceId: toolData.workspaceId,
+          },
+        });
+
+        if (existingTool) {
+          // Atualizar ferramenta existente
+          await prisma.customHttpTool.update({
+            where: { id: existingTool.id },
+            data: toolData,
+          });
+          console.log(`[aiStageActions] CustomHttpTool '${toolData.name}' atualizada.`);
+        } else {
+          // Criar nova ferramenta
+          await prisma.customHttpTool.create({
+            data: toolData,
+          });
+          console.log(`[aiStageActions] CustomHttpTool '${toolData.name}' criada.`);
+        }
+      }
+    }
+
+    // Deletar CustomHttpTools que não correspondem mais a ações API_CALL ativas
+    const activeApiCallNames = incomingActions
+      .filter(action => action.type === AIStageActionType.API_CALL && action.isEnabled)
+      .map(action => action.config.apiName);
+
+    await prisma.customHttpTool.deleteMany({
+      where: {
+        workspaceId: workspaceId,
+        name: {
+          notIn: activeApiCallNames,
+        },
+        // Opcional: Adicionar um campo para identificar ferramentas geradas por estágios
+        // para evitar deletar ferramentas criadas manualmente.
+        // Por enquanto, deleta qualquer ferramenta que não esteja na lista ativa.
+      },
+    });
+    console.log(`[aiStageActions] CustomHttpTools não utilizadas deletadas.`);
+
+
     revalidatePath(`/workspace/${workspaceId}/ia`);
     revalidatePath(`/workspace/${workspaceId}/ia/stages`);
+    // Revalidar também a rota de ferramentas para garantir que o toolLoader pegue as mudanças
+    revalidatePath(`/workspace/${workspaceId}/ia/tools`);
     return { success: true, data: updatedStage };
   } catch (error: any) {
     console.error('Error updating AI Stage:', error);

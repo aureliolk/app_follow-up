@@ -27,7 +27,7 @@ export default async function EditAIStagePage({ params }: EditAIStagePageProps) 
     // Pass stage data to StageForm for initial values.
     // The success redirect logic will be handled inside StageForm (Client Component).
     return (
-        <div className="container mx-auto py-8">
+        <div className="container mx-auto py-8 flex-grow"> {/* Added flex-grow */}
             <h1 className="text-3xl font-bold mb-6">Editar Estágio: {initialDataForForm.name}</h1>
             {/* Pass stage data to StageForm for initial values. Remove onSuccess prop */}
             <StageForm workspaceId={workspaceId} initialData={initialDataForForm} />
