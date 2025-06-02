@@ -122,6 +122,7 @@ export async function createAIStage(workspaceId: string, data: CreateAIStageData
   }
 
   try {
+    console.log('[createAIStage] Incoming data:', JSON.stringify(data, null, 2));
     const newStage = await prisma.ai_stages.create({
       data: {
         id: uuidv4(),
@@ -135,14 +136,17 @@ export async function createAIStage(workspaceId: string, data: CreateAIStageData
           connect: { id: workspaceId },
         },
         ai_stage_actions: {
-          create: data.actions?.map(action => ({
-            id: action.id || uuidv4(),
-            type: action.type as AIStageActionType,
-            order: action.order,
-            config: action.config,
-            isEnabled: action.isEnabled ?? true,
-            updatedAt: new Date(),
-          })) || [],
+          create: data.actions?.map(action => {
+            console.log(`[createAIStage] Action config for ${action.type}:`, JSON.stringify(action.config, null, 2));
+            return {
+              id: action.id || uuidv4(),
+              type: action.type as AIStageActionType,
+              order: action.order,
+              config: action.config,
+              isEnabled: action.isEnabled ?? true,
+              updatedAt: new Date(),
+            };
+          }) || [],
         },
         updatedAt: new Date(),
       },
@@ -216,6 +220,7 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
   }
 
   try {
+    console.log('[updateAIStage] Incoming data:', JSON.stringify(data, null, 2));
     // Buscar o estágio existente com suas ações para determinar quais deletar
     const existingStageWithActions = await prisma.ai_stages.findUnique({
       where: { id: stageId },
@@ -237,7 +242,13 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
     // IDs das ações existentes que NÃO estão na lista de ações recebidas (serão deletadas)
     const actionsToDeleteIds = existingActionIds.filter(id => !incomingActionIds.includes(id));
 
-    const actionsToUpsert = incomingActions.map(action => ({
+   console.log('[updateAIStage] Existing action IDs:', existingActionIds);
+   console.log('[updateAIStage] Incoming action IDs:', incomingActionIds);
+   console.log('[updateAIStage] Actions to delete IDs:', actionsToDeleteIds);
+
+    const actionsToUpsert = incomingActions.map(action => {
+     console.log(`[updateAIStage] Upserting action config for ${action.type}:`, JSON.stringify(action.config, null, 2));
+     return {
       where: { id: action.id || uuidv4() },
       update: {
         type: action.type as AIStageActionType,
@@ -254,7 +265,7 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
         isEnabled: action.isEnabled ?? true,
         updatedAt: new Date(),
       },
-    }));
+    }});
 
     const updatedStage = await prisma.ai_stages.update({
       where: { id: stageId },
