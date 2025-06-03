@@ -783,15 +783,15 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
         try {
             // Assuming this endpoint handles the media upload and message creation
-            const response = await axios.post<{ success: boolean; message?: Message; error?: string }>(`/api/conversations/${conversationId}/media`, formData, {
+            const response = await axios.post<{ success: boolean; data?: Message; error?: string }>(`/api/conversations/${conversationId}/media`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
             });
-
-            if (response.data.success && response.data.message) {
+ 
+            if (response.data.success && response.data.data) {
                  // O Pusher deve lidar com a adição da mensagem ao UI
-                console.log("[ConversationContext] Mídia enviada com sucesso. Mensagem criada:", response.data.message);
+                console.log("[ConversationContext] Mídia enviada com sucesso. Mensagem criada:", response.data.data);
                 // toast.success("Mídia enviada!"); // Opcional, UI pode mostrar indicador
             } else {
                 const errorMessage = response.data.error || "Falha ao enviar mídia pela API.";

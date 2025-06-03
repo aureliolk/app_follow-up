@@ -2,48 +2,53 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // --- Configurações Recomendadas ---
+  // --- Configurações Recomendadas ---
 
-    // Ativa o Strict Mode do React em desenvolvimento para ajudar a encontrar problemas.
-    // Não afeta a produção.
-    reactStrictMode: true,
+  // Ativa o Strict Mode do React em desenvolvimento para ajudar a encontrar problemas.
+  // Não afeta a produção.
+  reactStrictMode: true,  
+ 
+   // --- Otimização Essencial para Docker ---
+   // Gera uma saída otimizada para deploy isolado (containers).
+   // Cria a pasta .next/standalone com o mínimo necessário para rodar.
+   // REQUER AJUSTES NO Dockerfile (estágio 'runner') - veja nota abaixo.
+   output: 'standalone',
+   // --- Configurações Opcionais (Descomente e ajuste se necessário) ---
+ 
+   // Otimização de Imagens: Se você usa o componente <Image> do Next.js
+   // com imagens de domínios externos.
+   images: {
+     remotePatterns: [
+       {
+         protocol: 'https',
+         hostname: 'pps.whatsapp.net', // Permitir imagens do WhatsApp
+       },
+       // Adicione outros domínios permitidos aqui
+     ],
+   },
+ 
+   // Variáveis de Ambiente Públicas:
+   // Se precisar expor alguma variável de ambiente para o navegador.
+   // IMPORTANTE: NUNCA exponha segredos (API keys, senhas) aqui.
+   // Use o prefixo NEXT_PUBLIC_ no nome da variável no seu .env
+   // env: {
+   //   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+   // },
+ 
+   // Configurações Experimentais: Use com cautela.
+   // Server Actions já são estáveis no Next 14+, então não precisa habilitar aqui.
+   // experimental: {
+   //   // Exemplo: Habilitar alguma feature específica
+   // },
+   // Desabilita ESLint durante o build para evitar falhas
+   eslint: {
+     ignoreDuringBuilds: true,
+   },
 
-    // --- Otimização Essencial para Docker ---
-    // Gera uma saída otimizada para deploy isolado (containers).
-    // Cria a pasta .next/standalone com o mínimo necessário para rodar.
-    // REQUER AJUSTES NO Dockerfile (estágio 'runner') - veja nota abaixo.
-    output: 'standalone',
-
-    // --- Configurações Opcionais (Descomente e ajuste se necessário) ---
-
-    // Otimização de Imagens: Se você usa o componente <Image> do Next.js
-    // com imagens de domínios externos.
-    images: {
-      remotePatterns: [
-        {
-          protocol: 'https',
-          hostname: 'pps.whatsapp.net', // Permitir imagens do WhatsApp
-        },
-        // Adicione outros domínios permitidos aqui
-      ],
+   experimental: {
+    serverActions: {
+      bodySizeLimit: '2mb',
     },
-
-    // Variáveis de Ambiente Públicas:
-    // Se precisar expor alguma variável de ambiente para o navegador.
-    // IMPORTANTE: NUNCA exponha segredos (API keys, senhas) aqui.
-    // Use o prefixo NEXT_PUBLIC_ no nome da variável no seu .env
-    // env: {
-    //   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
-    // },
-
-    // Configurações Experimentais: Use com cautela.
-    // Server Actions já são estáveis no Next 14+, então não precisa habilitar aqui.
-    // experimental: {
-    //   // Exemplo: Habilitar alguma feature específica
-    // },
-  // Desabilita ESLint durante o build para evitar falhas
-  eslint: {
-    ignoreDuringBuilds: true,
   },
 };
 
