@@ -594,7 +594,7 @@ async function sendViaChannel(content: string, conversation: ConversationData, m
   const clientPhone = client.phone_number;
 
   try {
-    if (channel === CHANNEL_TYPES.WHATSAPP || channel === CHANNEL_TYPES.WHATSAPP_CLOUDAPI) {
+    if (channel === CHANNEL_TYPES.WHATSAPP_CLOUDAPI) {
       if (!workspace.whatsappAccessToken || !workspace.whatsappPhoneNumberId) {
         logger.warn(`[MsgProcessor ${jobId}] Configuração WhatsApp ausente para canal ${channel}`);
         return { success: false, error: 'Configuração WhatsApp ausente' };
