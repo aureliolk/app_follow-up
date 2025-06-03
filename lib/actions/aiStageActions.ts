@@ -154,8 +154,34 @@ export async function createAIStage(workspaceId: string, data: CreateAIStageData
         ai_stage_actions: true,
       },
     });
+
+    // Após criar o estágio e suas ações, garantir que as CustomHttpTools estejam em sync
+    // (apenas para ações API_CALL)
+    for (const action of data.actions || []) {
+      if (action.type === AIStageActionType.API_CALL && action.isEnabled) {
+        const toolData = {
+          workspaceId: workspaceId,
+          name: action.config.apiName,
+          description: `Ferramenta gerada automaticamente do estágio AI: ${data.name || 'Sem Nome'} - Ação: ${action.config.apiName}`,
+          method: action.config.method,
+          url: action.config.url,
+          headers: action.config.headers || null,
+          queryParametersSchema: action.config.querySchema || null,
+          requestBodySchema: action.config.bodySchema || null,
+          isEnabled: true, // Sempre habilitar se a ação estiver habilitada
+        };
+
+        await prisma.customHttpTool.create({
+          data: toolData,
+        });
+        console.log(`[aiStageActions] CustomHttpTool '${toolData.name}' criada durante a criação do estágio.`);
+      }
+    }
+
     revalidatePath(`/workspace/${workspaceId}/ia`);
     revalidatePath(`/workspace/${workspaceId}/ia/stages`);
+    // Revalidar também a rota de ferramentas para garantir que o toolLoader pegue as mudanças
+    revalidatePath(`/workspace/${workspaceId}/ia/tools`);
     return { success: true, data: newStage };
   } catch (error: any) {
     console.error('Error creating AI Stage:', error);
@@ -334,20 +360,45 @@ export async function updateAIStage(stageId: string, data: Partial<CreateAIStage
       }
     }
 
-    // Deletar CustomHttpTools que não correspondem mais a ações API_CALL ativas
-    const activeApiCallNames = incomingActions
-      .filter(action => action.type === AIStageActionType.API_CALL && action.isEnabled)
-      .map(action => action.config.apiName);
+    // Deletar CustomHttpTools que não correspondem mais a ações API_CALL ativas em NENHUM estágio
+    // 1. Obter todos os estágios ativos do workspace
+    const allActiveStagesInWorkspace = await prisma.ai_stages.findMany({
+      where: {
+        workspaceId: workspaceId,
+        isActive: true,
+      },
+      include: {
+        ai_stage_actions: true,
+      },
+    });
+
+    // 2. Coletar todos os nomes de API de todas as ações API_CALL ativas em todos os estágios
+    const allActiveApiCallNames: string[] = [];
+    for (const stage of allActiveStagesInWorkspace) {
+      for (const action of stage.ai_stage_actions) {
+        if (action.type === AIStageActionType.API_CALL && action.isEnabled) {
+          // Ensure action.config.apiName exists and is a string before pushing
+          // Cast action.config to ApiCallConfig for type safety
+          const apiCallConfig = action.config as ApiCallConfig;
+          if (apiCallConfig.apiName && typeof apiCallConfig.apiName === 'string') {
+            allActiveApiCallNames.push(apiCallConfig.apiName);
+          }
+        }
+      }
+    }
+    // Remover duplicatas, se houver
+    const uniqueActiveApiCallNames = [...new Set(allActiveApiCallNames)];
+
+    console.log(`[aiStageActions] All unique active API Call names in workspace:`, uniqueActiveApiCallNames);
 
     await prisma.customHttpTool.deleteMany({
       where: {
         workspaceId: workspaceId,
         name: {
-          notIn: activeApiCallNames,
+          notIn: uniqueActiveApiCallNames, // Usar a lista abrangente
         },
-        // Opcional: Adicionar um campo para identificar ferramentas geradas por estágios
-        // para evitar deletar ferramentas criadas manualmente.
-        // Por enquanto, deleta qualquer ferramenta que não esteja na lista ativa.
+        // Manter o comentário sobre a identificação de ferramentas geradas por estágios
+        // para evitar deletar ferramentas criadas manualmente, se essa distinção for implementada no futuro.
       },
     });
     console.log(`[aiStageActions] CustomHttpTools não utilizadas deletadas.`);
@@ -373,7 +424,16 @@ export async function deleteAIStage(stageId: string) {
 
   const stageToDelete = await prisma.ai_stages.findUnique({
     where: { id: stageId },
-    select: { workspaceId: true },
+    select: {
+      workspaceId: true,
+      ai_stage_actions: {
+        select: {
+          type: true,
+          config: true,
+          isEnabled: true,
+        },
+      },
+    },
   });
 
   if (!stageToDelete) {
@@ -388,8 +448,49 @@ export async function deleteAIStage(stageId: string) {
     const deletedStage = await prisma.ai_stages.delete({
       where: { id: stageId },
     });
+
+    // Após deletar o estágio, garantir que as CustomHttpTools estejam em sync
+    // 1. Obter todos os estágios ativos restantes do workspace
+    const allActiveStagesInWorkspace = await prisma.ai_stages.findMany({
+      where: {
+        workspaceId: workspaceId,
+        isActive: true,
+      },
+      include: {
+        ai_stage_actions: true,
+      },
+    });
+
+    // 2. Coletar todos os nomes de API de todas as ações API_CALL ativas nos estágios restantes
+    const allActiveApiCallNames: string[] = [];
+    for (const stage of allActiveStagesInWorkspace) {
+      for (const action of stage.ai_stage_actions) {
+        if (action.type === AIStageActionType.API_CALL && action.isEnabled) {
+          const apiCallConfig = action.config as ApiCallConfig;
+          if (apiCallConfig.apiName && typeof apiCallConfig.apiName === 'string') {
+            allActiveApiCallNames.push(apiCallConfig.apiName);
+          }
+        }
+      }
+    }
+    const uniqueActiveApiCallNames = [...new Set(allActiveApiCallNames)];
+
+    console.log(`[aiStageActions] All unique active API Call names in workspace after stage deletion:`, uniqueActiveApiCallNames);
+
+    // 3. Deletar CustomHttpTools que não correspondem mais a ações API_CALL ativas em NENHUM estágio
+    await prisma.customHttpTool.deleteMany({
+      where: {
+        workspaceId: workspaceId,
+        name: {
+          notIn: uniqueActiveApiCallNames,
+        },
+      },
+    });
+    console.log(`[aiStageActions] CustomHttpTools não utilizadas deletadas após exclusão do estágio.`);
+
     revalidatePath(`/workspace/${workspaceId}/ia`);
     revalidatePath(`/workspace/${workspaceId}/ia/stages`);
+    revalidatePath(`/workspace/${workspaceId}/ia/tools`); // Revalidar rota de ferramentas
     return { success: true };
   } catch (error: any) {
     console.error('Error deleting AI Stage:', error);

@@ -259,7 +259,7 @@ export async function processAIChat(
   messages: CoreMessage[],
   workspaceId: string,
   conversationId: string,
-  streamMode: boolean = true,
+  streamMode: boolean,
   modelPreference?: string,
   additionalContext?: string
 ) {
@@ -308,7 +308,9 @@ export async function processAIChat(
     // Criar ferramentas de estágio
     const stageTools: Record<string, Tool<any, any>> = {};
     for (const stage of activeStages) {
-      const toolName = `stage_${stage.name.toLowerCase().replace(/\s+/g, '_')}`;
+      // Sanitize the stage name to create a valid tool name
+      const sanitizedStageName = stage.name.toLowerCase().replace(/[^a-z0-9_.-]/g, '_').substring(0, 64);
+      const toolName = `stage_${sanitizedStageName}`;
       stageTools[toolName] = createStageTool(stage, workspaceId, conversationId);
     }
 
@@ -336,26 +338,27 @@ export async function processAIChat(
     if (activeStages.length > 0) {
       stageInstructions = `
  INSTRUÇÕES DE ESTÁGIOS:
- Você tem acesso a estágios específicos que podem ser ativados durante a conversa. Cada estágio tem uma condição para ativação e pode coletar dados específicos.
+ Você pode ativar funcionalidades específicas (estágios) para auxiliar o usuário, seguindo as condições abaixo. Cada estágio pode requerer a coleta de dados.
  
- Estágios disponíveis:
+ Capacidades de estágio (para seu uso interno, não para listar ao usuário):
  ${activeStages.map(stage => {
    const dataToCollectList = Array.isArray(stage.dataToCollect) && stage.dataToCollect.length > 0
-     ? ` (Dados a coletar - TODOS OBRIGATÓRIOS: ${stage.dataToCollect.map((f: string) => f.trim()).join(', ')})`
+     ? ` (Dados necessários: ${stage.dataToCollect.map((f: string) => f.trim()).join(', ')})`
      : '';
-   return `- ${stage.name}: ${stage.condition}${dataToCollectList}`;
+   return `- Se a conversa se encaixar na condição "${stage.condition}", ative a funcionalidade de estágio '${stage.name}'${dataToCollectList}.`;
  }).join('\n')}
  
- Quando identificar que uma condição de estágio foi atendida:
- 1.  **Priorize a Coleta de Dados**: Antes de chamar a ferramenta do estágio, certifique-se de ter coletado TODOS os dados listados em "Dados a coletar" para aquele estágio. Se você não tiver um dado, **pergunte diretamente ao usuário por ele**.
- 2.  Use a ferramenta correspondente ao estágio (stage_[nome]).
- 3.  **Interprete o Retorno da Ferramenta**:
-     *   Se a ferramenta retornar um objeto com \`type: "missing_data"\`, isso significa que faltam dados obrigatórios. Você receberá uma lista em \`missingFields\`. **Sua tarefa é perguntar ao usuário por esses campos específicos.**
-     *   Se a ferramenta retornar um objeto com \`type: "api_response"\` ou \`type: "success"\`, o estágio foi executado. Use as informações fornecidas (como \`apiResponse\` ou \`responseInstruction\`) para formular sua resposta ao usuário.
+ Ao ativar uma funcionalidade de estágio:
+ 1.  **Coleta de Dados**: Antes de chamar a ferramenta interna do estágio, certifique-se de ter coletado TODOS os dados necessários. Se faltar algum, **pergunte ao usuário diretamente por ele**.
+ 2.  **Interpretação do Retorno**:
+     *   Se a ferramenta interna retornar \`type: "missing_data"\`, significa que dados obrigatórios ainda faltam. Você receberá uma lista em \`missingFields\`. **Sua tarefa é perguntar ao usuário por esses campos específicos.**
+     *   Se a ferramenta interna retornar \`type: "api_response"\` ou \`type: "success"\`, a funcionalidade foi executada. Use as informações fornecidas (\`apiResponse\` ou \`responseInstruction\`) para formular sua resposta ao usuário.
+     *   
+ 3.  **Resposta ao Usuário**: Sempre que uma funcionalidade de estágio for ativada e executada com sucesso, forneça uma resposta clara e concisa ao usuário, baseada no resultado da execução e na instrução final do estágio (se houver).
  
- IMPORTANTE:
+ Lembre-se:
  -   Sempre que um dado obrigatório estiver faltando, você DEVE perguntar ao usuário por ele.
- -   Somente chame a ferramenta do estágio quando tiver todos os dados obrigatórios, ou quando o usuário indicar que não pode fornecer mais informações.
+ -   Somente chame a ferramenta interna do estágio quando tiver todos os dados obrigatórios.
  
  ${stageContext.currentStage ? `Estágio atual: ${stageContext.currentStage}` : ''}
  ${Object.keys(stageContext.collectedData).length > 0 ? `Dados já coletados: ${JSON.stringify(stageContext.collectedData)}` : ''}
@@ -366,6 +369,8 @@ export async function processAIChat(
     console.log('[processAIChat] stageInstructions:', stageInstructions);
 
     const systemPrompt = `${baseInstructions}${conversation?.workspace?.ai_default_system_prompt || ''}${stageInstructions}${additionalContext ? `\n\n${additionalContext}` : ''}`;
+    console.log('[processAIChat] Final System Prompt:', systemPrompt);
+    console.log('[processAIChat] Messages sent to AI:', JSON.stringify(messages, null, 2));
 
     // Obter modelo de linguagem
     const modelIdentifier = modelPreference || conversation?.workspace?.ai_model_preference || AVAILABLE_MODELS[0].value;
@@ -382,88 +387,101 @@ export async function processAIChat(
 
     // Processar com streaming ou não
     if (streamMode) {
-      const result = streamText({
-        model,
-        messages,
-        system: systemPrompt,
-        ...(supportsTools ? { 
-        tools: allTools,
-        toolChoice: 'auto',
-        maxSteps: 5
-        } : {}),
-      });
+      let result;
+      try {
+        result = streamText({
+          model,
+          messages,
+          system: systemPrompt,
+          ...(supportsTools ? {
+          tools: allTools,
+          toolChoice: 'auto',
+          maxSteps: 5
+          } : {}),
+        });
+        console.log('[processAIChat] Raw AI streamText result (initial):', JSON.stringify(result, null, 2));
+      } catch (streamError) {
+        console.error('[processAIChat] Error calling streamText:', streamError);
+        throw streamError;
+      }
 
       // Processar tool calls a partir do fullStream
       const stream = new ReadableStream({
         async start(controller) {
-          for await (const chunk of result.fullStream) {
-            if (chunk.type === 'tool-call') {
-              const toolCall = chunk;
-              console.log('[processAIChat] Received tool-call chunk:', JSON.stringify(toolCall, null, 2));
-              // Intercept stage tool calls
-              if (toolCall.toolName.startsWith('stage_')) {
-                const stageName = toolCall.toolName.replace('stage_', '').replace(/_/g, ' ');
-                const stage = activeStages.find(s =>
-                  s.name.toLowerCase() === stageName.toLowerCase()
-                );
-                console.log(`[processAIChat] Matched stage: ${stage?.name} for toolName: ${toolCall.toolName}`);
+          try {
+            for await (const chunk of result.fullStream) {
+              if (chunk.type === 'tool-call') {
+                const toolCall = chunk;
+                console.log('[processAIChat] Received tool-call chunk:', JSON.stringify(toolCall, null, 2));
+                // Intercept stage tool calls
+                if (toolCall.toolName.startsWith('stage_')) {
+                  const stageName = toolCall.toolName.replace('stage_', '').replace(/_/g, ' ');
+                  const stage = activeStages.find(s =>
+                    s.name.toLowerCase() === stageName.toLowerCase()
+                  );
+                  console.log(`[processAIChat] Matched stage: ${stage?.name} for toolName: ${toolCall.toolName}`);
 
-                if (stage) {
-                  // Atualizar contexto (dados coletados são os args da tool call)
-                  stageContext.currentStage = stage.name;
-                  // Evita duplicidade no histórico se a tool call for re-executada
-                  if (stageContext.stageHistory[stageContext.stageHistory.length - 1] !== stage.name) {
-                     stageContext.stageHistory.push(stage.name);
-                  }
-                  Object.assign(stageContext.collectedData, toolCall.args);
-
-
-                  // Executar ações do estágio para obter o apiResponseData
-                  // Note: No streaming mode, we don't directly return tool results this way.
-                  // The tool's execute function would have already returned the data in the non-streaming part.
-                  // In streaming, the AI processes the tool_result chunk itself.
-                  // We execute actions here primarily for side effects (like saving metadata).
-                  // The actual apiResponseData should ideally come from the tool_result chunk processed by the AI.
-                  // However, based on the user's request structure (modifying createStageTool return),
-                  // we need to ensure the tool result contains the apiResponse.
-                  // The AI SDK is supposed to handle the tool execution and provide the result chunk.
-                  // Let's assume the modification in createStageTool is correctly picked up by the SDK.
-                  // We still need to update the metadata based on the execution side effects.
-                  const { results: actionResults, apiResponseData: executedApiResponse } = await executeStageActions(stage, stageContext, conversationId);
+                  if (stage) {
+                    // Atualizar contexto (dados coletados são os args da tool call)
+                    stageContext.currentStage = stage.name;
+                    // Evita duplicidade no histórico se a tool call for re-executada
+                    if (stageContext.stageHistory[stageContext.stageHistory.length - 1] !== stage.name) {
+                       stageContext.stageHistory.push(stage.name);
+                    }
+                    Object.assign(stageContext.collectedData, toolCall.args);
 
 
-                  // Salvar contexto atualizado na conversa
-                   // We save both collectedData and any API response data from the execution,
-                   // although the AI should primarily rely on the tool_result chunk for the API response.
-                   const updatedMetadata: any = {
-                       ...(conversationMetadata || {}),
-                       currentStage: stageContext.currentStage,
-                       collectedData: stageContext.collectedData,
-                       stageHistory: stageContext.stageHistory,
-                       lastStageActions: actionResults,
-                   };
-                   // Optionally save the executed API response data in metadata if needed for debugging or state tracking
-                   if (executedApiResponse) {
-                       updatedMetadata.lastApiResponse = executedApiResponse;
-                   }
-                   console.log('[processAIChat] Updating conversation metadata:', JSON.stringify(updatedMetadata, null, 2));
+                    // Executar ações do estágio para obter o apiResponseData
+                    // Note: No streaming mode, we don't directly return tool results this way.
+                    // The tool's execute function would have already returned the data in the non-streaming part.
+                    // In streaming, the AI processes the tool_result chunk itself.
+                    // We execute actions here primarily for side effects (like saving metadata).
+                    // The actual apiResponseData should ideally come from the tool_result chunk processed by the AI.
+                    // However, based on the user's request structure (modifying createStageTool return),
+                    // we need to ensure the tool result contains the apiResponse.
+                    // The AI SDK is supposed to handle the tool execution and provide the result chunk.
+                    // Let's assume the modification in createStageTool is correctly picked up by the SDK.
+                    // We still need to update the metadata based on the execution side effects.
+                    const { results: actionResults, apiResponseData: executedApiResponse } = await executeStageActions(stage, stageContext, conversationId);
 
-                   await prisma.conversation.update({
-                     where: { id: conversationId },
-                     data: {
-                       metadata: updatedMetadata
+
+                    // Salvar contexto atualizado na conversa
+                     // We save both collectedData and any API response data from the execution,
+                     // although the AI should primarily rely on the tool_result chunk for the API response.
+                     const updatedMetadata: any = {
+                         ...(conversationMetadata || {}),
+                         currentStage: stageContext.currentStage,
+                         collectedData: stageContext.collectedData,
+                         stageHistory: stageContext.stageHistory,
+                         lastStageActions: actionResults,
+                     };
+                     // Optionally save the executed API response data in metadata if needed for debugging or state tracking
+                     if (executedApiResponse) {
+                         updatedMetadata.lastApiResponse = executedApiResponse;
                      }
-                   });
+                     console.log('[processAIChat] Updating conversation metadata:', JSON.stringify(updatedMetadata, null, 2));
 
-                   // The tool result chunk should contain the return value from createStageTool.execute
-                   // The AI will process this chunk and see the apiResponse field.
+                     await prisma.conversation.update({
+                       where: { id: conversationId },
+                       data: {
+                         metadata: updatedMetadata
+                       }
+                     });
+
+                     // The tool result chunk should contain the return value from createStageTool.execute
+                     // The AI will process this chunk and see the apiResponse field.
+                   }
                  }
                }
+               // Yield all chunks to the stream
+               controller.enqueue(chunk);
              }
-             // Yield all chunks to the stream
-             controller.enqueue(chunk);
+             console.log('[processAIChat] Stream fullStream iteration completed.');
+             controller.close();
+           } catch (streamIterationError) {
+             console.error('[processAIChat] Error during stream fullStream iteration:', streamIterationError);
+             controller.error(streamIterationError); // Propagate error to the stream consumer
            }
-           controller.close();
          },
        });
 
@@ -474,12 +492,13 @@ export async function processAIChat(
          model,
          messages,
          system: systemPrompt,
-         ...(supportsTools ? { 
-           tools: allTools,
-           toolChoice: 'auto',
-           maxSteps: 5
+         ...(supportsTools ? {
+         tools: allTools,
+         toolChoice: 'auto',
+         maxSteps: 5
          } : {}),
        });
+       console.log('[processAIChat] Raw AI generateText result:', JSON.stringify(result, null, 2));
 
        // Processar tool calls de estágios no modo não-streaming
        for (const toolCall of result.toolCalls || []) {
@@ -533,7 +552,12 @@ export async function processAIChat(
        return result;
      }
    } catch (error) {
-     console.error('[processAIChat] Erro:', error);
+     console.error('[processAIChat] Erro detalhado:', error);
+     if (error instanceof Error) {
+       console.error('[processAIChat] Erro nome:', error.name);
+       console.error('[processAIChat] Erro mensagem:', error.message);
+       console.error('[processAIChat] Erro stack:', error.stack);
+     }
      throw error;
    }
  }

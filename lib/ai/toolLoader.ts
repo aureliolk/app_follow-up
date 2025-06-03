@@ -211,21 +211,22 @@ export async function getActiveToolsForWorkspace(workspaceId: string): Promise<R
       },
     });
     console.log(`[toolLoader] Encontradas ${customHttpTools.length} ferramentas HTTP customizadas ativas.`);
-
-    // Gerar e adicionar ferramentas dinâmicas
-    for (const toolData of customHttpTools) {
-      if (activeTools[toolData.name]) {
-         console.warn(`[toolLoader] Conflito de nome de ferramenta: "${toolData.name}" já existe. Pulando ferramenta customizada com ID ${toolData.id}.`);
-         continue; 
-      }
-      try {
-        const dynamicTool = createDynamicHttpTool(toolData);
-        activeTools[toolData.name] = dynamicTool;
-        console.log(`[toolLoader] Ferramenta dinâmica "${toolData.name}" adicionada.`);
-      } catch (toolCreationError: any) {
-          console.error(`[toolLoader] Erro ao criar ferramenta dinâmica para "${toolData.name}" (ID: ${toolData.id}):`, toolCreationError);
-      }
-    }
+    console.log(`[toolLoader] Detalhes das ferramentas HTTP customizadas:`, JSON.stringify(customHttpTools.map(t => ({ name: t.name, isEnabled: t.isEnabled })), null, 2));
+ 
+     // Gerar e adicionar ferramentas dinâmicas
+     for (const toolData of customHttpTools) {
+       if (activeTools[toolData.name]) {
+          console.warn(`[toolLoader] Conflito de nome de ferramenta: "${toolData.name}" já existe. Pulando ferramenta customizada com ID ${toolData.id}.`);
+          continue;
+       }
+       try {
+         const dynamicTool = createDynamicHttpTool(toolData);
+         activeTools[toolData.name] = dynamicTool;
+         console.log(`[toolLoader] Ferramenta dinâmica "${toolData.name}" adicionada.`);
+       } catch (toolCreationError: any) {
+           console.error(`[toolLoader] Erro ao criar ferramenta dinâmica para "${toolData.name}" (ID: ${toolData.id}):`, toolCreationError);
+       }
+     }
 
   } catch (error) {
     console.error(`[toolLoader] Erro ao buscar ou processar ferramentas HTTP customizadas para workspace ${workspaceId}:`, error);

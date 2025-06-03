@@ -18,6 +18,7 @@ export function getModelInstance(modelId: string): LanguageModel {
     if (!openRouterApiKey) {
       throw new Error('A chave de API do OpenRouter (OPENROUTER_API_KEY) não está configurada no ambiente.');
     }
+    console.log('[modelSelector] OpenRouter API Key is present.');
     const openrouter = createOpenRouter({
       apiKey: openRouterApiKey,
       // Opcional: Adicionar cabeçalhos personalizados se necessário

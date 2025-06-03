@@ -15,12 +15,19 @@ import { transcribeAudio } from '@/lib/ai/transcribeAudio';
 import { Readable } from 'stream';
 import { processAIChat } from '../ai/chatService';
 import pusher from '@/lib/pusher';
-import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 import { sendWhatsAppMessage, sendEvolutionMessage } from '../services/channelService';
-
-const QUEUE_NAME = 'message-processing';
-const HISTORY_LIMIT = 20;
-const FRACTIONED_MESSAGE_DELAY = 3000; // Delay fixo de 3s entre mensagens fracionadas
+import logger from '@/lib/utils/logger';
+import {
+  QUEUE_NAME,
+  HISTORY_LIMIT,
+  FRACTIONED_MESSAGE_DELAY,
+  DEFAULT_AI_DEBOUNCE_MS,
+  DEFAULT_AI_MODEL,
+  MEDIA_PLACEHOLDERS,
+  AI_MESSAGE_ROLES,
+  CHANNEL_TYPES,
+  DEFAULT_AUDIO_TRANSCRIPTION_LANGUAGE,
+} from '@/lib/constants';
 
 interface JobData {
   conversationId: string;
@@ -58,7 +65,7 @@ async function processJob(job: Job<JobData>) {
   const { conversationId, newMessageId, workspaceId } = job.data;
   const jobId = job.id || 'unknown';
   
-  console.log(`[MsgProcessor ${jobId}] Processando mensagem ${newMessageId} (Conv: ${conversationId})`);
+  logger.info(`[MsgProcessor ${jobId}] Processando mensagem ${newMessageId} (Conv: ${conversationId})`);
 
   try {
     // 1. Buscar dados da mensagem e conversa
@@ -169,11 +176,11 @@ async function fetchMessageAndConversation(messageId: string) {
 
   // Log das configurações do workspace para debug
   const workspace = message.conversation.workspace;
-  console.log(`[DEBUG] Configurações do Workspace ${workspace.id}:`);
-  console.log(`  - ai_delay_between_messages: ${workspace.ai_delay_between_messages}ms (usado como DEBOUNCE entre jobs)`);
-  console.log(`  - ai_send_fractionated: ${workspace.ai_send_fractionated} (fracionamento de mensagens)`);
-  console.log(`  - FRACTIONED_MESSAGE_DELAY: ${FRACTIONED_MESSAGE_DELAY}ms (delay fixo entre parágrafos)`);
-  console.log(`  - ai_name: ${workspace.ai_name}`);
+  logger.debug(`[MsgProcessor] Configurações do Workspace ${workspace.id}:`);
+  logger.debug(`  - ai_delay_between_messages: ${workspace.ai_delay_between_messages}ms (usado como DEBOUNCE entre jobs)`);
+  logger.debug(`  - ai_send_fractionated: ${workspace.ai_send_fractionated} (fracionamento de mensagens)`);
+  logger.debug(`  - FRACTIONED_MESSAGE_DELAY: ${FRACTIONED_MESSAGE_DELAY}ms (delay fixo entre parágrafos)`);
+  logger.debug(`  - ai_name: ${workspace.ai_name}`);
 
   return {
     message,
@@ -216,14 +223,14 @@ async function processMediaIfExists(message: any, conversation: ConversationData
   }
 
   try {
-    console.log(`[MsgProcessor ${jobId}] Processando mídia. Canal: ${conversation.channel}`);
+    logger.info(`[MsgProcessor ${jobId}] Processando mídia. Canal: ${conversation.channel}`);
 
     let mediaBuffer: Buffer;
     let mimeType = message.metadata.mediaType;
     let mediaSourceUrl: string | null = null; // Para registrar a URL original (se houver)
 
     if (isWhatsappCloudAPI) {
-      console.log(`[MsgProcessor ${jobId}] Fonte: WhatsApp Cloud API`);
+      logger.debug(`[MsgProcessor ${jobId}] Fonte: WhatsApp Cloud API`);
       const decryptedToken = decrypt(workspace.whatsappAccessToken as string); // Garantir que não é null aqui
       if (!decryptedToken) throw new Error('Falha ao descriptografar token do WhatsApp');
 
@@ -235,7 +242,7 @@ async function processMediaIfExists(message: any, conversation: ConversationData
       });
       mediaBuffer = Buffer.from(response.data);
     } else { // isEvolutionAPI
-      console.log(`[MsgProcessor ${jobId}] Fonte: Evolution API (Base64)`);
+      logger.debug(`[MsgProcessor ${jobId}] Fonte: Evolution API (Base64)`);
       const base64Data = message.metadata.mediaData_base64 as string; // Garantir que é string
       // Decodificar o base64 para Buffer
       mediaBuffer = Buffer.from(base64Data, 'base64');
@@ -243,7 +250,7 @@ async function processMediaIfExists(message: any, conversation: ConversationData
       if (!mimeType) {
           // Tentar inferir mime type se estiver faltando no metadata
           mimeType = lookup(mediaBuffer.subarray(0, 20).toString('hex')) || 'application/octet-stream';
-          console.warn(`[MsgProcessor ${jobId}] Mime type faltando no metadata, inferido como: ${mimeType}`);
+          logger.warn(`[MsgProcessor ${jobId}] Mime type faltando no metadata, inferido como: ${mimeType}`);
       }
       mediaSourceUrl = message.metadata.mediaUrl || null; // Registrar URL original da Evolution, se houver
     }
@@ -253,7 +260,7 @@ async function processMediaIfExists(message: any, conversation: ConversationData
     const fileExtension = lookup(mimeType) ? '.' + lookup(mimeType) : '';
     // Usar timestamp + ID da mensagem para nome único, convertendo timestamp para string explicitamente
     const s3Key = `media/${workspace.id}/${conversation.id}/${message.timestamp.getTime().toString()}-${message.id}${fileExtension}`;
-    console.log(`[MsgProcessor ${jobId}] Fazendo upload para S3 key: ${s3Key}`);
+    logger.debug(`[MsgProcessor ${jobId}] Fazendo upload para S3 key: ${s3Key}`);
 
     await s3Client.send(new PutObjectCommand({
       Bucket: s3BucketName,
@@ -263,7 +270,7 @@ async function processMediaIfExists(message: any, conversation: ConversationData
     }));
 
     const mediaS3Url = `${process.env.STORAGE_ENDPOINT?.replace(/\/$/, '')}/${s3BucketName}/${s3Key}`;
-    console.log(`[MsgProcessor ${jobId}] Upload para S3 concluído. URL: ${mediaS3Url}`);
+    logger.info(`[MsgProcessor ${jobId}] Upload para S3 concluído. URL: ${mediaS3Url}`);
 
 
     // Processar com IA
@@ -271,17 +278,17 @@ async function processMediaIfExists(message: any, conversation: ConversationData
     const mediaPrimaryType = mimeType.split('/')[0];
 
     if (mediaPrimaryType === 'image') {
-      console.log(`[MsgProcessor ${jobId}] Enviando imagem para análise de IA...`);
+      logger.debug(`[MsgProcessor ${jobId}] Enviando imagem para análise de IA...`);
       aiAnalysis = await describeImage(mediaBuffer);
-      console.log(`[MsgProcessor ${jobId}] Análise de imagem concluída.`);
+      logger.debug(`[MsgProcessor ${jobId}] Análise de imagem concluída.`);
     } else if (mediaPrimaryType === 'audio') {
-      console.log(`[MsgProcessor ${jobId}] Enviando áudio para transcrição...`);
+      logger.debug(`[MsgProcessor ${jobId}] Enviando áudio para transcrição...`);
       // Para Evolution, o mimeType já deve ser correto (e.g., 'audio/ogg; codecs=opus')
       // Podemos usar o mimeType diretamente
-      aiAnalysis = await transcribeAudio(mediaBuffer, mimeType, undefined, 'pt'); // Assumindo pt-BR
-      console.log(`[MsgProcessor ${jobId}] Transcrição de áudio concluída.`);
+      aiAnalysis = await transcribeAudio(mediaBuffer, mimeType, undefined, DEFAULT_AUDIO_TRANSCRIPTION_LANGUAGE); // Assumindo pt-BR
+      logger.debug(`[MsgProcessor ${jobId}] Transcrição de áudio concluída.`);
     } else {
-        console.log(`[MsgProcessor ${jobId}] Tipo de mídia (${mimeType}) não suportado para análise de IA.`);
+        logger.info(`[MsgProcessor ${jobId}] Tipo de mídia (${mimeType}) não suportado para análise de IA.`);
     }
 
     // Atualizar mensagem no banco com URL do S3, análise de IA e status
@@ -295,20 +302,20 @@ async function processMediaIfExists(message: any, conversation: ConversationData
         updateData.ai_media_analysis = aiAnalysis;
         // Se o conteúdo original for apenas o placeholder, atualizar com a análise/transcrição
         // ou adicionar a análise ao conteúdo existente. Decidi adicionar ao conteúdo.
-        if (message.content === '[Áudio Recebido]' || message.content === '[Imagem Recebida]' || message.content === `[${mediaPrimaryType === 'image' ? 'Imagem' : 'Mídia'} Recebida]`) {
-             updateData.content = `[${mediaPrimaryType === 'image' ? 'Imagem Analisada' : 'Áudio Transcrito'}]: ${aiAnalysis}`;
-        } else if (aiAnalysis !== '[Análise da mídia: ]' && aiAnalysis !== '[]') { // Evitar adicionar análise vazia
+        if (message.content === MEDIA_PLACEHOLDERS.AUDIO_RECEIVED || message.content === MEDIA_PLACEHOLDERS.IMAGE_RECEIVED || message.content === `[${mediaPrimaryType === 'image' ? 'Imagem' : 'Mídia'} Recebida]`) {
+             updateData.content = `[${mediaPrimaryType === 'image' ? MEDIA_PLACEHOLDERS.IMAGE_ANALYZED : MEDIA_PLACEHOLDERS.AUDIO_TRANSCRIBED}]: ${aiAnalysis}`;
+        } else if (aiAnalysis !== MEDIA_PLACEHOLDERS.ANALYSIS_EMPTY && aiAnalysis !== '[]') { // Evitar adicionar análise vazia
              // Se já houver conteúdo (ex: caption da imagem), adicionar a análise.
              // Limitar o tamanho do conteúdo para evitar estouro no DB? Por enquanto, adicionar.
-             updateData.content = `${message.content}\n[Análise: ${aiAnalysis}]`;
+             updateData.content = `${message.content}\n${MEDIA_PLACEHOLDERS.ANALYSIS_PREFIX}${aiAnalysis}]`;
         } else {
              // Se a análise for vazia ou placeholder, manter o conteúdo original ou placeholder
-             console.log(`[MsgProcessor ${jobId}] Análise de IA vazia ou placeholder, mantendo conteúdo original.`);
+             logger.debug(`[MsgProcessor ${jobId}] Análise de IA vazia ou placeholder, mantendo conteúdo original.`);
         }
     } else if (mediaPrimaryType === 'audio') {
          // Se for áudio e não houve análise (ex: erro na transcrição), manter o placeholder original.
-         updateData.content = message.content || "[Áudio Recebido - Falha na Transcrição]";
-         console.warn(`[MsgProcessor ${jobId}] Falha na transcrição de áudio para mensagem ${message.id}.`);
+         updateData.content = message.content || MEDIA_PLACEHOLDERS.AUDIO_TRANSCRIPTION_FAILED;
+         logger.warn(`[MsgProcessor ${jobId}] Falha na transcrição de áudio para mensagem ${message.id}.`);
     } else {
          // Para outras mídias sem análise, manter o conteúdo original (caption/placeholder).
          updateData.content = message.content;
@@ -336,7 +343,7 @@ async function processMediaIfExists(message: any, conversation: ConversationData
       data: updateData
     });
 
-    console.log(`[MsgProcessor ${jobId}] Mensagem ${message.id} atualizada com detalhes da mídia e análise.`);
+    logger.info(`[MsgProcessor ${jobId}] Mensagem ${message.id} atualizada com detalhes da mídia e análise.`);
 
     // TODO: Considerar disparar um Pusher event 'media_processed' ou 'message_updated' aqui
     // para que a UI possa atualizar a mensagem em tempo real com a transcrição/análise.
@@ -359,14 +366,14 @@ async function processMediaIfExists(message: any, conversation: ConversationData
                 providerMessageId: message.providerMessageId,
             }
         });
-        console.log(`[MsgProcessor ${jobId}] Evento 'message_updated' disparado para mensagem ${message.id}.`);
+        logger.debug(`[MsgProcessor ${jobId}] Evento 'message_updated' disparado para mensagem ${message.id}.`);
     } catch (pusherError: any) {
-        console.error(`[MsgProcessor ${jobId}] Falha ao disparar evento 'message_updated' para mensagem ${message.id}:`, pusherError?.message || pusherError);
+        logger.error(`[MsgProcessor ${jobId}] Falha ao disparar evento 'message_updated' para mensagem ${message.id}:`, pusherError?.message || pusherError);
     }
 
 
   } catch (error: any) {
-    console.error(`[MsgProcessor ${jobId}] Erro no processamento de mídia:`, error.message);
+    logger.error(`[MsgProcessor ${jobId}] Erro no processamento de mídia:`, error.message);
     // Se o processamento de mídia falhar, não vamos falhar o job principal.
     // A mensagem ficará sem a análise de IA, mas o fluxo de resposta da IA ainda pode tentar prosseguir
     // baseado no conteúdo "[Áudio Recebido]". Talvez seja melhor logar e continuar.
@@ -375,7 +382,7 @@ async function processMediaIfExists(message: any, conversation: ConversationData
 
 async function generateAIResponse(conversationId: string, workspace: WorkspaceConfig, jobId: string): Promise<string | null> {
   try {
-    console.log(`[MsgProcessor ${jobId}] Gerando resposta da IA`);
+    logger.info(`[MsgProcessor ${jobId}] Gerando resposta da IA`);
 
     // Buscar histórico
     const history = await prisma.message.findMany({
@@ -396,16 +403,21 @@ async function generateAIResponse(conversationId: string, workspace: WorkspaceCo
       if (msg.sender_type === MessageSenderType.CLIENT) {
         let content = msg.content || '';
         if (msg.ai_media_analysis) {
-          content += `\n[Análise da mídia: ${msg.ai_media_analysis}]`;
+          content += `\n${MEDIA_PLACEHOLDERS.ANALYSIS_PREFIX}${msg.ai_media_analysis}]`;
         }
-        return { role: 'user', content };
+        return { role: AI_MESSAGE_ROLES.USER, content } as CoreMessage;
       } else {
-        return { role: 'assistant', content: msg.content || '' };
+        return { role: AI_MESSAGE_ROLES.ASSISTANT, content: msg.content || '' } as CoreMessage;
       }
     });
 
+    logger.debug(`[MsgProcessor ${jobId}] Mensagens formatadas para IA:`, aiMessages.map(msg => ({
+      role: msg.role,
+      content: typeof msg.content === 'string' ? msg.content.substring(0, 100) + '...' : '[Non-string content]'
+    })));
+
     // Processar com IA
-    const modelId = workspace.ai_model_preference || 'openrouter/google/gemini-2.0-flash-001';
+    const modelId = workspace.ai_model_preference || DEFAULT_AI_MODEL;
     const systemPrompt = workspace.ai_default_system_prompt || undefined;
     
     const aiResult = await processAIChat(aiMessages, workspace.id, conversationId, true, modelId, systemPrompt);
@@ -427,11 +439,12 @@ async function generateAIResponse(conversationId: string, workspace: WorkspaceCo
       }
     }
 
-    console.log(`[MsgProcessor ${jobId}] Resposta da IA gerada: ${response.substring(0, 100)}...`);
+    logger.debug(`[MsgProcessor ${jobId}] Resposta bruta da IA:`, response);
+    logger.info(`[MsgProcessor ${jobId}] Resposta da IA gerada: ${response.substring(0, 100)}...`);
     return response.trim() || null;
 
   } catch (error: any) {
-    console.error(`[MsgProcessor ${jobId}] Erro ao gerar resposta da IA:`, error.message);
+    logger.error(`[MsgProcessor ${jobId}] Erro ao gerar resposta da IA:`, error.message);
     return null;
   }
 }
@@ -449,12 +462,12 @@ async function sendAIResponse({ aiResponse, conversation, workspaceId, jobId }: 
   console.log(`[MsgProcessor ${jobId}] Configuração: Fracionado=${shouldFractionate}`);
 
   if (shouldFractionate) {
-    console.log(`[MsgProcessor ${jobId}] Enviando resposta fracionada`);
+    logger.info(`[MsgProcessor ${jobId}] Enviando resposta fracionada`);
     const paragraphs = aiResponse.split(/\n\s*\n/).filter(p => p.trim() !== '');
-    console.log(`[MsgProcessor ${jobId}] Dividido em ${paragraphs.length} parágrafos`);
+    logger.debug(`[MsgProcessor ${jobId}] Dividido em ${paragraphs.length} parágrafos`);
     
     for (let i = 0; i < paragraphs.length; i++) {
-      console.log(`[MsgProcessor ${jobId}] Enviando parágrafo ${i + 1}/${paragraphs.length}`);
+      logger.debug(`[MsgProcessor ${jobId}] Enviando parágrafo ${i + 1}/${paragraphs.length}`);
       
       await sendSingleMessage({
         content: paragraphs[i].trim(),
@@ -467,14 +480,14 @@ async function sendAIResponse({ aiResponse, conversation, workspaceId, jobId }: 
 
       // Aplicar delay FIXO de 3s entre mensagens fracionadas (exceto na última)
       if (i < paragraphs.length - 1) {
-        console.log(`[MsgProcessor ${jobId}] Aplicando delay fixo de ${FRACTIONED_MESSAGE_DELAY}ms entre parágrafos...`);
+        logger.debug(`[MsgProcessor ${jobId}] Aplicando delay fixo de ${FRACTIONED_MESSAGE_DELAY}ms entre parágrafos...`);
         await new Promise(resolve => setTimeout(resolve, FRACTIONED_MESSAGE_DELAY));
-        console.log(`[MsgProcessor ${jobId}] Delay entre parágrafos concluído.`);
+        logger.debug(`[MsgProcessor ${jobId}] Delay entre parágrafos concluído.`);
       }
     }
-    console.log(`[MsgProcessor ${jobId}] Todos os ${paragraphs.length} parágrafos foram enviados`);
+    logger.info(`[MsgProcessor ${jobId}] Todos os ${paragraphs.length} parágrafos foram enviados`);
   } else {
-    console.log(`[MsgProcessor ${jobId}] Enviando resposta única (sem fracionamento)`);
+    logger.info(`[MsgProcessor ${jobId}] Enviando resposta única (sem fracionamento)`);
     await sendSingleMessage({
       content: aiResponse,
       conversation,
@@ -497,7 +510,7 @@ interface SendSingleMessageParams {
 
 async function sendSingleMessage({ content, conversation, workspaceId, jobId, messageIndex, totalMessages }: SendSingleMessageParams) {
   try {
-    console.log(`[MsgProcessor ${jobId}] Criando mensagem ${messageIndex}/${totalMessages} no banco...`);
+    logger.debug(`[MsgProcessor ${jobId}] Criando mensagem ${messageIndex}/${totalMessages} no banco...`);
     
     // Criar mensagem no banco
     const newMessage = await prisma.message.create({
@@ -510,7 +523,7 @@ async function sendSingleMessage({ content, conversation, workspaceId, jobId, me
       }
     });
 
-    console.log(`[MsgProcessor ${jobId}] Mensagem ${messageIndex}/${totalMessages} criada (ID: ${newMessage.id})`);
+    logger.info(`[MsgProcessor ${jobId}] Mensagem ${messageIndex}/${totalMessages} criada (ID: ${newMessage.id})`);
 
     // Publicar no Pusher IMEDIATAMENTE após criação
     try {
@@ -525,13 +538,13 @@ async function sendSingleMessage({ content, conversation, workspaceId, jobId, me
           timestamp: newMessage.timestamp.toISOString(),
         }
       });
-      console.log(`[MsgProcessor ${jobId}] Mensagem ${messageIndex} publicada no Pusher`);
+      logger.debug(`[MsgProcessor ${jobId}] Mensagem ${messageIndex} publicada no Pusher`);
     } catch (pusherError) {
-      console.error(`[MsgProcessor ${jobId}] Erro no Pusher para mensagem ${messageIndex}:`, pusherError);
+      logger.error(`[MsgProcessor ${jobId}] Erro no Pusher para mensagem ${messageIndex}:`, pusherError);
     }
 
     // Enviar via canal (WhatsApp/Evolution)
-    console.log(`[MsgProcessor ${jobId}] Enviando mensagem ${messageIndex} via canal ${conversation.channel}...`);
+    logger.debug(`[MsgProcessor ${jobId}] Enviando mensagem ${messageIndex} via canal ${conversation.channel}...`);
     const sendResult = await sendViaChannel(content, conversation, newMessage.id, jobId);
 
     // Atualizar status baseado no resultado
@@ -560,18 +573,18 @@ async function sendSingleMessage({ content, conversation, workspaceId, jobId, me
           errorMessage: (updateData as any).errorMessage // Inclui erro se falhou
         }
       });
-      console.log(`[MsgProcessor ${jobId}] Status da mensagem ${newMessage.id} (${updateData.status}) publicado no Pusher`);
+      logger.debug(`[MsgProcessor ${jobId}] Status da mensagem ${newMessage.id} (${updateData.status}) publicado no Pusher`);
     } catch (pusherError) {
-      console.error(`[MsgProcessor ${jobId}] Erro no Pusher para atualização de status:`, pusherError);
+      logger.error(`[MsgProcessor ${jobId}] Erro no Pusher para atualização de status:`, pusherError);
     }
 
     const statusText = sendResult.success ? 'ENVIADA com sucesso' : `FALHOU (${sendResult.error})`;
-    console.log(`[MsgProcessor ${jobId}] Mensagem ${messageIndex}/${totalMessages} ${statusText}`);
+    logger.info(`[MsgProcessor ${jobId}] Mensagem ${messageIndex}/${totalMessages} ${statusText}`);
 
     return { success: sendResult.success, messageId: newMessage.id };
 
   } catch (error: any) {
-    console.error(`[MsgProcessor ${jobId}] ERRO CRÍTICO ao processar mensagem ${messageIndex}:`, error.message);
+    logger.error(`[MsgProcessor ${jobId}] ERRO CRÍTICO ao processar mensagem ${messageIndex}:`, error.message);
     return { success: false, error: error.message };
   }
 }
@@ -581,8 +594,9 @@ async function sendViaChannel(content: string, conversation: ConversationData, m
   const clientPhone = client.phone_number;
 
   try {
-    if (channel === 'WHATSAPP' || channel === 'WHATSAPP_CLOUDAPI') {
+    if (channel === CHANNEL_TYPES.WHATSAPP || channel === CHANNEL_TYPES.WHATSAPP_CLOUDAPI) {
       if (!workspace.whatsappAccessToken || !workspace.whatsappPhoneNumberId) {
+        logger.warn(`[MsgProcessor ${jobId}] Configuração WhatsApp ausente para canal ${channel}`);
         return { success: false, error: 'Configuração WhatsApp ausente' };
       }
 
@@ -600,8 +614,9 @@ async function sendViaChannel(content: string, conversation: ConversationData, m
         error: result.success ? null : result.error
       };
 
-    } else if (channel === 'WHATSAPP_EVOLUTION') {
+    } else if (channel === CHANNEL_TYPES.WHATSAPP_EVOLUTION) {
       if (!workspace.evolution_api_token || !workspace.evolution_api_instance_name) {
+        logger.warn(`[MsgProcessor ${jobId}] Configuração Evolution API ausente para canal ${channel}`);
         return { success: false, error: 'Configuração Evolution ausente' };
       }
 
@@ -621,26 +636,17 @@ async function sendViaChannel(content: string, conversation: ConversationData, m
       };
     }
 
+    logger.warn(`[MsgProcessor ${jobId}] Canal ${channel} não suportado`);
     return { success: false, error: `Canal ${channel} não suportado` };
 
   } catch (error: any) {
-    console.error(`[MsgProcessor ${jobId}] Erro no envio via canal:`, error.message);
+    logger.error(`[MsgProcessor ${jobId}] Erro no envio via canal:`, error.message);
     return { success: false, error: error.message };
   }
 }
 
-// Helper para converter Stream para Buffer
-async function streamToBuffer(stream: Readable): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    stream.on('data', chunk => chunks.push(chunk instanceof Buffer ? chunk : Buffer.from(chunk)));
-    stream.on('error', reject);
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-  });
-}
-
 // --- Inicialização do Worker ---
-console.log(`[MsgProcessor] Inicializando worker...`);
+logger.info(`[MsgProcessor] Inicializando worker...`);
 
 const worker = new Worker<JobData>(QUEUE_NAME, processJob, {
   connection: redisConnection,
@@ -648,15 +654,15 @@ const worker = new Worker<JobData>(QUEUE_NAME, processJob, {
 });
 
 worker.on('completed', (job, result) => {
-  console.log(`[MsgProcessor] Job ${job.id} concluído: ${result.status}`);
+  logger.info(`[MsgProcessor] Job ${job.id} concluído: ${result.status}`);
 });
 
 worker.on('failed', (job, err) => {
-  console.error(`[MsgProcessor] Job ${job?.id} falhou:`, err.message);
+  logger.error(`[MsgProcessor] Job ${job?.id} falhou:`, err.message);
 });
 
 worker.on('error', (err) => {
-  console.error('[MsgProcessor] Erro do worker:', err);
+  logger.error('[MsgProcessor] Erro do worker:', err);
 });
 
-console.log(`[MsgProcessor] Worker ativo na fila "${QUEUE_NAME}"`);
+logger.info(`[MsgProcessor] Worker ativo na fila "${QUEUE_NAME}"`);

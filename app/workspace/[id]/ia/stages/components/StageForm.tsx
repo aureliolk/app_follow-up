@@ -180,7 +180,7 @@ export default function StageForm({ workspaceId, initialData, onSuccess }: Stage
                 <Input
                     id="name"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => setName(e.target.value.replace(/\s/g, '_'))}
                     required
                 />
             </div>
