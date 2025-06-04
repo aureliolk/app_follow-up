@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { AVAILABLE_MODELS } from '@/lib/constants';
 import {  systemPromptCheckName } from './tools/openRouterModel';
 import { aiResponseText } from './tools/openRouterModel';
+import { sendMediaToConversation } from '@/lib/services/mediaSenderService'; // Import the new service
 
 // Interface para contexto de estágio
 interface StageContext {
@@ -63,6 +64,28 @@ async function executeStageActions(stage: any, context: StageContext, conversati
 
         case AIStageActionTypeEnum.SEND_TEXT_MESSAGE:
           // TODO: Implementar envio de mensagem
+          break;
+
+        case AIStageActionTypeEnum.SEND_VIDEO:
+        case AIStageActionTypeEnum.SEND_IMAGE:
+        case AIStageActionTypeEnum.SEND_DOCUMENT:
+          const mediaResult = await sendMediaToConversation({
+            conversationId: conversationId,
+            mediaUrl: action.config.mediaUrl,
+            mimeType: action.config.mimeType,
+            mediaType: action.type === AIStageActionTypeEnum.SEND_VIDEO ? 'video' :
+                       action.type === AIStageActionTypeEnum.SEND_IMAGE ? 'image' :
+                       'document', // Default to document for SEND_DOCUMENT
+            caption: action.config.caption,
+            filename: action.config.filename,
+          });
+          results.push({
+            type: action.type,
+            name: `Send ${action.type.split('_')[1].toLowerCase()}`,
+            result: mediaResult
+          });
+          // You might want to handle apiResponseData for media sends if the AI needs to know the outcome
+          // For now, we just log the result.
           break;
 
         default:
