@@ -82,7 +82,6 @@ interface ConversationContextType {
     fetchConversations: (filter: string, workspaceId: string, page: number, pageSize: number, append?: boolean) => Promise<void>;
     fetchConversationMessages: (conversationId: string, page: number, pageSize: number, append?: boolean, orderBy?: 'asc' | 'desc') => Promise<Message[]>;
     loadMoreConversations: () => void;
-    loadMoreMessages: () => void;
     selectConversation: (conversation: ClientConversation | null) => void;
     clearMessagesError: () => void;
 
@@ -183,88 +182,39 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
     const fetchConversationMessages = useCallback(async (
         conversationId: string,
         page: number = 1,
-        pageSize: number = 20,
+        pageSize: number = 1000, // Increased pageSize to load all messages at once
         append: boolean = false,
         orderBy?: 'asc' | 'desc'
     ): Promise<Message[]> => {
         if (!append && messageCache[conversationId]) {
-             setSelectedConversationMessages(messageCache[conversationId]);
-             setLoadingSelectedConversationMessages(false);
+            setSelectedConversationMessages(messageCache[conversationId]);
+            setLoadingSelectedConversationMessages(false);
             return messageCache[conversationId];
         }
-        if (append) {
-            setIsLoadingMoreMessages(true);
-        } else {
-            setLoadingSelectedConversationMessages(true);
-            setCurrentMessagesPage(page);
-            setHasMoreMessages(true);
-        }
+
+        setLoadingSelectedConversationMessages(true);
         setSelectedConversationError(null);
+
         try {
-            const offset = (page - 1) * pageSize;
-            let fetchedMessages: Message[];
-            let hasMore: boolean;
+            const result = await fetchConversationMessagesApi(conversationId, 0, pageSize, 'desc');
+            const fetchedMessages = result.data;
 
-            if (!append) {
-                // Initial load: Fetch most recent messages in DESC order from API
-                // API should return the LAST 'pageSize' messages when orderBy is 'desc' and offset is 0
-                // Temporarily log the parameters being passed to the API function
-                console.log(`[ConversationContext] fetchConversationMessages: Initial load API call params - conversationId: ${conversationId}, offset: 0, limit: ${pageSize}, orderBy: desc`);
-                const result = await fetchConversationMessagesApi(conversationId, 0, pageSize, 'desc');
-                fetchedMessages = result.data;
-                hasMore = result.hasMore;
+            setMessageCache(prev => ({ ...prev, [conversationId]: fetchedMessages }));
+            setSelectedConversationMessages(fetchedMessages);
+            setHasMoreMessages(false); // No more messages to load
 
-            } else {
-                // Load more (append): Fetch older messages in ASC order from API
-                // Use the existing offset logic
-                // Temporarily log the parameters being passed to the API function
-                console.log(`[ConversationContext] fetchConversationMessages: Append load API call params - conversationId: ${conversationId}, offset: ${offset}, limit: ${pageSize}, orderBy: asc`);
-                const result = await fetchConversationMessagesApi(conversationId, offset, pageSize, 'asc');
-                fetchedMessages = result.data;
-                hasMore = result.hasMore;
-            }
-
-            if (append) {
-                setMessageCache(prev => {
-                    const currentMessages = prev[conversationId] || [];
-                    const combined = [...fetchedMessages, ...currentMessages];
-                    const uniqueMessagesMap = new Map(combined.map(item => [item.id, item]));
-                    return { ...prev, [conversationId]: Array.from(uniqueMessagesMap.values()) };
-                });
-                setSelectedConversationMessages(prev => {
-                    const combined = [...fetchedMessages, ...prev];
-                    const uniqueMessagesMap = new Map(combined.map(item => [item.id, item]));
-                    return Array.from(uniqueMessagesMap.values());
-                });
-            } else {
-                // Initial load: Use fetchedMessages directly (already DESC from API) and store in cache
-                // This order is correct for the UI rendering from bottom up.
-                setMessageCache(prev => ({ ...prev, [conversationId]: fetchedMessages }));
-                setSelectedConversationMessages(fetchedMessages);
-            }
-            setHasMoreMessages(hasMore);
             return fetchedMessages;
         } catch (err: any) {
             const message = err.message || 'Erro ao buscar mensagens.';
             console.error(`[ConversationContext] Erro ao buscar mensagens para ${conversationId}:`, err);
             setSelectedConversationError(message);
-            if (!append) setSelectedConversationMessages([]);
+            setSelectedConversationMessages([]);
             toast.error(`Erro ao buscar mensagens: ${message}`);
-            setHasMoreMessages(false);
             return [];
         } finally {
             setLoadingSelectedConversationMessages(false);
-            setIsLoadingMoreMessages(false);
         }
     }, [messageCache, setMessageCache, setSelectedConversationMessages, setLoadingSelectedConversationMessages, setSelectedConversationError]);
-
-    const loadMoreMessages = useCallback(() => {
-        if (isLoadingMoreMessages || !hasMoreMessages || !selectedConversation) return;
-        const nextPage = currentMessagesPage + 1;
-        // For loading more (append), we want OLDER messages, so keep orderBy: 'asc' implicit or explicit
-        fetchConversationMessages(selectedConversation.id, nextPage, 20, true, 'asc'); // Explicitly request ASC for append
-        setCurrentMessagesPage(nextPage);
-    }, [isLoadingMoreMessages, hasMoreMessages, selectedConversation, currentMessagesPage, fetchConversationMessages]);
 
     const selectConversation = useCallback((conversation: ClientConversation | null) => {
         const newConversationId = conversation?.id ?? null;
@@ -964,7 +914,6 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         fetchConversations,
         fetchConversationMessages,
         loadMoreConversations,
-        loadMoreMessages,
         selectConversation,
         clearMessagesError,
         handleRealtimeNewMessage,
@@ -973,7 +922,9 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         handleRealtimeConversationUpdate,
         selectConversationForClient,
         sendManualMessage,
-        sendTemplateMessage, sendMediaMessage, toggleAIStatus,
+        sendTemplateMessage,
+        sendMediaMessage,
+        toggleAIStatus,
         removeConversationByClientId,
     }), [
         conversations, loadingConversations, isLoadingMoreConversations, hasMoreConversations, conversationsError,
@@ -981,7 +932,7 @@ export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ childr
         selectedConversationMessages, loadingSelectedConversationMessages, isLoadingMoreMessages, hasMoreMessages, selectedConversationError,
         messageCache, unreadConversationIds, isSendingMessage, isTogglingAIStatus,
         isPusherConnected, loadingPusherConfig,
-        fetchConversations, fetchConversationMessages, loadMoreConversations, loadMoreMessages, selectConversation, clearMessagesError,
+        fetchConversations, fetchConversationMessages, loadMoreConversations, selectConversation, clearMessagesError,
         handleRealtimeNewMessage, handleRealtimeStatusUpdate, handleRealtimeAIStatusUpdate,
         selectConversationForClient,
         sendManualMessage,
