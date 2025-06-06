@@ -50,7 +50,6 @@ export default function ConversationInputArea({
   sendTemplateMessage,
   isSendingMessage,
   isUploading,
-  setIsUploading, // Adicionado
   loadingTemplates,
   textareaRef,
 }: ConversationInputAreaProps) {
@@ -250,7 +249,6 @@ export default function ConversationInputArea({
 
   const commonDisabled = isSendingMessage || isUploading;
   // Desabilitar abas se estiver gravando áudio (somente para 'reply')
-  const tabsDisabled = commonDisabled || (isRecording && messageType === 'reply');
 
   const isTextareaDisabled = isSendingMessage || isUploading || (isRecording && messageType === 'reply');
   console.log('[InputArea] Render state. isSendingMessage:', isSendingMessage, 'isUploading:', isUploading, 'isRecording:', isRecording, 'messageType:', messageType, 'isTextareaDisabled:', isTextareaDisabled);
@@ -267,7 +265,6 @@ export default function ConversationInputArea({
                 "data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground",
                 "data-[state=active]:text-orange-500 dark:data-[state=active]:text-orange-400 after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-1px] after:h-[2px] data-[state=active]:after:bg-orange-500 dark:data-[state=active]:after:bg-orange-400"
               )}
-              // disabled={tabsDisabled}
             >
               Responder
             </TabsTrigger>

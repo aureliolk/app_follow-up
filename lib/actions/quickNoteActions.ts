@@ -1,7 +1,6 @@
 "use server";
 
 import { prisma } from '@/lib/db';
-import { NextResponse } from 'next/server';
 
 export async function createQuickNote(workspaceId: string, content: string) {
   if (!workspaceId || !content) {
@@ -34,3 +33,18 @@ export async function getAllQuickNotes(workspaceId: string) {
     return { success: false, error: 'Failed to fetch notes.' };
   }
 }
+
+export async function deleteQuickNote(noteId: string) {
+  if (!noteId) {
+    return { success: false, error: 'noteId is required.' };
+  }
+  try {
+    await prisma.quickNote.delete({
+      where: { id: noteId },
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: 'Failed to delete note.' };
+  }
+}
+  
