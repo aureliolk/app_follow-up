@@ -171,7 +171,7 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
               </div>
             )}
 
-            <ScrollArea className="flex-grow max-h-full">
+            <ScrollArea className="h-48 max-h-48 overflow-y-auto flex-grow">
               {loading ? (
                 <div className="text-center text-xs text-muted-foreground py-4">Carregando...</div>
               ) : notes.length === 0 ? (
