@@ -4,11 +4,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { StickyNote } from "lucide-react";
+import { StickyNote, Trash2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 // Import server actions
-import { createQuickNote, getAllQuickNotes } from "@/lib/actions/quickNoteActions";
+import { createQuickNote, deleteQuickNote, getAllQuickNotes } from "@/lib/actions/quickNoteActions";
 
 interface QuickNotesPopoverProps {
   workspaceId: string;
@@ -68,6 +68,26 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
     }
   }
 
+  async function handleDeleteNote(noteId: string) {
+    if (!confirm("Tem certeza que deseja excluir esta nota?")) return;
+    setLoading(true); // Use loading state for the whole component during deletion
+    try {
+      // Call the new deleteQuickNote action (to be implemented)
+      const result = await deleteQuickNote(noteId);
+      if (result.success) {
+        setNotes(notes.filter(note => note.id !== noteId));
+        toast.success("Nota excluída!");
+      } else {
+        toast.error(result.error || "Erro ao excluir nota");
+      }
+    } catch (error) {
+      console.error("Erro ao excluir nota:", error);
+      toast.error("Erro ao excluir nota");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -98,7 +118,7 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
               </Button>
             </form>
           </div>
-          <ScrollArea className="max-h-48">
+          <ScrollArea className="max-h-[300px]">
             {loading ? (
               <div className="text-center text-xs text-muted-foreground py-4">Carregando...</div>
             ) : notes.length === 0 ? (
@@ -107,14 +127,27 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
               notes.map(note => (
                 <div
                   key={note.id}
-                  className="border rounded p-2 mb-2 cursor-pointer hover:bg-accent transition text-sm"
-                  onClick={() => {
-                    if (onInsertNote) onInsertNote(note.content);
-                    onOpenChange(false); // Use onOpenChange to close the popover
-                  }}
-                  title="Clique para inserir esta nota"
+                  className="border rounded p-2 mb-2 flex justify-between items-center group text-sm"
                 >
-                  {note.content}
+                  <div
+                    className="flex-grow cursor-pointer hover:text-foreground transition"
+                    onClick={() => {
+                      if (onInsertNote) onInsertNote(note.content);
+                      onOpenChange(false); // Use onOpenChange to close the popover
+                    }}
+                    title="Clique para inserir esta nota"
+                  >
+                    {note.content}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDeleteNote(note.id)}
+                    title="Excluir nota"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               ))
             )}
