@@ -97,7 +97,7 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0 border-0 shadow-xl" side="top" align="start">
         <div className="p-3 border-b font-semibold text-sm">Notas rápidas</div>
-        <div className="p-2 flex flex-col h-[200px]"> {/* Added flex flex-col and fixed height */}
+        <div className="p-2 flex flex-col h-[350px]"> {/* Added flex flex-col and fixed height */}
           <div className="mb-2 flex-shrink-0"> {/* Added flex-shrink-0 */}
             <form
               onSubmit={async (e) => {
@@ -127,10 +127,10 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
               notes.map(note => (
                 <div
                   key={note.id}
-                  className="border rounded p-2 mb-2 flex justify-between items-center group text-sm"
+                  className="border rounded-lg p-2 mb-2 flex justify-between items-center group text-sm cursor-pointer hover:bg-accent transition"
                 >
                   <div
-                    className="flex-grow cursor-pointer hover:text-foreground transition"
+                    className="flex-grow"
                     onClick={() => {
                       if (onInsertNote) onInsertNote(note.content);
                       onOpenChange(false); // Use onOpenChange to close the popover
