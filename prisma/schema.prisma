@@ -298,6 +298,7 @@ model Workspace {
   members                                  WorkspaceMember[]
   webhooks                                 WorkspaceWebhook[]
   owner                                    User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
+  quickNotes                               QuickNote[]
 
   @@map("workspaces")
   @@schema("workspace_schema")
@@ -532,7 +533,19 @@ model WorkspaceTag {
   updated_at   DateTime  @updatedAt
   workspace    Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
 
-  @@unique([workspace_id, name])
+  @@index([workspace_id])
+  @@schema("workspace_schema")
+}
+
+model QuickNote {
+  id          String   @id @default(uuid())
+  content     String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  workspace_id String?
+  workspace   Workspace? @relation(fields: [workspace_id], references: [id])
+
+  
   @@index([workspace_id])
   @@schema("workspace_schema")
 }
