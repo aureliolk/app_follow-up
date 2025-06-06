@@ -14,6 +14,11 @@ import {
   Pause,
 
   Lock,
+  PlayCircle,
+  CheckSquare,
+  CircleOff,
+  PauseCircle,
+  Star,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -28,6 +33,31 @@ import ConversationInputArea from './ConversationInputArea';
 import ClientInfoSidebar from './ClientInfoSidebar';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+const getFollowUpStatusDisplay = (status: string | undefined | null): {
+  text: string;
+  Icon: React.ElementType;
+  colorClass: string;
+  tooltip: string;
+} | null => {
+  if (!status) return null;
+
+  switch (status.toUpperCase()) {
+    case 'ACTIVE':
+      return { text: "Follow-up Ativo", Icon: PlayCircle, colorClass: "text-green-600 dark:text-green-500", tooltip: "Sequência de follow-up automático está ativa." };
+    case 'PAUSED':
+      return { text: "Follow-up Pausado", Icon: PauseCircle, colorClass: "text-yellow-600 dark:text-yellow-500", tooltip: "Sequência de follow-up está pausada." };
+    case 'CONVERTED':
+      return { text: "Convertido", Icon: Star, colorClass: "text-blue-600 dark:text-blue-500", tooltip: "Cliente atingiu o objetivo do follow-up." };
+    case 'CANCELLED':
+      return { text: "Cancelado", Icon: CircleOff, colorClass: "text-red-600 dark:text-red-500", tooltip: "Sequência de follow-up foi cancelada." };
+    case 'COMPLETED':
+      return { text: "Concluído", Icon: CheckSquare, colorClass: "text-gray-500 dark:text-gray-400", tooltip: "Sequência de follow-up foi concluída." };
+    default:
+        console.warn(`[ConvDetail] Status de follow-up desconhecido recebido: ${status}`);
+        return null;
+  }
+};
 
 export default function ConversationDetail() {
   const {
@@ -46,6 +76,8 @@ export default function ConversationDetail() {
     fetchConversations,
   } = useConversationContext();
   const { updateClient, deleteClient } = useClient();
+
+  const followUpDisplay = getFollowUpStatusDisplay(conversation?.activeFollowUp?.status); 
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -159,6 +191,21 @@ export default function ConversationDetail() {
               <div className="text-xs text-muted-foreground truncate" title={conversation.client?.phone_number || 'Sem telefone'}>
                 {conversation.client?.phone_number || 'Sem telefone'}
               </div>
+              {followUpDisplay && (
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                         <span className={cn("inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full", followUpDisplay.colorClass)}>
+                           <followUpDisplay.Icon className="h-3 w-3 mr-1" />
+                           {followUpDisplay.text}
+                         </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>{followUpDisplay.tooltip}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
             </div>
           </div>
         </div>

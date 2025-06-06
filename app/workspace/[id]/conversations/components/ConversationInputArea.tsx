@@ -4,19 +4,22 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
-import { Loader2, Mic, Paperclip, PauseCircle, Quote, Send, Smile, Maximize2, Layout } from 'lucide-react';
+import { Loader2, Mic, Paperclip, PauseCircle, Quote, Send, Smile, Maximize2, Layout, StickyNote } from 'lucide-react';
 // Se você não tiver axios ou toast aqui diretamente, remova-os se forem gerenciados em outro lugar.
 // import axios from 'axios'; // Se não usado diretamente aqui
 import { toast } from 'react-hot-toast'; // Necessário para handleSendAudioFile e startRecording
 import { format } from 'date-fns';
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // Remova se Message não for usado diretamente aqui.
 // import type { Message } from '@/app/types';
 import { cn } from '@/lib/utils';
 import WhatsappTemplateDialog from '@/components/whatsapp/WhatsappTemplateDialog'; // Certifique-se que este componente aceita 'triggerButton'
 import { useConversationContext } from '@/context/ConversationContext';
+import QuickNotesPopover from './QuickNotesPopover';
+
 
 type MessageType = 'reply' | 'private-note';
 
@@ -63,6 +66,7 @@ export default function ConversationInputArea({
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showQuickNotesPopover, setShowQuickNotesPopover] = useState(false); // Renamed and adjusted for popover control
   // Removed sendingRef as it's redundant with isSendingMessage prop from context
 
   const handleEmojiClick = (emojiData: EmojiClickData) => {
@@ -301,7 +305,15 @@ export default function ConversationInputArea({
                   : "text-foreground border-input" // A borda superior é dada pelo Textarea, ou pelo div pai se for border-0
               )}
               value={internalNewMessage}
-              onChange={(e) => setInternalNewMessage(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setInternalNewMessage(value);
+                if (value.startsWith('/')) {
+                  setShowQuickNotesPopover(true);
+                } else {
+                  setShowQuickNotesPopover(false);
+                }
+              }}
               onKeyPress={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !isSendingMessage && !isUploading && !(isRecording && messageType === 'reply')) {
                   e.preventDefault();
@@ -321,6 +333,19 @@ export default function ConversationInputArea({
         <div className="flex items-center space-x-0.5 sm:space-x-1">
           {messageType === 'reply' && !isRecording && (
             <>
+              {/* Notas rápidas */}
+              <QuickNotesPopover
+                workspaceId={workspaceId}
+                open={showQuickNotesPopover} // Control popover visibility
+                onOpenChange={setShowQuickNotesPopover} // Allow popover to control its own open state
+                onInsertNote={(content) => {
+                  setInternalNewMessage(content); // Replace current content with note
+                  setShowQuickNotesPopover(false); // Close popover after insertion
+                  textareaRef.current?.focus();
+                }}
+                disabled={commonDisabled}
+              />
+
               <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" disabled={commonDisabled} title="Emoji">

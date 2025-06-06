@@ -12,7 +12,6 @@ import ConversationDetail from '../components/ConversationDetail';
 import { ConversationItem } from '../components/ConversationItem';
 import type { ClientConversation } from '@/app/types';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 
 const CONVERSATIONS_PER_PAGE = 50;
 const ITEM_HEIGHT = 64; // Reduced item height to reduce perceived spacing
@@ -30,11 +29,10 @@ export default function ConversationsPage() {
     selectedConversation,
     selectConversation,
     fetchConversations,
-    loadMoreConversations,
     totalCountAll,
     totalCountHuman,
     totalCountAi,
-    unreadConversationIds, // Add unreadConversationIds here
+    unreadConversationIds, 
   } = useConversationContext();
 
   const params = useParams();
@@ -43,8 +41,7 @@ export default function ConversationsPage() {
 
   const [aiFilter, setAiFilter] = useState<AiFilterType>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const listRef = useRef(null); // This ref is no longer used for IntersectionObserver, but can be kept for other purposes if needed.
-  const loadingRef = useRef(false); // Still used to prevent multiple loadMore calls
+  const loadingRef = useRef(false); 
 
   const urlConversationId = Array.isArray(params.conversationId) && params.conversationId.length > 0
     ? params.conversationId[0]
@@ -95,9 +92,6 @@ export default function ConversationsPage() {
         });
     }
   }, [currentPage, hasMoreConversations, workspace?.id]);
-
-  // REMOVIDO: useEffect com IntersectionObserver para a lista de conversas
-  // A lógica de infinite scroll será movida para onItemsRendered da List.
 
   const isLoading = loadingConversations || workspaceLoading;
   const displayError = conversationsError || workspaceError;

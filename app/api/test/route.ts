@@ -8,7 +8,13 @@ import { processClientAndConversation } from '@/lib/services/clientConversationS
 // Você pode adicionar um handler GET para simplesmente verificar se a rota está funcionando
 export async function GET() {
     console.log('[API TEST] Recebida requisição GET para /api/test');
-    return NextResponse.json({ success: true, message: "test pronto" });
+
+    const result = {
+        message: 'API Test endpoint is working',
+        timestamp: new Date().toISOString(),
+    };
+
+    return NextResponse.json({ success: true, result: result });
 }
 
 // export async function POST(req: NextRequest) {
