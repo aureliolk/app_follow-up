@@ -6,6 +6,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StickyNote, Trash2 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Import server actions
 import { createQuickNote, deleteQuickNote, getAllQuickNotes } from "@/lib/actions/quickNoteActions";
@@ -25,6 +35,8 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
   const [loading, setLoading] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [noteToDeleteId, setNoteToDeleteId] = useState<string | null>(null);
 
   // Carrega as notas ao abrir o popover
   useEffect(() => {
@@ -70,13 +82,17 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
   }
 
   async function handleDeleteNote(noteId: string) {
-    if (!confirm("Tem certeza que deseja excluir esta nota?")) return;
-    setLoading(true); // Use loading state for the whole component during deletion
+    setNoteToDeleteId(noteId);
+    setShowDeleteConfirm(true);
+  }
+
+  async function handleConfirmDelete() {
+    if (!noteToDeleteId) return;
+    setLoading(true);
     try {
-      // Call the new deleteQuickNote action (to be implemented)
-      const result = await deleteQuickNote(noteId);
+      const result = await deleteQuickNote(noteToDeleteId);
       if (result.success) {
-        setNotes(notes.filter(note => note.id !== noteId));
+        setNotes(notes.filter(note => note.id !== noteToDeleteId));
         toast.success("Nota excluída!");
       } else {
         toast.error(result.error || "Erro ao excluir nota");
@@ -86,94 +102,115 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
       toast.error("Erro ao excluir nota");
     } finally {
       setLoading(false);
+      setShowDeleteConfirm(false);
+      setNoteToDeleteId(null);
     }
   }
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" disabled={disabled} title="Notas rápidas">
-          <StickyNote className="h-5 w-5" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 p-0 border-0 shadow-xl" side="top" align="start">
-        <div className="p-3 border-b font-semibold text-sm">Notas rápidas</div>
-        <div className="p-2 flex flex-col h-[350px]">
-          {!isSearchMode && ( // Conditionally render the form
-            <div className="mb-2 flex-shrink-0">
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  await handleSaveNote();
-                }}
-              >
-                <Textarea
-                  placeholder="Criar nova nota rápida..."
-                  rows={2}
-                  className="mb-1"
-                  value={newNote}
-                  onChange={e => setNewNote(e.target.value)}
-                  disabled={saving}
-                />
-                <Button size="sm" className="w-full" type="submit" disabled={saving || !newNote.trim()}>
-                  {saving ? "Salvando..." : "Salvar nota"}
-                </Button>
-              </form>
-            </div>
-          )}
-
-          {isSearchMode && ( // Render search input if in search mode
-            <div className="mb-2 flex-shrink-0">
-              <Textarea
-                placeholder="Pesquisar notas..."
-                className="min-h-[40px] mb-1"
-                rows={1}
-                value={newNote} // Use newNote as search query
-                onChange={e => setNewNote(e.target.value)}
-              />
-            </div>
-          )}
-
-          <ScrollArea className="flex-grow max-h-full">
-            {loading ? (
-              <div className="text-center text-xs text-muted-foreground py-4">Carregando...</div>
-            ) : notes.length === 0 ? (
-              <div className="text-center text-xs text-muted-foreground py-4">Nenhuma nota rápida encontrada.</div>
-            ) : (
-              notes
-                .filter(note => // Filter notes based on search query
-                  isSearchMode ? note.content.toLowerCase().includes(newNote.toLowerCase()) : true
-                )
-                .map(note => (
-                  <div
-                    key={note.id}
-                    className="border rounded-lg p-2 mb-2 flex justify-between items-center group text-sm cursor-pointer hover:bg-accent transition"
-                  >
-                    <div
-                      className="flex-grow"
-                      onClick={() => {
-                        if (onInsertNote) onInsertNote(note.content);
-                        onOpenChange(false); // Use onOpenChange to close the popover
-                      }}
-                      title="Clique para inserir esta nota"
-                    >
-                      {note.content}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDeleteNote(note.id)}
-                      title="Excluir nota"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))
+    <>
+      <Popover open={open} onOpenChange={onOpenChange}>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" disabled={disabled} title="Notas rápidas">
+            <StickyNote className="h-5 w-5" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80 p-0 border-0 shadow-xl" side="top" align="start">
+          <div className="p-3 border-b font-semibold text-sm">Notas rápidas</div>
+          <div className="p-2 flex flex-col h-[350px]">
+            {!isSearchMode && ( // Conditionally render the form
+              <div className="mb-2 flex-shrink-0">
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    await handleSaveNote();
+                  }}
+                >
+                  <Textarea
+                    placeholder="Criar nova nota rápida..."
+                    rows={2}
+                    className="mb-1"
+                    value={newNote}
+                    onChange={e => setNewNote(e.target.value)}
+                    disabled={saving}
+                  />
+                  <Button size="sm" className="w-full" type="submit" disabled={saving || !newNote.trim()}>
+                    {saving ? "Salvando..." : "Salvar nota"}
+                  </Button>
+                </form>
+              </div>
             )}
-          </ScrollArea>
-        </div>
-      </PopoverContent>
-    </Popover>
+
+            {isSearchMode && ( // Render search input if in search mode
+              <div className="mb-2 flex-shrink-0">
+                <Textarea
+                  placeholder="Pesquisar notas..."
+                  className="min-h-[40px] mb-1"
+                  rows={1}
+                  value={newNote} // Use newNote as search query
+                  onChange={e => setNewNote(e.target.value)}
+                />
+              </div>
+            )}
+
+            <ScrollArea className="flex-grow max-h-full">
+              {loading ? (
+                <div className="text-center text-xs text-muted-foreground py-4">Carregando...</div>
+              ) : notes.length === 0 ? (
+                <div className="text-center text-xs text-muted-foreground py-4">Nenhuma nota rápida encontrada.</div>
+              ) : (
+                notes
+                  .filter(note => // Filter notes based on search query
+                    isSearchMode ? note.content.toLowerCase().includes(newNote.toLowerCase()) : true
+                  )
+                  .map(note => (
+                    <div
+                      key={note.id}
+                      className="border rounded-lg p-2 mb-2 flex justify-between items-center group text-sm cursor-pointer hover:bg-accent transition"
+                    >
+                      <div
+                        className="flex-grow"
+                        onClick={() => {
+                          if (onInsertNote) onInsertNote(note.content);
+                          onOpenChange(false); // Use onOpenChange to close the popover
+                        }}
+                        title="Clique para inserir esta nota"
+                      >
+                        {note.content}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDeleteNote(note.id)}
+                        title="Excluir nota"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))
+              )}
+            </ScrollArea>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta nota? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
