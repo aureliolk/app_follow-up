@@ -97,8 +97,8 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0 border-0 shadow-xl" side="top" align="start">
         <div className="p-3 border-b font-semibold text-sm">Notas rápidas</div>
-        <div className="p-2">
-          <div className="mb-2">
+        <div className="p-2 flex flex-col h-[200px]"> {/* Added flex flex-col and fixed height */}
+          <div className="mb-2 flex-shrink-0"> {/* Added flex-shrink-0 */}
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -118,7 +118,7 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
               </Button>
             </form>
           </div>
-          <ScrollArea className="max-h-[300px]">
+          <ScrollArea className="flex-grow max-h-full"> {/* Changed to flex-grow and max-h-full */}
             {loading ? (
               <div className="text-center text-xs text-muted-foreground py-4">Carregando...</div>
             ) : notes.length === 0 ? (
