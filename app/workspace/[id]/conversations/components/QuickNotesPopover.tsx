@@ -102,20 +102,38 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
       toast.error("Erro ao excluir nota");
     } finally {
       setLoading(false);
-      setShowDeleteConfirm(false);
+      // setShowDeleteConfirm(false); // Remove this line to keep the AlertDialog open
       setNoteToDeleteId(null);
     }
   }
 
   return (
     <>
-      <Popover open={open} onOpenChange={onOpenChange}>
+      <Popover
+        open={open}
+        onOpenChange={(newOpenState) => {
+          if (!newOpenState && showDeleteConfirm) {
+            // If Popover is trying to close and AlertDialog is open, prevent closing
+            return;
+          }
+          onOpenChange(newOpenState); // Otherwise, let the parent handle it
+        }}
+      >
         <PopoverTrigger asChild>
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 sm:h-9 sm:w-9" disabled={disabled} title="Notas rápidas">
             <StickyNote className="h-5 w-5" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-80 p-0 border-0 shadow-xl" side="top" align="start">
+        <PopoverContent
+          className="w-80 p-0 border-0 shadow-xl"
+          side="top"
+          align="start"
+          onPointerDownOutside={(e) => {
+            if (showDeleteConfirm) {
+              e.preventDefault(); // Prevent Popover from closing if AlertDialog is open
+            }
+          }}
+        >
           <div className="p-3 border-b font-semibold text-sm">Notas rápidas</div>
           <div className="p-2 flex flex-col h-[350px]">
             {!isSearchMode && ( // Conditionally render the form
@@ -182,7 +200,11 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDeleteNote(note.id)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteNote(note.id);
+                        }}
                         title="Excluir nota"
                       >
                         <Trash2 className="h-4 w-4" />
