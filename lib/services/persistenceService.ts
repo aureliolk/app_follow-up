@@ -6,11 +6,14 @@ import { Message, MessageSenderType } from '@prisma/client';
 export interface SaveMessageData {
   conversation_id: string;
   sender_type: MessageSenderType;
-  content: string;
+  content: string | null; // Allow null for media messages
   timestamp: Date;
   metadata?: Record<string, any>;
   channel_message_id?: string;
   providerMessageId?: string;
+  media_url?: string | null; // Add media_url
+  media_mime_type?: string | null; // Add media_mime_type
+  media_filename?: string | null; // Add media_filename
 }
 
 /**
@@ -31,7 +34,10 @@ export async function saveMessageRecord(
     content,
     timestamp,
     metadata,
-    channel_message_id
+    channel_message_id,
+    media_url, // Destructure new fields
+    media_mime_type,
+    media_filename
   } = data;
   const message = await prisma.message.create({
     data: {
@@ -42,6 +48,9 @@ export async function saveMessageRecord(
       status: 'SENT',
       channel_message_id,
       providerMessageId: channel_message_id,
+      media_url, // Pass new fields to Prisma
+      media_mime_type,
+      media_filename,
       metadata: metadata as Prisma.JsonObject
     }
   });

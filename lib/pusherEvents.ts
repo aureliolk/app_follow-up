@@ -30,12 +30,15 @@ interface SavedMessage {
   id: string;
   conversation_id: string;
   sender_type: string;
-  content: string;
+  content: string | null; // Allow null for media messages
   timestamp: Date;
   status: string;
   channel_message_id: string | null;
   providerMessageId: string | null;
   metadata: Prisma.JsonValue;
+  media_url?: string | null; // Add media_url
+  media_mime_type?: string | null; // Add media_mime_type
+  media_filename?: string | null; // Add media_filename
 }
 
 /**
@@ -75,6 +78,9 @@ export async function triggerNewMessageNotification(
       status: savedMessage.status,
       channel_message_id: savedMessage.channel_message_id,
       providerMessageId: savedMessage.providerMessageId,
+      media_url: savedMessage.media_url, // Include media_url
+      media_mime_type: savedMessage.media_mime_type, // Include media_mime_type
+      media_filename: savedMessage.media_filename, // Include media_filename
       metadata: cleanMetadata
     };
 

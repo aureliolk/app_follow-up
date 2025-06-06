@@ -9,6 +9,8 @@ import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils'; // CORREÇÃ
 import { saveMessageRecord } from '@/lib/services/persistenceService';
 import { triggerNewMessageNotification, triggerStatusUpdateNotification } from '@/lib/pusherEvents';
 import { processClientAndConversation } from '@/lib/services/clientConversationService';
+import { fetchAndUploadWhatsappMedia } from '@/lib/whatsapp/mediaService'; // Importar o novo serviço de mídia
+import { decrypt } from '@/lib/encryption'; // Importar função de descriptografia
 
 
 // Define a type for the selected message fields
@@ -59,6 +61,7 @@ async function getWorkspaceByRouteToken(routeToken: string) {
             whatsappWebhookVerifyToken: true, // Usado no GET
             whatsappAppSecret: true,        // Usado no POST (precisa descriptografar)
             ai_delay_between_messages: true,
+            whatsappAccessToken: true, // Pode ser usado para outras operações
         }
     });
 
@@ -126,14 +129,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         return new NextResponse('Workspace not found for route token', { status: 404 });
     }
 
-    // 2. OBTER APP SECRET DA VARIÁVEL DE AMBIENTE
-    const appSecret = process.env.WHATSAPP_APP_SECRET;
-    if (!appSecret) {
-        console.error(`[WHATSAPP WEBHOOK - POST ${routeToken}] ERRO CRÍTICO: Variável de ambiente WHATSAPP_APP_SECRET não está definida.`);
-        // Retornar 500 pois é um erro de configuração do servidor
-        return new NextResponse('Internal Server Error: App Secret configuration missing.', { status: 500 });
-    }
-
     // --- INÍCIO: Processamento do Payload (APÓS validação) ---
     try {
         const payload = JSON.parse(rawBody); // Parse seguro APÓS validação
@@ -177,47 +172,50 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     let mimeType: string | null = null; 
                                     let requiresProcessing = false; 
 
+                                    let mediaUrl: string | null = null;
+                                    let mediaFilename: string | null = null;
+
                                     if (messageType === 'text') {
                                         messageContent = message.text?.body;
                                         requiresProcessing = true; // Texto normal também vai para IA
-                                    } else if (messageType === 'image') { // <<< Tratamento de Imagem >>>
-                                        messageContent = "[Imagem Recebida]"; // Placeholder
-                                        mediaId = message.image?.id ?? null;
-                                        mimeType = message.image?.mime_type ?? null;
-                                        requiresProcessing = !!mediaId; // Só processa se tiver ID
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Imagem Recebida: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
-                                    } else if (messageType === 'audio') { // <<< Tratamento de Áudio >>>
-                                        messageContent = "[Áudio Recebido]"; // Placeholder
-                                        mediaId = message.audio?.id ?? null;
-                                        mimeType = message.audio?.mime_type ?? null;
-                                        requiresProcessing = !!mediaId;
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Áudio Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
-                                    } else if (messageType === 'video') { // <<< Tratamento de Vídeo >>>
-                                        messageContent = "[Vídeo Recebido]"; // Placeholder
-                                        mediaId = message.video?.id ?? null;
-                                        mimeType = message.video?.mime_type ?? null;
-                                        requiresProcessing = !!mediaId;
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Vídeo Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
-                                    } else if (messageType === 'document') { // <<< Tratamento de Documento >>>
-                                        messageContent = `[Documento Recebido: ${message.document?.filename || 'Nome não disponível'}]`; // Placeholder com nome do arquivo
-                                        mediaId = message.document?.id ?? null;
-                                        mimeType = message.document?.mime_type ?? null;
-                                        requiresProcessing = !!mediaId;
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Documento Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
-                                    } else if (messageType === 'sticker') { // <<< Tratamento de Sticker >>>
-                                        messageContent = "[Sticker Recebido]"; // Placeholder
-                                        mediaId = message.sticker?.id ?? null;
-                                        mimeType = message.sticker?.mime_type ?? null;
-                                        requiresProcessing = !!mediaId; // Sticker também pode ser baixado
-                                        console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Sticker Recebido: De=${senderPhoneNumber}, ID_WPP=${messageIdFromWhatsapp}, MediaID=${mediaId}, MimeType=${mimeType}`);
+                                    } else if (['image', 'audio', 'video', 'document', 'sticker'].includes(messageType)) {
+                                        mediaId = message[messageType]?.id ?? null;
+                                        mimeType = message[messageType]?.mime_type ?? null;
+                                        mediaFilename = message.document?.filename || null; // Only documents have filename directly
+
+                                        const whatsappAccessToken = decrypt(workspace.whatsappAccessToken)
+
+                                        if (mediaId && whatsappAccessToken) {
+                                            const uploadedMedia = await fetchAndUploadWhatsappMedia(
+                                                mediaId,
+                                                whatsappAccessToken,
+                                                workspace.id,
+                                                conversation.id,
+                                                mediaFilename
+                                            );
+                                            if (uploadedMedia) {
+                                                mediaUrl = uploadedMedia.url;
+                                                mimeType = uploadedMedia.mimeType;
+                                                mediaFilename = uploadedMedia.filename;
+                                                messageContent = null; // No content for media messages
+                                                requiresProcessing = true; // Media messages also need processing (e.g., AI analysis)
+                                                console.log(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mídia processada: URL=${mediaUrl}, MimeType=${mimeType}, Filename=${mediaFilename}`);
+                                            } else {
+                                                console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Falha ao processar mídia ${mediaId}. Pulando.`);
+                                                continue; // Skip message if media processing fails
+                                            }
+                                        } else {
+                                            console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mídia sem ID ou Access Token. Pulando.`);
+                                            continue;
+                                        }
                                     } else {
                                         // Outros tipos (location, contacts, etc.) - Logar e não processar
                                         console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Tipo de mensagem não suportado recebido: ${messageType}. Pulando.`);
                                         continue; // Pula para a próxima mensagem
                                     }
-                                    // Validar se temos conteúdo (ou placeholder)
-                                    if (!messageContent || !requiresProcessing) { // Pula se não tiver conteúdo OU não for para processar
-                                        console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Conteúdo da mensagem não processável ou tipo ${messageType} não tratado. Pulando.`);
+                                    // Validar se temos conteúdo OU mídia
+                                    if (!messageContent && !mediaUrl) {
+                                        console.warn(`[WHATSAPP WEBHOOK - POST ${routeToken}] Mensagem sem conteúdo e sem mídia processada. Pulando.`);
                                         continue;
                                     }
 
@@ -230,16 +228,20 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
                                     const savedMessage = await saveMessageRecord({
                                         conversation_id: conversation.id,
                                         sender_type: 'CLIENT',
-                                        content: messageContent!,
+                                        content: messageContent, // Pode ser null agora
                                         timestamp: new Date(receivedTimestamp),
+                                        media_url: mediaUrl, // Salvar URL da mídia
+                                        media_mime_type: mimeType, // Salvar MIME type da mídia
+                                        media_filename: mediaFilename, // Salvar nome do arquivo da mídia
                                         metadata: {
                                             provider: 'whatsapp_cloudapi',
                                             clientId: client.id,
                                             clientPhone: senderPhoneNumber,
                                             clientName: senderName,
                                             messageIdFromWhatsapp,
-                                            ...(mediaId && { mediaId }),
-                                            ...(mimeType && { mimeType }),
+                                            // Remover mediaId e mimeType do metadata se já estão nos campos principais
+                                            // ...(mediaId && { mediaId }),
+                                            // ...(mimeType && { mimeType }),
                                             messageType
                                         },
                                         channel_message_id: messageIdFromWhatsapp
