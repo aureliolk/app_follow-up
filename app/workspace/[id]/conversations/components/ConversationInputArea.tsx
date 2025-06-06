@@ -341,6 +341,7 @@ export default function ConversationInputArea({
                   textareaRef.current?.focus();
                 }}
                 disabled={commonDisabled}
+                isSearchMode={internalNewMessage.startsWith('/')} // New prop to indicate search mode
               />
 
               <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>

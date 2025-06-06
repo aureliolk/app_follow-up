@@ -16,9 +16,10 @@ interface QuickNotesPopoverProps {
   disabled?: boolean;
   open: boolean; // Add open prop
   onOpenChange: (open: boolean) => void; // Add onOpenChange prop
+  isSearchMode?: boolean; // New prop for search mode
 }
 
-export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled, open, onOpenChange }: QuickNotesPopoverProps) {
+export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled, open, onOpenChange, isSearchMode }: QuickNotesPopoverProps) {
   // Remove local 'open' state as it's now controlled by props
   const [notes, setNotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,59 +98,78 @@ export default function QuickNotesPopover({ workspaceId, onInsertNote, disabled,
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0 border-0 shadow-xl" side="top" align="start">
         <div className="p-3 border-b font-semibold text-sm">Notas rápidas</div>
-        <div className="p-2 flex flex-col h-[350px]"> {/* Added flex flex-col and fixed height */}
-          <div className="mb-2 flex-shrink-0"> {/* Added flex-shrink-0 */}
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                await handleSaveNote();
-              }}
-            >
+        <div className="p-2 flex flex-col h-[350px]">
+          {!isSearchMode && ( // Conditionally render the form
+            <div className="mb-2 flex-shrink-0">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  await handleSaveNote();
+                }}
+              >
+                <Textarea
+                  placeholder="Criar nova nota rápida..."
+                  rows={2}
+                  className="mb-1"
+                  value={newNote}
+                  onChange={e => setNewNote(e.target.value)}
+                  disabled={saving}
+                />
+                <Button size="sm" className="w-full" type="submit" disabled={saving || !newNote.trim()}>
+                  {saving ? "Salvando..." : "Salvar nota"}
+                </Button>
+              </form>
+            </div>
+          )}
+
+          {isSearchMode && ( // Render search input if in search mode
+            <div className="mb-2 flex-shrink-0">
               <Textarea
-                placeholder="Criar nova nota rápida..."
-                rows={2}
-                className="mb-1"
-                value={newNote}
+                placeholder="Pesquisar notas..."
+                className="min-h-[40px] mb-1"
+                rows={1}
+                value={newNote} // Use newNote as search query
                 onChange={e => setNewNote(e.target.value)}
-                disabled={saving}
               />
-              <Button size="sm" className="w-full" type="submit" disabled={saving || !newNote.trim()}>
-                {saving ? "Salvando..." : "Salvar nota"}
-              </Button>
-            </form>
-          </div>
-          <ScrollArea className="flex-grow max-h-full"> {/* Changed to flex-grow and max-h-full */}
+            </div>
+          )}
+
+          <ScrollArea className="flex-grow max-h-full">
             {loading ? (
               <div className="text-center text-xs text-muted-foreground py-4">Carregando...</div>
             ) : notes.length === 0 ? (
               <div className="text-center text-xs text-muted-foreground py-4">Nenhuma nota rápida encontrada.</div>
             ) : (
-              notes.map(note => (
-                <div
-                  key={note.id}
-                  className="border rounded-lg p-2 mb-2 flex justify-between items-center group text-sm cursor-pointer hover:bg-accent transition"
-                >
+              notes
+                .filter(note => // Filter notes based on search query
+                  isSearchMode ? note.content.toLowerCase().includes(newNote.toLowerCase()) : true
+                )
+                .map(note => (
                   <div
-                    className="flex-grow"
-                    onClick={() => {
-                      if (onInsertNote) onInsertNote(note.content);
-                      onOpenChange(false); // Use onOpenChange to close the popover
-                    }}
-                    title="Clique para inserir esta nota"
+                    key={note.id}
+                    className="border rounded-lg p-2 mb-2 flex justify-between items-center group text-sm cursor-pointer hover:bg-accent transition"
                   >
-                    {note.content}
+                    <div
+                      className="flex-grow"
+                      onClick={() => {
+                        if (onInsertNote) onInsertNote(note.content);
+                        onOpenChange(false); // Use onOpenChange to close the popover
+                      }}
+                      title="Clique para inserir esta nota"
+                    >
+                      {note.content}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDeleteNote(note.id)}
+                      title="Excluir nota"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDeleteNote(note.id)}
-                    title="Excluir nota"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))
+                ))
             )}
           </ScrollArea>
         </div>
