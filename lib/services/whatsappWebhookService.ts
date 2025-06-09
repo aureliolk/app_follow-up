@@ -97,12 +97,23 @@ export class WhatsAppWebhookService {
     private async processMessages(value: any, workspace: any) {
         if (!value.messages?.length) return;
 
-        console.log(`[WhatsAppWebhook] Processando mensagens: ${JSON.stringify(value.messages)}`);
+        console.log(`[WhatsAppWebhook] Processando mensagens com metadata:`, {
+            messages: value.messages,
+            contacts: value.contacts,
+            metadata: value.metadata
+        });
 
         for (const message of value.messages) {
             if (!message.from) continue;
 
-            const { client, conversation } = await this.processClientAndMessage(message, workspace);
+            // Preserva todos os dados do payload original
+            const fullMessage = {
+                ...message,
+                pushName: value.contacts?.[0]?.profile?.name,
+                contacts: value.contacts
+            };
+
+            const { client, conversation } = await this.processClientAndMessage(fullMessage, workspace);
             const { savedMessage, requiresProcessing } = await this.processMessageContent(message, workspace, conversation);
             
             await this.postMessageProcessing(savedMessage, workspace, conversation, requiresProcessing);
@@ -111,22 +122,32 @@ export class WhatsAppWebhookService {
 
     private async processClientAndMessage(message: any, workspace: any) {
         const senderPhoneNumber = standardizeBrazilianPhoneNumber(message.from);
-        console.log(`WhatsAppWebhook] Data Messagem: ${JSON.stringify(message)}`);
+        
+        console.log('[DEBUG] Full message object:', JSON.stringify(message, null, 2));
+        console.log('[DEBUG] Contacts array:', message.contacts);
+        
         // Usar pushName do WhatsApp se disponível, caso contrário usar o nome do contato ou string vazia
         const clientName = message.pushName || message.contacts?.[0]?.profile?.name || '';
         
-        console.log(`[WhatsAppWebhook] Processando cliente:
-            Phone: ${senderPhoneNumber}
-            Nome: ${clientName}
-            PushName: ${message.pushName}
-            ContactName: ${message.contacts?.[0]?.profile?.name}`);
+        console.log(`[DEBUG] Client name resolution:
+            pushName: ${message.pushName || 'undefined'}
+            contactName: ${message.contacts?.[0]?.profile?.name || 'undefined'}
+            finalName: ${clientName}`);
 
-        return await processClientAndConversation(
+        const result = await processClientAndConversation(
             workspace.id,
             senderPhoneNumber,
             clientName,
             'WHATSAPP_CLOUDAPI'
         );
+
+        console.log('[DEBUG] processClientAndConversation result:', {
+            clientId: result.client.id,
+            clientName: result.client.name,
+            conversationId: result.conversation.id
+        });
+
+        return result;
     }
 
     private async processMessageContent(message: any, workspace: any, conversation: any) {
