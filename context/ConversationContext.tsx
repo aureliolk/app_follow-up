@@ -111,7 +111,6 @@ const ConversationContext = createContext<ConversationContextType | undefined>(u
 // --- Componente Provider (Estado) --- //
 export const ConversationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const workspaceContext = useWorkspace();
-    const { data: session } = useSession();
 
     // --- Estados ---
     const [conversations, setConversations] = useState<ClientConversation[]>([]);
