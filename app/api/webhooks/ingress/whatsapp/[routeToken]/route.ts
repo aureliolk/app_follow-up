@@ -15,7 +15,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
-    const { routeToken } = await params; // Corrigido: adicionado await
+    const { routeToken } = params;
     const service = new WhatsAppWebhookService();
     return service.handleIncomingMessage(request, routeToken);
 }
