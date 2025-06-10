@@ -29,10 +29,12 @@ import type { ClientConversation } from '@/app/types';
 import { toast } from 'react-hot-toast';
 import { useConversationContext } from '@/context/ConversationContext';
 import { useClient } from '@/context/client-context';
+import { useSession } from 'next-auth/react';
 import ConversationInputArea from './ConversationInputArea';
 import ClientInfoSidebar from './ClientInfoSidebar';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useWorkspace } from '@/context/workspace-context';
 
 const getFollowUpStatusDisplay = (status: string | undefined | null): {
   text: string;
@@ -54,8 +56,8 @@ const getFollowUpStatusDisplay = (status: string | undefined | null): {
     case 'COMPLETED':
       return { text: "Concluído", Icon: CheckSquare, colorClass: "text-gray-500 dark:text-gray-400", tooltip: "Sequência de follow-up foi concluída." };
     default:
-        console.warn(`[ConvDetail] Status de follow-up desconhecido recebido: ${status}`);
-        return null;
+      console.warn(`[ConvDetail] Status de follow-up desconhecido recebido: ${status}`);
+      return null;
   }
 };
 
@@ -76,8 +78,9 @@ export default function ConversationDetail() {
     fetchConversations,
   } = useConversationContext();
   const { updateClient, deleteClient } = useClient();
+  const workspaceContext = useWorkspace();
 
-  const followUpDisplay = getFollowUpStatusDisplay(conversation?.activeFollowUp?.status); 
+  const followUpDisplay = getFollowUpStatusDisplay(conversation?.activeFollowUp?.status);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -95,9 +98,11 @@ export default function ConversationDetail() {
 
   useEffect(() => {
     if (messages.length > 0 && !isLoadingMessages) {
+
       const timer = setTimeout(() => scrollToBottom('auto'), 150);
       return () => clearTimeout(timer);
     }
+
   }, [messages, isLoadingMessages, conversation?.id, scrollToBottom]);
 
   const prevMessagesLengthRef = useRef(messages.length);
@@ -192,20 +197,20 @@ export default function ConversationDetail() {
                 {conversation.client?.phone_number || 'Sem telefone'}
               </div>
               {followUpDisplay && (
-                  <TooltipProvider delayDuration={300}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                         <span className={cn("inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full", followUpDisplay.colorClass)}>
-                           <followUpDisplay.Icon className="h-3 w-3 mr-1" />
-                           {followUpDisplay.text}
-                         </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>{followUpDisplay.tooltip}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className={cn("inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-full", followUpDisplay.colorClass)}>
+                        <followUpDisplay.Icon className="h-3 w-3 mr-1" />
+                        {followUpDisplay.text}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p>{followUpDisplay.tooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
           </div>
         </div>
@@ -254,71 +259,100 @@ export default function ConversationDetail() {
         {isLoadingMessages && messages.length === 0 && <LoadingSpinner message="Carregando..." />}
         {messageError && messages.length === 0 && <ErrorMessage message={messageError} onDismiss={clearMessagesError} />}
 
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={cn(
-              "flex mb-4",
-              message.sender_type === 'CLIENT' ? 'justify-start' : 'justify-end',
-              message.privates_notes && 'justify-end'
-            )}
-          >
+        {messages.map((message) => {
+          let senderDisplayName = '';
+          let senderTextColorClass = '';
+          if (message.sender_type === 'CLIENT' || message.sender_type === 'SYSTEM' || message.sender_type === 'AUTOMATION') {
+            // Mensagens de cliente, sistema ou automação não devem ser assinadas.
+            senderDisplayName = '';
+          } else if (message.privates_notes) {
+            senderDisplayName = message.operator_name || ''; // Usar nome do usuário logado para notas privadas
+            senderTextColorClass = 'text-yellow-800 dark:text-yellow-400';
+          } else if (message.sender_type === 'AGENT') {
+            senderDisplayName = message.operator_name || ''; // Usar nome da IA da workspace para mensagens de AGENT
+            senderTextColorClass = 'text-primary-foreground';
+          } else if (message.sender_type === 'AI') {
+            senderDisplayName = workspaceContext?.workspace?.ai_name || 'IA da Workspace'; // Usar nome da workspace para mensagens de IA
+            senderTextColorClass = 'text-primary-foreground';
+          }
+
+          return (
             <div
+              key={message.id}
               className={cn(
-                "rounded-lg px-4 py-2 max-w-[75%] break-words",
-                !message.privates_notes && (message.sender_type === 'CLIENT' ? 'bg-muted text-foreground' : 'bg-primary text-primary-foreground'),
-                message.privates_notes && 'bg-yellow-500/20 text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-400 border border-yellow-500/30 dark:border-yellow-500/20',
+                "flex mb-4",
+                message.sender_type === 'CLIENT' ? 'justify-start' : 'justify-end',
+                message.privates_notes && 'justify-end'
               )}
             >
-              {!message.media_url && message.content && (
-                <p className={cn("whitespace-pre-wrap text-sm", message.privates_notes && 'text-yellow-800 dark:text-yellow-400')}>{message.content}</p>
-              )}
-              {message.media_url && (
-                <div className="mt-1">
-                  {message.media_mime_type?.startsWith('image/') ? (
-                    <img src={message.media_url} alt={message.media_filename || 'Imagem'} className="rounded-lg max-w-full h-auto max-h-60 object-contain cursor-pointer" onClick={() => window.open(message.media_url, '_blank')} loading="lazy" />
-                  ) : message.media_mime_type?.startsWith('audio/') ? (
-                    <audio controls src={message.media_url} className="w-full" preload="metadata"></audio>
-                  ) : message.media_mime_type?.startsWith('video/') ? (
-                    <video controls src={message.media_url} className="rounded-lg max-w-full h-auto max-h-60 object-contain" preload="metadata"></video>
-                  ) : (
-                    <a href={message.media_url} target="_blank" rel="noopener noreferrer" className={cn("flex items-center gap-2 p-2 rounded-md text-sm", message.sender_type === 'CLIENT' ? "text-blue-600 dark:text-blue-400 hover:bg-black/5" : "text-primary-foreground/90 hover:bg-white/10", message.privates_notes && 'text-yellow-800 dark:text-yellow-400 hover:bg-transparent')}>
-                      <Paperclip className="h-4 w-4 flex-shrink-0" />
-                      <span className="underline truncate">{message.media_filename || 'Ver Anexo'}</span>
-                    </a>
+              <div
+                className={cn(
+                  "rounded-lg px-4 py-2 max-w-[75%] break-words",
+                  !message.privates_notes && (message.sender_type === 'CLIENT' ? 'bg-muted text-foreground' : 'bg-primary text-primary-foreground'),
+                  message.privates_notes && 'bg-yellow-500/20 text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-400 border border-yellow-500/30 dark:border-yellow-500/20',
+                )}
+              >
+                {senderDisplayName && (
+                  <div className={cn(
+                    "font-semibold text-sm mb-1",
+                    senderTextColorClass
+                  )}>
+                    {senderDisplayName}
+                  </div>
+                )}
+
+                {!message.media_url && message.content && (
+                  <p className={cn("whitespace-pre-wrap text-sm", message.privates_notes && 'text-yellow-800 dark:text-yellow-400')}>{message.content}</p>
+                )}
+                {message.media_url && (
+
+                  <div className="mt-1">
+                    
+                    {message.media_mime_type?.startsWith('image/') ? (
+                      <img src={message.media_url} alt={message.media_filename || 'Imagem'} className="rounded-lg max-w-full h-auto max-h-60 object-contain cursor-pointer" onClick={() => window.open(message.media_url, '_blank')} loading="lazy" />
+                    ) : message.media_mime_type?.startsWith('audio/') ? (
+                      <audio controls src={message.media_url} className="w-full" preload="metadata"></audio>
+                    ) : message.media_mime_type?.startsWith('video/') ? (
+                      <video controls src={message.media_url} className="rounded-lg max-w-full h-auto max-h-60 object-contain" preload="metadata"></video>
+                    ) : (
+                      <a href={message.media_url} target="_blank" rel="noopener noreferrer" className={cn("flex items-center gap-2 p-2 rounded-md text-sm", message.sender_type === 'CLIENT' ? "text-blue-600 dark:text-blue-400 hover:bg-black/5" : "text-primary-foreground/90 hover:bg-white/10", message.privates_notes && 'text-yellow-800 dark:text-yellow-400 hover:bg-transparent')}>
+                        <Paperclip className="h-4 w-4 flex-shrink-0" />
+                        <span className="underline truncate">{message.media_filename || 'Ver Anexo'}</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+                <div className={cn("text-[10px] mt-1 flex items-center",
+                  message.sender_type === 'CLIENT' ? 'text-muted-foreground/80 justify-start' : 'text-primary-foreground/80 justify-end',
+                  message.privates_notes && 'text-yellow-800/80 dark:text-yellow-400/80 justify-start flex-row-reverse'
+                )}>
+                  <span title={format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>{format(new Date(message.timestamp), 'HH:mm', { locale: ptBR })}</span>
+                  {message.sender_type !== 'CLIENT' && !message.privates_notes && (
+                    <span className="ml-2 inline-flex items-center" title={`Status: ${message.status}`}>
+                      {message.status === 'PENDING' && <Check className="h-3 w-3 text-muted-foreground/70" />}
+                      {message.status === 'SENT' && <Check className="h-3 w-3 text-primary-foreground/70" />}
+                      {message.status === 'DELIVERED' && <CheckCheck className="h-4 w-4 text-primary-foreground/70" />}
+                      {message.status === 'READ' && <CheckCheck className="h-3 w-3 text-blue-400" />}
+                      {message.status === 'FAILED' && <XCircle className="h-4 w-4 text-red-400" />}
+                    </span>
+                  )}
+                  {message.privates_notes && (
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Lock className="h-3.5 w-3.5 ml-2 text-yellow-800/80 dark:text-yellow-400/80" />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Nota Privada</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                 </div>
-              )}
-              <div className={cn("text-[10px] mt-1 flex items-center",
-                message.sender_type === 'CLIENT' ? 'text-muted-foreground/80 justify-start' : 'text-primary-foreground/80 justify-end',
-                message.privates_notes && 'text-yellow-800/80 dark:text-yellow-400/80 justify-start flex-row-reverse'
-              )}>
-                <span title={format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm:ss', { locale: ptBR })}>{format(new Date(message.timestamp), 'HH:mm', { locale: ptBR })}</span>
-                {message.sender_type !== 'CLIENT' && !message.privates_notes && (
-                  <span className="ml-2 inline-flex items-center" title={`Status: ${message.status}`}>
-                    {message.status === 'PENDING' && <Check className="h-3 w-3 text-muted-foreground/70" />}
-                    {message.status === 'SENT' && <Check className="h-3 w-3 text-primary-foreground/70" />}
-                    {message.status === 'DELIVERED' && <CheckCheck className="h-4 w-4 text-primary-foreground/70" />}
-                    {message.status === 'READ' && <CheckCheck className="h-3 w-3 text-blue-400" />}
-                    {message.status === 'FAILED' && <XCircle className="h-4 w-4 text-red-400" />}
-                  </span>
-                )}
-                {message.privates_notes && (
-                  <TooltipProvider delayDuration={300}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Lock className="h-3.5 w-3.5 ml-2 text-yellow-800/80 dark:text-yellow-400/80" />
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Nota Privada</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </ScrollArea>
 
       <ConversationInputArea
@@ -326,7 +360,7 @@ export default function ConversationDetail() {
         workspaceId={conversation.workspace_id}
         isSendingMessage={isSendingMessage}
         isUploading={false}
-        setIsUploading={() => {}}
+        setIsUploading={() => { }}
         loadingTemplates={false}
         textareaRef={textareaRef}
         sendMediaMessage={sendMediaMessage}

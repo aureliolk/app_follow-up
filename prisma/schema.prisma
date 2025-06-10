@@ -474,6 +474,7 @@ model Message {
   sentAt             DateTime?         @map("sent_at")
   status             String?           @default("PENDING")
   ai_media_analysis  String?
+  operator_name     String?            @default("")
   privates_notes     Boolean           @default(false)
   conversation       Conversation      @relation("ConversationToMessage", fields: [conversation_id], references: [id], onDelete: Cascade)
 

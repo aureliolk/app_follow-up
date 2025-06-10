@@ -5,13 +5,11 @@ import { prisma } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth-options';
 import { checkPermission } from '@/lib/permissions';
-import { redisConnection } from '@/lib/redis';
 import type { Message } from "@/app/types";
 import { Prisma } from '@prisma/client';
 import { withApiTokenAuth } from '@/lib/middleware/api-token-auth';
 import { sendOperatorMessage } from '@/lib/services/conversationService';
 import pusher from '@/lib/pusher';
-import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
 
 export async function GET(
   req: NextRequest,
@@ -106,6 +104,7 @@ export async function GET(
                 sentAt: true,
                 errorMessage: true,
                 privates_notes: true,
+                operator_name: true, 
             },
             take,
         };
@@ -202,7 +201,7 @@ export async function POST(
         userId,
         userName,
         content,
-        isPrivateNote // Passar o novo parâmetro
+        isPrivateNote 
     );
 
     // 5. Lidar com a Resposta do Serviço

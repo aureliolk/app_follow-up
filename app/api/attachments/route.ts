@@ -79,8 +79,8 @@ export async function POST(req: NextRequest) {
     // Check user permission for the workspace
     const hasAccess = await checkPermission(workspaceId, userId, 'MEMBER'); // Allow VIEWER and above
     if (!hasAccess) {
-        console.warn(`Attachments API: Forbidden - User ${userId} lacks permission for workspace ${workspaceId}`);
-        return NextResponse.json({ success: false, error: 'Permissão negada para este workspace' }, { status: 403 });
+      console.warn(`Attachments API: Forbidden - User ${userId} lacks permission for workspace ${workspaceId}`);
+      return NextResponse.json({ success: false, error: 'Permissão negada para este workspace' }, { status: 403 });
     }
 
     // Validate conversation exists and belongs to the workspace
@@ -89,12 +89,9 @@ export async function POST(req: NextRequest) {
       select: { id: true, status: true }
     });
     if (!conversation) {
-        return NextResponse.json({ success: false, error: 'Conversation not found or does not belong to workspace' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Conversation not found or does not belong to workspace' }, { status: 404 });
     }
-     // Optional: Check if conversation is active (prevent attaching to closed convos?)
-    // if (conversation.status !== ConversationStatus.ACTIVE) {
-    //     return NextResponse.json({ success: false, error: 'Conversation is not active' }, { status: 400 });
-    // }
+
 
     // --- File Validation ---
     console.log(`[API POST /attachments] Validating file: ${file.name}, Size: ${file.size}, Type: ${file.type}`);
@@ -103,8 +100,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Arquivo muito grande. Máximo ${MAX_FILE_SIZE_MB}MB` }, { status: 413 }); // 413 Payload Too Large
     }
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-        console.warn(`Attachments API: Invalid file type - Type: ${file.type}`);
-        return NextResponse.json({ success: false, error: `Tipo de arquivo inválido: ${file.type}` }, { status: 415 }); // 415 Unsupported Media Type
+      console.warn(`Attachments API: Invalid file type - Type: ${file.type}`);
+      return NextResponse.json({ success: false, error: `Tipo de arquivo inválido: ${file.type}` }, { status: 415 }); // 415 Unsupported Media Type
     }
 
     // --- S3 Upload --- 
@@ -144,10 +141,10 @@ export async function POST(req: NextRequest) {
     // If using Cloudflare R2 public URL or similar:
     const publicUrlBase = process.env.STORAGE_PUBLIC_URL;
     if (publicUrlBase) {
-        fileUrl = `${publicUrlBase}/${s3Key}`;
+      fileUrl = `${publicUrlBase}/${s3Key}`;
     }
     // Remove potential double slashes except after protocol
-    fileUrl = fileUrl.replace(/([^:]\/)\/+/g, "$1"); 
+    fileUrl = fileUrl.replace(/([^:]\/)\/+/g, "$1");
 
     console.log(`[API POST /attachments] Generated File URL: ${fileUrl}`);
 
@@ -171,6 +168,7 @@ export async function POST(req: NextRequest) {
           media_filename: file.name,   // Corrigido: Salvar filename aqui
           status: "PENDING", // Definir status inicial para o worker processar
           channel_message_id: `local-${randomUUID()}`, // ID temporário
+          operator_name: senderName, 
           metadata: {
             uploadedToS3: true,
             s3Key: s3Key,
@@ -186,13 +184,13 @@ export async function POST(req: NextRequest) {
         select: { // Selecionar todos os campos necessários para retorno e UI
           id: true, conversation_id: true, sender_type: true, content: true, timestamp: true,
           channel_message_id: true, metadata: true, media_url: true, media_mime_type: true,
-          media_filename: true, status: true, providerMessageId: true, sentAt: true, errorMessage: true,
+          media_filename: true, status: true, providerMessageId: true, sentAt: true, errorMessage: true,operator_name: true,
           // <<< ADICIONAR message_type AO SELECT se foi adicionado ao schema >>>
-          // message_type: true, 
         }
       });
       console.log(`Attachments API: Message record created (ID: ${newMessage.id}) with prefixed content.`);
-      
+      console.log("Attachments API: newMessage object:", JSON.stringify(newMessage, null, 2));
+
       // <<< ENFILEIRAR JOB PARA ENVIO VIA WHATSAPP >>>
       try {
         const jobData = { messageId: newMessage.id };
@@ -206,23 +204,22 @@ export async function POST(req: NextRequest) {
         // Por enquanto, loga o erro mas retorna sucesso do upload/save.
       }
 
-      // --- Disparar evento Pusher para notificar a UI ---
+      const eventPayload = JSON.stringify({ type: 'new_message', payload: newMessage });
+      const channelName = `private-workspace-${workspaceId}`; // Corrigido: Usar o workspaceId da conversa
       try {
-        await triggerWorkspacePusherEvent(workspaceId, 'new_message', newMessage);
-    } catch (pusherError) {
-        console.error(`[Attachments API] Failed to trigger Pusher event for msg ${newMessage.id}:`, pusherError);
-        // Não falhar o processamento do webhook por causa do Pusher, apenas logar.
-    }
-    // --- Fim do disparo Pusher ---
-
-  
+        await pusher.trigger(channelName, 'new_message', eventPayload);
+        console.log(`[API POST /messages] Pusher event triggered on channel ${channelName}`);
+      } catch (pusherError) {
+        console.error(`API POST Messages (${conversationId}): Failed to trigger Pusher event:`, pusherError);
+        // Considerar logar o erro ou alguma forma de fallback/notificação
+      }
 
       // Return the created message object (or a subset of it)
       return NextResponse.json({ success: true, data: newMessage }, { status: 201 });
 
     } catch (dbError: any) {
       console.error(`Attachments API: Database Error saving message for S3 key ${s3Key}:`, dbError);
-       // TODO: Consider deleting the uploaded S3 object if DB save fails to avoid orphaned files
+      // TODO: Consider deleting the uploaded S3 object if DB save fails to avoid orphaned files
       return NextResponse.json({ success: false, error: 'Failed to save message details' }, { status: 500 });
     }
 
@@ -232,7 +229,7 @@ export async function POST(req: NextRequest) {
     // Tentar extrair um status code mais específico se possível (ex: S3 errors)
     let statusCode = 500;
     if (error.name === 'AccessDenied' || error.code === 'AccessDenied') {
-        statusCode = 503; // Service Unavailable (problema S3)
+      statusCode = 503; // Service Unavailable (problema S3)
     }
 
     return NextResponse.json({ success: false, error: errorMessage }, { status: statusCode });

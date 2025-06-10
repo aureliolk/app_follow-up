@@ -150,6 +150,7 @@ export interface Message {
   client_id?: string;
   workspace_id?: string;
   llm_summary?: string | null;
+  operator_name?: string | null; // Adicionar campo para o nome do operador/IA
   privates_notes?: boolean; // Adicionar campo para notas privadas
   errorMessage?: string | null; // Adicionar campo para mensagens de erro
 }
@@ -213,6 +214,10 @@ export interface ClientConversation {
 
   // <<< ADICIONAR ESTE CAMPO >>>
   last_message_timestamp?: string | null;
+  // Adicionar propriedade workspace para acessar ai_name
+  workspace?: {
+    ai_name?: string | null;
+  } | null;
 }
 
 // --- Tipos de Follow-up/Campanha Removidos ---

@@ -144,12 +144,7 @@ export async function sendOperatorMessage(
   isPrivateNote: boolean = false
 ): Promise<SendOperatorMessageResult> {
   const senderDisplayName = operatorName || 'Operador';
-  // O prefixo com nome do operador será adicionado pela função de envio específica do canal,
-  // pois a formatação pode variar (ex: Markdown para WhatsApp, texto puro para outros).
-  // No entanto, sendWhatsAppMessage já faz isso, então vamos manter o `prefixedContent` por enquanto,
-  // e sendEvolutionMessage pode precisar fazer o mesmo ou receber o nome do operador.
-  // Por ora, a função sendEvolutionMessage não aceita displayName, então vamos enviar o conteúdo direto.
-  // A sendWhatsAppMessage já adiciona o display name.
+ 
 
   let pendingMessage: PendingMessageType | null = null;
 
@@ -191,6 +186,7 @@ export async function sendOperatorMessage(
         timestamp: new Date(),
         status: isPrivateNote ? 'SENT' : 'PENDING',
         privates_notes: isPrivateNote,
+        operator_name: operatorName, // Add operator_name here
         metadata: { operatorId, operatorName: senderDisplayName },
       },
       select: {
@@ -206,7 +202,8 @@ export async function sendOperatorMessage(
         privates_notes: true,
         conversation: {
           select: { workspace_id: true }
-        }
+        },
+        operator_name: true // Incluir o nome do operador na seleção
       }
     });
     
@@ -298,13 +295,6 @@ export async function sendOperatorMessage(
         });
         console.log(`[Svc SendOperatorMsg] Updated conversation ${conversationId} last_message_at after saving PRIVATE note ${pendingMessage.id}.`);
     }
-
-    // Recarregar a mensagem com o status atualizado para retorno
-    // No caso de nota privada, já está SENT, mas recarregar garante consistência
-    // We don't need to reload the message here, the created pendingMessage already has the necessary info.
-    // The status update (PENDING -> SENT/FAILED) happens AFTER this function returns the pending message initially.
-    // If it was a private note, the initial status was already SENT.
-    // pendingMessage = await prisma.message.findUnique({ where: { id: pendingMessage.id }, select: pendingMessageSelect });
 
     return { success: true, message: pendingMessage! };
 
