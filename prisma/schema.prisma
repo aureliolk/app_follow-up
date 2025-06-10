@@ -285,6 +285,7 @@ model Workspace {
   follow_ups                               FollowUp[]
   tags                                     WorkspaceTag[]
   abandonedCartRules                       AbandonedCartRule[]
+  abandonedCarts                           AbandonedCart[]
   ai_stages                                ai_stages[]
   campaigns                                Campaign[]
   customHttpTools                          CustomHttpTool[]
@@ -583,6 +584,26 @@ model AbandonedCartRule {
   @@schema("workspace_schema")
 }
 
+model AbandonedCart {
+  id                 String              @id @default(uuid())
+  nuvemshopCheckoutId String             @unique @map("nuvemshop_checkout_id")
+  workspaceId        String
+  customerEmail      String?
+  customerName       String?
+  customerPhone      String?
+  checkoutUrl        String
+  status             AbandonedCartStatus @default(PENDING)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  products           Json
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([status])
+  @@map("abandoned_carts")
+  @@schema("workspace_schema")
+}
+
 model PipelineStage {
   id           String         @id @default(uuid())
   name         String
@@ -863,6 +884,18 @@ enum AIStageActionType {
   SEND_DOCUMENT
   CONNECT_CALENDAR
   TRANSFER_HUMAN
+
+  @@schema("workspace_schema")
+}
+
+enum AbandonedCartStatus {
+  PENDING
+  SENT_REMINDER_1
+  SENT_REMINDER_2
+  CONVERTED
+  IGNORED
+  OPTED_OUT
+  FAILED
 
   @@schema("workspace_schema")
 }

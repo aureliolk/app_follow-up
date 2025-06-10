@@ -83,6 +83,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.1.8
         version: 1.2.4(@types/react-dom@19.1.2(@types/react@19.1.2))(@types/react@19.1.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@trigger.dev/nextjs':
+        specifier: ^3.3.12
+        version: 3.3.12(@trigger.dev/sdk@3.3.17(zod@3.24.3))(next@15.2.4(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))
       '@trigger.dev/sdk':
         specifier: ^3.3.17
         version: 3.3.17(zod@3.24.3)
@@ -2050,6 +2053,14 @@ packages:
   '@trigger.dev/core@3.3.17':
     resolution: {integrity: sha512-KjnRxCuHq4R+MnE0zPvIQ7EIz4QSpJL+1Yn74n2cCGjyHYgQ/g8rcARn0Nxf2s8jzE38CnyRufjUrwG8k+DJrw==}
     engines: {node: '>=18.20.0'}
+
+  '@trigger.dev/nextjs@3.3.12':
+    resolution: {integrity: sha512-CMqaOBJ+hwwUzyNeTj4Wc9wyRtQ8RKMNeumspsrbUvPxWc7XJ0Gaw/xWZ+R9odbIl+BHahSvyZEUR6OEWlJmIA==}
+    engines: {node: '>=18.0.0'}
+    deprecated: 'DEPRECATED: This package is part of Trigger.dev v2, which reached end-of-life on 31 Jan 2025. Please upgrade to the latest version at https://trigger.dev/docs for continued support, security updates, and new features.'
+    peerDependencies:
+      '@trigger.dev/sdk': ~2.3.0 || ^3.0.0
+      next: '>=12.0.0'
 
   '@trigger.dev/sdk@3.3.17':
     resolution: {integrity: sha512-wjIjlQWKybYWw/J7LxFIOO1pXzxXoj9lxbFMvjb51JtfebxnQnh6aExN47nOGhVhV38wHYstfBI/8ClWwBnFYw==}
@@ -6881,6 +6892,14 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  '@trigger.dev/nextjs@3.3.12(@trigger.dev/sdk@3.3.17(zod@3.24.3))(next@15.2.4(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))':
+    dependencies:
+      '@trigger.dev/sdk': 3.3.17(zod@3.24.3)
+      debug: 4.4.0
+      next: 15.2.4(@opentelemetry/api@1.9.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+    transitivePeerDependencies:
+      - supports-color
 
   '@trigger.dev/sdk@3.3.17(zod@3.24.3)':
     dependencies:

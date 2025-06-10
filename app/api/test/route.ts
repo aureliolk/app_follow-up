@@ -3,15 +3,21 @@ import { z } from 'zod';
 
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import { processClientAndConversation } from '@/lib/services/clientConversationService';
+import { fetchAndProcessAbandonedCarts } from '@/lib/services/nuvemshopAbandonedCartService';
 
 
 // Você pode adicionar um handler GET para simplesmente verificar se a rota está funcionando
 export async function GET() {
     console.log('[API TEST] Recebida requisição GET para /api/test');
+    
+    const data = await fetchAndProcessAbandonedCarts("33c6cb57-24f7-4586-9122-f91aac8a098c");
+
+    console.log('[API TEST] Dados processados:', data);
 
     const result = {
         message: 'API Test endpoint is working',
         timestamp: new Date().toISOString(),
+        data
     };
 
     return NextResponse.json({ success: true, result: result });
