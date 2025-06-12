@@ -260,8 +260,6 @@ model Workspace {
   updated_at                               DateTime                    @updatedAt
   ai_default_system_prompt                 String?
   ai_model_preference                      String?
-  ai_delay_between_messages                Int?                        @default(3000)
-  ai_send_fractionated                     Boolean                     @default(true)
   webhook_ingress_secret                   String?                     @unique
   whatsappAccessToken                      String?                     @map("whatsapp_access_token")
   whatsappBusinessAccountId                String?                     @map("whatsapp_business_account_id")
@@ -280,9 +278,14 @@ model Workspace {
   google_calendar_event_conversion_enabled Boolean                     @default(false) @map("google_calendar_event_conversion_enabled")
   evolution_api_token                      String?                     @unique @map("evolution_api_token")
   evolution_webhook_route_token            String?                     @unique @map("evolution_webhook_route_token")
+  ai_delay_between_messages                Int?                        @default(3000)
+  ai_send_fractionated                     Boolean                     @default(true)
+  nuvemshopApiKey                          String?                     @map("nuvemshop_api_key")
+  nuvemshopStoreId                         String?                     @map("nuvemshop_store_id")
   clients                                  Client[]                    @relation("WorkspaceToClient")
   conversations                            Conversation[]              @relation("WorkspaceToConversation")
   follow_ups                               FollowUp[]
+  quickNotes                               QuickNote[]
   tags                                     WorkspaceTag[]
   abandonedCartRules                       AbandonedCartRule[]
   abandonedCarts                           AbandonedCart[]
@@ -299,7 +302,6 @@ model Workspace {
   members                                  WorkspaceMember[]
   webhooks                                 WorkspaceWebhook[]
   owner                                    User                        @relation("WorkspaceOwner", fields: [owner_id], references: [id])
-  quickNotes                               QuickNote[]
 
   @@map("workspaces")
   @@schema("workspace_schema")
@@ -475,8 +477,8 @@ model Message {
   sentAt             DateTime?         @map("sent_at")
   status             String?           @default("PENDING")
   ai_media_analysis  String?
-  operator_name     String?            @default("")
   privates_notes     Boolean           @default(false)
+  operator_name      String?           @default("")
   conversation       Conversation      @relation("ConversationToMessage", fields: [conversation_id], references: [id], onDelete: Cascade)
 
   @@index([conversation_id])
@@ -540,14 +542,13 @@ model WorkspaceTag {
 }
 
 model QuickNote {
-  id          String   @id @default(uuid())
-  content     String
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id           String     @id @default(uuid())
+  content      String
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
   workspace_id String?
-  workspace   Workspace? @relation(fields: [workspace_id], references: [id])
+  workspace    Workspace? @relation(fields: [workspace_id], references: [id])
 
-  
   @@index([workspace_id])
   @@schema("workspace_schema")
 }
@@ -585,18 +586,19 @@ model AbandonedCartRule {
 }
 
 model AbandonedCart {
-  id                 String              @id @default(uuid())
-  nuvemshopCheckoutId String             @unique @map("nuvemshop_checkout_id")
-  workspaceId        String
-  customerEmail      String?
-  customerName       String?
-  customerPhone      String?
-  checkoutUrl        String
-  status             AbandonedCartStatus @default(PENDING)
-  createdAt          DateTime            @default(now()) @map("created_at")
-  updatedAt          DateTime            @updatedAt @map("updated_at")
-  products           Json
-  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id                  String    @id @default(uuid())
+  nuvemshopCheckoutId String    @unique @map("nuvemshop_checkout_id")
+  workspaceId         String
+  customerEmail       String?
+  customerName        String?
+  customerPhone       String?
+  checkoutUrl         String
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  products            Json
+  lastReminderSent    DateTime?
+  status              String    @default("PENDING")
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([status])
@@ -878,12 +880,12 @@ enum HttpMethod {
 
 enum AIStageActionType {
   API_CALL
-  SEND_TEXT_MESSAGE
   SEND_VIDEO
-  SEND_IMAGE
-  SEND_DOCUMENT
   CONNECT_CALENDAR
   TRANSFER_HUMAN
+  SEND_TEXT_MESSAGE
+  SEND_IMAGE
+  SEND_DOCUMENT
 
   @@schema("workspace_schema")
 }

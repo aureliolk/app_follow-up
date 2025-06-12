@@ -1,5 +1,8 @@
 import { prisma } from '@/lib/db';
 
+
+
+
 // Define a basic type for the Nuvemshop Abandoned Checkout API response
 // This should be refined based on the actual API response structure
 interface NuvemshopAbandonedCheckout {
@@ -21,23 +24,26 @@ interface NuvemshopAbandonedCheckout {
   // Add other properties from the API response as needed
 }
 
+
+
 export async function fetchAndProcessAbandonedCarts(workspaceId: string) {
- 
-  console.log(`NUVEISHOP_API_KEY`, process.env.NUVEISHOP_API_KEY);
-  console.log(`NUVEISHOP_STORE_ID`, process.env.NUVEMSHOP_STORE_ID);
 
+  const hasIntegration = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      nuvemshopStoreId: true,
+      nuvemshopApiKey: true,
+    },
+  });
 
-  // TODO: Retrieve Nuvemshop API key and store ID from workspace settings or environment variables
-  // For now, using placeholders
-  const NUVEISHOP_API_KEY = process.env.NUVEISHOP_API_KEY; // Replace with actual retrieval
-  const NUVEISHOP_STORE_ID = process.env.NUVEMSHOP_STORE_ID; // Replace with actual retrieval
-
-  console.log(NUVEISHOP_API_KEY, NUVEISHOP_STORE_ID);
-
-  if (!NUVEISHOP_API_KEY || !NUVEISHOP_STORE_ID) {
-    console.error('Nuvemshop API key or Store ID not configured.');
-    return;
+  if (!hasIntegration || !hasIntegration.nuvemshopStoreId || !hasIntegration.nuvemshopApiKey) {
+    // If no integration is found, log an error and return
+    console.error(`Nuvemshop integration not found for workspace ${workspaceId}. Please set up the integration first.`);
+    return null;
   }
+ 
+  const NUVEISHOP_API_KEY = hasIntegration.nuvemshopApiKey;
+  const NUVEISHOP_STORE_ID = hasIntegration.nuvemshopStoreId;
 
   try {
     const response = await fetch(

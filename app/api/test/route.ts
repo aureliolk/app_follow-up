@@ -4,20 +4,27 @@ import { z } from 'zod';
 import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 import { processClientAndConversation } from '@/lib/services/clientConversationService';
 import { fetchAndProcessAbandonedCarts } from '@/lib/services/nuvemshopAbandonedCartService';
+import { schedules } from '@trigger.dev/sdk/v3';
+import { sendDelayedWhatsAppReminder } from '@/trigger/abandonedCart';
 
 
 // Você pode adicionar um handler GET para simplesmente verificar se a rota está funcionando
 export async function GET() {
     console.log('[API TEST] Recebida requisição GET para /api/test');
     
-    const data = await fetchAndProcessAbandonedCarts("33c6cb57-24f7-4586-9122-f91aac8a098c");
+    // const data = await fetchAndProcessAbandonedCarts("33c6cb57-24f7-4586-9122-f91aac8a098c");
+    // const allSchedules = await schedules.list();
+    // const retrievedSchedule = await schedules.retrieve("sched_rmed1p5jbgamremnq2not");
 
-    console.log('[API TEST] Dados processados:', data);
+    const activatedSchedule = await schedules.activate("sched_rmed1p5jbgamremnq2not");
+    
+
+    console.log('[API TEST] Dados processados:', activatedSchedule);
 
     const result = {
         message: 'API Test endpoint is working',
         timestamp: new Date().toISOString(),
-        data
+        data: activatedSchedule
     };
 
     return NextResponse.json({ success: true, result: result });
@@ -104,15 +111,40 @@ export async function POST(req: NextRequest) {
     const senderName = body.senderName 
     const workspaceId = body.workspaceId
     const channel = body.channel
+    const nuvemshopStoreId = body.nuvemshopStoreId
+    const nuvemshopApiKey = body.nuvemshopApiKey
+      
 
-    console.log(`[API TEST] Recebida requisição POST para /api/test com os seguintes parâmetros: phoneNumber=${phoneNumber}, senderName=${senderName}, workspaceId=${workspaceId}`);
+    // const result = await getNuvemShopIntegration(workspaceId);
+
+    // const result = await UpdateNuvemShopIntegration(workspaceId, nuvemshopStoreId, nuvemshopApiKey);
+
+    // console.log(`[API TEST] Recebida requisição POST para /api/test com os seguintes parâmetros: phoneNumber=${phoneNumber}, senderName=${senderName}, workspaceId=${workspaceId}`);
    
-    const { client, conversation } = await processClientAndConversation(
-        workspaceId,
-        standardizeBrazilianPhoneNumber(phoneNumber),
-        senderName,
-        channel
-    );
+    // const { client, conversation } = await processClientAndConversation(
+    //     workspaceId,
+    //     standardizeBrazilianPhoneNumber(phoneNumber),
+    //     senderName,
+    //     channel
+    // );
+
+
+
+    // const result = await fetchAndProcessAbandonedCarts(workspaceId);
+
+    const result = await sendDelayedWhatsAppReminder.trigger({
+        cartId: "cart_12345",
+        customerPhone: standardizeBrazilianPhoneNumber(phoneNumber),
+        customerName: senderName,
+        checkoutUrl: "https://example.com/checkout",
+        workspaceId: workspaceId,
+        sendAt: "5 minutes from now", 
+    },{
+        delay: "1m"
+    })
+
+    console.log('Result of sendDelayedWhatsAppReminder:', result);
+
     
-    return NextResponse.json({ response: conversation, client: client }, { status: 200 });
+    return NextResponse.json({ response: result }, { status: 200 });
 }

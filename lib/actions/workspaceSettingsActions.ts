@@ -9,6 +9,7 @@ import { z } from 'zod';
 // Importar funções de criptografia
 import { encrypt, decrypt } from '@/lib/encryption'; // Ajuste o path se necessário
 import crypto from 'crypto'; // Importar crypto
+import { da } from 'date-fns/locale';
 // import { getSession } from 'next-auth/react'; // NÃO usar getSession de react em Server Actions
 
 // Schema de validação para as configurações de IA
@@ -111,9 +112,9 @@ export async function updateAiSettingsAction(data: AiSettingsInput) {
     const validationResult = AiSettingsSchema.safeParse(data);
     if (!validationResult.success) {
       console.error('[updateAiSettingsAction] Validation errors:', validationResult.error.errors);
-      return { 
-        success: false, 
-        error: `Dados inválidos: ${validationResult.error.errors.map(e => e.message).join(', ')}` 
+      return {
+        success: false,
+        error: `Dados inválidos: ${validationResult.error.errors.map(e => e.message).join(', ')}`
       };
     }
 
@@ -127,8 +128,8 @@ export async function updateAiSettingsAction(data: AiSettingsInput) {
     // Verificar se o workspace existe e se o usuário tem permissão
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
-      select: { 
-        id: true, 
+      select: {
+        id: true,
         owner_id: true,
         // Buscar valores atuais para comparação
         ai_default_system_prompt: true,
@@ -158,29 +159,29 @@ export async function updateAiSettingsAction(data: AiSettingsInput) {
 
     // Preparar dados para atualização, removendo campos undefined
     const dataToUpdate: any = {};
-    
+
     if (updateData.ai_default_system_prompt !== undefined) {
-      dataToUpdate.ai_default_system_prompt = updateData.ai_default_system_prompt === '' 
-        ? null 
+      dataToUpdate.ai_default_system_prompt = updateData.ai_default_system_prompt === ''
+        ? null
         : updateData.ai_default_system_prompt;
     }
-    
+
     if (updateData.ai_model_preference !== undefined) {
-      dataToUpdate.ai_model_preference = updateData.ai_model_preference === '' 
-        ? null 
+      dataToUpdate.ai_model_preference = updateData.ai_model_preference === ''
+        ? null
         : updateData.ai_model_preference;
     }
-    
+
     if (updateData.ai_name !== undefined) {
-      dataToUpdate.ai_name = updateData.ai_name === '' 
-        ? null 
+      dataToUpdate.ai_name = updateData.ai_name === ''
+        ? null
         : updateData.ai_name;
     }
-    
+
     if (updateData.ai_delay_between_messages !== undefined) {
       dataToUpdate.ai_delay_between_messages = updateData.ai_delay_between_messages;
     }
-    
+
     if (updateData.ai_send_fractionated !== undefined) {
       dataToUpdate.ai_send_fractionated = Boolean(updateData.ai_send_fractionated);
     }
@@ -216,27 +217,27 @@ export async function updateAiSettingsAction(data: AiSettingsInput) {
     revalidatePath(`/workspace/${workspaceId}/ia`);
     revalidatePath(`/workspace/${workspaceId}`);
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: 'Configurações de IA atualizadas com sucesso!',
       data: updatedWorkspace
     };
 
   } catch (error: any) {
     console.error('[updateAiSettingsAction] Error updating AI settings:', error);
-    
+
     // Tratar erros específicos do Prisma
     if (error.code === 'P2002') {
       return { success: false, error: 'Conflito de dados. Verifique os valores inseridos.' };
     }
-    
+
     if (error.code === 'P2025') {
       return { success: false, error: 'Workspace não encontrado.' };
     }
 
-    return { 
-      success: false, 
-      error: 'Erro interno do servidor. Tente novamente mais tarde.' 
+    return {
+      success: false,
+      error: 'Erro interno do servidor. Tente novamente mais tarde.'
     };
   }
 }
@@ -277,16 +278,16 @@ export async function getAiSettingsAction(workspaceId: string) {
 
     const { owner_id, ...settings } = workspace;
 
-    return { 
-      success: true, 
-      data: settings 
+    return {
+      success: true,
+      data: settings
     };
 
   } catch (error: any) {
     console.error('[getAiSettingsAction] Error fetching AI settings:', error);
-    return { 
-      success: false, 
-      error: 'Erro ao carregar configurações.' 
+    return {
+      success: false,
+      error: 'Erro ao carregar configurações.'
     };
   }
 }
@@ -334,25 +335,25 @@ export async function saveWhatsappCredentialsAction(
       updateData.whatsappAccessToken = encrypt(accessToken);
       console.log(`[ACTION] Novo Access Token criptografado.`);
     } else {
-       // Se o token for vazio ou o placeholder, manter o existente no DB (não incluir no updateData)
-       // Se `accessToken === ''`, isso indica que o usuário quer limpar, mas a lógica atual não suporta.
-       // Se for preciso limpar, adicionar lógica aqui.
-       console.log(`[ACTION] Mantendo Access Token existente para Workspace ${workspaceId}.`);
+      // Se o token for vazio ou o placeholder, manter o existente no DB (não incluir no updateData)
+      // Se `accessToken === ''`, isso indica que o usuário quer limpar, mas a lógica atual não suporta.
+      // Se for preciso limpar, adicionar lógica aqui.
+      console.log(`[ACTION] Mantendo Access Token existente para Workspace ${workspaceId}.`);
     }
 
     // Verificar permissão antes de atualizar
     const session = await getServerSession(authOptions);
-     if (!session || !session.user) {
-       return { success: false, error: 'Não autenticado.' };
-     }
-     // Implementar checkUserWorkspacePermission ou verificar owner_id
-     const workspace = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { owner_id: true }
-     });
-     if (!workspace || workspace.owner_id !== session.user.id) {
-        return { success: false, error: 'Permissão negada.' };
-     }
+    if (!session || !session.user) {
+      return { success: false, error: 'Não autenticado.' };
+    }
+    // Implementar checkUserWorkspacePermission ou verificar owner_id
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { owner_id: true }
+    });
+    if (!workspace || workspace.owner_id !== session.user.id) {
+      return { success: false, error: 'Permissão negada.' };
+    }
 
 
     // Atualizar o workspace com os dados construídos
@@ -391,14 +392,14 @@ export async function saveEvolutionApiSettings(data: EvolutionSettingsData): Pro
   const { workspaceId, endpoint, apiKey, instanceName, activeIntegration } = validationResult.data;
 
   try {
-     // Verificar permissão
-     const workspaceCheck = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { owner_id: true }
-     });
-     if (!workspaceCheck || workspaceCheck.owner_id !== session.user.id) {
-        return { success: false, error: 'Permissão negada.' };
-     }
+    // Verificar permissão
+    const workspaceCheck = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { owner_id: true }
+    });
+    if (!workspaceCheck || workspaceCheck.owner_id !== session.user.id) {
+      return { success: false, error: 'Permissão negada.' };
+    }
 
 
     const dataToUpdate: any = {
@@ -412,8 +413,8 @@ export async function saveEvolutionApiSettings(data: EvolutionSettingsData): Pro
       // TODO: Idealmente, criptografar a API Key antes de salvar! Por enquanto, salva direto.
       dataToUpdate.evolution_api_key = apiKey.trim();
     } else if (apiKey === '') {
-       // Se a chave for uma string vazia explicitamente, remover do DB
-       dataToUpdate.evolution_api_key = null;
+      // Se a chave for uma string vazia explicitamente, remover do DB
+      dataToUpdate.evolution_api_key = null;
     }
     // Se apiKey for undefined, o campo não é incluído em dataToUpdate, mantendo o valor existente
 
@@ -443,9 +444,9 @@ export async function updateGoogleCalendarConversionAction(
   data: z.infer<typeof GoogleCalendarConversionSchema>
 ): Promise<ActionResult> {
   const session = await getServerSession(authOptions);
-   if (!session || !session.user) {
-     return { success: false, error: 'Não autenticado.' };
-   }
+  if (!session || !session.user) {
+    return { success: false, error: 'Não autenticado.' };
+  }
 
   const validation = GoogleCalendarConversionSchema.safeParse(data);
   if (!validation.success) {
@@ -455,14 +456,14 @@ export async function updateGoogleCalendarConversionAction(
   const { workspaceId, enabled } = validation.data;
 
   try {
-     // Verificar permissão
-     const workspace = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { owner_id: true }
-     });
-     if (!workspace || workspace.owner_id !== session.user.id) {
-        return { success: false, error: 'Permissão negada.' };
-     }
+    // Verificar permissão
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { owner_id: true }
+    });
+    if (!workspace || workspace.owner_id !== session.user.id) {
+      return { success: false, error: 'Permissão negada.' };
+    }
 
     await prisma.workspace.update({
       where: { id: workspaceId },
@@ -488,9 +489,9 @@ export async function createEvolutionInstanceAction(
   data: z.infer<typeof CreateEvolutionInstanceSchema>
 ): Promise<EvolutionInstanceResult> {
   const session = await getServerSession(authOptions);
-   if (!session || !session.user) {
-     return { success: false, error: 'Não autenticado.' };
-   }
+  if (!session || !session.user) {
+    return { success: false, error: 'Não autenticado.' };
+  }
 
   const validation = CreateEvolutionInstanceSchema.safeParse(data);
   if (!validation.success) {
@@ -500,14 +501,14 @@ export async function createEvolutionInstanceAction(
   const { workspaceId } = validation.data;
 
   try {
-     // Verificar permissão
-     const workspaceCheck = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { owner_id: true }
-     });
-     if (!workspaceCheck || workspaceCheck.owner_id !== session.user.id) {
-        return { success: false, error: 'Permissão negada.' };
-     }
+    // Verificar permissão
+    const workspaceCheck = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { owner_id: true }
+    });
+    if (!workspaceCheck || workspaceCheck.owner_id !== session.user.id) {
+      return { success: false, error: 'Permissão negada.' };
+    }
 
     // <<< Gerar o Webhook Token ÚNICO AQUI >>>
     const evolution_webhook_route_token = crypto.randomBytes(16).toString('hex');
@@ -603,16 +604,15 @@ export async function createEvolutionInstanceAction(
   }
 }
 
-// --- Evolution API Status Fetch Action ---
 
 // Server Action para buscar o status de uma instância Evolution
 export async function fetchEvolutionInstanceStatusAction(
   data: z.infer<typeof FetchEvolutionInstanceStatusSchema>
 ): Promise<EvolutionInstanceStatusResult> {
   const session = await getServerSession(authOptions);
-   if (!session || !session.user) {
-     return { success: false, error: 'Não autenticado.' };
-   }
+  if (!session || !session.user) {
+    return { success: false, error: 'Não autenticado.' };
+  }
 
   const validation = FetchEvolutionInstanceStatusSchema.safeParse(data);
   if (!validation.success) {
@@ -623,13 +623,13 @@ export async function fetchEvolutionInstanceStatusAction(
 
   try {
     // Verificar permissão
-     const workspaceCheck = await prisma.workspace.findUnique({
-        where: { id: instanceName }, // instanceName é o workspaceId
-        select: { owner_id: true }
-     });
-     if (!workspaceCheck || workspaceCheck.owner_id !== session.user.id) {
-        return { success: false, error: 'Permissão negada.' };
-     }
+    const workspaceCheck = await prisma.workspace.findUnique({
+      where: { id: instanceName }, // instanceName é o workspaceId
+      select: { owner_id: true }
+    });
+    if (!workspaceCheck || workspaceCheck.owner_id !== session.user.id) {
+      return { success: false, error: 'Permissão negada.' };
+    }
 
     const targetUrl = `${process.env.apiUrlEvolution?.endsWith('/') ? process.env.apiUrlEvolution : process.env.apiUrlEvolution + '/'}instance/fetchInstances?instanceName=${instanceName}`; // Garante a barra final e busca por instanceName
     console.log(`[ACTION fetchEvolutionInstanceStatus] Chamando GET ${targetUrl}`);
@@ -650,9 +650,9 @@ export async function fetchEvolutionInstanceStatusAction(
     }
 
     if (!storedTokenHash) {
-       console.warn(`[ACTION fetchEvolutionInstanceStatus] Token hash não encontrado no DB para workspace ${instanceName}. Não é possível buscar status da Evolution API.`);
-       // Pode retornar um status indicando que a integração não está configurada
-       return { success: true, instanceExists: false, connectionStatus: 'NOT_CONFIGURED' };
+      console.warn(`[ACTION fetchEvolutionInstanceStatus] Token hash não encontrado no DB para workspace ${instanceName}. Não é possível buscar status da Evolution API.`);
+      // Pode retornar um status indicando que a integração não está configurada
+      return { success: true, instanceExists: false, connectionStatus: 'NOT_CONFIGURED' };
     }
 
     const response = await fetch(targetUrl, {
@@ -671,8 +671,8 @@ export async function fetchEvolutionInstanceStatusAction(
         console.log(`[ACTION fetchEvolutionInstanceStatus] Instância ${instanceName} não encontrada na Evolution API (404).`);
         return { success: true, instanceExists: false, connectionStatus: 'NOT_FOUND_IN_API' }; // Sucesso na chamada, mas instância não existe na API
       } else if (response.status === 401 || response.status === 403) {
-         console.error(`[ACTION fetchEvolutionInstanceStatus] Erro de autenticação (${response.status}) ao buscar status para ${instanceName}. Token inválido?`);
-         return { success: false, error: 'Erro de autenticação com a Evolution API. Verifique suas credenciais.', connectionStatus: 'AUTH_ERROR' };
+        console.error(`[ACTION fetchEvolutionInstanceStatus] Erro de autenticação (${response.status}) ao buscar status para ${instanceName}. Token inválido?`);
+        return { success: false, error: 'Erro de autenticação com a Evolution API. Verifique suas credenciais.', connectionStatus: 'AUTH_ERROR' };
       }
       console.error('[ACTION fetchEvolutionInstanceStatus] Erro da API Evolution:', responseBody);
       throw new Error(responseBody.message || responseBody.error || `Erro ${response.status} ao buscar instância.`);
@@ -707,16 +707,14 @@ export async function fetchEvolutionInstanceStatusAction(
   }
 }
 
-// --- Evolution API Delete Instance Action ---
-
 // Server Action para deletar uma instância Evolution
 export async function deleteEvolutionInstanceAction(
   data: z.infer<typeof DeleteEvolutionInstanceSchema>
 ): Promise<ActionResult> { // ActionResult é { success: boolean; error?: string; }
   const session = await getServerSession(authOptions);
-   if (!session || !session.user) {
-     return { success: false, error: 'Não autenticado.' };
-   }
+  if (!session || !session.user) {
+    return { success: false, error: 'Não autenticado.' };
+  }
 
   const validation = DeleteEvolutionInstanceSchema.safeParse(data);
   if (!validation.success) {
@@ -726,47 +724,47 @@ export async function deleteEvolutionInstanceAction(
   const { instanceName } = validation.data; // instanceName é o workspaceId
 
   try {
-     // Verificar permissão
-     const workspaceCheck = await prisma.workspace.findUnique({
-        where: { id: instanceName }, // instanceName é o workspaceId
-        select: { owner_id: true }
-     });
-     if (!workspaceCheck || workspaceCheck.owner_id !== session.user.id) {
-        return { success: false, error: 'Permissão negada.' };
-     }
+    // Verificar permissão
+    const workspaceCheck = await prisma.workspace.findUnique({
+      where: { id: instanceName }, // instanceName é o workspaceId
+      select: { owner_id: true }
+    });
+    if (!workspaceCheck || workspaceCheck.owner_id !== session.user.id) {
+      return { success: false, error: 'Permissão negada.' };
+    }
 
-     // Buscar o token hash armazenado no nosso DB ANTES de chamar a API Evolution
-     let storedTokenHash: string | null = null; // Mudar para null, pois pode não existir
-     try {
-       const workspace = await prisma.workspace.findUnique({
-         where: { id: instanceName }, // instanceName é o workspaceId
-         select: { evolution_api_token: true } // evolution_api_token é o token que a Evolution espera no header apikey
-       });
-       if (workspace?.evolution_api_token) {
-         storedTokenHash = workspace.evolution_api_token;
-       }
-     } catch (dbError) {
-       console.error(`[ACTION deleteEvolutionInstanceAction] Erro ao buscar token hash do DB para ${instanceName}:`, dbError);
-       // Loga o erro, mas continua... se o token não for encontrado, a chamada à API Evolution provavelmente falhará com 401/403
-     }
+    // Buscar o token hash armazenado no nosso DB ANTES de chamar a API Evolution
+    let storedTokenHash: string | null = null; // Mudar para null, pois pode não existir
+    try {
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: instanceName }, // instanceName é o workspaceId
+        select: { evolution_api_token: true } // evolution_api_token é o token que a Evolution espera no header apikey
+      });
+      if (workspace?.evolution_api_token) {
+        storedTokenHash = workspace.evolution_api_token;
+      }
+    } catch (dbError) {
+      console.error(`[ACTION deleteEvolutionInstanceAction] Erro ao buscar token hash do DB para ${instanceName}:`, dbError);
+      // Loga o erro, mas continua... se o token não for encontrado, a chamada à API Evolution provavelmente falhará com 401/403
+    }
 
     if (!storedTokenHash) {
-       console.warn(`[ACTION deleteEvolutionInstanceAction] Token hash não encontrado no DB para workspace ${instanceName}. Não é possível deletar instância da Evolution API.`);
-       // Se o token não existe localmente, consideramos sucesso na remoção local, mesmo que a instância não tenha sido deletada na API Evolution (pois não temos como chamá-la)
-       // Talvez seria melhor retornar um erro ou um status parcial?
-       // Por enquanto, vamos retornar sucesso, pois do ponto de vista do nosso DB a integração não está configurada.
-       // TODO: Considerar limpar os campos evolution_* no DB local neste caso.
-        // await prisma.workspace.update({ // Exemplo de limpeza
-        //   where: { id: instanceName },
-        //   data: {
-        //     evolution_api_endpoint: null,
-        //     evolution_api_key: null, // Se você salvar a chave aqui
-        //     evolution_api_instance_name: null,
-        //     evolution_api_token: null,
-        //     evolution_webhook_route_token: null,
-        //   }
-        // });
-       return { success: true, error: 'Integração Evolution API não configurada localmente.' };
+      console.warn(`[ACTION deleteEvolutionInstanceAction] Token hash não encontrado no DB para workspace ${instanceName}. Não é possível deletar instância da Evolution API.`);
+      // Se o token não existe localmente, consideramos sucesso na remoção local, mesmo que a instância não tenha sido deletada na API Evolution (pois não temos como chamá-la)
+      // Talvez seria melhor retornar um erro ou um status parcial?
+      // Por enquanto, vamos retornar sucesso, pois do ponto de vista do nosso DB a integração não está configurada.
+      // TODO: Considerar limpar os campos evolution_* no DB local neste caso.
+      // await prisma.workspace.update({ // Exemplo de limpeza
+      //   where: { id: instanceName },
+      //   data: {
+      //     evolution_api_endpoint: null,
+      //     evolution_api_key: null, // Se você salvar a chave aqui
+      //     evolution_api_instance_name: null,
+      //     evolution_api_token: null,
+      //     evolution_webhook_route_token: null,
+      //   }
+      // });
+      return { success: true, error: 'Integração Evolution API não configurada localmente.' };
     }
 
     const targetUrl = `${process.env.apiUrlEvolution?.endsWith('/') ? process.env.apiUrlEvolution : process.env.apiUrlEvolution + '/'}instance/delete/${instanceName}`; // Garante a barra final
@@ -785,15 +783,15 @@ export async function deleteEvolutionInstanceAction(
     if (!response.ok && response.status !== 204) {
       const responseBody = await response.json().catch(() => ({ message: 'Falha ao ler corpo do erro' }));
       console.error(`[ACTION deleteEvolutionInstanceAction] Erro da API Evolution ao deletar ${instanceName}:`, responseBody);
-       if (response.status === 401 || response.status === 403) {
-          return { success: false, error: 'Erro de autenticação com a Evolution API. Verifique suas credenciais.' };
-       } else if (response.status === 404) {
-          console.warn(`[ACTION deleteEvolutionInstanceAction] Instância ${instanceName} não encontrada na Evolution API ao tentar deletar.`);
-          // Se não encontrou na API ao deletar, talvez já tenha sido deletada. Considerar sucesso para fins de sincronização local.
-          // Prossegue para limpar o DB local.
-       } else {
-         throw new Error(responseBody.message || responseBody.error || `Erro ${response.status} ao deletar instância.`);
-       }
+      if (response.status === 401 || response.status === 403) {
+        return { success: false, error: 'Erro de autenticação com a Evolution API. Verifique suas credenciais.' };
+      } else if (response.status === 404) {
+        console.warn(`[ACTION deleteEvolutionInstanceAction] Instância ${instanceName} não encontrada na Evolution API ao tentar deletar.`);
+        // Se não encontrou na API ao deletar, talvez já tenha sido deletada. Considerar sucesso para fins de sincronização local.
+        // Prossegue para limpar o DB local.
+      } else {
+        throw new Error(responseBody.message || responseBody.error || `Erro ${response.status} ao deletar instância.`);
+      }
     }
 
     // Se a resposta for 204 ou 404 (tratado como já deletado na API), response.json() falhará, então verificamos o status diretamente
@@ -806,21 +804,21 @@ export async function deleteEvolutionInstanceAction(
 
     // Limpar campos relacionados à Evolution API no nosso banco de dados LOCAL independentemente do status 200/204/404 da API Evolution (se o token existia localmente)
     try {
-       await prisma.workspace.update({
-         where: { id: instanceName },
-         data: {
-           evolution_api_endpoint: null,
-           evolution_api_key: null, // Se você estiver armazenando a chave global aqui
-           evolution_api_instance_name: null,
-           evolution_api_token: null, // Limpa o token da instância
-           evolution_webhook_route_token: null,
-           google_calendar_event_conversion_enabled: false, // Desabilitar conversão Google Calendar também ao remover Evolution?
-         }
-       });
-       console.log(`[ACTION deleteEvolutionInstanceAction] Dados da Evolution API limpados do DB local para workspace ${instanceName}.`);
+      await prisma.workspace.update({
+        where: { id: instanceName },
+        data: {
+          evolution_api_endpoint: null,
+          evolution_api_key: null, // Se você estiver armazenando a chave global aqui
+          evolution_api_instance_name: null,
+          evolution_api_token: null, // Limpa o token da instância
+          evolution_webhook_route_token: null,
+          google_calendar_event_conversion_enabled: false, // Desabilitar conversão Google Calendar também ao remover Evolution?
+        }
+      });
+      console.log(`[ACTION deleteEvolutionInstanceAction] Dados da Evolution API limpados do DB local para workspace ${instanceName}.`);
     } catch (dbError) {
-       console.error(`[ACTION deleteEvolutionInstanceAction] Erro ao limpar dados da Evolution API do DB para workspace ${instanceName}:`, dbError);
-       // Loga o erro do DB, mas a action ainda pode retornar sucesso se a chamada à API Evolution (ou o status) foi ok/404
+      console.error(`[ACTION deleteEvolutionInstanceAction] Erro ao limpar dados da Evolution API do DB para workspace ${instanceName}:`, dbError);
+      // Loga o erro do DB, mas a action ainda pode retornar sucesso se a chamada à API Evolution (ou o status) foi ok/404
     }
 
 
@@ -835,5 +833,53 @@ export async function deleteEvolutionInstanceAction(
     console.error(`[ACTION ERROR] Falha geral ao deletar instância Evolution ${instanceName}:`, error);
     // Captura erros que não foram tratados especificamente acima
     return { success: false, error: error.message || 'Erro do servidor ao deletar instância Evolution.' };
+  }
+}
+
+// Server Action para Atulizar configuracoes da NumvemShop
+// Schema de validação para os dados recebidos do formulário da Evolution API
+const nuvemShopeIntegrationSchema = z.object({
+  workspaceId: z.string(),
+  store_id: z.string(),
+  token: z.string() // Opcional, só atualiza se fornecido
+});
+
+type NumvemShopSettingsData = z.infer<typeof nuvemShopeIntegrationSchema>;
+
+
+export async function UpdateNuvemShopIntegration(data: NumvemShopSettingsData): Promise<{ success: boolean; msg?: string }> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return { success: false, msg: 'Usuário não autenticado.' };
+  }
+  const validationResult = nuvemShopeIntegrationSchema.safeParse(data);
+  if (!validationResult.success) {
+    // Coleta os erros de validação
+    const errors = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+    return { success: false, msg: `Dados inválidos: ${errors}` };
+  }
+
+  try {
+    await prisma.workspace.update({
+      where: { id: data.workspaceId },
+      data: {
+        nuvemshopStoreId: data.store_id,
+        nuvemshopApiKey: data.token, // Se token for vazio, não atualiza
+      },
+      select: {
+        nuvemshopStoreId: true,
+        nuvemshopApiKey: true,
+      },
+    });
+    return {
+      success: true,
+      msg: 'Configurações da NuvemShop atualizadas com sucesso!',
+    };
+  } catch (error: any) {
+    console.error('[UpdateNuvemShopIntegration] Error updating NuvemShop settings:', error);
+    return {
+      success: false,
+      msg: 'Erro ao atualizar as configurações da NuvemShop. Verifique os dados e tente novamente.',
+    }
   }
 }

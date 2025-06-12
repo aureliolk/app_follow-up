@@ -1,22 +1,16 @@
 import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
-  project: "proj_ovzjwmblpqzlzwfkrkld",
-  runtime: "node",
-  logLevel: "log",
-  // The max compute seconds a task is allowed to run. If the task run exceeds this duration, it will be stopped.
-  // You can override this on an individual task.
-  // See https://trigger.dev/docs/runs/max-duration
-  maxDuration: 3600,
-  retries: {
-    enabledInDev: true,
-    default: {
-      maxAttempts: 3,
-      minTimeoutInMs: 1000,
-      maxTimeoutInMs: 10000,
-      factor: 2,
-      randomize: true,
-    },
+  project: "proj_ovzjwmblpqzlzwfkrkld", // Replace with your actual project reference
+  dirs: ["./trigger"], // Fixed the deprecated triggerDirectories
+  maxDuration: 300, // Required property - 300 seconds (5 minutes) - adjust as needed
+  build: {
+    extensions: [
+      prismaExtension({
+        schema: "prisma/schema.prisma", // Path to your Prisma schema file
+        // version: "5.20.0", // Optional: specify Prisma version if needed
+      }),
+    ],
   },
-  dirs: ["trigger"],
 });

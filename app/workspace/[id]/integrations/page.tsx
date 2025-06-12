@@ -5,8 +5,8 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/auth-options";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import WhatsappIntegrationPage from './whatsapp/page';
-import GoogleIntegrationsCard from './components/GoogleIntegrationsCard';
 import EvolutionIntegrationPage from './evolution/page';
+import { decrypt } from '@/lib';
 
 interface WhatsappIntegrationPageProps {
   params: {
@@ -59,6 +59,8 @@ export default async function IntegrationsPage({ params }: WhatsappIntegrationPa
   }
 
   const settings = await getWorkspaceWhatsappSettings((await params).id);
+
+
 
   if (!settings) {
     notFound();
