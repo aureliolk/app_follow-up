@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "507999995687664",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "556298608880",
+              "phone_number_id": "591328210728203"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "PWD Personalizados por Priscilla Cunha"
+                },
+                "wa_id": "5511980870980"
+              }
+            ],
+            "messages": [
+              {
+                "from": "5511980870980",
+                "id": "wamid.HBgNNTUxMTk4MDg3MDk4MBUCABIYIDJGRkQxMTkxMEQ2NDQ3MjcwMEExODg3OTdCN0Y3MDBEAA==",
+                "timestamp": "1749740516",
+                "text": {
+                  "body": "Eu fiquei preocupada rs"
+                },
+                "type": "text"
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

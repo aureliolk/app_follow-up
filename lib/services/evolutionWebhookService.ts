@@ -1,176 +1,221 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
-import { saveMessageRecord } from '@/lib/services/persistenceService';
-import { processClientAndConversation } from '@/lib/services/clientConversationService';
-import { triggerNewMessageNotification, triggerStatusUpdateNotification } from '@/lib/pusherEvents';
-import { addMessageProcessingJob } from '@/lib/queues/queueService';
-import { Prisma } from '@prisma/client';
+import { MessageSenderType } from "@prisma/client";
 
-export class EvolutionWebhookService {
-    private evolutionStatusToDbStatus(evolutionStatus: string): string {
-        const lowerStatus = evolutionStatus.toLowerCase();
-        switch (lowerStatus) {
-            case 'sent': return 'SENT';
-            case 'delivery_ack': return 'DELIVERED';
-            case 'read': return 'READ';
-            case 'played': return 'READ';
-            case 'error': return 'FAILED';
-            default:
-                console.warn(`Unknown Evolution status: ${evolutionStatus}`);
-                return evolutionStatus.toUpperCase();
+import { NextResponse } from 'next/server';
+import { standardizeBrazilianPhoneNumber } from '../phoneUtils';
+import { processClientAndConversation } from './clientConversationService';
+import { saveMessageRecord } from './persistenceService';
+import { triggerNewMessageNotification } from '../pusherEvents';
+import { CoreMessage } from 'ai';
+import { processAIChat } from '../ai/chatService';
+import { sendMsgForIa } from '@/trigger/aiGenerate';
+
+export const AI_MESSAGE_ROLES = {
+    USER: 'user',
+    ASSISTANT: 'assistant',
+};
+
+export type ApiEvolutionType = {
+    event: string
+    instance: string
+    data: {
+        key: {
+            remoteJid: string
+            fromMe: boolean
+            id: string
+            participant?: string
         }
-    }
-
-    private async getWorkspaceByToken(evolutionWebhookToken: string) {
-        return prisma.workspace.findUnique({
-            where: { evolution_webhook_route_token: evolutionWebhookToken },
-            select: {
-                id: true,
-                evolution_api_token: true,
-                ai_delay_between_messages: true
+        pushName: string
+        status: string
+        message: {
+            conversation: string
+            messageContextInfo: {
+                deviceListMetadata: {
+                    senderTimestamp: string
+                    recipientKeyHash: string
+                    recipientTimestamp: string
+                }
+                deviceListMetadataVersion: number
+                messageSecret: string
             }
-        });
+        }
+        messageType: string
+        messageTimestamp: number
+        instanceId: string
+        source: string
     }
+    destination: string
+    date_time: string
+    sender: string
+    server_url: string
+    apikey: string
+}
 
-    public async handleIncomingMessage(request: NextRequest, evolutionWebhookToken: string) {
-        const workspace = await this.getWorkspaceByToken(evolutionWebhookToken);
-        if (!workspace) {
-            return new NextResponse('Workspace not found', { status: 404 });
+async function checkIfLatestMessage(conversationId: string, messageId: string): Promise<boolean> {
+    const lastAiMessage = await prisma.message.findFirst({
+        where: {
+            conversation_id: conversationId,
+            sender_type: MessageSenderType.AI
+        },
+        orderBy: { timestamp: 'desc' },
+        select: { timestamp: true }
+    });
+
+    const newClientMessages = await prisma.message.findMany({
+        where: {
+            conversation_id: conversationId,
+            sender_type: MessageSenderType.CLIENT,
+            timestamp: { gt: lastAiMessage?.timestamp || new Date(0) }
+        },
+        orderBy: { timestamp: 'asc' },
+        select: { id: true }
+    });
+
+    return newClientMessages.length > 0 &&
+        messageId === newClientMessages[newClientMessages.length - 1].id;
+}
+
+export type WorkspaceType = {
+    id: string
+    evolution_webhook_route_token: string
+    ai_delay_between_messages?: number
+    ai_model_preference?: string
+    ai_default_system_prompt?: string
+}
+
+export async function processEvolutionPayload(payload: ApiEvolutionType, routeToken: string) {
+    // Validar workspace pelo token
+    const workspace = await prisma.workspace.findUnique({
+        where: { evolution_webhook_route_token: routeToken },
+        select: {
+            id: true,
+            evolution_webhook_route_token: true,
+            ai_delay_between_messages: true,
+            ai_model_preference: true,
+            ai_default_system_prompt: true
         }
+    });
 
-        try {
-            const payload = await request.json();
-            
-            if (payload.event === 'messages.upsert' && payload.data?.key && !payload.data.key.fromMe) {
-                await this.processNewMessage(payload.data, workspace);
-            } else if (payload.event === 'messages.update' && payload.data?.status) {
-                await this.processStatusUpdate(payload.data, workspace);
-            }
-
-            return new NextResponse('EVENT_RECEIVED', { status: 200 });
-        } catch (error) {
-            console.error('Error processing webhook:', error);
-            return new NextResponse('Error processing webhook', { status: 500 });
-        }
-    }
-
-    private async processNewMessage(messageData: any, workspace: any) {
-        console.log('[EvolutionWebhook] Processando nova mensagem:', messageData);
-
-        // Extrair dados básicos da mensagem
-        const senderJid = messageData.key.remoteJid;
-        const isGroup = senderJid?.endsWith('@g.us');
-        const senderPhone = isGroup ? messageData.key.participant : senderJid;
-        const phoneNumber = senderPhone?.split('@')[0];
-        const standardizedPhone = standardizeBrazilianPhoneNumber(phoneNumber);
-        const senderName = messageData.pushName || '';
-        const messageId = messageData.key.id;
-        const timestamp = messageData.messageTimestamp * 1000;
-
-        if (!standardizedPhone) {
-            console.warn('[EvolutionWebhook] Número de telefone inválido:', phoneNumber);
-            return;
-        }
-
-        // Processar conteúdo da mensagem
-        let content = '';
-        let mediaUrl = null;
-        let mediaType = null;
-        
-        const messageType = messageData.messageType;
-        if (messageType === 'conversation') {
-            content = messageData.message?.conversation || '';
-        } else if (messageType === 'imageMessage') {
-            content = messageData.message?.imageMessage?.caption || '[Imagem]';
-            mediaUrl = messageData.message?.imageMessage?.url;
-            mediaType = 'image';
-        } // Adicionar outros tipos de mídia conforme necessário
-
-        // Criar/atualizar cliente e conversa
-        const { client, conversation } = await processClientAndConversation(
-            workspace.id,
-            standardizedPhone,
-            senderName,
-            'WHATSAPP_EVOLUTION'
+    if (!workspace) {
+        return NextResponse.json(
+            { error: 'Workspace não encontrado' },
+            { status: 404 }
         );
+    }
 
-        // Salvar mensagem
-        const savedMessage = await saveMessageRecord({
-            conversation_id: conversation.id,
-            sender_type: 'CLIENT',
-            content,
-            timestamp: new Date(timestamp),
-            metadata: {
-                provider: 'evolution',
-                clientId: client.id,
-                clientName: senderName,
-                clientPhone: standardizedPhone,
-                messageIdFromProvider: messageId,
-                ...(mediaUrl && { mediaUrl, mediaType })
-            },
-            channel_message_id: messageId,
-            providerMessageId: messageId
-        });
+    // Processar diferentes tipos de eventos
+    switch (payload.event) {
+        case 'messages.upsert':
+            return processEvolutionMessage(payload, { id: workspace.id, evolution_webhook_route_token: workspace.evolution_webhook_route_token, ai_delay_between_messages: workspace.ai_delay_between_messages, ai_model_preference: workspace.ai_model_preference, ai_default_system_prompt: workspace.ai_default_system_prompt } as WorkspaceType);
+        case 'messages.update':
+            return processEvolutionStatusUpdate(payload, workspace.id);
+        default:
+            return NextResponse.json(
+                { status: 'EVENT_RECEIVED_UNSUPPORTED' },
+                { status: 200 }
+            );
+    }
+}
 
-        // Notificar e processar
+async function processEvolutionMessage(payload: ApiEvolutionType, workspace: WorkspaceType) {
+    const messageData = payload.data;
+    const senderPhoneNumber = standardizeBrazilianPhoneNumber(messageData.key.remoteJid.split('@')[0]);
+    const senderName = messageData.pushName || senderPhoneNumber;
+
+    const { conversation } = await processClientAndConversation(
+        workspace.id,
+        senderPhoneNumber,
+        senderName,
+        'WHATSAPP_EVOLUTION'
+    );
+
+    let messageContentOutput: string | null = null;
+    let messageTypeOutput: string = 'unknown';
+    let requiresProcessing = false;
+
+    if (messageData.messageType === 'conversation' || messageData.messageType === 'extendedTextMessage') {
+        messageContentOutput = messageData.message?.conversation || (messageData.message as any)?.extendedTextMessage?.text || "";
+        messageTypeOutput = 'text';
+        requiresProcessing = true;
+    }
+
+    const savedMessage = await saveMessageRecord({
+        conversation_id: conversation.id,
+        sender_type: 'CLIENT',
+        content: messageContentOutput!,
+        timestamp: new Date(messageData.messageTimestamp * 1000),
+        channel_message_id: "EVO",
+    });
+
+    try {
         await triggerNewMessageNotification(workspace.id, savedMessage, 'evolution');
-        
-        if (content || mediaUrl) {
-            const jobData = {
-                conversationId: conversation.id,
-                clientId: client.id,
-                newMessageId: savedMessage.id,
-                workspaceId: workspace.id,
-                receivedTimestamp: timestamp
-            };
-            
-            if (workspace.ai_delay_between_messages !== undefined) {
-                (jobData as any).delayBetweenMessages = workspace.ai_delay_between_messages;
-            }
-            
-            await addMessageProcessingJob(jobData);
-        }
+    } catch (pusherError) {
+        console.error(`[EVOLUTION WEBHOOK - POST Failed to trigger Pusher event for msg ${savedMessage.id}:`, pusherError);
     }
 
-    private async processStatusUpdate(statusData: any, workspace: any) {
-        console.log('[EvolutionWebhook] Atualizando status:', statusData);
 
-        const messageId = statusData.keyId;
-        const status = this.evolutionStatusToDbStatus(statusData.status);
-        const recipientPhone = statusData.remoteJid?.split('@')[0];
+    // 3. Aplicar DEBOUNCE usando ai_delay_between_messages
+    const debounceMs = Number(workspace.ai_delay_between_messages) || 3000;
+    await new Promise(resolve => setTimeout(resolve, debounceMs));
 
-        if (!messageId || !status || !recipientPhone) {
-            console.warn('[EvolutionWebhook] Dados de status incompletos');
-            return;
-        }
-
-        // Buscar mensagem para atualizar
-        const message = await prisma.message.findFirst({
-            where: { providerMessageId: messageId },
-            select: { id: true, conversation_id: true, status: true }
-        });
-
-        if (!message) {
-            console.warn('[EvolutionWebhook] Mensagem não encontrada para atualização de status');
-            return;
-        }
-
-        // Atualizar status
-        await prisma.message.update({
-            where: { id: message.id },
-            data: { status }
-        });
-
-        // Notificar atualização
-        await triggerStatusUpdateNotification(
-            workspace.id,
-            message.id,
-            message.conversation_id,
-            status,
-            messageId,
-            status === 'FAILED' ? 'Falha no envio' : undefined,
-            'evolution'
+    // 4. Verificar se é a última mensagem do cliente
+    const isLatestMessage = await checkIfLatestMessage(conversation.id, savedMessage.id);
+    if (!isLatestMessage) {
+        console.log(`Mensagem ${savedMessage.id} não é a mais recente do cliente, ignorando processamento.`);
+        return NextResponse.json(
+            { status: 'MESSAGE_IGNORED', reason: 'Not latest message' },
+            { status: 200 }
         );
     }
+    
+
+    const responseIa = await sendMsgForIa.trigger({
+        aiResponse: messageContentOutput,
+        workspaceId: workspace.id,
+        newMessageId: savedMessage.id
+    })
+
+    console.log(`IA response for message ${savedMessage.id}:`, responseIa);
+
+    // console.log({
+    //     status: 'MESSAGE_PROCESSED',
+    //     message: {
+    //         id: messageData.key.id,
+    //         senderJid: senderPhoneNumber,
+    //         pushName: messageData.pushName,
+    //         status: messageData.status,
+    //         conversation: messageData.message.conversation,
+    //         messageType: messageData.messageType,
+    //         timestamp: messageData.messageTimestamp,
+
+    //     }
+    // },
+    //     { status: 200 })
+
+
+    return NextResponse.json(
+        {
+            status: 'MESSAGE_PROCESSED',
+            message: {
+                id: messageData.key.id,
+                senderJid: senderPhoneNumber,
+                pushName: messageData.pushName,
+                status: messageData.status,
+                conversation: messageData.message.conversation,
+                messageType: messageData.messageType,
+                timestamp: messageData.messageTimestamp,
+
+            }
+        },
+        { status: 200 }
+    );
+}
+
+async function processEvolutionStatusUpdate(payload: any, workspaceId: string) {
+    // Implementar lógica específica para atualizações de status
+    // ...
+    return NextResponse.json(
+        { status: 'STATUS_UPDATED' },
+        { status: 200 }
+    );
 }

@@ -1,0 +1,34 @@
+{
+  "event": "messages.upsert",
+  "instance": "33c6cb57-24f7-4586-9122-f91aac8a098c",
+  "data": {
+    "key": {
+      "remoteJid": "557399302760@s.whatsapp.net",
+      "fromMe": false,
+      "id": "BE62CA5449A758E7883A43CB192A647D"
+    },
+    "pushName": "Aurélio Castro",
+    "status": "DELIVERY_ACK",
+    "message": {
+      "conversation": "Oiii",
+      "messageContextInfo": {
+        "deviceListMetadata": {
+          "senderTimestamp": "1747840061",
+          "recipientKeyHash": "8RUJDD4i6Jm+Yg==",
+          "recipientTimestamp": "1749744837"
+        },
+        "deviceListMetadataVersion": 2,
+        "messageSecret": "dc1tEM4JQxSy3G/frto2fUI50SYkEKNS3tX2Mk8k7go="
+      }
+    },
+    "messageType": "conversation",
+    "messageTimestamp": 1749770764,
+    "instanceId": "a3edaa59-476d-4119-b233-ef15e81b07f1",
+    "source": "android"
+  },
+  "destination": "https://1ede-2804-43fc-163-b200-59e4-12ac-2ac6-fe94.ngrok-free.app/api/webhooks/ingress/2cd8cbd215b2eef3587eb5439113ed5a",
+  "date_time": "2025-06-12T20:26:04.847Z",
+  "sender": "557391121575@s.whatsapp.net",
+  "server_url": "api.lumibot.com.br",
+  "apikey": "33f844c0b788df1881fa1e12f5412cef"
+}

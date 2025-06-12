@@ -35,7 +35,7 @@ export async function saveMessageRecord(
     timestamp,
     metadata,
     channel_message_id,
-    media_url, // Destructure new fields
+    media_url, 
     media_mime_type,
     media_filename
   } = data;

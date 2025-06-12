@@ -3,15 +3,14 @@ import { prisma } from "@/lib/db";
 import { getPipelineStages, createDeal } from '@/lib/actions/pipelineActions';
 import { sequenceStepQueue } from '@/lib/queues/sequenceStepQueue';
 import { triggerWorkspacePusherEvent } from '@/lib/pusherEvents';
-import { standardizeBrazilianPhoneNumber } from '@/lib/phoneUtils';
 
 export async function getOrCreateConversation(
     workspaceId: string,
     phoneNumber: string,
     clientName: string,
-    channelIdentifier: string 
+    channelIdentifier: string
 ): Promise<{ client: Client; conversation: Conversation; conversationWasCreated: boolean; clientWasCreated: boolean }> {
-    
+
 
     let client = await prisma.client.findFirst({
         where: {
@@ -32,24 +31,7 @@ export async function getOrCreateConversation(
             }
         });
         clientWasCreated = true;
-    } else {
-        const dataToUpdate: Prisma.ClientUpdateInput = {};
-        // Update name only if a name was provided and the client didn't have one
-        if (clientName && !client.name) {
-            dataToUpdate.name = clientName;
-        }
-        // Update client channel for this interaction, if different
-        if (client.channel !== channelIdentifier) {
-            dataToUpdate.channel = channelIdentifier;
-        }
-
-        if (Object.keys(dataToUpdate).length > 0) {
-            client = await prisma.client.update({
-                where: { id: client.id },
-                data: dataToUpdate
-            });
-        }
-    }
+    } 
 
     let conversation: Conversation;
     let conversationWasCreated = false;
@@ -71,9 +53,11 @@ export async function getOrCreateConversation(
                 client_id: client.id,
                 channel: channelIdentifier,
                 status: ConversationStatus.ACTIVE,
-                is_ai_active: true, 
+                is_ai_active: true,
                 last_message_at: new Date(),
-            }
+            },
+            // Como inclui o relaionameto com workspace?
+
         });
         conversationWasCreated = true;
     } else {
@@ -87,11 +71,11 @@ export async function getOrCreateConversation(
             },
             data: {
                 last_message_at: new Date(),
-                status: ConversationStatus.ACTIVE, 
+                status: ConversationStatus.ACTIVE,
             }
         });
     }
-    
+
     return { client, conversation, conversationWasCreated, clientWasCreated };
 }
 
@@ -114,7 +98,7 @@ export async function handleDealCreationForNewClient(
                 name: dealName,
                 stageId: firstStage.id,
                 clientId: client.id,
-                value: null, 
+                value: null,
             });
             console.log(`[Deal Creation Logic] Deal "${dealName}" criado para cliente ${client.id} no estágio "${firstStage.name}".`);
         } else {
@@ -244,7 +228,7 @@ export async function processClientAndConversation(
 
     if (clientWasCreated) {
         console.log(`[processClientAndConversation] Novo cliente detectado. Enviando evento Pusher 'client_created'...`);
-         await triggerWorkspacePusherEvent(
+        await triggerWorkspacePusherEvent(
             workspaceId,
             'client_created',
             {
@@ -254,45 +238,45 @@ export async function processClientAndConversation(
                 metadata: client.metadata
             }
         );
-         console.log(`[processClientAndConversation] Evento Pusher 'client_created' enviado para workspace ${workspaceId} para cliente ${client.id}.`);
+        console.log(`[processClientAndConversation] Evento Pusher 'client_created' enviado para workspace ${workspaceId} para cliente ${client.id}.`);
     }
 
     if (conversationWasCreated) {
         console.log(`[processClientAndConversation] Nova conversa detectada. Iniciando criação de deal e sequência de follow-up...`);
         await handleDealCreationForNewClient(client, workspaceId);
-                const newFollowUp = await initiateFollowUpSequence(client, conversation, workspaceId);
-                console.log(`[processClientAndConversation] Criação de deal e sequência de follow-up concluídas para conversa ${conversation.id}`);
+        const newFollowUp = await initiateFollowUpSequence(client, conversation, workspaceId);
+        console.log(`[processClientAndConversation] Criação de deal e sequência de follow-up concluídas para conversa ${conversation.id}`);
 
-                // Trigger Pusher event for new conversation
-                await triggerWorkspacePusherEvent(
-                    workspaceId,
-                    'conversation_updated',
-                    {
-                        id: conversation.id,
-                        client: {
-                            id: client.id,
-                            name: client.name,
-                            phone_number: client.phone_number,
-                        },
-                        conversation: {
-                            id: conversation.id,
-                            status: conversation.status,
-                            channel: conversation.channel,
-                            last_message_at: conversation.last_message_at,
-                            is_ai_active: conversation.is_ai_active, // Adicionado is_ai_active
-                        },
-                        activeFollowUp: newFollowUp ? { // Incluir followUp se criado
-                            id: newFollowUp.id,
-                            status: newFollowUp.status,
-                            next_sequence_message_at: newFollowUp.next_sequence_message_at,
-                        } : undefined,
-                    }
-                );
-                console.log(`[processClientAndConversation] Evento Pusher 'conversation_updated' enviado para workspace ${workspaceId} para nova conversa ${conversation.id}.`);
-
-            } else {
-                console.log(`[processClientAndConversation] Conversa existente ${conversation.id}. Nenhuma nova sequência de follow-up necessária.`);
+        // Trigger Pusher event for new conversation
+        await triggerWorkspacePusherEvent(
+            workspaceId,
+            'conversation_updated',
+            {
+                id: conversation.id,
+                client: {
+                    id: client.id,
+                    name: client.name,
+                    phone_number: client.phone_number,
+                },
+                conversation: {
+                    id: conversation.id,
+                    status: conversation.status,
+                    channel: conversation.channel,
+                    last_message_at: conversation.last_message_at,
+                    is_ai_active: conversation.is_ai_active, // Adicionado is_ai_active
+                },
+                activeFollowUp: newFollowUp ? { // Incluir followUp se criado
+                    id: newFollowUp.id,
+                    status: newFollowUp.status,
+                    next_sequence_message_at: newFollowUp.next_sequence_message_at,
+                } : undefined,
             }
+        );
+        console.log(`[processClientAndConversation] Evento Pusher 'conversation_updated' enviado para workspace ${workspaceId} para nova conversa ${conversation.id}.`);
 
-            return { client, conversation };
+    } else {
+        console.log(`[processClientAndConversation] Conversa existente ${conversation.id}. Nenhuma nova sequência de follow-up necessária.`);
+    }
+
+    return { client, conversation };
 }

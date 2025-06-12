@@ -513,7 +513,7 @@ export async function createEvolutionInstanceAction(
     // <<< Gerar o Webhook Token ÚNICO AQUI >>>
     const evolution_webhook_route_token = crypto.randomBytes(16).toString('hex');
     const evolution_webhook_token = crypto.randomBytes(16).toString('hex');
-    const webhookUrl = `${process.env.NEXTAUTH_URL}/api/webhooks/ingress/evolution/hook/${evolution_webhook_route_token}`;
+    const webhookUrl = `${process.env.NEXTAUTH_URL}/api/webhooks/ingress/${evolution_webhook_route_token}`;
     console.log(`[ACTION createEvolutionInstance] Gerado webhook URL: ${webhookUrl}`);
 
     // 2. Montar Payload para a API Evolution (simplificado)

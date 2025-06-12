@@ -1,7 +1,7 @@
 // app/api/webhooks/ingress/whatsapp/[routeToken]/route.ts
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { WhatsAppWebhookService } from '@/lib/services/whatsappWebhookService';
+// import { WhatsAppWebhookService } from '@/lib/services/whatsappWebhookService';
 
 interface RouteParams {
     params: {
@@ -10,12 +10,17 @@ interface RouteParams {
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
-    const service = new WhatsAppWebhookService();
-    return service.handleVerification(request, params.routeToken);
+    
+    return NextResponse.json(
+        { message: 'WhatsApp Webhook GET endpoint is not implemented.' },
+        { status: 501 } // Not Implemented
+    );
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
-    const { routeToken } = params;
-    const service = new WhatsAppWebhookService();
-    return service.handleIncomingMessage(request, routeToken);
+    const { routeToken } = await params;
+    return NextResponse.json(
+        { message: `WhatsApp Webhook POST endpoint received with token ${routeToken}.` },
+        { status: 200 }
+    );
 }

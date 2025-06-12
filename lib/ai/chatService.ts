@@ -393,7 +393,19 @@ export async function processAIChat(
 
     const systemPrompt = `${baseInstructions}${conversation?.workspace?.ai_default_system_prompt || ''}${stageInstructions}${additionalContext ? `\n\n${additionalContext}` : ''}`;
     console.log('[processAIChat] Final System Prompt:', systemPrompt);
-    console.log('[processAIChat] Messages sent to AI:', JSON.stringify(messages, null, 2));
+    
+    // Validate and normalize messages format
+    const normalizedMessages = messages.map(msg => {
+      if (typeof msg === 'string') {
+        return { role: 'user' as const, content: msg };
+      }
+      if (!msg.role || !msg.content) {
+        throw new Error(`Invalid message format: ${JSON.stringify(msg)}. Must have role and content`);
+      }
+      return msg;
+    });
+    
+    console.log('[processAIChat] Messages sent to AI:', JSON.stringify(normalizedMessages, null, 2));
 
     // Obter modelo de linguagem
     const modelIdentifier = modelPreference || conversation?.workspace?.ai_model_preference || AVAILABLE_MODELS[0].value;
@@ -414,7 +426,7 @@ export async function processAIChat(
       try {
         result = streamText({
           model,
-          messages,
+          messages: normalizedMessages,
           system: systemPrompt,
           ...(supportsTools ? {
           tools: allTools,

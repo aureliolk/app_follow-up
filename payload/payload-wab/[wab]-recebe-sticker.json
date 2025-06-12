@@ -1,0 +1,42 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "507999995687664",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "556298608880",
+              "phone_number_id": "591328210728203"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Acos services"
+                },
+                "wa_id": "557391121575"
+              }
+            ],
+            "messages": [
+              {
+                "from": "557391121575",
+                "id": "wamid.HBgMNTU3MzkxMTIxNTc1FQIAEhggRTVGMUVEQkU1MDY0QUQwM0YxQUNCNDMyQTdBRUE2NjcA",
+                "timestamp": "1749740287",
+                "type": "sticker",
+                "sticker": {
+                  "mime_type": "image/webp",
+                  "sha256": "aajg8YsFgMJGl5HFsoi9X3MzQLEA98dvj8JVwK5Py5M=",
+                  "id": "1251540786641621",
+                  "animated": true
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
