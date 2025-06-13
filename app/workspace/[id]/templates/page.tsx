@@ -26,8 +26,9 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
   const [whatsappService, setWhatsappService] = useState<WhatsappServiceManageTemplate | null>(null);
 
   const [templates, setTemplates] = useState<WhatsappTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Combined loading state
   const [error, setError] = useState<string | null>(null);
+  const [workspaceSettings, setWorkspaceSettings] = useState<{ wabaId: string; accessToken: string } | null>(null);
 
   const [newTemplateName, setNewTemplateName] = useState('');
   const [newTemplateLanguage, setNewTemplateLanguage] = useState('en_US');
@@ -37,7 +38,7 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
 
   useEffect(() => {
     const loadWorkspaceSettingsAndTemplates = async () => {
-      setLoading(true);
+      setIsLoading(true); // Start loading
       setError(null);
       try {
         const result = await getWhatsappSettingsAction(params.id);
@@ -50,6 +51,7 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
           wabaId: result.data.wabaId,
           accessToken: result.data.accessToken,
         };
+        setWorkspaceSettings(fetchedSettings); // Set workspaceSettings here
 
         const service = new WhatsappServiceManageTemplate(fetchedSettings.wabaId, fetchedSettings.accessToken);
         setWhatsappService(service);
@@ -58,35 +60,27 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
         setTemplates(fetchedTemplates);
       } catch (err: any) {
         setError(err.message || 'Failed to load workspace settings or templates.');
-        toast({
-          title: 'Erro ao carregar dados',
-          description: err.message || 'Não foi possível carregar as configurações do workspace ou templates.',
-          variant: 'destructive',
-        });
+        console.error('Erro ao carregar dados:', err);
       } finally {
-        setLoading(false);
+        setIsLoading(false); // End loading
       }
     };
 
     loadWorkspaceSettingsAndTemplates();
-  }, [params.id, toast]); // Add toast to dependency array
+  }, [params.id, toast]);
 
   const fetchTemplates = async () => {
     if (!whatsappService) return; // Ensure service is initialized
-    setLoading(true);
+    setIsLoading(true); // Start loading
     setError(null);
     try {
       const fetchedTemplates = await whatsappService.getTemplates();
       setTemplates(fetchedTemplates);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch templates.');
-      toast({
-        title: 'Erro ao carregar templates',
-        description: err.message || 'Não foi possível carregar os templates existentes.',
-        variant: 'destructive',
-      });
+      console.error('Erro ao carregar templates:', err);
     } finally {
-      setLoading(false);
+      setIsLoading(false); // End loading
     }
   };
 
@@ -111,31 +105,20 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
 
     if (!whatsappService) {
       setError('WhatsApp service not initialized. Please refresh the page.');
-      toast({
-        title: 'Erro de Serviço',
-        description: 'Serviço WhatsApp não inicializado.',
-        variant: 'destructive',
-      });
+      console.error('Erro de Serviço: Serviço WhatsApp não inicializado.');
       setIsSubmitting(false);
       return;
     }
 
     try {
       await whatsappService.createTemplate(templateData);
-      toast({
-        title: 'Template Criado',
-        description: 'O template foi submetido para aprovação.',
-      });
+      console.log('Template Criado: O template foi submetido para aprovação.');
       setNewTemplateName('');
       setNewTemplateBody('');
       fetchTemplates(); // Refresh the list
     } catch (err: any) {
       setError(err.message || 'Failed to create template.');
-      toast({
-        title: 'Erro ao criar template',
-        description: err.message || 'Não foi possível criar o template.',
-        variant: 'destructive',
-      });
+      console.error('Erro ao criar template:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -147,30 +130,20 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
     }
     if (!whatsappService) {
       setError('WhatsApp service not initialized. Please refresh the page.');
-      toast({
-        title: 'Erro de Serviço',
-        description: 'Serviço WhatsApp não inicializado.',
-        variant: 'destructive',
-      });
+      console.error('Erro de Serviço: Serviço WhatsApp não inicializado.');
       return;
     }
     try {
       await whatsappService.deleteTemplate(templateName);
-      toast({
-        title: 'Template Deletado',
-        description: `O template "${templateName}" foi deletado com sucesso.`,
-      });
+      console.log(`Template Deletado: O template "${templateName}" foi deletado com sucesso.`);
       fetchTemplates(); // Refresh the list
     } catch (err: any) {
       setError(err.message || 'Failed to delete template.');
-      toast({
-        title: 'Erro ao deletar template',
-        description: err.message || `Não foi possível deletar o template "${templateName}".`,
-        variant: 'destructive',
-      });
+      console.error('Erro ao deletar template:', err);
     }
   };
 
+  console.log('Render State:', { isLoading, whatsappService: !!whatsappService, templatesLength: templates.length, error, workspaceSettings: !!workspaceSettings });
   return (
     <div className="container mx-auto py-8">
       <h1 className="text-3xl font-bold mb-6">Gerenciar Templates do WhatsApp</h1>
@@ -250,43 +223,45 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
           <CardTitle>Templates Existentes</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <p>Carregando templates...</p>
-          ) : templates.length === 0 ? (
-            <p>Nenhum template encontrado.</p>
+          {isLoading ? (
+            <p>Carregando dados...</p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Idioma</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {templates.map((template) => (
-                    <TableRow key={template.id}>
-                      <TableCell className="font-medium">{template.name}</TableCell>
-                      <TableCell>{template.language}</TableCell>
-                      <TableCell>{template.category}</TableCell>
-                      <TableCell>{template.status}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteTemplate(template.name)}
-                        >
-                          Deletar
-                        </Button>
-                      </TableCell>
+            templates.length === 0 ? (
+              <p>Nenhum template encontrado.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Idioma</TableHead>
+                      <TableHead>Categoria</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Ações</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {templates.map((template) => (
+                      <TableRow key={template.id}>
+                        <TableCell className="font-medium">{template.name}</TableCell>
+                        <TableCell>{template.language}</TableCell>
+                        <TableCell>{template.category}</TableCell>
+                        <TableCell>{template.status}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteTemplate(template.name)}
+                          >
+                            Deletar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )
           )}
         </CardContent>
       </Card>

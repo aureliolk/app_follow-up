@@ -99,41 +99,41 @@ export const sendWhatsAppReminderTask = task({
 });
 
 // Task para processar um workspace específico (útil para triggers manuais)
-// export const processWorkspaceAbandonedCarts = task({
-//   id: "process-workspace-abandoned-carts",
-//   run: async (payload: { workspaceId: string }) => {
-//     const { workspaceId } = payload;
+export const processWorkspaceAbandonedCarts = task({
+  id: "process-workspace-abandoned-carts",
+  run: async (payload: { workspaceId: string }) => {
+    const { workspaceId } = payload;
 
-//     console.log(`Processing abandoned carts for workspace: ${workspaceId}`);
+    console.log(`Processing abandoned carts for workspace: ${workspaceId}`);
     
-//     await fetchAndProcessAbandonedCarts(workspaceId);
+    await fetchAndProcessAbandonedCarts(workspaceId);
 
-//     const pendingCarts = await prisma.abandonedCart.findMany({
-//       where: {
-//         status: "PENDING",
-//         workspaceId: workspaceId,
-//       },
-//     });
+    const pendingCarts = await prisma.abandonedCart.findMany({
+      where: {
+        status: "PENDING",
+        workspaceId: workspaceId,
+      },
+    });
 
-//     const results = [];
-//     for (const cart of pendingCarts) {
-//       const result = await sendWhatsAppReminderTask.trigger({
-//         cartId: cart.id,
-//         customerPhone: cart.customerPhone,
-//         customerName: cart.customerName,
-//         checkoutUrl: cart.checkoutUrl,
-//         workspaceId: cart.workspaceId,
-//       });
-//       results.push(result);
-//     }
+    const results = [];
+    for (const cart of pendingCarts) {
+      const result = await sendWhatsAppReminderTask.trigger({
+        cartId: cart.id,
+        customerPhone: cart.customerPhone,
+        customerName: cart.customerName,
+        checkoutUrl: cart.checkoutUrl,
+        workspaceId: cart.workspaceId,
+      });
+      results.push(result);
+    }
 
-//     return {
-//       workspaceId,
-//       processedCarts: pendingCarts.length,
-//       results,
-//     };
-//   },
-// });
+    return {
+      workspaceId,
+      processedCarts: pendingCarts.length,
+      results,
+    };
+  },
+});
 
 // Função auxiliar para enviar WhatsApp (implemente conforme sua integração)
 async function sendWhatsAppMessage(params: {

@@ -17,7 +17,10 @@ import {
 import { ScrollArea as DialogScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, MessageSquareText, Loader2, XCircle } from 'lucide-react';
 import { useWhatsappTemplates } from '@/context/whatsapp-template-context';
-import type { WhatsappTemplate } from '@/lib/types/whatsapp';
+import type { WhatsappTemplate as OriginalWhatsappTemplate } from '@/lib/types/whatsapp';
+
+// Ensure WhatsappTemplate has a 'body' property and all required properties from the original type
+type WhatsappTemplate = OriginalWhatsappTemplate & { body: string; components: OriginalWhatsappTemplate['components'] };
 import { toast } from 'react-hot-toast';
 
 interface WhatsappTemplateDialogProps {
@@ -218,7 +221,7 @@ export default function WhatsappTemplateDialog({ onSendTemplate, disabled, isSen
                     <div
                       key={template.id}
                       className="border rounded-md p-4 hover:bg-accent cursor-pointer transition-colors"
-                      onClick={() => handleSelectTemplate(template)}
+                      onClick={() => handleSelectTemplate(template as WhatsappTemplate)}
                     >
                       <p className="font-semibold text-sm">{template.name}</p>
                       <p className="text-xs text-muted-foreground mt-1">

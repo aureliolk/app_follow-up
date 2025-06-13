@@ -8,14 +8,6 @@
     "start": "next start",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
-    "workers:dev": "concurrently \"tsx lib/workers/messageProcessor.ts\" \"tsx lib/workers/sequenceStepProcessor.ts\"",
-    "start:message": "tsx lib/workers/messageProcessor.ts",
-    "start:sequence": "tsx lib/workers/sequenceStepProcessor.ts",
-    "start:campaign": "tsx lib/workers/campaignWorker.ts",
-    "start:media": "tsx lib/workers/whatsappMediaSenderWorker.ts",
-    "start:campaign-processor": "tsx scripts/start-campaign-processor.ts",
-    "start:message-sender": "tsx scripts/start-message-sender.ts",
-    "test": "node --test tests/sequenceService.test.ts",
     "dev:trigger": "npx trigger.dev@latest dev"
   },
   "dependencies": {

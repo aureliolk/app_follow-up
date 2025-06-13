@@ -296,11 +296,14 @@ export async function getAiSettingsAction(workspaceId: string) {
  * Server Action para obter as configurações atuais do WhatsApp do workspace
  */
 export async function getWhatsappSettingsAction(workspaceId: string) {
+  console.log(`[getWhatsappSettingsAction] Attempting to fetch settings for workspaceId: ${workspaceId}`);
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
+      console.warn('[getWhatsappSettingsAction] Unauthorized: No session found.');
       return { success: false, error: 'Não autorizado.' };
     }
+    console.log(`[getWhatsappSettingsAction] Session found for user: ${session.user.id}`);
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
@@ -313,10 +316,13 @@ export async function getWhatsappSettingsAction(workspaceId: string) {
     });
 
     if (!workspace) {
+      console.warn(`[getWhatsappSettingsAction] Workspace not found for ID: ${workspaceId}`);
       return { success: false, error: 'Workspace não encontrado.' };
     }
+    console.log(`[getWhatsappSettingsAction] Workspace found. Owner ID: ${workspace.owner_id}`);
 
     if (workspace.owner_id !== session.user.id) {
+      console.warn(`[getWhatsappSettingsAction] Access denied: User ${session.user.id} is not owner of workspace ${workspaceId}.`);
       return { success: false, error: 'Acesso negado.' };
     }
 
@@ -325,12 +331,21 @@ export async function getWhatsappSettingsAction(workspaceId: string) {
     if (workspace.whatsappAccessToken) {
       try {
         decryptedAccessToken = decrypt(workspace.whatsappAccessToken);
+        console.log('[getWhatsappSettingsAction] WhatsApp access token decrypted successfully.');
       } catch (decryptError) {
-        console.error('Error decrypting WhatsApp access token:', decryptError);
-        // Optionally, handle this error more gracefully, e.g., return a specific error message
+        console.error('[getWhatsappSettingsAction] Error decrypting WhatsApp access token:', decryptError);
+        return { success: false, error: 'Erro ao descriptografar o token de acesso do WhatsApp.' };
       }
+    } else {
+      console.warn('[getWhatsappSettingsAction] WhatsApp access token is null or empty in DB.');
     }
 
+    if (!workspace.whatsappBusinessAccountId) {
+      console.warn('[getWhatsappSettingsAction] WhatsApp Business Account ID is null or empty in DB.');
+      return { success: false, error: 'ID da Conta Business do WhatsApp não configurado.' };
+    }
+
+    console.log('[getWhatsappSettingsAction] Successfully fetched WhatsApp settings.');
     return {
       success: true,
       data: {
@@ -339,7 +354,7 @@ export async function getWhatsappSettingsAction(workspaceId: string) {
       },
     };
   } catch (error: any) {
-    console.error('[getWhatsappSettingsAction] Error fetching WhatsApp settings:', error);
+    console.error('[getWhatsappSettingsAction] Unhandled error fetching WhatsApp settings:', error);
     return {
       success: false,
       error: 'Erro ao carregar configurações do WhatsApp.',
