@@ -30,7 +30,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             return await processEvolutionPayload(payload, routeToken);
 
         } else if (payload.object === 'whatsapp_business_account') {
-            const payloadType = payload.entry[0]?.changes[0]?.value.messages[0]?.type || 'unknown';
+            let payloadType = 'unknown';
+            const changesValue = payload.entry[0]?.changes[0]?.value;
+
+            if (changesValue?.messages && changesValue.messages.length > 0) {
+                payloadType = changesValue.messages[0].type;
+            } else if (changesValue?.statuses && changesValue.statuses.length > 0) {
+                payloadType = changesValue.statuses[0].status; // Ou outro campo relevante para status
+            }
             const filename = `[wab]-recebe-${payloadType.toLowerCase()}.json`;
             fs.writeFileSync(path.join('payload/payload-wab', filename), JSON.stringify(payload, null, 2));
             console.log(`[WAB WEBHOOK] Recebido payload ${JSON.stringify(payload, null, 2)} com token ${routeToken}`);
