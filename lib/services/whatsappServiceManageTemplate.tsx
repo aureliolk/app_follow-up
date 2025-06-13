@@ -1,16 +1,22 @@
 import { WhatsappTemplate, WhatsappTemplateCategory, WhatsappTemplateStatus } from '../types/whatsapp';
 import axios from 'axios'; // Assuming axios is available for HTTP requests
 
-const WHATSAPP_BUSINESS_ACCOUNT_ID = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || 'YOUR_WABA_ID';
-const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN || 'YOUR_ACCESS_TOKEN';
 const GRAPH_API_VERSION = 'v23.0'; // Or the latest version you are targeting
 const BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
 export class WhatsappServiceManageTemplate {
+  private wabaId: string;
+  private accessToken: string;
+
+  constructor(wabaId: string, accessToken: string) {
+    this.wabaId = wabaId;
+    this.accessToken = accessToken;
+  }
+
   private getHeaders() {
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${ACCESS_TOKEN}`,
+      'Authorization': `Bearer ${this.accessToken}`,
     };
   }
 
@@ -20,7 +26,7 @@ export class WhatsappServiceManageTemplate {
    * @returns A promise that resolves with the result of the submission.
    */
   async createTemplate(templateData: WhatsappTemplate): Promise<any> {
-    const url = `${BASE_URL}/${WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates`;
+    const url = `${BASE_URL}/${this.wabaId}/message_templates`;
     try {
       const response = await axios.post(url, templateData, { headers: this.getHeaders() });
       console.log('Template submission response:', response.data);
@@ -42,7 +48,7 @@ export class WhatsappServiceManageTemplate {
     name?: string;
     status?: WhatsappTemplateStatus;
   }): Promise<WhatsappTemplate[]> {
-    const url = `${BASE_URL}/${WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates`;
+    const url = `${BASE_URL}/${this.wabaId}/message_templates`;
     try {
       const response = await axios.get(url, {
         headers: this.getHeaders(),
@@ -78,7 +84,7 @@ export class WhatsappServiceManageTemplate {
    * @returns A promise that resolves with the result of the deletion.
    */
   async deleteTemplate(templateName: string): Promise<any> {
-    const url = `${BASE_URL}/${WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates`;
+    const url = `${BASE_URL}/${this.wabaId}/message_templates`;
     try {
       const response = await axios.delete(url, {
         headers: this.getHeaders(),

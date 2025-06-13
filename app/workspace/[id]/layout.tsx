@@ -27,6 +27,7 @@ import {
   BrainCog,
   Cable,
   Grid2x2,
+  BookTemplate,
 } from 'lucide-react';
 import WorkspaceHeader from './components/WorkspaceHeader'; // <<< Importar
 import WorkspaceFooter from './components/WorkspaceFooter'; // <<< Importar (opcional)
@@ -47,7 +48,6 @@ export default function WorkspaceLayout({
   children: React.ReactNode;
 }) {
   const { workspace, isLoading } = useWorkspace();
-  const router = useRouter();
   const pathname = usePathname();
   const params = useParams();
   const workspaceId = params?.id as string;
@@ -64,6 +64,7 @@ export default function WorkspaceLayout({
     { href: '/kaban', label: 'Kanban', icon: Grid2x2 },
     { href: '/integrations', label: 'Integrações', icon: Cable },
     { href: '/members', label: 'Membros', icon: Users },
+    { href: '/templates', label: 'Templates', icon: BookTemplate },
     { href: '/settings', label: 'Configurações', icon: Settings },
   ];
 

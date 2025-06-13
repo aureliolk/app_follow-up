@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Terminal } from 'lucide-react';
+import { getWhatsappSettingsAction } from '@/lib/actions/workspaceSettingsActions';
 
 interface TemplatesPageProps {
   params: {
@@ -22,7 +23,7 @@ interface TemplatesPageProps {
 
 const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
   const { toast } = useToast();
-  const whatsappService = new WhatsappServiceManageTemplate();
+  const [whatsappService, setWhatsappService] = useState<WhatsappServiceManageTemplate | null>(null);
 
   const [templates, setTemplates] = useState<WhatsappTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,10 +36,43 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchTemplates();
-  }, []);
+    const loadWorkspaceSettingsAndTemplates = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await getWhatsappSettingsAction(params.id);
+
+        if (!result.success || !result.data?.wabaId || !result.data?.accessToken) {
+          throw new Error(result.error || 'WhatsApp settings not found or incomplete.');
+        }
+
+        const fetchedSettings = {
+          wabaId: result.data.wabaId,
+          accessToken: result.data.accessToken,
+        };
+
+        const service = new WhatsappServiceManageTemplate(fetchedSettings.wabaId, fetchedSettings.accessToken);
+        setWhatsappService(service);
+
+        const fetchedTemplates = await service.getTemplates();
+        setTemplates(fetchedTemplates);
+      } catch (err: any) {
+        setError(err.message || 'Failed to load workspace settings or templates.');
+        toast({
+          title: 'Erro ao carregar dados',
+          description: err.message || 'Não foi possível carregar as configurações do workspace ou templates.',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadWorkspaceSettingsAndTemplates();
+  }, [params.id, toast]); // Add toast to dependency array
 
   const fetchTemplates = async () => {
+    if (!whatsappService) return; // Ensure service is initialized
     setLoading(true);
     setError(null);
     try {
@@ -75,6 +109,17 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
       components: components,
     };
 
+    if (!whatsappService) {
+      setError('WhatsApp service not initialized. Please refresh the page.');
+      toast({
+        title: 'Erro de Serviço',
+        description: 'Serviço WhatsApp não inicializado.',
+        variant: 'destructive',
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       await whatsappService.createTemplate(templateData);
       toast({
@@ -98,6 +143,15 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ params }) => {
 
   const handleDeleteTemplate = async (templateName: string) => {
     if (!confirm(`Tem certeza que deseja deletar o template "${templateName}"?`)) {
+      return;
+    }
+    if (!whatsappService) {
+      setError('WhatsApp service not initialized. Please refresh the page.');
+      toast({
+        title: 'Erro de Serviço',
+        description: 'Serviço WhatsApp não inicializado.',
+        variant: 'destructive',
+      });
       return;
     }
     try {

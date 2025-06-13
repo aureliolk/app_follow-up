@@ -293,6 +293,61 @@ export async function getAiSettingsAction(workspaceId: string) {
 }
 
 /**
+ * Server Action para obter as configurações atuais do WhatsApp do workspace
+ */
+export async function getWhatsappSettingsAction(workspaceId: string) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return { success: false, error: 'Não autorizado.' };
+    }
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: {
+        id: true,
+        whatsappBusinessAccountId: true,
+        whatsappAccessToken: true,
+        owner_id: true,
+      },
+    });
+
+    if (!workspace) {
+      return { success: false, error: 'Workspace não encontrado.' };
+    }
+
+    if (workspace.owner_id !== session.user.id) {
+      return { success: false, error: 'Acesso negado.' };
+    }
+
+    // Decrypt the access token if it exists
+    let decryptedAccessToken = null;
+    if (workspace.whatsappAccessToken) {
+      try {
+        decryptedAccessToken = decrypt(workspace.whatsappAccessToken);
+      } catch (decryptError) {
+        console.error('Error decrypting WhatsApp access token:', decryptError);
+        // Optionally, handle this error more gracefully, e.g., return a specific error message
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        wabaId: workspace.whatsappBusinessAccountId,
+        accessToken: decryptedAccessToken,
+      },
+    };
+  } catch (error: any) {
+    console.error('[getWhatsappSettingsAction] Error fetching WhatsApp settings:', error);
+    return {
+      success: false,
+      error: 'Erro ao carregar configurações do WhatsApp.',
+    };
+  }
+}
+
+/**
  * Server Action para salvar credenciais do WhatsApp Cloud API
  */
 export async function saveWhatsappCredentialsAction(
