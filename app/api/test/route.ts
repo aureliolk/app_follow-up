@@ -6,6 +6,7 @@ import { processClientAndConversation } from '@/lib/services/clientConversationS
 import { fetchAndProcessAbandonedCarts } from '@/lib/services/nuvemshopAbandonedCartService';
 import { schedules } from '@trigger.dev/sdk/v3';
 import { sendDelayedWhatsAppReminder } from '@/trigger/abandonedCart';
+import { processAIChat } from '@/lib/ai/chatService';
 
 
 // Você pode adicionar um handler GET para simplesmente verificar se a rota está funcionando
@@ -132,18 +133,27 @@ export async function POST(req: NextRequest) {
 
     // const result = await fetchAndProcessAbandonedCarts(workspaceId);
 
-    const result = await sendDelayedWhatsAppReminder.trigger({
-        cartId: "cart_12345",
-        customerPhone: standardizeBrazilianPhoneNumber(phoneNumber),
-        customerName: senderName,
-        checkoutUrl: "https://example.com/checkout",
-        workspaceId: workspaceId,
-        sendAt: "5 minutes from now", 
-    },{
-        delay: "1m"
-    })
+    // const result = await sendDelayedWhatsAppReminder.trigger({
+    //     cartId: "cart_12345",
+    //     customerPhone: standardizeBrazilianPhoneNumber(phoneNumber),
+    //     customerName: senderName,
+    //     checkoutUrl: "https://example.com/checkout",
+    //     workspaceId: workspaceId,
+    //     sendAt: "5 minutes from now", 
+    // },{
+    //     delay: "1m"
+    // })
 
-    console.log('Result of sendDelayedWhatsAppReminder:', result);
+    // console.log('Result of sendDelayedWhatsAppReminder:', result);
+
+    const result = await processAIChat(
+        [{ role: 'user', content: "Oi.." }],
+        "33c6cb57-24f7-4586-9122-f91aac8a098c",
+        "b958220f-298f-4422-9994-f0051c197b9d",
+        body.streamMode || false,
+        "openrouter/deepseek/deepseek-chat-v3-0324:free",
+        body.additionalContext || ""
+    )
 
     
     return NextResponse.json({ response: result }, { status: 200 });

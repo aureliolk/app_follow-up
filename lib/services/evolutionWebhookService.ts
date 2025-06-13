@@ -139,6 +139,28 @@ async function processEvolutionMessage(payload: ApiEvolutionType, workspace: Wor
         requiresProcessing = true;
     }
 
+
+    if (messageData.key.fromMe === true) {
+        const savedMessage = await saveMessageRecord({
+            conversation_id: conversation.id,
+            sender_type: 'AGENT',
+            content: messageContentOutput!,
+            timestamp: new Date(messageData.messageTimestamp * 1000),
+            channel_message_id: "EVO",
+        });
+
+        try {
+            await triggerNewMessageNotification(workspace.id, savedMessage, 'evolution');
+        } catch (pusherError) {
+            console.error(`[EVOLUTION WEBHOOK - POST Failed to trigger Pusher event for msg ${savedMessage.id}:`, pusherError);
+        }
+
+        return NextResponse.json(
+            {status: 'MESSAGE_NUMBER_CONECTED'},
+            { status: 200 }
+        )
+    }
+
     const savedMessage = await saveMessageRecord({
         conversation_id: conversation.id,
         sender_type: 'CLIENT',
@@ -167,12 +189,13 @@ async function processEvolutionMessage(payload: ApiEvolutionType, workspace: Wor
             { status: 200 }
         );
     }
-    
+
 
     const responseIa = await sendMsgForIa.trigger({
-        aiResponse: messageContentOutput,
+        messageContentOutput,
         workspaceId: workspace.id,
-        newMessageId: savedMessage.id
+        newMessageId: savedMessage.id,
+        aiModel: workspace.ai_model_preference
     })
 
     console.log(`IA response for message ${savedMessage.id}:`, responseIa);

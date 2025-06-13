@@ -214,6 +214,7 @@ export default function ConversationDetail() {
             </div>
           </div>
         </div>
+        {conversation.id}
         <div className="flex items-center space-x-1 flex-shrink-0">
           <TooltipProvider delayDuration={300}>
             <Tooltip>

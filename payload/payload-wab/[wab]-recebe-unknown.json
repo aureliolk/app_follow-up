@@ -11,23 +11,23 @@
               "display_phone_number": "556298608880",
               "phone_number_id": "591328210728203"
             },
-            "statuses": [
+            "contacts": [
               {
-                "id": "wamid.HBgNNTUxMTk0MDU5ODk3ORUCABEYEkYwRkNCMThBMkMwRUUzRDNFMQA=",
-                "status": "delivered",
-                "timestamp": "1749770593",
-                "recipient_id": "5511940598979",
-                "conversation": {
-                  "id": "873b0b88f81c867055aa59f1a44b7141",
-                  "origin": {
-                    "type": "service"
-                  }
+                "profile": {
+                  "name": "Acos services"
                 },
-                "pricing": {
-                  "billable": true,
-                  "pricing_model": "CBP",
-                  "category": "service"
-                }
+                "wa_id": "557391121575"
+              }
+            ],
+            "messages": [
+              {
+                "from": "557391121575",
+                "id": "wamid.HBgMNTU3MzkxMTIxNTc1FQIAEhggRjEwNDVGODM0RTFBRURFRThCNUQ3NEIxMDYxQjZCMDQA",
+                "timestamp": "1749807549",
+                "text": {
+                  "body": "Oiu"
+                },
+                "type": "text"
               }
             ]
           },

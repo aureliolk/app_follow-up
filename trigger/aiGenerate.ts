@@ -7,17 +7,19 @@ import { sendAIResponse } from "@/lib/services/new_sendAiResponse";
 export const sendMsgForIa = task({
   id: "send-msg-for-ia",
   run: async (payload: {
-    aiResponse: string;
+    messageContentOutput: string;
     workspaceId: string;
     newMessageId: string;
+    aiModel: string
   }) => {
-    const { aiResponse,newMessageId, workspaceId } = payload;
+    const { messageContentOutput,newMessageId, workspaceId, aiModel } = payload;
 
     try {
       const response = await sendAIResponse({
-        aiResponse,
+        messageContentOutput,
         newMessageId,
-        workspaceId
+        workspaceId,
+        aiModel
       })
 
 

@@ -1,33 +1,25 @@
 {
-  "event": "messages.upsert",
+  "event": "send.message",
   "instance": "33c6cb57-24f7-4586-9122-f91aac8a098c",
   "data": {
     "key": {
-      "remoteJid": "557399302760@s.whatsapp.net",
-      "fromMe": false,
-      "id": "BE62CA5449A758E7883A43CB192A647D"
+      "remoteJid": "556298608880@s.whatsapp.net",
+      "fromMe": true,
+      "id": "3EB0FB1649EA977205321A9A44E579D5AB81296D"
     },
-    "pushName": "Aurélio Castro",
-    "status": "DELIVERY_ACK",
+    "pushName": "",
+    "status": "PENDING",
     "message": {
-      "conversation": "Oiii",
-      "messageContextInfo": {
-        "deviceListMetadata": {
-          "senderTimestamp": "1747840061",
-          "recipientKeyHash": "8RUJDD4i6Jm+Yg==",
-          "recipientTimestamp": "1749744837"
-        },
-        "deviceListMetadataVersion": 2,
-        "messageSecret": "dc1tEM4JQxSy3G/frto2fUI50SYkEKNS3tX2Mk8k7go="
-      }
+      "conversation": "*Acos Bot  >)*\n Olá, Beatriz! Como posso ajudar você hoje? Se precisar de alguma informação ou assistência, estou à disposição!"
     },
+    "contextInfo": null,
     "messageType": "conversation",
-    "messageTimestamp": 1749770764,
+    "messageTimestamp": 1749815772,
     "instanceId": "a3edaa59-476d-4119-b233-ef15e81b07f1",
-    "source": "android"
+    "source": "unknown"
   },
   "destination": "https://1ede-2804-43fc-163-b200-59e4-12ac-2ac6-fe94.ngrok-free.app/api/webhooks/ingress/2cd8cbd215b2eef3587eb5439113ed5a",
-  "date_time": "2025-06-12T20:26:04.847Z",
+  "date_time": "2025-06-13T08:56:12.685Z",
   "sender": "557391121575@s.whatsapp.net",
   "server_url": "api.lumibot.com.br",
   "apikey": "33f844c0b788df1881fa1e12f5412cef"

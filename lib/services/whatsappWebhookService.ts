@@ -1,10 +1,107 @@
 import { prisma } from '@/lib/db';
-import { NextResponse } from 'next/server';
+import { MessageSenderType } from "@prisma/client";
 
-export async function processWhatsAppPayload(payload: any, token: string) {
+import { NextResponse } from 'next/server';
+import { standardizeBrazilianPhoneNumber } from '../phoneUtils';
+import { processClientAndConversation } from './clientConversationService';
+import { saveMessageRecord } from './persistenceService';
+import { triggerNewMessageNotification } from '../pusherEvents';
+import { CoreMessage } from 'ai';
+import { processAIChat } from '../ai/chatService';
+import { sendMsgForIa } from '@/trigger/aiGenerate';
+import { WhatsAppWebhookService } from '@/lib/services/appWebhookService';
+
+export const AI_MESSAGE_ROLES = {
+    USER: 'user',
+    ASSISTANT: 'assistant',
+};
+
+
+export interface ApiWabType {
+  object: string
+  entry: Entry[]
+}
+
+export interface Entry {
+  id: string
+  changes: Change[]
+}
+
+export interface Change {
+  value: Value
+  field: string
+}
+
+export interface Value {
+  messaging_product: string
+  metadata: Metadata
+  contacts: Contact[]
+  messages: Message[]
+}
+
+export interface Metadata {
+  display_phone_number: string
+  phone_number_id: string
+}
+
+export interface Contact {
+  profile: Profile
+  wa_id: string
+}
+
+export interface Profile {
+  name: string
+}
+
+export interface Message {
+  from: string
+  id: string
+  timestamp: string
+  text: Text
+  type: string
+}
+
+export interface Text {
+  body: string
+}
+
+
+async function checkIfLatestMessage(conversationId: string, messageId: string): Promise<boolean> {
+    const lastAiMessage = await prisma.message.findFirst({
+        where: {
+            conversation_id: conversationId,
+            sender_type: MessageSenderType.AI
+        },
+        orderBy: { timestamp: 'desc' },
+        select: { timestamp: true }
+    });
+
+    const newClientMessages = await prisma.message.findMany({
+        where: {
+            conversation_id: conversationId,
+            sender_type: MessageSenderType.CLIENT,
+            timestamp: { gt: lastAiMessage?.timestamp || new Date(0) }
+        },
+        orderBy: { timestamp: 'asc' },
+        select: { id: true }
+    });
+
+    return newClientMessages.length > 0 &&
+        messageId === newClientMessages[newClientMessages.length - 1].id;
+}
+
+export type WorkspaceType = {
+    id: string
+    evolution_webhook_route_token: string
+    ai_delay_between_messages?: number
+    ai_model_preference?: string
+    ai_default_system_prompt?: string
+}
+
+export async function processWhatsAppPayload(payload: ApiWabType, routeToken: string) {
     // Validar workspace pelo token
     const workspace = await prisma.workspace.findUnique({
-        where: { whatsappWebhookRouteToken: token }
+        where: { whatsappWebhookRouteToken: routeToken }
     });
 
     if (!workspace) {
@@ -29,11 +126,3 @@ export async function processWhatsAppPayload(payload: any, token: string) {
     );
 }
 
-async function processWhatsAppMessage(messageData: any, workspaceId: string) {
-    // Implementar lógica específica para mensagens da WhatsApp Business API
-    // ...
-    return NextResponse.json(
-        { status: 'MESSAGE_PROCESSED' },
-        { status: 200 }
-    );
-}

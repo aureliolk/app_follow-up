@@ -2,16 +2,16 @@
   "event": "messages.update",
   "instance": "33c6cb57-24f7-4586-9122-f91aac8a098c",
   "data": {
-    "messageId": "cmbtzolifja7rpg5wrzuvfn0m",
-    "keyId": "3EB0A7B925CFC2276768C3440F5F5DC482C29C6C",
-    "remoteJid": "557399302760@s.whatsapp.net",
+    "messageId": "cmbur4r9ljb00pg5wkhisddiu",
+    "keyId": "3EB0FB1649EA977205321A9A44E579D5AB81296D",
+    "remoteJid": "556298608880@s.whatsapp.net",
     "fromMe": true,
-    "participant": "557399302760@s.whatsapp.net",
-    "status": "READ",
+    "participant": "556298608880@s.whatsapp.net",
+    "status": "DELIVERY_ACK",
     "instanceId": "a3edaa59-476d-4119-b233-ef15e81b07f1"
   },
   "destination": "https://1ede-2804-43fc-163-b200-59e4-12ac-2ac6-fe94.ngrok-free.app/api/webhooks/ingress/2cd8cbd215b2eef3587eb5439113ed5a",
-  "date_time": "2025-06-12T20:07:49.735Z",
+  "date_time": "2025-06-13T08:56:13.347Z",
   "sender": "557391121575@s.whatsapp.net",
   "server_url": "api.lumibot.com.br",
   "apikey": "33f844c0b788df1881fa1e12f5412cef"
