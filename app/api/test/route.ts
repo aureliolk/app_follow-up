@@ -7,28 +7,30 @@ import { fetchAndProcessAbandonedCarts } from '@/lib/services/nuvemshopAbandoned
 import { schedules } from '@trigger.dev/sdk/v3';
 import { sendDelayedWhatsAppReminder } from '@/trigger/abandonedCart';
 import { processAIChat } from '@/lib/ai/chatService';
+import { getChatwootConversationIdByPhoneNumber, SendMsgChatWoot } from '@/lib/services/chatWootServices';
+import { prisma } from '@/lib';
 
 
 // Você pode adicionar um handler GET para simplesmente verificar se a rota está funcionando
 export async function GET() {
-    console.log('[API TEST] Recebida requisição GET para /api/test');
-    
-    // const data = await fetchAndProcessAbandonedCarts("33c6cb57-24f7-4586-9122-f91aac8a098c");
-    // const allSchedules = await schedules.list();
-    // const retrievedSchedule = await schedules.retrieve("sched_rmed1p5jbgamremnq2not");
+  console.log('[API TEST] Recebida requisição GET para /api/test');
 
-    const activatedSchedule = await schedules.activate("sched_rmed1p5jbgamremnq2not");
-    
+  // const data = await fetchAndProcessAbandonedCarts("33c6cb57-24f7-4586-9122-f91aac8a098c");
+  // const allSchedules = await schedules.list();
+  // const retrievedSchedule = await schedules.retrieve("sched_rmed1p5jbgamremnq2not");
 
-    console.log('[API TEST] Dados processados:', activatedSchedule);
+  const activatedSchedule = await schedules.activate("sched_rmed1p5jbgamremnq2not");
 
-    const result = {
-        message: 'API Test endpoint is working',
-        timestamp: new Date().toISOString(),
-        data: activatedSchedule
-    };
 
-    return NextResponse.json({ success: true, result: result });
+  console.log('[API TEST] Dados processados:', activatedSchedule);
+
+  const result = {
+    message: 'API Test endpoint is working',
+    timestamp: new Date().toISOString(),
+    data: activatedSchedule
+  };
+
+  return NextResponse.json({ success: true, result: result });
 }
 
 // export async function POST(req: NextRequest) {
@@ -40,7 +42,7 @@ export async function GET() {
 //       const actualConversationId = body.conversationId; 
 //       setCurrentWorkspaceId(actualWorkspaceId);
 
-  
+
 //       // Monta as mensagens no formato esperado
 //       const messages: CoreMessage[] = [{ role: 'user', content: message }];
 
@@ -77,7 +79,7 @@ export async function GET() {
 //           listCalendarEventsTool,
 //           scheduleCalendarEventTool,
 //         },
-        
+
 //         });
 
 //       // if( aiResponseText.toolResults.length > 0){
@@ -86,7 +88,7 @@ export async function GET() {
 
 //       // Retorna a resposta da IA
 //       return NextResponse.json({ response: aiResponseText }, { status: 200 });
-  
+
 //     } catch (error) {
 //       console.error('Erro na rota /api/ai:', error);
 //       const errorMessage = error instanceof Error ? error.message : 'Ocorreu um erro desconhecido';
@@ -101,60 +103,115 @@ export async function GET() {
 // export async function POST(req: NextRequest) {
 //     const body = await req.json();
 //     const message = body.message;
-    
+
 //     const responseCheckName = await aiResponseText([{ role: 'user', content: message }], systemPromptCheckName);
 //     return NextResponse.json({ response: responseCheckName.text }, { status: 200 });
 // }
 
+// export async function POST(req: NextRequest) {
+//     const body = await req.json();
+//     const phoneNumber = body.phoneNumber
+//     const senderName = body.senderName 
+//     const workspaceId = body.workspaceId
+//     const channel = body.channel
+//     const nuvemshopStoreId = body.nuvemshopStoreId
+//     const nuvemshopApiKey = body.nuvemshopApiKey
+
+
+//     const result = await getNuvemShopIntegration(workspaceId);
+
+//     const result = await UpdateNuvemShopIntegration(workspaceId, nuvemshopStoreId, nuvemshopApiKey);
+
+//     console.log(`[API TEST] Recebida requisição POST para /api/test com os seguintes parâmetros: phoneNumber=${phoneNumber}, senderName=${senderName}, workspaceId=${workspaceId}`);
+
+//     const { client, conversation } = await processClientAndConversation(
+//         workspaceId,
+//         standardizeBrazilianPhoneNumber(phoneNumber),
+//         senderName,
+//         channel
+//     );
+
+
+
+//     const result = await fetchAndProcessAbandonedCarts(workspaceId);
+
+//     const result = await sendDelayedWhatsAppReminder.trigger({
+//         cartId: "cart_12345",
+//         customerPhone: standardizeBrazilianPhoneNumber(phoneNumber),
+//         customerName: senderName,
+//         checkoutUrl: "https://example.com/checkout",
+//         workspaceId: workspaceId,
+//         sendAt: "5 minutes from now", 
+//     },{
+//         delay: "1m"
+//     })
+
+//     console.log('Result of sendDelayedWhatsAppReminder:', result);
+
+//     const data = {
+//         accountId: "9",
+//     phoneNumber: "+5521998892225"
+//     }
+
+//     const getTel = await getChatwootConversationIdByPhoneNumber(data)
+
+//     console.log(getTel)
+
+//     const params = {
+//     accountId: data.accountId, 
+//     conversationId: "996", 
+//     content: "Teste envio para Carrinho abandonado"
+//     };
+
+//     const result = await SendMsgChatWoot(params)
+
+
+
+//     return NextResponse.json({ response: getTel }, { status: 200 });
+// }
+
 export async function POST(req: NextRequest) {
-    const body = await req.json();
-    const phoneNumber = body.phoneNumber
-    const senderName = body.senderName 
-    const workspaceId = body.workspaceId
-    const channel = body.channel
-    const nuvemshopStoreId = body.nuvemshopStoreId
-    const nuvemshopApiKey = body.nuvemshopApiKey
-      
+  const body = await req.json();
+  const workspaceId = body.workspaceId
 
-    // const result = await getNuvemShopIntegration(workspaceId);
+  // await fetchAndProcessAbandonedCarts("33c6cb57-24f7-4586-9122-f91aac8a098c");
 
-    // const result = await UpdateNuvemShopIntegration(workspaceId, nuvemshopStoreId, nuvemshopApiKey);
+  const pendingCarts = await prisma.abandonedCart.findMany({
+    where: {
+      workspaceId: workspaceId,
+    },
+    orderBy:{
+      createdAt: "desc"
+    }
 
-    // console.log(`[API TEST] Recebida requisição POST para /api/test com os seguintes parâmetros: phoneNumber=${phoneNumber}, senderName=${senderName}, workspaceId=${workspaceId}`);
-   
-    // const { client, conversation } = await processClientAndConversation(
-    //     workspaceId,
-    //     standardizeBrazilianPhoneNumber(phoneNumber),
-    //     senderName,
-    //     channel
-    // );
+  });
+
+  console.log(`Found ${pendingCarts} pending carts for workspace: ${workspaceId}`);
+
+  let cartPeddings = []
 
 
+  for (const cart of pendingCarts) {
+    cartPeddings.push({
+      cartId: cart.id,
+      customerPhone: cart.customerPhone,
+      customerName: cart.customerName,
+      checkoutUrl: cart.checkoutUrl,
+      workspaceId: cart.workspaceId,
+      status: cart.status, 
+      createdAt: cart.createdAt
+    })
+  }
 
-    // const result = await fetchAndProcessAbandonedCarts(workspaceId);
+  console.log(cartPeddings)
 
-    // const result = await sendDelayedWhatsAppReminder.trigger({
-    //     cartId: "cart_12345",
-    //     customerPhone: standardizeBrazilianPhoneNumber(phoneNumber),
-    //     customerName: senderName,
-    //     checkoutUrl: "https://example.com/checkout",
-    //     workspaceId: workspaceId,
-    //     sendAt: "5 minutes from now", 
-    // },{
-    //     delay: "1m"
-    // })
 
-    // console.log('Result of sendDelayedWhatsAppReminder:', result);
 
-    const result = await processAIChat(
-        [{ role: 'user', content: "Oi.." }],
-        "33c6cb57-24f7-4586-9122-f91aac8a098c",
-        "b958220f-298f-4422-9994-f0051c197b9d",
-        body.streamMode || false,
-        "openrouter/deepseek/deepseek-chat-v3-0324:free",
-        body.additionalContext || ""
-    )
+  // await sendWhatsAppReminderTask.trigger({
 
-    
-    return NextResponse.json({ response: result }, { status: 200 });
+  // });
+
+
+
+  return NextResponse.json({ response: cartPeddings }, { status: 200 });
 }

@@ -5,30 +5,39 @@
     "key": {
       "remoteJid": "556492193515@s.whatsapp.net",
       "fromMe": false,
-      "id": "3A265263C4B9C90AF793"
+      "id": "3EB0AF77FCB30DA06346E5"
     },
     "pushName": "Weslayne",
     "status": "DELIVERY_ACK",
     "message": {
-      "conversation": "De qual vc tá falando kk",
       "messageContextInfo": {
         "deviceListMetadata": {
-          "senderKeyHash": "7u2ZnIqKIhAykg==",
+          "senderKeyHash": "Em6erpFyFxqmDg==",
           "senderTimestamp": "1749815100",
+          "senderAccountType": "E2EE",
+          "receiverAccountType": "E2EE",
           "recipientKeyHash": "5haL2MbPsQITxw==",
-          "recipientTimestamp": "1749823087"
+          "recipientTimestamp": "1749744837"
         },
-        "deviceListMetadataVersion": 2,
-        "messageSecret": "Ti14r2vZ1hSzSG7aG3eC0v246T/VgtD9tTR+R1fwLyI="
+        "deviceListMetadataVersion": 2
+      },
+      "reactionMessage": {
+        "key": {
+          "remoteJid": "556492193515@s.whatsapp.net",
+          "fromMe": true,
+          "id": "10DB5E96197846A20D08FE6A9114EA93"
+        },
+        "text": "👍",
+        "senderTimestampMs": "1749823181000"
       }
     },
-    "messageType": "conversation",
-    "messageTimestamp": 1749828314,
+    "messageType": "reactionMessage",
+    "messageTimestamp": 1749823183,
     "instanceId": "fda48bb4-e403-4522-a0ba-c1370eb19a15",
-    "source": "ios"
+    "source": "web"
   },
   "destination": "https://c656-2804-43fc-150-2200-3150-2379-1ea-54df.ngrok-free.app/api/webhooks/ingress/38b549955c95aec7ef0a89b74b82fd12",
-  "date_time": "2025-06-13T12:25:14.245Z",
+  "date_time": "2025-06-13T10:59:43.653Z",
   "sender": "557391121575@s.whatsapp.net",
   "server_url": "api.lumibot.com.br",
   "apikey": "ee4dde5bc9a84a723c8d6f528efefdd8"

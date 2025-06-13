@@ -156,7 +156,7 @@ async function processEvolutionMessage(payload: ApiEvolutionType, workspace: Wor
         }
 
         return NextResponse.json(
-            {status: 'MESSAGE_NUMBER_CONECTED'},
+            { status: 'MESSAGE_NUMBER_CONECTED' },
             { status: 200 }
         )
     }
@@ -188,6 +188,15 @@ async function processEvolutionMessage(payload: ApiEvolutionType, workspace: Wor
             { status: 'MESSAGE_IGNORED', reason: 'Not latest message' },
             { status: 200 }
         );
+    }
+
+    console.log('Log da status', conversation.status)
+    console.log('Log de is_ai_active', conversation.is_ai_active)
+
+
+    if (!conversation.is_ai_active) {
+
+        return NextResponse.json({ msg: "Conversatio Paused" }, { status: 200 })
     }
 
 

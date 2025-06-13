@@ -257,41 +257,41 @@ export const sendDelayedWhatsAppReminder = task({
 });
 
 // Task individual para enviar lembrete via WhatsApp
-export const sendMsgForIa = task({
-  id: "send-msg-for-ia",
-  run: async (payload: {
-    workspaceId: string;
-    conversationId: string;
-    clientId: string;
-    newMessageId: string;
-    receivedTimestamp: string;
-  }) => {
-    const { } = payload;
+// export const sendMsgForIa = task({
+//   id: "send-msg-for-ia",
+//   run: async (payload: {
+//     workspaceId: string;
+//     conversationId: string;
+//     clientId: string;
+//     newMessageId: string;
+//     receivedTimestamp: string;
+//   }) => {
+//     const { } = payload;
 
-    try {
-      // Aqui você implementa o envio do WhatsApp
-      // Exemplo usando uma API de WhatsApp (ajuste conforme sua integração)
-      await sendWhatsAppMessage({
-        phone: customerPhone,
-        message: `Olá ${customerName}! Você esqueceu alguns itens no seu carrinho. Finalize sua compra: ${checkoutUrl}`,
-        workspaceId,
-      });
+//     try {
+//       // Aqui você implementa o envio do WhatsApp
+//       // Exemplo usando uma API de WhatsApp (ajuste conforme sua integração)
+//       await sendWhatsAppMessage({
+//         phone: customerPhone,
+//         message: `Olá ${customerName}! Você esqueceu alguns itens no seu carrinho. Finalize sua compra: ${checkoutUrl}`,
+//         workspaceId,
+//       });
 
-      // Atualizar status do carrinho para "REMINDER_SENT"
-      await prisma.abandonedCart.update({
-        where: { id: cartId },
-        data: { 
-          status: "REMINDER_SENT",
-          lastReminderSent: new Date(),
-        },
-      });
+//       // Atualizar status do carrinho para "REMINDER_SENT"
+//       await prisma.abandonedCart.update({
+//         where: { id: cartId },
+//         data: { 
+//           status: "REMINDER_SENT",
+//           lastReminderSent: new Date(),
+//         },
+//       });
 
-      console.log(`WhatsApp reminder sent for cart: ${cartId} to ${customerPhone}`);
+//       console.log(`WhatsApp reminder sent for cart: ${cartId} to ${customerPhone}`);
       
-      return { success: true, cartId, phone: customerPhone };
-    } catch (error) {
-      console.error(`Failed to send WhatsApp reminder for cart ${cartId}:`, error);
-      throw error;
-    }
-  },
-});
+//       return { success: true, cartId, phone: customerPhone };
+//     } catch (error) {
+//       console.error(`Failed to send WhatsApp reminder for cart ${cartId}:`, error);
+//       throw error;
+//     }
+//   },
+// });
